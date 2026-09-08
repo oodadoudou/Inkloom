@@ -288,8 +288,8 @@ class BrushBatchManagementTest {
     @Test fun stationaryLongPressOpensTheProductionBrushEditor() {
         openBrushes()
         composeRule.onNodeWithContentDescription("Brush preset Batch A").performTouchInput { longClick() }
-        composeRule.onNodeWithText("Brush Editor", substring = true).assertIsDisplayed()
-        composeRule.onNodeWithText("SCRATCH PAD").assertIsDisplayed()
+        composeRule.onNodeWithText("Brush Studio").assertIsDisplayed()
+        composeRule.onNodeWithText("Drawing pad").assertIsDisplayed()
     }
 
     @Test fun longPressGroupRenamesItsWholeSubtree() {

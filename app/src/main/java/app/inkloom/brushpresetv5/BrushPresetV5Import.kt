@@ -113,6 +113,8 @@ object BrushPresetV5Import {
             id = preset.identity.id,
             name = preset.identity.name,
             format = format,
+            derivedFromFactoryId = base.derivedFromFactoryId
+                ?: base.id.takeIf { base.format == BrushFormat.SYSTEM && preset.identity.id != base.id },
             toolBinding = when {
                 preset.output == BrushOutput.ERASE -> BrushToolBinding(BrushToolRole.ERASE)
                 base.toolBinding.role == BrushToolRole.ERASE -> BrushToolBinding()

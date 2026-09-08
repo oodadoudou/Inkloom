@@ -2,69 +2,36 @@ package app.inkloom.ui
 
 import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import app.inkloom.brushpresetv5.BrushOptionDescriptor
-import app.inkloom.brushpresetv5.BrushOptionDescriptors
-import app.inkloom.brushpresetv5.BrushPresetV5
-import app.inkloom.brushpresetv5.EditorWorkingCopy
-import app.inkloom.brushpresetv5.OwnedBrushPreset
-import app.inkloom.brushpresetv5.PressureCurveShape
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import app.inkloom.brushpresetv5.*
 import app.inkloom.document.LayerIds
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.settings.AppSettings
+import app.inkloom.settings.UiLanguage
+import app.inkloom.settings.text
 
-private fun brTr(language: String, english: String, simplifiedChinese: String): String =
-    if (language.startsWith("zh")) simplifiedChinese else english
-
-@Composable
-private fun currentLanguage(): String = LocalConfiguration.current.locales[0].language
-
-/**
- * Brush Editor V1 — the capability-driven editor over [BrushPresetV5].
- *
- * Editing flow:
- *
- *   Selected preset (factory or user)
- *     -> EditorWorkingCopy (source immutable until Save)
- *     -> BrushPresetV5 being edited
- *     -> compile() -> immutable V5 program used by the next contact
- *
- * Panels are derived purely from the family's capability set; no brush-name branching.
- * Save follows ownership: factory -> Save As (new user copy), user -> Save / Save As / Reset /
- * Delete. Cancel just drops the working copy.
- */
+/** The working copy is isolated until Done; every visible parameter reaches the real compiler. */
 @Composable
 fun BrushEditorV1Dialog(
     source: OwnedBrushPreset,
@@ -75,217 +42,200 @@ fun BrushEditorV1Dialog(
     onResetToFactory: (() -> Unit)?,
     onDelete: () -> Unit,
 ) {
-    var session by remember(source.id) {
-        mutableStateOf(EditorWorkingCopy.start(source))
-    }
-    val lang = currentLanguage()
-    var showScratchPad by remember { mutableStateOf(true) }
+    var session by remember(source.id) { mutableStateOf(EditorWorkingCopy.start(source)) }
+    val language = settings.language
+    fun tr(en: String, zh: String) = language.text(en, zh)
     var saveAsOpen by remember { mutableStateOf(false) }
-    var saveAsName by remember(source.id) {
-        mutableStateOf(session.current.identity.name + brTr(lang, " - Copy", " - 副本"))
-    }
-
-    val family = session.current.identity.family
+    var saveAsName by remember(source.id) { mutableStateOf(session.current.identity.name + tr(" - Copy", " - 副本")) }
+    var selectedGroup by remember(source.id) { mutableStateOf(BrushOptionGroup.SPACING) }
+    var moreOpen by remember { mutableStateOf(false) }
     val panels = remember(session.current) { BrushOptionDescriptors.productionPanels(session.current) }
-
-    if (saveAsOpen) {
-        AlertDialog(
-            onDismissRequest = { saveAsOpen = false },
-            title = { Text(brTr(lang, "Save brush as", "笔刷另存为")) },
-            text = {
-                OutlinedTextField(
-                    value = saveAsName,
-                    onValueChange = { saveAsName = it },
-                    label = { Text(brTr(lang, "Brush name", "笔刷名称")) },
-                    singleLine = true,
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = saveAsName.isNotBlank(),
-                    onClick = {
-                        val result = if (source.isFactory) session.commit(saveAsName.trim())
-                        else session.commitAsNew(saveAsName.trim())
-                        onSaveAs(result.preset)
-                    },
-                ) { Text(brTr(lang, "Save", "保存")) }
-            },
-            dismissButton = {
-                TextButton(onClick = { saveAsOpen = false }) { Text(brTr(lang, "Cancel", "取消")) }
-            },
-        )
-        return
+    val activePanel = panels.firstOrNull { it.first == selectedGroup } ?: panels.first()
+    val orderedOptions = if (activePanel.first == BrushOptionGroup.PRESSURE) activePanel.second.sortedBy {
+        when {
+            it.id.contains("Size") -> 0
+            it.id.contains("Opacity") -> 1
+            else -> 2
+        }
+    } else activePanel.second
+    val commit = {
+        if (source.isFactory) saveAsOpen = true else onSaveInPlace(session.current)
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Column {
-                Text(session.current.identity.name, style = MaterialTheme.typography.titleMedium)
-                Text(
-                    brTr(lang, "Brush Editor", "笔刷编辑器") + " · " + family.label +
-                        if (source.isFactory) brTr(lang, " · Factory", " · 预设") else brTr(lang, " · User", " · 用户"),
-                    color = Color.Gray, fontSize = 11.sp,
-                )
-            }
-        },
-        text = {
-            Column(Modifier.widthIn(min = 420.dp, max = 560.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = { showScratchPad = !showScratchPad }) {
-                        Text(if (showScratchPad) brTr(lang, "Hide test pad", "隐藏试笔板") else brTr(lang, "Show test pad", "显示试笔板"))
+    Dialog(onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(12.dp),
+            contentAlignment = Alignment.Center) {
+            Surface(Modifier.fillMaxSize().widthIn(max = 1200.dp).heightIn(max = 860.dp),
+                shape = RoundedCornerShape(16.dp), color = Color.White, contentColor = Color(0xFF202020)) {
+                Column {
+                    Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(tr("Brush Studio", "笔刷工作室"), style = MaterialTheme.typography.titleLarge)
+                            Text(session.current.identity.name, color = Color.Gray, fontSize = 12.sp, maxLines = 1)
+                        }
+                        Box {
+                            TextButton(onClick = { moreOpen = true }) { Text(tr("Actions", "操作")) }
+                            DropdownMenu(moreOpen, { moreOpen = false }) {
+                                DropdownMenuItem(text = { Text(tr("Save As", "另存为")) },
+                                    onClick = { moreOpen = false; saveAsOpen = true })
+                                if (!source.isFactory) {
+                                    DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = {
+                                        moreOpen = false
+                                        onSaveAs(session.commitAsNew(session.current.identity.name + tr(" - Copy", " - 副本")).preset)
+                                    })
+                                    onResetToFactory?.let { reset ->
+                                        DropdownMenuItem(text = { Text(tr("Reset", "重置")) }, onClick = { moreOpen = false; reset() })
+                                    }
+                                    DropdownMenuItem(text = { Text(tr("Delete", "删除"), color = MaterialTheme.colorScheme.error) },
+                                        onClick = { moreOpen = false; onDelete() })
+                                }
+                            }
+                        }
+                        TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) }
+                        Button(onClick = commit) { Text(tr("Done", "完成")) }
+                    }
+                    HorizontalDivider()
+                    BoxWithConstraints(Modifier.weight(1f)) {
+                        // Keep the three-column relationship on a tablet; stack the pad only on a phone.
+                        val wide = maxWidth >= 720.dp
+                        Column {
+                            Row(Modifier.weight(1f)) {
+                                LazyColumn(Modifier.width(if (wide) 174.dp else 128.dp).fillMaxHeight()
+                                    .background(Color(0xFFF6F6F6)), contentPadding = PaddingValues(8.dp)) {
+                                    item {
+                                        Text(session.current.identity.family.localizedLabel(language),
+                                            Modifier.padding(12.dp), color = Color.Gray, fontSize = 12.sp)
+                                    }
+                                    items(panels, key = { it.first.name }) { (group, _) ->
+                                        Text(group.localizedLabel(language),
+                                            Modifier.fillMaxWidth().clip(RoundedCornerShape(7.dp))
+                                                .background(if (group == activePanel.first) Color(0xFFE0EBE3) else Color.Transparent)
+                                                .clickable { selectedGroup = group }
+                                                .padding(horizontal = 12.dp, vertical = 16.dp),
+                                            fontSize = 13.sp)
+                                    }
+                                }
+                                VerticalDivider()
+                                LazyColumn(Modifier.weight(if (wide) .42f else 1f).fillMaxHeight(),
+                                    contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                    item {
+                                        Text(activePanel.first.localizedLabel(language), style = MaterialTheme.typography.titleMedium)
+                                    }
+                                    items(orderedOptions, key = { it.id }) { option ->
+                                        BrushOptionRow(option, session.current, language) { session = session.withValue(it) }
+                                    }
+                                }
+                                if (wide) {
+                                    VerticalDivider()
+                                    V5ScratchPad(session.current, settings, Modifier.weight(.58f).fillMaxHeight())
+                                }
+                            }
+                            if (!wide) {
+                                HorizontalDivider()
+                                V5ScratchPad(session.current, settings, Modifier.fillMaxWidth().height(220.dp))
+                            }
+                        }
                     }
                 }
-                if (showScratchPad) {
-                    V5ScratchPad(preset = session.current, settings = settings, lang = lang)
-                }
-                LazyColumn(
-                    Modifier.fillMaxWidth().heightIn(max = 420.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    items(panels) { (group, options) ->
-                        CapabilityPanel(
-                            groupName = group.name,
-                            options = options,
-                            value = session.current,
-                            onValue = { updated -> session = session.withValue(updated) },
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (!source.isFactory) {
-                    TextButton(onClick = onDelete) { Text(brTr(lang, "Delete", "删除"), color = MaterialTheme.colorScheme.error) }
-                    onResetToFactory?.let { reset ->
-                        TextButton(onClick = reset) { Text(brTr(lang, "Reset", "重置")) }
-                    }
-                    TextButton(onClick = {
-                        val duplicateName = session.current.identity.name + brTr(lang, " - Copy", " - 副本")
-                        onSaveAs(session.commitAsNew(duplicateName).preset)
-                    }) { Text(brTr(lang, "Duplicate", "复制")) }
-                    TextButton(onClick = { saveAsOpen = true }) { Text(brTr(lang, "Save As", "另存为")) }
-                }
-                TextButton(onClick = onDismiss) { Text(brTr(lang, "Cancel", "取消")) }
-                TextButton(onClick = {
-                    if (source.isFactory) {
-                        saveAsOpen = true
-                    } else {
-                        onSaveInPlace(session.current)
-                    }
-                }) { Text(if (source.isFactory) brTr(lang, "Save As", "另存为") else brTr(lang, "Save", "保存")) }
-            }
-        },
-    )
-}
-
-@Composable
-private fun CapabilityPanel(
-    groupName: String,
-    options: List<BrushOptionDescriptor>,
-    value: BrushPresetV5,
-    onValue: (BrushPresetV5) -> Unit,
-) {
-    val lang = currentLanguage()
-    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0x0DFFFFFF))) {
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-            Text(trGroup(lang, groupName), color = Color(0xFF9AC8A0), fontSize = 11.sp)
-            options.forEach { option ->
-                BrushOptionRow(option, value, onValue)
             }
         }
     }
+    if (saveAsOpen) AlertDialog(
+        onDismissRequest = { saveAsOpen = false },
+        title = { Text(tr("Save brush as", "笔刷另存为")) },
+        text = { OutlinedTextField(saveAsName, { saveAsName = it },
+            label = { Text(tr("Brush name", "笔刷名称")) }, singleLine = true) },
+        confirmButton = { TextButton(enabled = saveAsName.isNotBlank(), onClick = {
+            val result = if (source.isFactory) session.commit(saveAsName.trim()) else session.commitAsNew(saveAsName.trim())
+            onSaveAs(result.preset)
+        }) { Text(tr("Save", "保存")) } },
+        dismissButton = { TextButton(onClick = { saveAsOpen = false }) { Text(tr("Cancel", "取消")) } },
+    )
 }
 
 @Composable
 private fun BrushOptionRow(
     option: BrushOptionDescriptor,
     value: BrushPresetV5,
+    language: UiLanguage,
     onValue: (BrushPresetV5) -> Unit,
 ) {
     val current = option.get(value)
+    val label = option.localizedLabel(language)
     if (option.id.endsWith("CurveShape")) {
-        val shapeIndex = current.toInt().coerceIn(0, PressureCurveShape.entries.lastIndex)
         Column(Modifier.fillMaxWidth()) {
-            Text(option.label, fontSize = 12.sp)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(label, fontSize = 13.sp)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 PressureCurveShape.entries.forEach { shape ->
-                    TextButton(
-                        onClick = { onValue(option.apply(value, shape.ordinal.toFloat())) },
-                        modifier = Modifier.height(28.dp),
-                    ) {
-                        Text(shape.label, fontSize = 10.sp, color = if (shape.ordinal == shapeIndex) Color(0xFF9AC8A0) else Color.Gray)
+                    TextButton(onClick = { if (shape != PressureCurveShape.CUSTOM) onValue(option.apply(value, shape.ordinal.toFloat())) },
+                        contentPadding = PaddingValues(horizontal = 2.dp)) {
+                        Text(shape.localizedLabel(language), fontSize = 11.sp)
                     }
                 }
             }
+            BrushPressureCurve(option.id, value, language, onValue)
         }
         return
     }
+    if (option.id.endsWith("Enabled")) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, Modifier.weight(1f), fontSize = 13.sp)
+            Switch(current >= .5f, { onValue(option.apply(value, if (it) 1f else 0f)) },
+                Modifier.semantics { contentDescription = label })
+        }
+        return
+    }
+    var numericOpen by remember { mutableStateOf(false) }
+    var numeric by remember { mutableStateOf("") }
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(option.label, Modifier.weight(1f), fontSize = 12.sp)
-            Text(
-                if (option.id.endsWith("Enabled")) (if (current >= .5f) "ON" else "OFF")
-                else "%.2f".format(current),
-                color = Color.Gray, fontSize = 11.sp,
-            )
+            Text(label, Modifier.weight(1f), fontSize = 13.sp)
+            TextButton(onClick = { numeric = "%.3f".format(java.util.Locale.ROOT, current).trimEnd('0').trimEnd('.'); numericOpen = true },
+                contentPadding = PaddingValues(horizontal = 10.dp)) {
+                Text("%.2f".format(java.util.Locale.ROOT, current), fontSize = 12.sp)
+            }
         }
-        Slider(
-            value = current.coerceIn(option.valueRange.start, option.valueRange.endInclusive),
-            onValueChange = { v -> onValue(option.apply(value, v)) },
-            valueRange = option.valueRange,
-        )
+        Slider(current.coerceIn(option.valueRange.start, option.valueRange.endInclusive),
+            { onValue(option.apply(value, it)) }, valueRange = option.valueRange,
+            modifier = Modifier.semantics { contentDescription = label })
+    }
+    if (numericOpen) {
+        val parsed = numeric.toFloatOrNull()?.takeIf { it.isFinite() && it in option.valueRange }
+        val apply = { if (parsed != null) { onValue(option.apply(value, parsed)); numericOpen = false } }
+        AlertDialog(onDismissRequest = { numericOpen = false }, title = { Text(label) },
+            text = { OutlinedTextField(numeric, { numeric = it }, singleLine = true,
+                isError = parsed == null,
+                supportingText = { Text("${option.valueRange.start} – ${option.valueRange.endInclusive}") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { apply() })) },
+            confirmButton = { TextButton(enabled = parsed != null, onClick = apply) { Text(language.text("Apply", "应用")) } },
+            dismissButton = { TextButton(onClick = { numericOpen = false }) { Text(language.text("Cancel", "取消")) } })
     }
 }
 
-/**
- * Scratch Pad — accepts real V5 canvas input only. There is no synthesized InkStroke replay.
- */
 @Composable
-private fun V5ScratchPad(
-    preset: BrushPresetV5,
-    settings: AppSettings,
-    lang: String,
-) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp)
-            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(10.dp))
-            .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Text(brTr(lang, "SCRATCH PAD", "试笔板"), color = Color(0xFF9AC8A0), fontSize = 11.sp)
-        AndroidView(
-            factory = { ctx ->
+private fun V5ScratchPad(preset: BrushPresetV5, settings: AppSettings, modifier: Modifier) {
+    var reset by remember { mutableIntStateOf(0) }
+    Column(modifier.background(Color(0xFFF8F8F8)).padding(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(settings.language.text("Drawing pad", "试笔板"), Modifier.weight(1f), fontSize = 14.sp)
+            TextButton(onClick = { reset++ }) { Text(settings.language.text("Clear", "清空")) }
+        }
+        key(reset) {
+            AndroidView(factory = { ctx ->
                 InkCanvasView(ctx).apply {
                     activeLayerId = LayerIds.INK
                     pageModelWidth = 900f
-                    pageModelHeight = 240f
-                    setRasterLayerSurfaces(mapOf(LayerIds.INK to PixelTileSurface(900, 240)))
+                    pageModelHeight = 1200f
+                    setRasterLayerSurfaces(mapOf(LayerIds.INK to PixelTileSurface(900, 1200)))
                     layerOrder = listOf(LayerIds.INK)
                     pagePaperColor = AndroidColor.WHITE
                 }
-            },
-            update = { view ->
-                view.activeLayerId = LayerIds.INK
-                view.pageModelWidth = 900f
-                view.pageModelHeight = 240f
-                view.applyBrushPresetV5Configuration(preset, settings)
-            },
-            modifier = Modifier.fillMaxWidth().height(132.dp).clip(RoundedCornerShape(8.dp)).background(Color.White),
-        )
+            }, update = { it.applyBrushPresetV5Configuration(preset, settings) },
+                modifier = Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(8.dp)).background(Color.White)
+                    .semantics { contentDescription = settings.language.text("Brush test canvas", "笔刷测试画布") })
+        }
     }
-}
-
-private fun trGroup(lang: String, group: String): String = when (group) {
-    "BASIC" -> brTr(lang, "Basic", "基础")
-    "TIP" -> brTr(lang, "Tip", "笔尖")
-    "SPACING" -> brTr(lang, "Spacing", "间距")
-    "PRESSURE" -> brTr(lang, "Pressure", "压力")
-    "TILT" -> brTr(lang, "Tilt", "侧锋")
-    "PAPER" -> brTr(lang, "Paper", "纸张")
-    "STROKE" -> brTr(lang, "Stroke", "笔画")
-    else -> group
 }
