@@ -25,6 +25,29 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class RasterSurfaceRecompositionTest {
     @Test
+    fun hidingLayerWhileSaveIsPendingCannotRestoreErasedPigment() {
+        var loads = 0
+        val runtime = RasterLayerSurfaceRuntime(600) { _, _, _ -> opaqueSurface().also { loads++ } }
+        val initial = page(reference("before-erase", 1))
+        val live = runtime.reconcile(initial).getValue(PAINT)
+        live.beginWrite("eraser awaiting disk save").use { write ->
+            write.setPixel(300, 300, 0); write.commit().close()
+        }
+        val hidden = initial.copy(layers = initial.layers.map { if (it.id == PAINT) it.copy(visible = false) else it })
+        assertTrue(runtime.reconcile(hidden).isEmpty())
+        val saved = reference("after-erase", 2)
+        runtime.acceptPublished(initial, PAINT, saved, 0)
+        val reopened = runtime.reconcile(page(saved)).getValue(PAINT)
+        assertSame("Visibility is presentation state, not a disk reload", live, reopened)
+        assertEquals("Hidden layer restored erased pixels", 0, reopened.pixelAt(300, 300))
+        assertEquals(1, loads)
+        // An actual external undo still reloads the prior checkpoint.
+        runtime.reconcile(initial)
+        assertEquals(2, loads)
+        assertEquals(Color.BLACK, runtime.surfaceForTests(PAINT)!!.pixelAt(300, 300))
+    }
+
+    @Test
     fun queuedCheckpointRecompositionsNeverRestoreErasedPixels() {
         var loads = 0
         val runtime = RasterLayerSurfaceRuntime(600) { _, _, _ ->

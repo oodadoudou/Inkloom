@@ -32,16 +32,17 @@ internal class RasterLayerSurfaceRuntime(
     /** Returns stable live surfaces while bringing external document revisions into the runtime. */
     @Synchronized
     fun reconcile(page: InkPage): Map<String, PixelTileSurface> {
-        val visibleLayers = page.layers.filter { layer ->
-            layer.isPaintSurfaceLayer() && LayerHierarchy.effectiveVisible(page.layers, layer)
-        }
-        val visibleIds = visibleLayers.mapTo(mutableSetOf(), InkLayer::id)
-        (surfaces.keys - visibleIds).forEach { layerId ->
+        val paintLayers = page.layers.filter(InkLayer::isPaintSurfaceLayer)
+        val retainedIds = paintLayers.mapTo(mutableSetOf(), InkLayer::id)
+        (surfaces.keys - retainedIds).forEach { layerId ->
             surfaces.remove(layerId)
             sourceKeys.remove(layerId)
             locallyPublishedKeys.remove(layerId)
         }
-        visibleLayers.forEach { layer ->
+        paintLayers.forEach { layer ->
+            // Hidden surfaces may contain completed edits whose checkpoint is still saving.
+            // Retain them; visibility must never turn a live edit into a reload of older pixels.
+            if (layer.id !in surfaces && !LayerHierarchy.effectiveVisible(page.layers, layer)) return@forEach
             val incoming = RasterSurfaceSourceKey.from(page, layer, renderWidth)
             val current = surfaces[layer.id]
             val currentSource = sourceKeys[layer.id]
@@ -66,7 +67,8 @@ internal class RasterLayerSurfaceRuntime(
                 }
             }
         }
-        return surfaces.toMap()
+        val visibleIds = paintLayers.filter { LayerHierarchy.effectiveVisible(page.layers, it) }.mapTo(mutableSetOf(), InkLayer::id)
+        return surfaces.filterKeys { it in visibleIds }
     }
 
     /** Marks a successfully saved checkpoint without replacing the newer live tile generations. */
