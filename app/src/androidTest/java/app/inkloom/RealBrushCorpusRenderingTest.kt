@@ -99,6 +99,70 @@ class RealBrushCorpusRenderingTest {
     )
 
     @Test
+    fun disabledSutMixingRetainsSourceAmountsWithoutEnablingWetTransport() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val assetRoot = File(context.cacheDir, "sut-disabled-mix-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            val disabled = stagedSources("sut").flatMapIndexed { index, file ->
+                parse(file, BrushFormat.SUT, File(assetRoot, "source-$index"))
+            }.filter { !it.watercolor && it.paintMix > .0001f }
+            assertTrue("LOCAL_FIXTURE_REQUIRED: a SUT with disabled mixing and retained paint density", disabled.isNotEmpty())
+            val rendered = mutableListOf<ImportedBrush>()
+            disabled.forEach { source ->
+                val converted = BrushPresetV5Import.convertOrReject(source)
+                assertEquals(source.paintMix, converted.paintMix, 0f)
+                assertEquals(source.colorMix, converted.colorMix, 0f)
+                if (converted.compatibility == Compatibility.FAILED) {
+                    assertEquals(null, converted.v5PresetJson)
+                    assertTrue(converted.report.any { it.startsWith("UNSUPPORTED_WITH_EXPLICIT_REASON:") })
+                    Log.i("InkloomBrushCorpus", "DISABLED_MIX_REJECTED name=${source.name} reasons=${converted.report}")
+                } else {
+                    val preset = BrushPresetV5Import.requirePreset(converted)
+                    assertTrue(preset.identity.family != app.inkloom.brushpresetv5.BrushFamily.WET_PAINT)
+                    assertEquals(null, preset.wetMix)
+                    assertTrue("Disabled-mix SUT ${source.name} must execute", brushCommitsAndRenders(converted))
+                    Log.i("InkloomBrushCorpus", "DISABLED_MIX_EXECUTED name=${source.name} family=${preset.identity.family} dual=${preset.dual != null}")
+                    rendered += converted
+                }
+            }
+            assertTrue("Real disabled-mix SUTs must still render, not all become rejected", rendered.isNotEmpty())
+            assertTrue("LOCAL_FIXTURE_REQUIRED: Painting brush must execute its dry dual-tip program",
+                rendered.any { it.name == "Painting brush" && BrushPresetV5Import.requirePreset(it).dual != null })
+            assertPersistenceReloadRemainsExecutable("sut-disabled-mix", rendered)
+        } finally {
+            assetRoot.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun unresolvedSutSecondaryTextureReferenceIsRejectedInsteadOfInvented() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val assetRoot = File(context.cacheDir, "sut-missing-dual-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            val source = stagedSources("sut").firstOrNull { file ->
+                parse(file, BrushFormat.SUT, File(assetRoot, "find-${file.name}"))
+                    .any { it.name == "Painting brush" }
+            }
+            assertTrue("LOCAL_FIXTURE_REQUIRED: Painting brush SUT", source != null)
+            val copy = requireNotNull(source).copyTo(File(assetRoot, "missing-reference.sut"))
+            android.database.sqlite.SQLiteDatabase.openDatabase(copy.path, null, 0).use { db ->
+                db.execSQL("UPDATE Variant SET DualTextureImage=?", arrayOf(byteArrayOf(1, 2, 3, 4)))
+            }
+            val decoded = parse(copy, BrushFormat.SUT, File(assetRoot, "decoded")).single()
+            assertEquals(null, decoded.dualGrainPreviewPath)
+            assertEquals("SUT.DualTextureImage", decoded.dualGrain.dualSourceGrainReference)
+            val converted = BrushPresetV5Import.convertOrReject(decoded)
+            assertEquals(Compatibility.FAILED, converted.compatibility)
+            assertEquals(null, converted.v5PresetJson)
+            assertTrue(converted.report.any {
+                it.startsWith("UNSUPPORTED_WITH_EXPLICIT_REASON:") && it.contains("SUT.dualGrain.asset")
+            })
+        } finally {
+            assetRoot.deleteRecursively()
+        }
+    }
+
+    @Test
     fun realImportedQuickEditsKeepCanonicalIdentityAndReachProduction() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val assetRoot = File(context.cacheDir, "quick-real-brush-${System.nanoTime()}").apply { mkdirs() }

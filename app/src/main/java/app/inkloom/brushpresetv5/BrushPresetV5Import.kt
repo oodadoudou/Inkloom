@@ -368,7 +368,8 @@ object BrushPresetV5Import {
     }
 
     private fun family(source: ImportedBrush): BrushFamily = when {
-        source.watercolor || source.paintMix > .0001f -> BrushFamily.WET_PAINT
+        // SUT retains paint density even when its explicit Color mixing switch is off.
+        source.watercolor || (source.format != BrushFormat.SUT && source.paintMix > .0001f) -> BrushFamily.WET_PAINT
         source.spray || source.id.contains("airbrush", true) -> BrushFamily.AIRBRUSH
         source.id.startsWith("system-decoration-") || source.groupName.contains("decoration", true) -> BrushFamily.DECORATION
         source.proceduralPaperGrainEnabled || source.graphiteTiltWidth > .0001f || source.id.contains("pencil", true) -> BrushFamily.PENCIL

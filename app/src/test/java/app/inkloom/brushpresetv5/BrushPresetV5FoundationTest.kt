@@ -14,6 +14,53 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BrushPresetV5FoundationTest {
+    @Test fun sutMixEnableControlsTransportIndependentlyFromRetainedPaintDensity() {
+        val source = ImportedBrush(
+            id = "sut-disabled-mix", name = "Disabled mixing", format = BrushFormat.SUT,
+            compatibility = Compatibility.HIGH, sizeBytes = 42, report = emptyList(),
+            watercolor = false, colorMix = .3f, paintMix = .5f,
+            dualBrush = true, dualTipPreviewPaths = listOf("/secondary.png"),
+        )
+        val dry = BrushPresetV5Import.convertOrReject(source)
+        val dryPreset = BrushPresetV5Import.requirePreset(dry)
+        assertEquals(BrushFamily.INK, dryPreset.identity.family)
+        assertEquals(null, dryPreset.wetMix)
+        assertEquals(listOf("/secondary.png"), dryPreset.dual?.tipAssetPaths)
+        assertEquals(.3f, dry.colorMix, 0f)
+        assertEquals(.5f, dry.paintMix, 0f)
+        assertEquals(
+            app.inkloom.model.SemanticExecutionDisposition.PRESERVED_SOURCE_ONLY,
+            dry.semanticMappings.single { it.sourceSemantic == "SUT.wetMix.basic" }.executionDisposition,
+        )
+        assertTrue(dry.report.any { it.contains("Color mixing is disabled") })
+        val wet = BrushPresetV5Import.convertOrReject(source.copy(watercolor = true))
+        val wetPreset = BrushPresetV5Import.requirePreset(wet)
+        assertEquals(BrushFamily.WET_PAINT, wetPreset.identity.family)
+        assertEquals(.5f, wetPreset.wetMix?.charge ?: 0f, 0f)
+        assertEquals(.3f, wetPreset.wetMix?.pull ?: 0f, 0f)
+        assertEquals(null, wetPreset.dual)
+    }
+
+    @Test fun absentSutDualTextureDoesNotBecomeAMissingResourceFromRetainedDensity() {
+        val source = ImportedBrush(
+            id = "sut-no-dual-texture", name = "No second texture", format = BrushFormat.SUT,
+            compatibility = Compatibility.HIGH, sizeBytes = 42, report = emptyList(),
+            dualBrush = true, dualTipPreviewPaths = listOf("/secondary.png"),
+            dualGrain = ImportedBrushGrain(density = .5f),
+        )
+        val absent = BrushPresetV5Import.convertOrReject(source)
+        assertTrue(absent.compatibility != Compatibility.FAILED)
+        assertEquals(null, BrushPresetV5Import.requirePreset(absent).dual?.textureGrain)
+        assertEquals(.5f, absent.dualGrainDensity, 0f)
+        val missing = BrushPresetV5Import.convertOrReject(source.copy(
+            dualGrain = source.dualGrain.copy(dualSourceGrainReference = "SUT.DualTextureImage"),
+        ))
+        assertEquals(Compatibility.FAILED, missing.compatibility)
+        assertTrue(missing.report.any { it.contains("SUT.dualGrain.asset") })
+        val otherFormat = BrushPresetV5Import.convertOrReject(source.copy(format = BrushFormat.ABR))
+        assertEquals(Compatibility.FAILED, otherFormat.compatibility)
+    }
+
     @Test fun codecAcceptsOnlySchemaFive() {
         val preset = referencePencil()
         val encoded = BrushPresetV5Codec.encode(preset)

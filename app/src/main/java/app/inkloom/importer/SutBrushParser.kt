@@ -99,6 +99,11 @@ class SutBrushParser(private val assetDirectory: File) {
                 dualTipPreviewPaths = dualTips.map(File::getAbsolutePath),
                 dualGrain = ImportedBrushGrain(
                     previewPath = dualGrain?.absolutePath,
+                    // Density remains stored when no material is selected. Only an actual
+                    // unresolved reference means an asset is missing, not a nonzero amount.
+                    dualSourceGrainReference = if (dualGrain == null &&
+                        db.blob("DualTextureImage", columns)?.isNotEmpty() == true
+                    ) "SUT.DualTextureImage" else null,
                     density = (values.float("DualTextureDensity") / 100f).coerceIn(0f, 1f),
                     densityDynamics = dualTextureDensityEffector.parameterDynamics(),
                     scale = values.float("DualTextureScale", 100f).coerceIn(1f, 4000f),

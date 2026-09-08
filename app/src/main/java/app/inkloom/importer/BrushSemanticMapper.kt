@@ -26,7 +26,8 @@ object BrushSemanticMapper {
 
     fun describe(brush: ImportedBrush): List<BrushSemanticMapping> = buildList {
         val prefix = brush.format.name
-        val wetPrimary = brush.watercolor || brush.paintMix > .0001f
+        // Keep the audit aligned with the import boundary: SUT amounts do not enable mixing.
+        val wetPrimary = brush.watercolor || (brush.format != BrushFormat.SUT && brush.paintMix > .0001f)
         fun executed(
             source: String,
             target: String,
@@ -131,6 +132,13 @@ object BrushSemanticMapper {
                 brush.procreateWetMix.blurJitter != 0f || brush.procreateWetMix.wetnessJitter != 0f ||
                 brush.procreateWetMix.legacyMixSoftening != 0f
             ) preserved("PROCREATE.wetMix.advanced", "Grade, blur, jitter and legacy softening are retained but are not in the V5 wet program.")
+        } else if (brush.format == BrushFormat.SUT && !brush.watercolor &&
+            (brush.colorMix > 0f || brush.paintMix > 0f)
+        ) {
+            preserved(
+                "SUT.wetMix.basic",
+                "Color mixing is disabled; retained amount and density of paint do not enable wet transport.",
+            )
         } else if (brush.watercolor || brush.colorMix > 0f || brush.paintMix > 0f) {
             executed(
                 "$prefix.wetMix.basic",
@@ -190,7 +198,8 @@ object BrushSemanticMapper {
         if (brush.dualBrush && !wetPrimary) {
             if (brush.dualTipPreviewPaths.isEmpty()) rejected("$prefix.dualBrush.asset", "Dual brush is enabled but its secondary tip asset is missing.")
             if (brush.dualGrainPreviewPath == null &&
-                (brush.dualGrain.dualSourceGrainReference != null || brush.dualGrainDensity > .0001f)
+                (brush.dualGrain.dualSourceGrainReference != null ||
+                    (brush.format != BrushFormat.SUT && brush.dualGrainDensity > .0001f))
             ) rejected("$prefix.dualGrain.asset", "Dual brush grain is referenced but not embedded in the source container.")
             if (brush.dualApplyRgb) rejected("$prefix.dualBrush.rgb", "Dual-brush RGB compositing is not supported by Paint Engine V5.")
             if (hasAdvancedDual(brush)) preserved("$prefix.dualBrush.advanced", "Dual dynamics, jitter, ribbon, sequence and flip semantics remain source-only.")
