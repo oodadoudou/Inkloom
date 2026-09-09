@@ -1359,7 +1359,7 @@ class InkCanvasView(context: Context) : View(context) {
             canvas.drawCircle(originX, originY, 3f / overlayScale, liveSelectionOriginPaint)
             liveSelectionOriginPaint.color = Color.WHITE
             canvas.drawCircle(originX, originY, 1.5f / overlayScale, liveSelectionOriginPaint)
-            postInvalidateDelayed(SELECTION_ANTS_FRAME_MS)
+            selectionAnimation.requestFrame()
         }
         drawSelectionProtection(canvas)
         drawCommittedSelectionBoundary(canvas)
@@ -1386,6 +1386,12 @@ class InkCanvasView(context: Context) : View(context) {
         if (imageCanvasTransform == null) drawStylusHoverCursor(canvas)
         imageCanvasTransform?.draw(canvas, width, height, viewportScale)
     }
+
+    private val selectionAnimation = SelectionAnimationScheduler(
+        post = { postDelayed(it, SELECTION_ANTS_FRAME_MS) },
+        remove = { removeCallbacks(it) },
+        invalidate = { postInvalidateOnAnimation() },
+    )
 
     private fun selectionAntPhase(): Float =
         ((SystemClock.uptimeMillis() / SELECTION_ANTS_FRAME_MS) % selectionAntPattern.width).toFloat()
@@ -1474,7 +1480,7 @@ class InkCanvasView(context: Context) : View(context) {
         canvas.drawRect(clip, selectionAntPaint)
         canvas.restoreToCount(checkpoint)
         canvas.restoreToCount(previewCheckpoint)
-        postInvalidateDelayed(SELECTION_ANTS_FRAME_MS)
+        selectionAnimation.requestFrame()
     }
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
@@ -1486,6 +1492,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onDetachedFromWindow() {
+        selectionAnimation.cancel()
         finishSelectionColorFill(true)
         finishAutomaticSelection(false)
         finishSelectionFeather(apply = false)
