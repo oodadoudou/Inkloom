@@ -1379,6 +1379,8 @@ class InkCanvasView(context: Context) : View(context) {
     private val protectionCutoutPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { blendMode = BlendMode.DST_OUT }
     private var protectionBitmap: Bitmap? = null
     private var protectionCacheKey: List<Any?>? = null
+    private var softwareProtectionBitmap: Bitmap? = null
+    private var softwareProtectionKey: List<Any?>? = null
     private fun drawSelectionProtection(canvas: Canvas) {
         if (!hasSelection() || selectionMaskVisibility <= 0f || selectionCanvasTransform != null) return
         val mask = selectionMaskForRasterTools() ?: return
@@ -1394,15 +1396,33 @@ class InkCanvasView(context: Context) : View(context) {
             MaskTileCanvasRenderer.draw(mask, Canvas(bitmap), area)
             protectionCacheKey = key
         }
-        val checkpoint = canvas.saveLayer(area, null)
         protectionPaint.alpha = (selectionMaskVisibility * 255).toInt()
         protectionShader.setLocalMatrix(Matrix().apply {
             setScale(1f / viewportScale, 1f / viewportScale)
-            postTranslate(selectionAntPhase() / viewportScale, 0f)
+            if (canvas.isHardwareAccelerated) postTranslate(selectionAntPhase() / viewportScale, 0f)
         })
-        canvas.drawRect(area, protectionPaint)
-        protectionBitmap?.let { canvas.drawBitmap(it, 0f, 0f, protectionCutoutPaint) }
-        canvas.restoreToCount(checkpoint)
+        if (!canvas.isHardwareAccelerated) {
+            // Software destinations (snapshots and non-accelerated Views) reuse the composition,
+            // while the GPU editor animates the shader against the cached alpha texture below.
+            val softwareKey = key + listOf(viewportScale, selectionMaskVisibility)
+            if (softwareKey != softwareProtectionKey) {
+                val bitmap = softwareProtectionBitmap?.takeIf { it.width == width && it.height == height }
+                    ?: Bitmap.createBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), Bitmap.Config.ARGB_8888).also {
+                        softwareProtectionBitmap?.recycle(); softwareProtectionBitmap = it
+                    }
+                bitmap.eraseColor(Color.TRANSPARENT)
+                val target = Canvas(bitmap)
+                target.drawRect(area, protectionPaint)
+                protectionBitmap?.let { target.drawBitmap(it, 0f, 0f, protectionCutoutPaint) }
+                softwareProtectionKey = softwareKey
+            }
+            softwareProtectionBitmap?.let { canvas.drawBitmap(it, 0f, 0f, null) }
+        } else {
+            val checkpoint = canvas.saveLayer(area, null)
+            canvas.drawRect(area, protectionPaint)
+            protectionBitmap?.let { canvas.drawBitmap(it, 0f, 0f, protectionCutoutPaint) }
+            canvas.restoreToCount(checkpoint)
+        }
     }
 
     private fun drawCommittedSelectionBoundary(canvas: Canvas) {
@@ -1456,6 +1476,7 @@ class InkCanvasView(context: Context) : View(context) {
         releaseRasterLayerProjection()
         rasterTileRenderer.close()
         protectionBitmap?.recycle(); protectionBitmap = null; protectionCacheKey = null
+        softwareProtectionBitmap?.recycle(); softwareProtectionBitmap = null; softwareProtectionKey = null
         super.onDetachedFromWindow()
     }
 
