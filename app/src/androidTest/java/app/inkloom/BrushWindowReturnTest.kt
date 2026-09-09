@@ -8,8 +8,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
@@ -50,17 +50,19 @@ class BrushWindowReturnTest {
     @Test fun editorTitleSwitchesNotebooksWithoutReturningToGallery() {
         val title = "Switcher ${System.nanoTime()}"
         tap("New Note")
-        compose.onNode(hasSetTextAction()).performTextReplacement(title)
+        compose.onNodeWithText("Title").performTextReplacement(title)
+        instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+        compose.waitForIdle()
         tap("Create")
         compose.onNodeWithContentDescription("Switch notebook").performTouchInput { click() }
         compose.waitForIdle()
-        compose.onNodeWithText("Distributed Systems").performTouchInput { click() }
+        compose.onNodeWithText("Distributed Systems").performScrollTo().performTouchInput { click() }
         compose.waitForIdle()
         compose.onNodeWithText("Distributed Systems").assertExists()
         compose.onNodeWithText("1/3").assertExists()
         compose.onNodeWithContentDescription("Switch notebook").performTouchInput { click() }
         compose.waitForIdle()
-        compose.onNodeWithText(title).performTouchInput { click() }
+        compose.onNodeWithText(title).performScrollTo().performTouchInput { click() }
         compose.waitForIdle()
         compose.onNodeWithText("1/1").assertExists()
     }
