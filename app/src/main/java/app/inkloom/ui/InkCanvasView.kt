@@ -1461,7 +1461,7 @@ class InkCanvasView(context: Context) : View(context) {
             content.right * width.toFloat() / boundary.width,
             content.bottom * height.toFloat() / boundary.height,
         )
-        if (canvas.quickReject(clip)) {
+        if (canvas.quickReject(clip, Canvas.EdgeType.AA)) {
             canvas.restoreToCount(previewCheckpoint)
             return
         }
