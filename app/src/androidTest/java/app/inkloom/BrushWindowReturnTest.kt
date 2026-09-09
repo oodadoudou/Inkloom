@@ -41,6 +41,43 @@ class BrushWindowReturnTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    @Test fun realWindowPinchShrinksBelowFitThenPaintRemainsUnderThePen() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        val center = pagePoint(view, .5f, .5f)
+        val down = SystemClock.uptimeMillis()
+        fun fingers(action: Int, halfSpan: Float, dx: Float = 0f, pair: Boolean = true) {
+            val points = listOf(Offset(center.x + dx - halfSpan, center.y), Offset(center.x + dx + halfSpan, center.y)).take(if (pair) 2 else 1)
+            val e = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, points.size,
+                points.indices.map { MotionEvent.PointerProperties().apply { id = it; toolType = MotionEvent.TOOL_TYPE_FINGER } }.toTypedArray(),
+                points.map { MotionEvent.PointerCoords().apply { x = it.x; y = it.y; pressure = .5f; touchMajor = 4f } }.toTypedArray(),
+                0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+            try { assertTrue(instrumentation.uiAutomation.injectInputEvent(e, true)) } finally { e.recycle() }
+        }
+        fingers(MotionEvent.ACTION_DOWN, 200f, pair = false)
+        fingers(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 200f)
+        repeat(12) { i -> SystemClock.sleep(16); fingers(MotionEvent.ACTION_MOVE, 200f - (i + 1) * 12.5f) }
+        fingers(MotionEvent.ACTION_MOVE, 50f, 40f)
+        fingers(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 50f, 40f)
+        fingers(MotionEvent.ACTION_UP, 50f, 40f, pair = false)
+        compose.waitForIdle()
+        assertTrue("Fit must not be the minimum zoom: ${view.viewportScale}", view.viewportScale in .05f.. .6f)
+        assertTrue("A small canvas must remain pannable", view.viewportPanX > 20f)
+        fun transformedPoint(x: Float): Offset {
+            val point = app.inkloom.document.ViewportTransform.pageToView(view.width * x, view.height * .5f,
+                view.width.toFloat(), view.height.toFloat(), app.inkloom.document.ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees))
+            val origin = pagePoint(view, 0f, 0f)
+            return origin + Offset(point.first, point.second)
+        }
+        stroke(transformedPoint(.3f), transformedPoint(.7f))
+        compose.waitUntil(10_000) { view.lastBrushExecutionFingerprint != null }
+        val snapshot = requireNotNull(view.activeRasterSnapshotForTest())
+        val x = snapshot.logicalWidth / 2; val y = snapshot.logicalHeight / 2
+        assertTrue("Reduced canvas input must land at document centre", (-5..5).any { dy -> (-5..5).any { dx -> snapshot.pixelAt(x + dx, y + dy) != 0 } })
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
+            "screencap -p /data/local/tmp/inkloom-173-small-canvas.png")).use { it.readBytes() }
+    }
+
     @Test fun drawingDismissesBrushWindowAndReopeningRevealsCurrentPencil() {
         tap("New Note"); tap("Create")
         val view = canvas()
