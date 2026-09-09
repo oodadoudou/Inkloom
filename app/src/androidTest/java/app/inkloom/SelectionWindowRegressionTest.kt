@@ -219,7 +219,7 @@ class SelectionWindowRegressionTest {
         val pixels=source.copyPremultipliedPixels(all)
         tap("Selection"); tap("Rectangle selection")
         stroke(pagePoint(view,.2f,.3f),pagePoint(view,.6f,.5f)); compose.waitForIdle()
-        tap("Free transform"); tap("Distort")
+        tap("Transform selection"); tap("Distort")
         val original=requireNotNull(view.selectionTransformUiState).pose
         val q=original.sourceCorners()
         stroke(pagePoint(view,q[0].first/source.logicalWidth,q[0].second/source.logicalHeight),pagePoint(view,.3f,.33f))
@@ -236,15 +236,30 @@ class SelectionWindowRegressionTest {
         distorted.corners.zip(moved.corners!!).forEach { (a,b) -> assertEquals(a.first+source.logicalWidth*.05f,b.first,2f) }
         tap("Cancel transform")
         org.junit.Assert.assertArrayEquals(pixels,requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all))
-        tap("Free transform"); tap("Distort")
+        tap("Transform selection"); tap("Distort")
         stroke(pagePoint(view,q[0].first/source.logicalWidth,q[0].second/source.logicalHeight),pagePoint(view,.3f,.33f))
-        tap("Apply transform")
+        tap("Transform selection")
         val after=requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all)
         assertTrue(!pixels.contentEquals(after))
         hoverThenTap(toolbarCenter("Undo")); compose.waitForIdle()
         org.junit.Assert.assertArrayEquals(pixels,requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all))
         hoverThenTap(toolbarCenter("Redo")); compose.waitForIdle()
         org.junit.Assert.assertArrayEquals(after,requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all))
+    }
+
+    @Test fun topTransformEntryStaysAvailableWhenDraftMovesOutsidePaper() {
+        tap("New Note"); tap("Create")
+        val view=canvas()
+        tap("Selection"); tap("Rectangle selection")
+        stroke(pagePoint(view,.2f,.3f),pagePoint(view,.6f,.5f)); compose.waitForIdle()
+        val original=requireNotNull(view.selectionMaskSurfaceSnapshot()).nonZeroBounds()
+        tap("Transform selection")
+        stroke(pagePoint(view,.75f,.1f),pagePoint(view,.75f,.95f)); compose.waitForIdle()
+        org.junit.Assert.assertFalse(view.hasActiveSelection())
+        assertTrue(view.selectionTransformUiState != null)
+        assertTrue(center("Transform selection").x > 0f)
+        tap("Cancel transform")
+        assertEquals(original,requireNotNull(view.selectionMaskSurfaceSnapshot()).nonZeroBounds())
     }
 
     @Test fun pinchDuringTransformKeepsDraftAndBackCancelsBeforeDrawingAgain() {

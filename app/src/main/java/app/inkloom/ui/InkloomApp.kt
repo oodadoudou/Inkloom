@@ -1850,7 +1850,21 @@ private fun EditorScreen(
                     )
                 }
             }
-            ProcreateTopButton(Icons.Outlined.OpenWith, tr("Move canvas", "移动画布"), selected = handToolEnabled, onClick = { handToolEnabled = !handToolEnabled; rotateToolEnabled = false })
+            if (selectionActive || selectionTransformState != null) {
+                ProcreateTopButton(Icons.Outlined.NearMe, tr("Transform selection", "变换选区"),
+                    selected = selectionTransformState != null, onClick = {
+                        exitCanvasNavigation()
+                        if (selectionTransformState != null) canvasView?.finishSelectionTransform(apply = true)
+                        else {
+                            rememberSelectionReturnTarget()
+                            selectedElementId = null
+                            tool = EditorTool.SELECT
+                            canvasView?.enterFreeTransform()
+                        }
+                    })
+            } else {
+                ProcreateTopButton(Icons.Outlined.OpenWith, tr("Move canvas", "移动画布"), selected = handToolEnabled, onClick = { handToolEnabled = !handToolEnabled; rotateToolEnabled = false })
+            }
             ProcreateTopButton(
                 if (settings.showPageRail) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows,
                 tr("Toggle pages", "显示或隐藏页面栏"),
