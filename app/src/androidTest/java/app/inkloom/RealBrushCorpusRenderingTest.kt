@@ -256,6 +256,57 @@ class RealBrushCorpusRenderingTest {
         } finally { root.deleteRecursively() }
     }
 
+    @Test fun marineFastCurvesAndPressureRampsProduceInspectableRasters() {
+        val source = File("/data/local/tmp/inkloom-target-brushes/marine.brushset")
+        assertTrue("LOCAL_FIXTURE_REQUIRED: marine.brushset", source.isFile)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val root = File(instrumentation.targetContext.cacheDir, "marine-curves-${System.nanoTime()}").apply { mkdirs() }
+        val output = File(instrumentation.targetContext.filesDir, "curve-regression-182").apply { mkdirs() }
+        try {
+            val brush = BrushPresetV5Import.convertOrReject(parse(source, BrushFormat.PROCREATE, root).first { it.name == "海怪-勾线笔" })
+            for (reports in listOf(8, 80)) for (size in listOf(2f, 4f, 12f)) for (taper in listOf(false, true)) {
+                val surface = PixelTileSurface(1000, 1000)
+                lateinit var view: InkCanvasView
+                instrumentation.runOnMainSync {
+                    view = InkCanvasView(instrumentation.targetContext).apply {
+                        layout(0, 0, 1000, 1000)
+                        activeLayerId = "paint"
+                        setRasterLayerSurfaces(mapOf("paint" to surface))
+                        applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, size, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+                        prepareBrushAssetsNow()
+                    }
+                    fun send(action: Int, t: Float) {
+                        val x = 150f + 650f * t
+                        val y = 850f - 700f * t + 150f * kotlin.math.sin(Math.PI.toFloat() * t)
+                        val pressure = if (taper) .05f + .65f * kotlin.math.sin(Math.PI.toFloat() * t).coerceAtLeast(0f) else .4f
+                        val event = stylusEvent(action, x, y, 1L + (160f * t).toLong(), pressure)
+                        try { view.onTouchEvent(event) } finally { event.recycle() }
+                    }
+                    send(MotionEvent.ACTION_DOWN, 0f)
+                    repeat(reports) { send(MotionEvent.ACTION_MOVE, (it + 1f) / reports) }
+                    send(MotionEvent.ACTION_UP, 1f)
+                }
+                view.awaitV5StrokeWorkerIdleForTest()
+                instrumentation.runOnMainSync {
+                    val rendered = Bitmap.createBitmap(1000, 1000, Bitmap.Config.ARGB_8888)
+                    view.draw(Canvas(rendered))
+                    rendered.recycle()
+                }
+                val bitmap = Bitmap.createBitmap(1000, 1000, Bitmap.Config.ARGB_8888)
+                val pixels = surface.snapshot().copyPremultipliedPixels(app.inkloom.engine.v5.surface.PixelRect(0, 0, 1000, 1000))
+                // Black premultiplied RGB is unchanged when rendered onto white.
+                val white = IntArray(pixels.size) { index -> val level = 255 - (pixels[index] ushr 24); Color.rgb(level, level, level) }
+                bitmap.setPixels(white, 0, 1000, 0, 0, 1000, 1000)
+                val name = "curve-$reports-${size.toInt()}-$taper"
+                File(output, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                bitmap.recycle()
+                val emptyColumns = (200..750).count { x -> (100..900).none { y -> pixels[y * 1000 + x] ushr 24 > 0 } }
+                Log.i("MarineCurve", "$name emptyColumns=$emptyColumns")
+                assertEquals("$name has disconnected columns", 0, emptyColumns)
+            }
+        } finally { root.deleteRecursively() }
+    }
+
     private fun verifyRealBrush(
         extension: String,
         format: BrushFormat,
