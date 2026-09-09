@@ -63,6 +63,39 @@ class SelectionWindowRegressionTest {
         compose.waitUntil(10_000) { view.activeRasterSnapshotForTest()?.revision != before }
     }
 
+    @Test fun featherPreviewCancelApplyUndoAndDeselectUndoAreReversible() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        tap("Selection"); tap("Rectangle selection")
+        stroke(pagePoint(view, .2f, .3f), pagePoint(view, .6f, .5f))
+        compose.waitForIdle()
+        fun alpha(): ByteArray {
+            val mask = requireNotNull(view.selectionMaskSurfaceSnapshot())
+            return mask.copyAlpha(app.inkloom.engine.v5.surface.PixelRect(0, 0, mask.logicalWidth, mask.logicalHeight))
+        }
+        val original = alpha()
+        fun preview() {
+            tap("Selection settings"); tap("Feather selection")
+            val slider = center("Selection feather radius")
+            tapAt(slider + Offset(40f, 0f)); compose.waitForIdle()
+            assertTrue(view.selectionFeatherPixels > 0f)
+            assertTrue(!original.contentEquals(alpha()))
+        }
+        preview(); tap("Cancel feather")
+        org.junit.Assert.assertArrayEquals(original, alpha())
+        assertEquals(0f, view.selectionFeatherPixels, 0f)
+        preview(); tap("Apply feather")
+        val feathered = alpha()
+        hoverThenTap(toolbarCenter("Undo")); compose.waitForIdle()
+        org.junit.Assert.assertArrayEquals(original, alpha())
+        hoverThenTap(toolbarCenter("Redo")); compose.waitForIdle()
+        org.junit.Assert.assertArrayEquals(feathered, alpha())
+        tap("Deselect")
+        org.junit.Assert.assertFalse(view.hasActiveSelection())
+        hoverThenTap(toolbarCenter("Undo")); compose.waitForIdle()
+        org.junit.Assert.assertArrayEquals(feathered, alpha())
+    }
+
     @Test fun interpolationChoiceReachesCanvasAndSurvivesRestart() {
         tap("New Note"); tap("Create")
         val view = canvas()

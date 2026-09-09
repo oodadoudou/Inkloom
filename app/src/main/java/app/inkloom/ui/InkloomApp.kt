@@ -2972,7 +2972,7 @@ private fun EditorScreen(
                             specialRulerSpacing = ruler.spacing,
                         ))
                     },
-                    onSelectionActiveChanged = { selectionActive = it },
+                    onSelectionActiveChanged = { selectionActive = it; selectionFeather = canvasView?.selectionFeatherPixels ?: 0f },
                 )
                 // One stable, untransformed input plane owns every pen and navigation packet.
                 // A transformed AndroidView reports feedback-dependent coordinates while it is
@@ -3203,6 +3203,14 @@ private fun EditorScreen(
                     onShrink = { canvasView?.shrinkSelection(it) },
                     onBorder = { canvasView?.borderSelection(it) },
                     onFeather = { value -> if (canvasView?.featherSelection(value) == true) selectionFeather = value },
+                    onBeginFeather = {
+                        selectionFeather = canvasView?.selectionFeatherPixels ?: 0f
+                        canvasView?.beginSelectionFeather() == true
+                    },
+                    onFinishFeather = { apply ->
+                        canvasView?.finishSelectionFeather(apply)
+                        selectionFeather = canvasView?.selectionFeatherPixels ?: 0f
+                    },
                     onFill = { canvasView?.fillSelection() },
                     onTransform = { canvasView?.enterFreeTransform() },
                     onFlipHorizontal = { canvasView?.flipSelection(horizontal = true) },
@@ -10335,6 +10343,8 @@ private fun SelectionLauncher(
     onShrink: (Float) -> Unit,
     onBorder: (Float) -> Unit,
     onFeather: (Float) -> Unit,
+    onBeginFeather: () -> Boolean,
+    onFinishFeather: (Boolean) -> Unit,
     onFill: () -> Unit,
     onTransform: () -> Unit,
     onFlipHorizontal: () -> Unit,
@@ -10342,6 +10352,23 @@ private fun SelectionLauncher(
     modifier: Modifier = Modifier,
 ) {
     var settingsOpen by remember { mutableStateOf(false) }
+    var featherOpen by remember { mutableStateOf(false) }
+    if (featherOpen) {
+        val finish by rememberUpdatedState(onFinishFeather)
+        DisposableEffect(Unit) { onDispose { finish(false) } }
+        AlertDialog(
+            onDismissRequest = { onFinishFeather(false); featherOpen = false },
+            title = { Text(tr("Feather selection", "羽化选区")) },
+            text = { Column {
+                Text("${featherPixels.toInt()} px")
+                Slider(featherPixels.coerceIn(0f, 128f), onFeather, valueRange = 0f..128f,
+                    modifier = Modifier.semantics { contentDescription = "Selection feather radius" })
+                Text(tr("Preview soft edges on the canvas. Cancel restores the original selection.", "在画布上预览柔化边缘，取消会恢复原选区。"))
+            } },
+            confirmButton = { TextButton(onClick = { onFinishFeather(true); featherOpen = false }) { Text(tr("Apply feather", "应用羽化")) } },
+            dismissButton = { TextButton(onClick = { onFinishFeather(false); featherOpen = false }) { Text(tr("Cancel feather", "取消羽化")) } },
+        )
+    }
     var amount by rememberSaveable { mutableFloatStateOf(8f) }
     var dragX by rememberSaveable { mutableFloatStateOf(0f) }
     var dragY by rememberSaveable { mutableFloatStateOf(0f) }
@@ -10401,7 +10428,10 @@ private fun SelectionLauncher(
                         }
                         HorizontalDivider()
                         Text("${tr("Feather", "羽化")}  ${featherPixels.toInt()} px", color = MutedInk, fontSize = 10.sp)
-                        Slider(featherPixels, onFeather, valueRange = 0f..128f)
+                        TextButton(onClick = {
+                            settingsOpen = false
+                            featherOpen = onBeginFeather()
+                        }) { Text(tr("Feather selection", "羽化选区")) }
                     }
                 }
             }

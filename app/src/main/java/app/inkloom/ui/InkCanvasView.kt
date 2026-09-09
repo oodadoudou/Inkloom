@@ -267,6 +267,40 @@ class InkCanvasView(context: Context) : View(context) {
     var selectionFeatherPixels: Float = 0f
         private set
     private var selectionFeatherBase: MaskTileSurfaceSnapshot? = null
+    private data class FeatherDraft(val alpha: MaskTileSurfaceSnapshot, val radius: Float,
+                                    val base: MaskTileSurfaceSnapshot?)
+    private var featherDraft: FeatherDraft? = null
+
+    internal fun beginSelectionFeather(): Boolean {
+        if (featherDraft != null) return true
+        finishSelectionTransform(apply = true)
+        val alpha = selectionMaskForRasterTools()?.takeUnless { it.isEmpty } ?: return false
+        featherDraft = FeatherDraft(alpha, selectionFeatherPixels, selectionFeatherBase)
+        return true
+    }
+
+    internal fun finishSelectionFeather(apply: Boolean): Boolean {
+        val draft = featherDraft ?: return false
+        featherDraft = null
+        val state = documentSelectionState
+        val after = selectionMaskForRasterTools()
+        val afterRadius = selectionFeatherPixels
+        val afterBase = selectionFeatherBase
+        fun restore(alpha: MaskTileSurfaceSnapshot?, radius: Float, base: MaskTileSurfaceSnapshot?) {
+            if (state != null) state.replaceFrom(alpha)
+            else replaceSelectionAlphaMask(alpha?.let(SparseAlphaMask::fromSnapshot), resetFeather = false)
+            selectionFeatherPixels = radius
+            selectionFeatherBase = base
+            rebuildSelectionDerivedState()
+            invalidate()
+        }
+        if (!apply) restore(draft.alpha, draft.radius, draft.base)
+        else if (afterRadius != draft.radius) recordExternalEdit(
+            undo = { restore(draft.alpha, draft.radius, draft.base) },
+            redo = { restore(after, afterRadius, afterBase) },
+        )
+        return true
+    }
     private val lassoPoints = mutableListOf<StrokePoint>()
     private var v5LassoSession: LassoSession? = null
     private var shapeStart: ShapePoint? = null
@@ -964,6 +998,7 @@ class InkCanvasView(context: Context) : View(context) {
     /** Binds selection alpha to the document runtime before any page content is installed. */
     internal fun bindDocumentSelectionState(state: DocumentSelectionState) {
         if (documentSelectionState === state) return
+        finishSelectionFeather(apply = false)
         finishSelectionTransform(apply = false)
         val isolated = isolatedTestSelectionAlphaMask
         documentSelectionState = state
@@ -1350,6 +1385,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onDetachedFromWindow() {
+        finishSelectionFeather(apply = false)
         finishSelectionTransform(apply = false)
         resetDrawAndHold()
         if (activeTool != null) cancelActiveGestureForNavigation()
@@ -3609,17 +3645,23 @@ class InkCanvasView(context: Context) : View(context) {
     private fun recordSelectionHistory(
         state: DocumentSelectionState?,
         beforeAlpha: MaskTileSurfaceSnapshot?,
+        beforeRadius: Float = selectionFeatherPixels,
+        beforeBase: MaskTileSurfaceSnapshot? = selectionFeatherBase,
     ) {
         state ?: return
         beforeAlpha ?: return
         val afterAlpha = state.snapshot()
-        fun restore(alpha: MaskTileSurfaceSnapshot) {
+        val afterRadius = selectionFeatherPixels
+        val afterBase = selectionFeatherBase
+        fun restore(alpha: MaskTileSurfaceSnapshot, radius: Float, base: MaskTileSurfaceSnapshot?) {
             state.replaceFrom(alpha)
+            selectionFeatherPixels = radius
+            selectionFeatherBase = base
             rebuildSelectionDerivedState()
         }
         recordExternalEdit(
-            undo = { restore(beforeAlpha) },
-            redo = { restore(afterAlpha) },
+            undo = { restore(beforeAlpha, beforeRadius, beforeBase) },
+            redo = { restore(afterAlpha, afterRadius, afterBase) },
         )
     }
 
@@ -5723,13 +5765,18 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun clearSelection(): Boolean {
+        finishSelectionFeather(apply = false)
         finishSelectionTransform(apply = true)
         if (!hasSelection()) return false
+        val state = documentSelectionState
+        val beforeAlpha = state?.snapshot()
+        val beforeBase = selectionFeatherBase
         documentSelectionState?.captureForReselect()
         isolatedTestLastDeselectedAlphaMask?.close()
         isolatedTestLastDeselectedAlphaMask = if (documentSelectionState == null) currentSelectionAlphaMask()?.copy() else null
         lastDeselectedFeatherPixels = selectionFeatherPixels
         replaceSelectionAlphaMask(null, resetFeather = true)
+        recordSelectionHistory(state, beforeAlpha, lastDeselectedFeatherPixels, beforeBase)
         clearLassoInput()
 
         invalidate()
