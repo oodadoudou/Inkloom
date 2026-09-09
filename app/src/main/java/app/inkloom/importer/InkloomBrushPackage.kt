@@ -1,5 +1,6 @@
 package app.inkloom.importer
 
+import app.inkloom.brushpresetv5.BrushPresetV5Codec
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.BrushParameterDynamics
@@ -45,6 +46,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
     fun write(brush: ImportedBrush, output: OutputStream) {
         require(brush.toolBinding.isSupported) { brush.toolBinding.unsupportedReason ?: "Unsupported brush tool binding" }
         val sourcePaths = linkedSetOf<String>().apply {
+            addAll(presetAssetPaths(brush))
             brush.tipPreviewPath?.let(::add)
             addAll(brush.tipPreviewPaths)
             addAll(brush.dualTipPreviewPaths)
@@ -64,6 +66,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         fun portablePath(path: String?): String? = path?.takeIf(String::isNotBlank)?.let { assets[File(it).canonicalPath]?.first }
         val portable = sanitize(
             brush.copy(
+                v5PresetJson = remapPresetAssets(brush, ::portablePath),
                 format = BrushFormat.INKLOOM,
                 compatibility = Compatibility.COMPLETE,
                 sourcePath = null,
@@ -122,6 +125,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
                 manifest.brush.toolBinding.unsupportedReason ?: "Unsupported brush tool binding"
             }
             val referenced = linkedSetOf<String>().apply {
+                addAll(presetAssetPaths(manifest.brush))
                 manifest.brush.tipPreviewPath?.let(::add)
                 addAll(manifest.brush.tipPreviewPaths)
                 addAll(manifest.brush.dualTipPreviewPaths)
@@ -138,6 +142,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
             sanitize(
                 manifest.brush.copy(
                     id = fallback.id,
+                    v5PresetJson = remapPresetAssets(manifest.brush, ::local),
                     format = BrushFormat.INKLOOM,
                     compatibility = Compatibility.COMPLETE,
                     sizeBytes = fallback.sizeBytes,
@@ -163,6 +168,31 @@ class InkloomBrushPackage(private val assetDirectory: File) {
             parserVersion = CURRENT_VERSION,
             report = (fallback.report + "Inkloom brush package rejected safely: ${failure.message ?: failure::class.java.simpleName}").distinct(),
         )
+    }
+
+    private fun presetAssetPaths(brush: ImportedBrush): List<String> {
+        val encoded = brush.v5PresetJson ?: return emptyList()
+        val preset = requireNotNull(BrushPresetV5Codec.decodeOrNull(encoded)) { "Invalid brush preset" }
+        return buildList {
+            preset.tipTexture?.assetPath?.let(::add)
+            preset.tipTexture?.assetPaths?.let(::addAll)
+            preset.textureGrain?.assetPath?.let(::add)
+            preset.dual?.tipAssetPaths?.let(::addAll)
+            preset.dual?.textureGrain?.assetPath?.let(::add)
+        }.filter(String::isNotBlank)
+    }
+
+    private fun remapPresetAssets(brush: ImportedBrush, map: (String?) -> String?): String? {
+        val encoded = brush.v5PresetJson ?: return null
+        val preset = requireNotNull(BrushPresetV5Codec.decodeOrNull(encoded)) { "Invalid brush preset" }
+        fun required(path: String): String = requireNotNull(map(path)) { "Brush preset references a missing asset" }
+        return BrushPresetV5Codec.encode(preset.copy(
+            tipTexture = preset.tipTexture?.let { it.copy(
+                assetPath = it.assetPath?.let(::required), assetPaths = it.assetPaths.map(::required)) },
+            textureGrain = preset.textureGrain?.let { it.copy(assetPath = required(it.assetPath)) },
+            dual = preset.dual?.let { it.copy(tipAssetPaths = it.tipAssetPaths.map(::required),
+                textureGrain = it.textureGrain?.let { grain -> grain.copy(assetPath = required(grain.assetPath)) }) },
+        ))
     }
 
     private fun validate(entries: List<ZipEntry>) {

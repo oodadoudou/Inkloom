@@ -1,5 +1,6 @@
 package app.inkloom.importer
 
+import app.inkloom.brushpresetv5.*
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushParameterDynamics
@@ -368,6 +369,40 @@ class InkloomBrushPackageTest {
         } finally {
             root.deleteRecursively()
         }
+    }
+
+    @Test fun editedPresetAssetsSurviveExportAfterAllOriginalFilesAreRemoved() {
+        val root = temporaryDirectory("edited-sources")
+        try {
+            val originals = File(root, "originals").apply { mkdirs() }
+            val paths = (1..5).map { index -> File(originals, "$index.png").apply {
+                writeBytes(byteArrayOf(index.toByte()))
+            }.absolutePath }
+            val base = BrushPresetV5Import.createUserRecord(ImportedBrush(name="Edited",
+                format=BrushFormat.INKLOOM, compatibility=Compatibility.COMPLETE, sizeBytes=0, report=emptyList()))
+            val preset = BrushPresetV5Import.requirePreset(base).copy(
+                tipTexture=TipTextureSettings(procedural=false,assetPath=paths[0],assetPaths=paths.take(2)),
+                textureGrain=TextureGrainSettings(assetPath=paths[2]),
+                dual=DualBrushSettings(tipAssetPaths=listOf(paths[3]),textureGrain=TextureGrainSettings(assetPath=paths[4])))
+            val edited = BrushPresetV5Import.writePreset(base,preset)
+            assertEquals(paths.take(2),edited.tipPreviewPaths)
+            val archive=File(root,"edited.inkbrush")
+            // V5 assets must also be discovered independently of library preview metadata.
+            archive.outputStream().use { InkloomBrushPackage(File(root,"export")).write(
+                edited.copy(tipPreviewPath=null,tipPreviewPaths=emptyList(),grainPreviewPath=null,
+                    dualTipPreviewPaths=emptyList(),dualGrain=ImportedBrushGrain()),it) }
+            originals.deleteRecursively()
+            val restored=InkloomBrushPackage(File(root,"import")).read(archive,"edited",base)
+            assertEquals(Compatibility.COMPLETE,restored.compatibility)
+            val result=BrushPresetV5Import.requirePreset(restored)
+            val recovered=result.tipTexture!!.assetPaths + result.textureGrain!!.assetPath +
+                result.dual!!.tipAssetPaths + result.dual!!.textureGrain!!.assetPath
+            assertEquals(5,recovered.size)
+            recovered.forEachIndexed { index,path ->
+                assertEquals(listOf((index+1).toByte()),File(path).readBytes().toList())
+                assertFalse(path.startsWith(originals.absolutePath))
+            }
+        } finally { root.deleteRecursively() }
     }
 
     @Test fun unsafeArchiveIsRejectedBeforeAnyAssetIsExtracted() {
