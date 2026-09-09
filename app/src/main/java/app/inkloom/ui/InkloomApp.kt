@@ -4640,6 +4640,8 @@ private fun PageRail(
         )
         return
     }
+    val pageDensity = LocalDensity.current.density
+    val measuredPageBounds = remember(document.id) { mutableMapOf<String, Rect>() }
     val transferTargets = documents.filter { it.id != document.id && it.trashedAt == null }
     val dragDescription = tr("Drag pages panel", "拖动页面面板")
     val currentPanelDrag by rememberUpdatedState(onPanelDrag)
@@ -4736,7 +4738,9 @@ private fun PageRail(
             var tags by remember(page.tags) { mutableStateOf(page.tags.joinToString(", ")) }
             var pageDragDistance by remember(page.id) { mutableFloatStateOf(0f) }
             var pageDragging by remember(page.id) { mutableStateOf(false) }
-            Column(Modifier.fillMaxWidth().padding(horizontal = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            DisposableEffect(page.id) { onDispose { measuredPageBounds.remove(page.id) } }
+            var pageDragStartY by remember(page.id) { mutableFloatStateOf(0f) }
+            Column(Modifier.fillMaxWidth().onGloballyPositioned { measuredPageBounds[page.id] = it.boundsInRoot() }.padding(horizontal = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 val pageBatchSelected = page.id in selectedPageIds
                 val pageDescription = if (pageBatchSelected) {
                     tr("Page ${pageIndex + 1}. Selected for management.", "第 ${pageIndex + 1} 页，已选择管理")
@@ -4754,10 +4758,14 @@ private fun PageRail(
                 fun finishPageDrag() {
                     val moved = kotlin.math.abs(pageDragDistance) >= 18.dp.value
                     if (moved) {
-                        val delta = (pageDragDistance / 96.dp.value).toInt().let { if (it == 0) if (pageDragDistance > 0f) 1 else -1 else it }
                         val selected = if (managingPages && selectedPageIds.isNotEmpty()) selectedPageIds + page.id else setOf(page.id)
-                        val target = (pageIndex + delta).coerceIn(0, document.pages.lastIndex)
-                        onReorder(document.id, PageBatchOperations.moveBlock(document.pages.map(InkPage::id), selected, target))
+                        val order = document.pages.map(InkPage::id)
+                        val target = app.inkloom.document.PageDropPosition.insertionIndex(order, selected,
+                            measuredPageBounds.mapValues { it.value.center.y }, pageDragStartY + pageDragDistance * pageDensity)
+                        if (target != null) {
+                            val reordered = PageBatchOperations.moveBlock(order, selected, target)
+                            if (reordered != order) onReorder(document.id, reordered)
+                        }
                     } else {
                         managePage()
                     }
@@ -4766,7 +4774,7 @@ private fun PageRail(
                 }
                 fun Modifier.pageReorderDrag(): Modifier = pointerInput(page.id, managingPages, document.pages.map(InkPage::id)) {
                     detectDragGesturesAfterLongPress(
-                        onDragStart = { pageDragDistance = 0f; pageDragging = true },
+                        onDragStart = { pageDragDistance = 0f; pageDragStartY = measuredPageBounds[page.id]?.center?.y ?: 0f; pageDragging = true },
                         onDragEnd = ::finishPageDrag,
                         onDragCancel = { pageDragDistance = 0f; pageDragging = false },
                     ) { change, amount ->
@@ -4776,7 +4784,7 @@ private fun PageRail(
                 }
                 fun Modifier.pageHandleDrag(): Modifier = pointerInput(page.id, managingPages, document.pages.map(InkPage::id)) {
                     detectDragGestures(
-                        onDragStart = { pageDragDistance = 0f; pageDragging = true },
+                        onDragStart = { pageDragDistance = 0f; pageDragStartY = measuredPageBounds[page.id]?.center?.y ?: 0f; pageDragging = true },
                         onDragEnd = ::finishPageDrag,
                         onDragCancel = { pageDragDistance = 0f; pageDragging = false },
                     ) { change, amount ->
