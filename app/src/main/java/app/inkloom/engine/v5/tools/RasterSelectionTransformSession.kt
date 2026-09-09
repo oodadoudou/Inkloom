@@ -73,6 +73,19 @@ class RasterSelectionTransformSession(
     private val maskScaleY = originalSelection.logicalHeight.toFloat() / surface.logicalHeight
     private val samplingSource = SelectionSamplerSource(originalPixels, originalSelection)
     private val retainedMaskSource = SelectionSamplerSource(originalPixels, originalSelection)
+    private val maskSourceKeys = sourceTileKeys(originalSelection)
+    private val sourceKeys = mapTileKeys(maskSourceKeys, originalSelection.tileSize,
+        originalSelection.logicalWidth, originalSelection.logicalHeight,
+        surface.tileSize, surface.logicalWidth, surface.logicalHeight)
+    private val occupiedSourceKeys = sourceKeys.intersect(originalPixels.tileKeys)
+    // Immutable source data can be shared across all destination tiles and drag updates.
+    // Bound the cache; large selections retain the existing sparse ROI path.
+    private val cachedNativeSource: NativeSource? by lazy {
+        val bounds = PixelRect(sourceBounds.left - 3, sourceBounds.top - 3,
+            sourceBounds.right + 3, sourceBounds.bottom + 3)
+            .intersect(PixelRect(0, 0, surface.logicalWidth, surface.logicalHeight))
+        if (bounds.width.toLong() * bounds.height > 1_048_576L) null else copyNativeSource(bounds)
+    }
     private var previewRecord: PixelTileTransactionRecord? = null
     private var previewDirty: PixelRect? = null
     private var previewSelection: MaskTileSurfaceSnapshot = originalSelection
@@ -95,12 +108,7 @@ class RasterSelectionTransformSession(
         val samplingBounds = PixelRect(sourceBounds.left - halo, sourceBounds.top - halo, sourceBounds.right + halo, sourceBounds.bottom + halo)
         val transformedBounds = transformedBounds(samplingBounds, transform, surface.logicalWidth, surface.logicalHeight)
         val dirty = sourceBounds.union(transformedBounds)
-        val maskSourceKeys = sourceTileKeys(originalSelection)
-        val sourceKeys = mapTileKeys(maskSourceKeys, originalSelection.tileSize,
-            originalSelection.logicalWidth, originalSelection.logicalHeight,
-            surface.tileSize, surface.logicalWidth, surface.logicalHeight)
         val destinationKeys = transformedTileKeys(sourceKeys, surface.tileSize, transform, surface.logicalWidth, surface.logicalHeight, halo)
-        val occupiedSourceKeys = sourceKeys.intersect(originalPixels.tileKeys)
         val affectedKeys = occupiedSourceKeys + transformedTileKeys(occupiedSourceKeys, surface.tileSize, transform,
             surface.logicalWidth, surface.logicalHeight, halo)
         val transaction = surface.beginWrite("transform sparse selection")
@@ -197,6 +205,7 @@ class RasterSelectionTransformSession(
         val corners = listOf(destination.left to destination.top, destination.right to destination.top,
             destination.right to destination.bottom, destination.left to destination.bottom)
         if (inverse.crossesHorizon(corners)) return null
+        cachedNativeSource?.let { return it }
         val xs = corners.map { inverse.x(it.first.toFloat(), it.second.toFloat()) }
         val ys = corners.map { inverse.y(it.first.toFloat(), it.second.toFloat()) }
         val bounds = PixelRect(floor(xs.min()).toInt().coerceIn(0, surface.logicalWidth) - halo - 1,
@@ -207,6 +216,9 @@ class RasterSelectionTransformSession(
         // Extreme minification stays sparse and uses the bounded per-pixel sampler instead of
         // allocating an entire large logical page as an input ROI.
         if (bounds.isEmpty || bounds.width.toLong() * bounds.height > 1_048_576L) return null
+        return copyNativeSource(bounds)
+    }
+    private fun copyNativeSource(bounds: PixelRect): NativeSource {
         val pixels = if (surface.pixelFormat.isHighPrecision) originalPixels.copyPremultipliedF16(bounds)
             else originalPixels.copyPremultipliedPixels(bounds)
         return NativeSource(bounds, pixels, rasterAlpha(bounds))
