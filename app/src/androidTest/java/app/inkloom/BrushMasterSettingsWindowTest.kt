@@ -340,6 +340,14 @@ class BrushMasterSettingsWindowTest {
         assertTrue(usage.scrollPositions.getValue("list:Imported").index > 0)
         compose.activityRule.scenario.recreate(); compose.waitForIdle()
         assertEquals(before, bounds("Brush preset Browse 25"))
+        tap("Grid view")
+        compose.onNodeWithContentDescription("Brush presets").performScrollToIndex(16)
+        compose.waitForIdle()
+        val gridBefore = bounds("Brush preset Browse 16")
+        tap("Close brushes panel"); tap("Brushes")
+        assertEquals(gridBefore, bounds("Brush preset Browse 16"))
+        tap("List view")
+        assertEquals(before, bounds("Brush preset Browse 25"))
     }
 
     @Test fun advancedMotionControlsSaveThroughTheActualStudioWindow() {
