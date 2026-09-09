@@ -13,12 +13,15 @@ class StrokeCoordinateStabilizer(global: Float, brush: Float,
         require(global.isFinite() && global in 0f..1f)
         require(brush.isFinite() && brush in 0f..1f)
     }
-    private val filters = listOf(global, brush).filter { it > 0f }.map(::CoordinateFilter)
-
-    private val motionFilters = listOf(globalMotion, brushMotion).filter { it.amount > 0f }.map(::MotionFilter)
+    private val globalFilter = global.takeIf { it > 0f }?.let(::CoordinateFilter)
+    private val brushFilter = brush.takeIf { it > 0f }?.let(::CoordinateFilter)
+    private val globalMotionFilter = globalMotion.takeIf { it.amount > 0f }?.let(::MotionFilter)
+    private val brushMotionFilter = brushMotion.takeIf { it.amount > 0f }?.let(::MotionFilter)
     fun apply(point: DocumentPoint): DocumentPoint {
-        val stable = filters.fold(point) { next, filter -> filter.apply(next) }
-        return motionFilters.fold(stable) { next, filter -> filter.apply(next) }
+        val globalStable = globalFilter?.apply(point) ?: point
+        val globalFiltered = globalMotionFilter?.apply(globalStable) ?: globalStable
+        val brushStable = brushFilter?.apply(globalFiltered) ?: globalFiltered
+        return brushMotionFilter?.apply(brushStable) ?: brushStable
     }
 
     /** Arc-length response is independent of event timing; expression opens the response at turns.

@@ -17,6 +17,13 @@ class MotionFilteringTest {
         result.zip(points).forEach { (a,b) -> assertTrue(hypot(a.x-b.x,a.y-b.y)<=5.051f) }
         assertEquals(points.last(),StrokeCoordinateStabilizer(0f,0f,MotionFilteringSettings(.8f)).apply(points.last()))
     }
+    @Test fun globalStagePrecedesCompleteBrushStage() {
+        val global=StrokeCoordinateStabilizer(.3f,0f,MotionFilteringSettings(.7f,.2f))
+        val brush=StrokeCoordinateStabilizer(0f,.6f,brushMotion=MotionFilteringSettings(.4f,.8f))
+        val combined=StrokeCoordinateStabilizer(.3f,.6f,MotionFilteringSettings(.7f,.2f),MotionFilteringSettings(.4f,.8f))
+        repeat(60) { i -> val point=DocumentPoint(i.toFloat(),if(i%2==0)3f else -3f)
+            assertEquals(brush.apply(global.apply(point)),combined.apply(point)) }
+    }
     @Test fun expressionRetainsTurnsAndSerializedSettingsRemainExact() {
         fun atTurn(expression:Float):DocumentPoint {
             val f=StrokeCoordinateStabilizer(0f,0f,brushMotion=MotionFilteringSettings(.8f,expression))
