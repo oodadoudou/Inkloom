@@ -131,6 +131,9 @@ fun BrushEditorV1Dialog(
                                                 fontSize = 12.sp, color = Color.Gray)
                                         }
                                     }
+                                    if (activePanel.first == BrushOptionGroup.TIP || activePanel.first == BrushOptionGroup.PAPER) {
+                                        item { BrushSourcePreviews(session.current, activePanel.first, language) }
+                                    }
                                     items(orderedOptions, key = { it.id }) { option ->
                                         BrushOptionRow(option, session.current, language) { session = session.withValue(it) }
                                     }
