@@ -1666,6 +1666,7 @@ private fun EditorScreen(
     }
     fun finishSelectionTool(deselect: Boolean) {
         selectionMenuOpen = false
+        if (!deselect) canvasView?.commitSelectionContour()
         canvasView?.cancelSelectionInput()
         if (deselect) {
             selectedElementId = null

@@ -34,6 +34,32 @@ class LassoSession(
 
     private val captured = ArrayList<DocumentPoint>()
     private var state = State.ACTIVE
+    private var contactStart: List<DocumentPoint>? = null
+    private val undoContacts = ArrayList<List<DocumentPoint>>()
+    private val redoContacts = ArrayList<List<DocumentPoint>>()
+
+    fun beginContact() { contactStart = captured.toList() }
+    fun endContact() {
+        val before = contactStart ?: return
+        contactStart = null
+        if (before != captured) { undoContacts += before; redoContacts.clear() }
+    }
+    fun cancelContact() {
+        contactStart?.let { captured.clear(); captured.addAll(it) }
+        contactStart = null
+    }
+    fun undoContact(): Boolean {
+        if (undoContacts.isEmpty()) return false
+        redoContacts += captured.toList()
+        captured.clear(); captured.addAll(undoContacts.removeAt(undoContacts.lastIndex))
+        return true
+    }
+    fun redoContact(): Boolean {
+        if (redoContacts.isEmpty()) return false
+        undoContacts += captured.toList()
+        captured.clear(); captured.addAll(redoContacts.removeAt(redoContacts.lastIndex))
+        return true
+    }
 
     val isActive: Boolean get() = state == State.ACTIVE
 

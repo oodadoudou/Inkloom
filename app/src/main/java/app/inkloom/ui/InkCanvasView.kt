@@ -619,7 +619,7 @@ class InkCanvasView(context: Context) : View(context) {
     var tool: EditorTool = EditorTool.PEN
         set(value) {
             if (field == value) return
-            if (value != EditorTool.SELECT) finishSelectionTransform(apply = true)
+            if (value != EditorTool.SELECT) { commitSelectionContour(); finishSelectionTransform(apply = true) }
             field = value
             if (hoverCursorVisible) {
                 hoverCursorUsesEraser = value == EditorTool.ERASER
@@ -1303,13 +1303,15 @@ class InkCanvasView(context: Context) : View(context) {
         drawV5LayerComposition(canvas, includeElements = true, layerFilter = referencedLayerIds)
         if (!includeInteractionOverlays) return
         val selectionPreview = selectionPolygon()
-        if (selectionPreview.size >= 2) {
+        if (selectionPreview.isNotEmpty()) {
             val overlayScale = viewportScale.coerceAtLeast(ViewportTransform.MINIMUM_SCALE)
             lassoPath.reset()
             lassoPath.moveTo(selectionPreview.first().x * width, selectionPreview.first().y * height)
             for (index in 1 until selectionPreview.size) lassoPath.lineTo(selectionPreview[index].x * width, selectionPreview[index].y * height)
-            if (selectionShape != SelectionShape.FREEFORM || selectionPreview.size >= 3) lassoPath.close()
-            if (selectionPreview.size >= 3) canvas.drawPath(lassoPath, liveSelectionFillPaint)
+            if (selectionShape != SelectionShape.FREEFORM) {
+                lassoPath.close()
+                if (selectionPreview.size >= 3) canvas.drawPath(lassoPath, liveSelectionFillPaint)
+            }
             liveSelectionOutlinePaint.pathEffect = null
             liveSelectionOutlinePaint.color = Color.BLACK
             liveSelectionOutlinePaint.alpha = 255
@@ -2108,7 +2110,16 @@ class InkCanvasView(context: Context) : View(context) {
                     return true
                 }
                 if (activeTool == EditorTool.SELECT) {
-                    clearLassoInput()
+                    if (selectionShape == SelectionShape.FREEFORM) {
+                        if (isSelectionOriginHit(normalizedX, normalizedY)) {
+                            commitSelectionContour()
+                            activeTool = null
+                            parent?.requestDisallowInterceptTouchEvent(false)
+                            return true
+                        }
+                        if (v5LassoSession == null) v5LassoSession = LassoSession(pageModelWidth.coerceAtLeast(1f), pageModelHeight.coerceAtLeast(1f))
+                        v5LassoSession?.beginContact()
+                    } else clearLassoInput()
                     appendSelectionPoint(normalizedX, normalizedY)
                     lastX = normalizedX; lastY = normalizedY
                     invalidate(); return true
@@ -2325,13 +2336,14 @@ class InkCanvasView(context: Context) : View(context) {
                     if (selectionShape == SelectionShape.SMART_BORDER || selectionShape == SelectionShape.MAGIC_WAND) {
                         selectAutomaticRegion(normalizedX, normalizedY, selectionShape == SelectionShape.SMART_BORDER)
                     } else if (selectionShape == SelectionShape.FREEFORM) {
-                        v5LassoSession?.finish(DocumentPoint(normalizedX * pageModelWidth.coerceAtLeast(1f),
-                            normalizedY * pageModelHeight.coerceAtLeast(1f)))?.let(::selectWithCanonicalLasso)
+                        appendSelectionPoint(normalizedX, normalizedY)
+                        v5LassoSession?.endContact()
+                        if (isSelectionOriginHit(normalizedX, normalizedY)) commitSelectionContour()
                     } else {
                         appendSelectionPoint(normalizedX, normalizedY)
                         selectWithLasso(selectionPolygon())
                     }
-                    clearLassoInput()
+                    if (selectionShape != SelectionShape.FREEFORM) clearLassoInput()
                 } else if (activeTool == EditorTool.SHAPE) {
                     val shape = if (shapeKind == ShapeKind.FREEFORM) {
                         appendShapePoint(normalizedX, normalizedY)
@@ -2757,7 +2769,10 @@ class InkCanvasView(context: Context) : View(context) {
         gradientEnd = null
         shapeFreeformPoints.clear()
         if (selectionCanvasTransform != null) selectionCanvasTransform?.cancelGesture() else cancelRasterSelectionTransform()
-        clearLassoInput()
+        if (selectionShape == SelectionShape.FREEFORM && v5LassoSession != null) {
+            v5LassoSession?.cancelContact()
+            v5LassoSession?.let { syncLassoPreview(it.preview()) }
+        } else clearLassoInput()
 
         activeTool = null
         activeInputWasStylus = false
@@ -3521,6 +3536,24 @@ class InkCanvasView(context: Context) : View(context) {
         contour.points.mapTo(lassoPoints) { point ->
             StrokePoint((point.x / width).coerceIn(0f, 1f), (point.y / height).coerceIn(0f, 1f))
         }
+    }
+
+    private fun isSelectionOriginHit(x: Float, y: Float): Boolean {
+        val points = v5LassoSession?.preview()?.points ?: return false
+        if (points.size < 3) return false
+        val first = points.first()
+        val dx = (x - first.x / pageModelWidth) * width * viewportScale
+        val dy = (y - first.y / pageModelHeight) * height * viewportScale
+        return hypot(dx, dy) <= 12f * resources.displayMetrics.density
+    }
+
+    fun commitSelectionContour(): Boolean {
+        val session = v5LassoSession ?: return false
+        val contour = session.finish()
+        clearLassoInput()
+        if (contour == null) { invalidate(); return false }
+        selectWithCanonicalLasso(contour)
+        return true
     }
 
     private fun clearLassoInput() {
@@ -5426,12 +5459,14 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun undo() {
+        v5LassoSession?.let { if (it.undoContact()) { syncLassoPreview(it.preview()); invalidate(); return } }
         finishSelectionTransform(apply = true)
         val edit = editHistory.takeUndo() ?: return
         edit.undo()
     }
 
     fun redo() {
+        v5LassoSession?.let { if (it.redoContact()) { syncLassoPreview(it.preview()); invalidate(); return } }
         finishSelectionTransform(apply = true)
         val edit = editHistory.takeRedo() ?: return
         edit.redo()
@@ -5752,6 +5787,7 @@ class InkCanvasView(context: Context) : View(context) {
      * app is a mode command, even when the same shape is tapped twice; it must disarm a previous
      * Free Transform session so the next drag draws a new selection instead of moving content. */
     fun beginSelectionInput(shape: SelectionShape) {
+        commitSelectionContour()
         finishSelectionTransform(apply = true)
         if (activeTool != null) cancelActiveGestureForNavigation()
         tool = EditorTool.SELECT

@@ -8,6 +8,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LassoSessionTest {
+    @Test fun mixedContactsUndoAndNavigationCancelRetainCompletedSegments() {
+        val session = LassoSession(100f, 100f)
+        session.beginContact(); session.append(DocumentPoint(10f, 10f)); session.endContact()
+        session.beginContact(); session.append(DocumentPoint(80f, 10f)); session.endContact()
+        val polygon = session.preview().points
+        session.beginContact(); session.append(DocumentPoint(80f, 40f)); session.append(DocumentPoint(60f, 80f)); session.endContact()
+        val mixed = session.preview().points
+        assertTrue(session.undoContact()); assertEquals(polygon, session.preview().points)
+        assertTrue(session.redoContact()); assertEquals(mixed, session.preview().points)
+        session.beginContact(); session.append(DocumentPoint(5f, 99f)); session.cancelContact()
+        assertEquals(mixed, session.preview().points)
+        assertEquals(mixed, session.finish()!!.points)
+    }
+
     @Test fun previewAndFinalShareTheExactCapturedTrajectory() {
         val session = LassoSession(1_600f, 2_263f)
         val points = listOf(
