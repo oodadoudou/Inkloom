@@ -4448,24 +4448,35 @@ class InkCanvasView(context: Context) : View(context) {
     /** Worker-only rendering for an isolated, unattached preview view. Shares the contact factory
      * and stroke coordinator; never guesses a mark from the preset's name or source thumbnail. */
     internal fun renderIsolatedBrushPreview(samples: List<RawDocumentSample>): Bitmap {
-        require(!isAttachedToWindow && samples.isNotEmpty())
+        renderIsolatedBrushStrokes(listOf(samples))
+        return PixelTileBitmapAdapter.render(requireNotNull(rasterTileSurfaceFor(activeLayerId)).snapshot())
+    }
+
+    /** Replays an isolated studio drawing through the same coordinator, without per-stroke bitmaps. */
+    internal fun renderIsolatedBrushStrokes(strokes: List<List<RawDocumentSample>>) {
+        require(!isAttachedToWindow && strokes.all { it.isNotEmpty() })
         val surface = requireNotNull(rasterTileSurfaceFor(activeLayerId))
-        val configuration = requireNotNull(v5PaintConfiguration(tool, baseWidth)) {
-            "This tool does not expose a paint-stroke preview"
-        }
         val controller = app.inkloom.engine.v5.runtime.RealtimeStrokeController()
         try {
-            controller.begin(activeLayerId, surface, configuration.paintOp, configuration.maximumRadius,
-                configuration.runtimeId, samples.first(), configuration.smoothing, globalStrokeStabilization)
-            if (samples.size > 2) controller.append(samples.subList(1, samples.lastIndex))
-            val published = requireNotNull(controller.finish(samples.last()))
-            published.record.close()
-            return PixelTileBitmapAdapter.render(surface.snapshot())
+            for (samples in strokes) {
+                val requestedTool = if (samples.first().tool == InputTool.STYLUS_ERASER) EditorTool.ERASER else tool
+                val configuration = requireNotNull(v5PaintConfiguration(requestedTool,
+                    if (requestedTool == EditorTool.ERASER) eraserWidth else baseWidth)) {
+                    "This tool does not expose a paint-stroke preview"
+                }
+                controller.begin(activeLayerId, surface, configuration.paintOp, configuration.maximumRadius,
+                    configuration.runtimeId, samples.first(), configuration.smoothing, globalStrokeStabilization)
+                if (samples.size > 2) controller.append(samples.subList(1, samples.lastIndex))
+                requireNotNull(controller.finish(samples.last())).record.close()
+            }
         } finally {
             controller.cancel()
             v5BrushTipMasks.clear()
         }
     }
+
+    /** A studio replay must wait for its previous live stroke before replacing the isolated surface. */
+    internal fun awaitStudioPaintIdle() = v5StrokeController.awaitIdle()
 
     /** Resolves every resource and scalar before contact work starts. Null means explicitly
      * unsupported by V5; callers must consume the gesture instead of invoking an obsolete engine. */

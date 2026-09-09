@@ -45,6 +45,29 @@ class BrushStudioWindowTest {
         compose.waitForIdle()
         event(MotionEvent.ACTION_UP, brush.exactCenterX(), brush.exactCenterY(), down)
         bounds("笔刷工作室"); val pad = bounds("试笔板")
+        tap("试笔板设置")
+        bounds("预览大小滑块")
+        tap("预览颜色 红色")
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
+        val livePad = drawingPad()
+        val drawingBounds = Rect()
+        instrumentation.runOnMainSync { assertTrue(livePad.canvas.getGlobalVisibleRect(drawingBounds)) }
+        val strokeTime = SystemClock.uptimeMillis()
+        val x = drawingBounds.left + drawingBounds.width() * .2f
+        val y = drawingBounds.top + drawingBounds.height() * .35f
+        event(MotionEvent.ACTION_DOWN, x, y, strokeTime, stylus = true)
+        repeat(20) { index ->
+            SystemClock.sleep(8)
+            event(MotionEvent.ACTION_MOVE, x + drawingBounds.width() * .5f * (index + 1) / 20f, y, strokeTime, stylus = true)
+        }
+        event(MotionEvent.ACTION_UP, x + drawingBounds.width() * .5f, y, strokeTime, stylus = true)
+        compose.waitUntil(5_000) { livePad.retainedStrokeCount == 1 }
+        livePad.canvas.awaitStudioPaintIdle()
+        compose.waitForIdle()
+        capture("studio-drawing-pad-red")
+        tap("清空")
+        compose.waitUntil(5_000) { drawingPad() !== livePad && drawingPad().retainedStrokeCount == 0 }
         capture("studio-properties")
         assertTrue("The studio must follow the app language on an English emulator", find("Brush Studio").isEmpty())
         val pressure = bounds("压力")
@@ -122,11 +145,23 @@ class BrushStudioWindowTest {
         compose.waitForIdle()
     }
 
-    private fun event(action: Int, x: Float, y: Float, down: Long) {
+    private fun drawingPad(): app.inkloom.ui.BrushDrawingPadView {
+        var result: app.inkloom.ui.BrushDrawingPadView? = null
+        instrumentation.runOnMainSync {
+            fun visit(view: android.view.View) {
+                if (view is app.inkloom.ui.BrushDrawingPadView) result = view
+                else if (view is android.view.ViewGroup) repeat(view.childCount) { visit(view.getChildAt(it)) }
+            }
+            android.view.inspector.WindowInspector.getGlobalWindowViews().forEach(::visit)
+        }
+        return requireNotNull(result)
+    }
+
+    private fun event(action: Int, x: Float, y: Float, down: Long, stylus: Boolean = false) {
         val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, 1,
-            arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_FINGER }),
+            arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = if (stylus) MotionEvent.TOOL_TYPE_STYLUS else MotionEvent.TOOL_TYPE_FINGER }),
             arrayOf(MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = if (action == MotionEvent.ACTION_UP) 0f else 1f }),
-            0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+            0, 0, 1f, 1f, 0, 0, if (stylus) InputDevice.SOURCE_STYLUS else InputDevice.SOURCE_TOUCHSCREEN, 0)
         try { assertTrue(instrumentation.uiAutomation.injectInputEvent(event, true)) } finally { event.recycle() }
     }
 }

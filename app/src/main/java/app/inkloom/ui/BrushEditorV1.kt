@@ -12,6 +12,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,8 +30,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.inkloom.brushpresetv5.*
-import app.inkloom.document.LayerIds
-import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.UiLanguage
 import app.inkloom.settings.text
@@ -233,22 +233,47 @@ private fun BrushOptionRow(
 @Composable
 private fun V5ScratchPad(preset: BrushPresetV5, settings: AppSettings, modifier: Modifier) {
     var reset by remember { mutableIntStateOf(0) }
+    var optionsOpen by remember { mutableStateOf(false) }
+    var previewScale by remember { mutableFloatStateOf(1f) }
+    var previewColor by remember { mutableIntStateOf(AndroidColor.rgb(17, 17, 17)) }
+    fun tr(en: String, zh: String) = settings.language.text(en, zh)
     Column(modifier.background(Color(0xFFF8F8F8)).padding(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Box {
+                IconButton(onClick = { optionsOpen = true }) {
+                    Icon(Icons.Outlined.Tune, tr("Drawing pad settings", "试笔板设置"))
+                }
+                DropdownMenu(optionsOpen, { optionsOpen = false }) {
+                    Column(Modifier.width(260.dp).padding(12.dp)) {
+                        Text(tr("Preview size", "预览大小") + " · ${(previewScale * 100).toInt()}%")
+                        Slider(previewScale, { previewScale = it }, valueRange = .25f..4f,
+                            modifier = Modifier.semantics { contentDescription = tr("Preview size slider", "预览大小滑块") })
+                        Text(tr("Preview color", "预览颜色"), Modifier.padding(vertical = 8.dp))
+                        val colors = listOf(0xFF111111.toInt(), 0xFFFFFFFF.toInt(), 0xFFD94141.toInt(), 0xFFE58A38.toInt(),
+                            0xFFE4C442.toInt(), 0xFF41895B.toInt(), 0xFF377DCD.toInt(), 0xFF9764BC.toInt())
+                        val names = listOf(tr("Black", "黑色"), tr("White", "白色"), tr("Red", "红色"), tr("Orange", "橙色"),
+                            tr("Yellow", "黄色"), tr("Green", "绿色"), tr("Blue", "蓝色"), tr("Purple", "紫色"))
+                        colors.chunked(4).forEachIndexed { row, choices ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                choices.forEachIndexed { column, color ->
+                                    Box(Modifier.size(48.dp).clickable { previewColor = color }
+                                        .semantics { contentDescription = tr("Preview color ", "预览颜色 ") + names[row * 4 + column] }
+                                        .padding(8.dp).clip(CircleShape)
+                                        .background(Color(color)).border(if (color == previewColor) 3.dp else 1.dp,
+                                            if (color == previewColor) Color(0xFF729982) else Color.LightGray, CircleShape))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             Text(settings.language.text("Drawing pad", "试笔板"), Modifier.weight(1f), fontSize = 14.sp)
             TextButton(onClick = { reset++ }) { Text(settings.language.text("Clear", "清空")) }
         }
         key(reset) {
             AndroidView(factory = { ctx ->
-                InkCanvasView(ctx).apply {
-                    activeLayerId = LayerIds.INK
-                    pageModelWidth = 900f
-                    pageModelHeight = 1200f
-                    setRasterLayerSurfaces(mapOf(LayerIds.INK to PixelTileSurface(900, 1200)))
-                    layerOrder = listOf(LayerIds.INK)
-                    pagePaperColor = AndroidColor.WHITE
-                }
-            }, update = { it.applyBrushPresetV5Configuration(preset, settings) },
+                BrushDrawingPadView(ctx)
+            }, update = { it.configure(preset.copy(tip = preset.tip.copy(size = preset.tip.size * previewScale)), settings, previewColor) },
                 modifier = Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(8.dp)).background(Color.White)
                     .semantics { contentDescription = settings.language.text("Brush test canvas", "笔刷测试画布") })
         }
