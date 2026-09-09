@@ -1387,7 +1387,7 @@ class InkCanvasView(context: Context) : View(context) {
         val key = listOf(selectionBoundaryMask, mask.revision, width, height)
         if (key != protectionCacheKey) {
             val bitmap = protectionBitmap?.takeIf { it.width == width && it.height == height }
-                ?: Bitmap.createBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), Bitmap.Config.ARGB_8888).also {
+                ?: Bitmap.createBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), Bitmap.Config.ALPHA_8).also {
                     protectionBitmap?.recycle(); protectionBitmap = it
                 }
             bitmap.eraseColor(Color.TRANSPARENT)
