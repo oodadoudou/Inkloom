@@ -86,11 +86,21 @@ class ProcreateBrushsetUiImportTest {
         assertTrue(groups.containsAll(listOf("Inkloom-Folder-Test","Inkloom-Folder-Test/Ink","Inkloom-Folder-Test/Paint/Soft","Inkloom-Folder-Test/Empty")))
         assertTrue(brushes.any { it.groupName=="Inkloom-Folder-Test/Ink" })
         assertTrue(brushes.any { it.groupName=="Inkloom-Folder-Test/Paint/Soft" })
+        fun drawFolderBrush(group: String, row: Float) {
+            val brush=brushes.single { it.groupName=="Inkloom-Folder-Test/$group" }
+            if (composeRule.onAllNodesWithContentDescription("Close brushes panel").fetchSemanticsNodes().isEmpty())
+                composeRule.onNodeWithContentDescription("Brushes").performClick()
+            composeRule.onNodeWithContentDescription("Brush group ${group.substringAfterLast('/')}").performClick()
+            selectAndDraw(waitForCanvas(),brush.name,brush.id,row,brush.renderBrushId ?: brush.id)
+        }
+        drawFolderBrush("Ink",.32f)
+        drawFolderBrush("Paint/Soft",.54f)
         val count=brushes.size
         importFolder()
         assertEquals(count,app.inkloom.importer.BrushMetadataStore(context).load().size)
         composeRule.activityRule.scenario.recreate();composeRule.waitForIdle()
         assertEquals(groups,app.inkloom.importer.BrushGroupStore(context).load())
+        drawFolderBrush("Ink",.76f)
     }
 
     private fun assertVisibleImport(targetGroup: String?) {
@@ -192,6 +202,7 @@ class ProcreateBrushsetUiImportTest {
         name: String,
         expectedId: String,
         row: Float,
+        expectedRenderId: String = expectedId,
     ): BrushExecutionFingerprint {
         // Drawing auto-closes the library. Reopen it through the same user-facing control.
         if (composeRule.onAllNodesWithContentDescription("Close brushes panel").fetchSemanticsNodes().isEmpty())
@@ -199,7 +210,7 @@ class ProcreateBrushsetUiImportTest {
         composeRule.onNodeWithContentDescription("Brush presets")
             .performScrollToNode(hasContentDescription("Brush preset $name"))
         composeRule.onNodeWithContentDescription("Brush preset $name").performClick()
-        composeRule.waitUntil(10_000) { view.brushId == expectedId }
+        composeRule.waitUntil(10_000) { view.brushId == expectedRenderId }
         assertEquals("Library group must not turn a paint brush into an eraser", EditorTool.PEN, view.tool)
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             view.baseWidth = 46f

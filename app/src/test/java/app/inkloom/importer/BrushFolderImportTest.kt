@@ -31,10 +31,16 @@ class BrushFolderImportTest {
         assertTrue(BrushFolderImport.scan(dir("root"),{ error("must not enumerate") },{true}).groups.isEmpty())
     }
     @Test fun identicalSourcesInDifferentBranchesStayDistinctAndReimportDoesNotDuplicate() {
-        val brush=ImportedBrush(name="pen",format=BrushFormat.SUT,compatibility=Compatibility.COMPLETE,sizeBytes=100,report=emptyList(),sha256="abc")
+        val brush=app.inkloom.brushpresetv5.BrushPresetV5Import.createUserRecord(ImportedBrush(name="pen",format=BrushFormat.INKLOOM,compatibility=Compatibility.COMPLETE,sizeBytes=100,report=emptyList(),sha256="abc"))
         val first=BrushFolderImport.assign(BrushFolderImport.Source("1","a.sut","Root/Ink"),brush)
         val second=BrushFolderImport.assign(BrushFolderImport.Source("2","a.sut","Root/Paint"),brush)
         assertNotEquals(first.id,second.id)
+        val original=app.inkloom.brushpresetv5.BrushPresetV5Import.requirePreset(brush)
+        for (copy in listOf(first,second)) {
+            val preset=app.inkloom.brushpresetv5.BrushPresetV5Import.requirePreset(copy)
+            assertEquals(copy.id,preset.identity.id)
+            assertEquals(original,preset.copy(identity=preset.identity.copy(id=original.identity.id)))
+        }
         val merged=BrushFolderImport.merge(listOf(first),listOf(first,second))
         assertEquals(2,merged.size);assertEquals(merged,BrushFolderImport.merge(merged,listOf(first,second)))
     }

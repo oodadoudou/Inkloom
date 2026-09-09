@@ -1,6 +1,8 @@
 package app.inkloom.importer
 
 import app.inkloom.model.ImportedBrush
+import app.inkloom.brushpresetv5.BrushPresetV5Import
+import app.inkloom.brushpresetv5.BrushPresetV5Codec
 import java.util.UUID
 
 /** Provider-independent traversal: identities prevent cycles, paths preserve the user's hierarchy. */
@@ -44,7 +46,12 @@ object BrushFolderImport {
         val group=BrushGroupOperations.nest(source.group,brush.groupName)
         require(group.length == listOf(source.group,BrushGroupOperations.normalize(brush.groupName)).filter(String::isNotBlank).joinToString("/").length) { "Nested brush group exceeds path length: ${source.path}" }
         val identity="${brush.sha256}:${brush.tipPreviewPath}:${brush.name}:$group"
-        return BrushGroupOperations.assign(brush,group).copy(id=UUID.nameUUIDFromBytes(identity.toByteArray(Charsets.UTF_8)).toString())
+        val id = UUID.nameUUIDFromBytes(identity.toByteArray(Charsets.UTF_8)).toString()
+        val preset = BrushPresetV5Import.requirePreset(brush)
+        return BrushGroupOperations.assign(brush,group).copy(
+            id = id,
+            v5PresetJson = BrushPresetV5Codec.encode(preset.copy(identity = preset.identity.copy(id = id))),
+        )
     }
     fun merge(existing: List<ImportedBrush>, additions: List<ImportedBrush>): List<ImportedBrush> {
         fun key(brush: ImportedBrush)="${brush.sha256 ?: brush.id}:${brush.tipPreviewPath}:${brush.name}:${brush.groupName.lowercase()}"
