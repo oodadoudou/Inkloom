@@ -8,6 +8,10 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
@@ -49,8 +53,9 @@ class BrushWindowReturnTest {
         val view = canvas()
         stroke(pagePoint(view, .3f, .5f), pagePoint(view, .7f, .5f))
         compose.waitUntil(10_000) { view.lastBrushExecutionFingerprint != null }
-        tap("Add page using current template")
-        center("2/2")
+        compose.onNodeWithContentDescription("Add page using current template").performTouchInput { click() }
+        compose.waitForIdle()
+        compose.onNodeWithText("2/2").assertExists()
         val store = app.inkloom.document.FileDocumentStore(compose.activity.filesDir)
         val note = store.list().first { it.title == "Untitled Note" }
         assertEquals(2, note.pages.size)
@@ -59,13 +64,16 @@ class BrushWindowReturnTest {
         assertEquals(note.pages[0].height, note.pages[1].height)
         assertTrue(note.pages[1].elements.isEmpty())
         assertEquals(app.inkloom.document.InkPage().layers, note.pages[1].layers)
-        tap("Previous page")
-        center("1/2")
-        tap("Next page")
-        center("2/2")
+        compose.onNodeWithContentDescription("Previous page").performTouchInput { click() }
+        compose.waitForIdle()
+        compose.onNodeWithText("1/2").assertExists()
+        compose.onNodeWithContentDescription("Next page").performTouchInput { click() }
+        compose.waitForIdle()
+        compose.onNodeWithText("2/2").assertExists()
         assertEquals(2, store.list().first { it.id == note.id }.pages.size)
-        tap("Add page using current template")
-        center("3/3")
+        compose.onNodeWithContentDescription("Add page using current template").performTouchInput { click() }
+        compose.waitForIdle()
+        compose.onNodeWithText("3/3").assertExists()
         assertEquals(3, store.list().first { it.id == note.id }.pages.size)
     }
 
