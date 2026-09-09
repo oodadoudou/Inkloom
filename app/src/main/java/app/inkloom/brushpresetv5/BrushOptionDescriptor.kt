@@ -233,6 +233,12 @@ object BrushOptionDescriptors {
     )
 
     private val STROKE = listOf(
+        BrushOptionDescriptor("motionFiltering", "Motion filtering", BrushOptionGroup.STROKE, 0f..1f, 0f, null,
+            get = { it.stroke?.motionFiltering?.amount ?: 0f },
+            set = { p,v -> val s=p.stroke ?: StrokeSettings(); p.copy(stroke=s.copy(motionFiltering=s.motionFiltering.copy(amount=v))) }),
+        BrushOptionDescriptor("motionExpression", "Expression", BrushOptionGroup.STROKE, 0f..1f, 0f, null,
+            get = { it.stroke?.motionFiltering?.expression ?: 0f },
+            set = { p,v -> val s=p.stroke ?: StrokeSettings(); p.copy(stroke=s.copy(motionFiltering=s.motionFiltering.copy(expression=v))) }),
         BrushOptionDescriptor(
             id = "smoothing", label = "Brush stabilization", group = BrushOptionGroup.STROKE,
             valueRange = 0f..1f, defaultValue = 0f, capability = null,

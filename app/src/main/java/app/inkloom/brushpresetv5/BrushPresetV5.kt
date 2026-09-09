@@ -200,6 +200,7 @@ enum class ProceduralTipKind { ROUND, GRAPHITE, BRISTLE }
 
 @Serializable
 data class StrokeSettings(
+    val motionFiltering: MotionFilteringSettings = MotionFilteringSettings(),
     val smoothing: Float = 0f,
     val taperStartEnabled: Boolean = false,
     val taperStartLength: Float = .2f,
@@ -300,3 +301,8 @@ data class EngineOptions(
     /** Reserved for family-specific options; kept empty for the two reference families. */
     val values: Map<String, String> = emptyMap(),
 )
+
+@Serializable
+data class MotionFilteringSettings(val amount: Float = 0f, val expression: Float = 0f) {
+    init { require(amount.isFinite() && amount in 0f..1f && expression.isFinite() && expression in 0f..1f) }
+}

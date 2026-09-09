@@ -16,6 +16,8 @@ class AppSettingsBackupCodecTest {
             language = UiLanguage.SIMPLIFIED_CHINESE,
             fingerDrawing = true,
             globalStrokeStabilization = .65f,
+            globalMotionFiltering = .7f,
+            globalMotionExpression = .3f,
             gradientKind = GradientKind.ELLIPSE,
             gradientEdgeMode = GradientEdgeMode.MIRROR,
             gradientReverse = true,

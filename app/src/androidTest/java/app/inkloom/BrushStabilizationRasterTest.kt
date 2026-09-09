@@ -22,17 +22,25 @@ class BrushStabilizationRasterTest {
         assertFalse("The two settings must not override each other", global.contentEquals(both))
     }
 
-    private fun render(global: Float, smoothing: Float): IntArray {
+    @Test fun motionFilteringAndExpressionReachProductionPixels() {
+        val raw=render(0f,0f)
+        val global=render(0f,0f,.8f)
+        val brush=render(0f,0f,0f,.8f)
+        val expressive=render(0f,0f,0f,.8f,1f)
+        assertFalse(raw.contentEquals(global)); assertArrayEquals(global,brush)
+        assertFalse(brush.contentEquals(expressive))
+    }
+    private fun render(global: Float, smoothing: Float, globalMotion: Float=0f, brushMotion: Float=0f, expression: Float=0f): IntArray {
         val preset = BrushPresetV5(identity = PresetIdentity("stabilization", "Stabilization", family = BrushFamily.INK, renderBrushId = "stabilization"),
             renderSeed = 17, tip = TipSettings(18f), deposition = DepositionSettings(),
-            dynamics = DynamicsSettings(PressureMappings(widthEnabled = false), TiltMappings()), stroke = StrokeSettings(smoothing = smoothing))
+            dynamics = DynamicsSettings(PressureMappings(widthEnabled = false), TiltMappings()), stroke = StrokeSettings(smoothing = smoothing, motionFiltering = MotionFilteringSettings(brushMotion,expression)))
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         lateinit var view: InkCanvasView
         instrumentation.runOnMainSync {
             view = InkCanvasView(instrumentation.targetContext).apply {
                 layout(0, 0, 192, 192); activeLayerId = "test"
                 setRasterLayerSurfaces(mapOf("test" to PixelTileSurface(192, 192)))
-                applyBrushPresetV5Configuration(preset, AppSettings(globalStrokeStabilization = global))
+                applyBrushPresetV5Configuration(preset, AppSettings(globalStrokeStabilization = global, globalMotionFiltering = globalMotion))
             }
         }
         val samples = (0..60).map { index -> RawDocumentSample(24f + index * 2f, 96f + if (index % 2 == 0) 2f else -2f,

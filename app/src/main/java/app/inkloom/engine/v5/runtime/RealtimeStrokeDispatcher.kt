@@ -38,6 +38,8 @@ class RealtimeStrokeDispatcher(
             val sample: RawDocumentSample,
             val smoothing: Float,
             val globalSmoothing: Float = 0f,
+            val globalMotion: app.inkloom.brushpresetv5.MotionFilteringSettings = app.inkloom.brushpresetv5.MotionFilteringSettings(),
+            val brushMotion: app.inkloom.brushpresetv5.MotionFilteringSettings = app.inkloom.brushpresetv5.MotionFilteringSettings(),
         ) : Command
 
         data class Replace(val start: Start, val samples: List<RawDocumentSample>) : Command
@@ -73,11 +75,13 @@ class RealtimeStrokeDispatcher(
         sample: RawDocumentSample,
         smoothing: Float = 0f,
         globalSmoothing: Float = 0f,
+        globalMotion: app.inkloom.brushpresetv5.MotionFilteringSettings = app.inkloom.brushpresetv5.MotionFilteringSettings(),
+        brushMotion: app.inkloom.brushpresetv5.MotionFilteringSettings = app.inkloom.brushpresetv5.MotionFilteringSettings(),
     ): Boolean {
         check(!closed) { "Stroke dispatcher is closed" }
         if (!contactOpen.compareAndSet(false, true)) return false
         contactLayerId = layerId
-        enqueue(Command.Start(layerId, surface, paintOp, maximumRadius, brushRuntimeId, sample, smoothing, globalSmoothing))
+        enqueue(Command.Start(layerId, surface, paintOp, maximumRadius, brushRuntimeId, sample, smoothing, globalSmoothing, globalMotion, brushMotion))
         return true
     }
 
@@ -208,6 +212,8 @@ class RealtimeStrokeDispatcher(
                                 command.sample,
                                 command.smoothing,
                                 command.globalSmoothing,
+                                command.globalMotion,
+                                command.brushMotion,
                             )
                             onDamageReady(command.surface, result)
                         }

@@ -52,6 +52,8 @@ class CausalStrokeSession(
     private val maximumRadius: Float,
     smoothing: Float,
     globalSmoothing: Float = 0f,
+    globalMotion: app.inkloom.brushpresetv5.MotionFilteringSettings = app.inkloom.brushpresetv5.MotionFilteringSettings(),
+    brushMotion: app.inkloom.brushpresetv5.MotionFilteringSettings = app.inkloom.brushpresetv5.MotionFilteringSettings(),
 ) : StrokeSession {
     init {
         require(transactionId > 0L)
@@ -60,7 +62,7 @@ class CausalStrokeSession(
         require(globalSmoothing.isFinite() && globalSmoothing in 0f..1f)
     }
 
-    private val stabilizer = StrokeCoordinateStabilizer(globalSmoothing, smoothing)
+    private val stabilizer = StrokeCoordinateStabilizer(globalSmoothing, smoothing, globalMotion, brushMotion)
     /** Professional realtime correction may soften jitter but must never trail the physical tip
      * by an unbounded distance. This document-space cap keeps even maximum smoothing within a
      * small, predictable tail instead of accumulating the error of an unconstrained EMA. */

@@ -5585,6 +5585,7 @@ internal fun InkCanvasView.applyBrushPresetV5Configuration(
     val compiled = CompiledBrushProgramV5.compile(preset)
     feedbackLanguage = settings.language
     globalStrokeStabilization = settings.globalStrokeStabilization
+    globalMotionFiltering = app.inkloom.brushpresetv5.MotionFilteringSettings(settings.globalMotionFiltering, settings.globalMotionExpression)
     switchInputConfiguration(EditorTool.PEN, preset.identity.id)
     setCompiledBrushProgramV5(compiled, prepareAssets = prepareAssets)
     fingerDrawingEnabled = settings.fingerDrawing
@@ -5684,6 +5685,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
     threeFingerTapRedo = settings.threeFingerTapRedo
     globalStrokeStabilization = settings.globalStrokeStabilization
+    globalMotionFiltering = app.inkloom.brushpresetv5.MotionFilteringSettings(settings.globalMotionFiltering, settings.globalMotionExpression)
     pressureSensitivity = settings.pressureSensitivity
     pressureMinimumInput = settings.pressureMinimumInput
     pressureMaximumInput = settings.pressureMaximumInput
@@ -5728,6 +5730,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     brushAntiAliasMode = activeBrush?.antiAliasMode ?: CspAntiAlias.MEDIUM
     brushColorMix = activeBrush?.colorMix ?: 0f
     smudgeHardness = activeBrush?.hardness ?: .5f
+    rasterToolMotionFiltering = compiledBrushProgramV5Cache.resolveEncoded(activeBrush?.v5PresetJson)?.preset?.stroke?.motionFiltering ?: app.inkloom.brushpresetv5.MotionFilteringSettings()
     rasterToolStrokeStabilization = if (selectedTool in setOf(EditorTool.SMUDGE, EditorTool.LIQUIFY)) {
         compiledBrushProgramV5Cache.resolveEncoded(activeBrush?.v5PresetJson)?.strokeShaping?.smoothing ?: 0f
     } else 0f
@@ -9610,6 +9613,12 @@ private fun SettingsDialog(
                     item { SettingSwitch(tr("Show V5 stroke diagnostics", "显示 V5 落笔诊断"), tr("Debug only: shows the active V5 transaction, stable generation, dirty tiles and frame counters.", "仅调试版：显示 V5 活动事务、稳定代数、脏瓦片与帧计数。"), settings.showStrokeTraceOverlay) { onChange(settings.copy(showStrokeTraceOverlay = it)) } }
                 }
                 item {
+                    BrushSettingSlider(tr("Motion filtering (%)", "运动过滤（%）"), settings.globalMotionFiltering * 100f, 0f..100f) {
+                        onChange(settings.copy(globalMotionFiltering = it / 100f))
+                    }
+                    BrushSettingSlider(tr("Expression (%)", "转折保留（%）"), settings.globalMotionExpression * 100f, 0f..100f) {
+                        onChange(settings.copy(globalMotionExpression = it / 100f))
+                    }
                     Text(tr("Global brush stabilization", "全局画笔防抖"), fontWeight = FontWeight.SemiBold)
                     Text(tr("Applies before each brush’s own stabilization. Set to 0 to use only the brush setting.",
                         "先应用全局防抖，再应用每支笔的防抖。设为 0 时，只使用笔刷自身的设置。"), fontSize = 12.sp, color = MutedInk)

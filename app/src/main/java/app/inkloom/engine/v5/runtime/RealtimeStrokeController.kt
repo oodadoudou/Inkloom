@@ -56,13 +56,15 @@ class RealtimeStrokeController {
         sample: RawDocumentSample,
         smoothing: Float = 0f,
         globalSmoothing: Float = 0f,
+    globalMotion: app.inkloom.brushpresetv5.MotionFilteringSettings = app.inkloom.brushpresetv5.MotionFilteringSettings(),
+    brushMotion: app.inkloom.brushpresetv5.MotionFilteringSettings = app.inkloom.brushpresetv5.MotionFilteringSettings(),
     ): PaintResult {
         check(active == null) { "A V5 paint gesture is already active" }
         landed = null
         lastModelTimeNanos = sample.eventTimeNanos
         val transactionId = nextTransactionId++
-        val stroke: StrokeSession = if (smoothing > 0f || globalSmoothing > 0f) {
-            CausalStrokeSession(transactionId, maximumRadius, smoothing.coerceIn(0f, 1f), globalSmoothing.coerceIn(0f, 1f))
+        val stroke: StrokeSession = if (smoothing > 0f || globalSmoothing > 0f || globalMotion.amount > 0f || brushMotion.amount > 0f) {
+            CausalStrokeSession(transactionId, maximumRadius, smoothing.coerceIn(0f, 1f), globalSmoothing.coerceIn(0f, 1f), globalMotion, brushMotion)
         } else {
             DirectStrokeSession(transactionId, maximumRadius)
         }

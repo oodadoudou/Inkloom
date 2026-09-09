@@ -746,6 +746,9 @@ class InkCanvasView(context: Context) : View(context) {
             invalidate()
         }
     var onSpecialRulerChanged: (SpecialRulerState) -> Unit = {}
+    var globalMotionFiltering = app.inkloom.brushpresetv5.MotionFilteringSettings()
+    var rasterToolMotionFiltering = app.inkloom.brushpresetv5.MotionFilteringSettings()
+    private fun brushMotionFiltering() = compiledBrushProgramV5?.preset?.stroke?.motionFiltering ?: app.inkloom.brushpresetv5.MotionFilteringSettings()
     var globalStrokeStabilization: Float = 0f
     var pressureSensitivity: Float = 1f
     var pressureMinimumInput: Float = 0f
@@ -4110,7 +4113,7 @@ class InkCanvasView(context: Context) : View(context) {
         rasterToolLastRawX = x; rasterToolLastRawY = y
         rasterToolLastPressure = pressure
         rasterToolStabilizer = app.inkloom.engine.v5.stroke.StrokeCoordinateStabilizer(
-            globalStrokeStabilization.coerceIn(0f, 1f), rasterToolStrokeStabilization.coerceIn(0f, 1f))
+            globalStrokeStabilization.coerceIn(0f, 1f), rasterToolStrokeStabilization.coerceIn(0f, 1f), globalMotionFiltering, rasterToolMotionFiltering)
         rasterToolStabilizer?.apply(DocumentPoint(x * rasterToolInputWidth, y * rasterToolInputHeight))
     }
 
@@ -4683,7 +4686,7 @@ class InkCanvasView(context: Context) : View(context) {
                     "This tool does not expose a paint-stroke preview"
                 }
                 controller.begin(activeLayerId, surface, configuration.paintOp, configuration.maximumRadius,
-                    configuration.runtimeId, samples.first(), configuration.smoothing, globalStrokeStabilization)
+                    configuration.runtimeId, samples.first(), configuration.smoothing, globalStrokeStabilization, globalMotionFiltering, brushMotionFiltering())
                 if (samples.size > 2) controller.append(samples.subList(1, samples.lastIndex))
                 requireNotNull(controller.finish(samples.last())).record.close()
             }
@@ -5242,6 +5245,8 @@ class InkCanvasView(context: Context) : View(context) {
             sample = initialSample,
             smoothing = configuration.smoothing,
             globalSmoothing = globalStrokeStabilization,
+            globalMotion = globalMotionFiltering,
+            brushMotion = brushMotionFiltering(),
         )
         if (!started) {
             v5RejectedContact = true

@@ -33,6 +33,8 @@ internal fun BrushOptionDescriptor.localizedLabel(language: UiLanguage): String 
     "paperGrainScale" -> "纸纹缩放"
     "paperGrainDensity" -> "纸纹密度"
     "paperGrainStrength" -> "纸纹强度"
+    "motionFiltering" -> "运动过滤"
+    "motionExpression" -> "转折保留"
     "smoothing" -> "此笔刷防抖"
     "taperStartEnabled" -> "起笔渐细"
     "taperEndEnabled" -> "收笔渐细"
