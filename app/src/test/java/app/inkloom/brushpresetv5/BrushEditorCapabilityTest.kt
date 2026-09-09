@@ -37,6 +37,17 @@ class BrushEditorCapabilityTest {
             assertTrue(BrushOptionDescriptors.productionPanels(source).any {it.first==BrushOptionGroup.SOURCES})
         }
     }
+    @Test fun nativeNewBrushStartsWithPressureSizeEnabledAndAnExplicitOffSurvivesSave() {
+        val record=BrushPresetV5Import.createUserRecord(app.inkloom.model.ImportedBrush(name="New brush",
+            format=app.inkloom.model.BrushFormat.INKLOOM,compatibility=app.inkloom.model.Compatibility.COMPLETE,sizeBytes=0,report=emptyList()))
+        val preset=BrushPresetV5Import.requirePreset(record)
+        assertTrue(record.sizePressureEnabled)
+        assertTrue(preset.dynamics.pressure.widthEnabled)
+        assertTrue(preset.dynamics.pressure.widthMinimum<1f)
+        val disabled=preset.copy(dynamics=preset.dynamics.copy(pressure=preset.dynamics.pressure.copy(widthEnabled=false)))
+        assertFalse(BrushPresetV5Import.requirePreset(BrushPresetV5Import.writePreset(record,disabled)).dynamics.pressure.widthEnabled)
+    }
+
     private fun inkPreset() = BrushPresetV5(
         identity = PresetIdentity("editor-capability", "Editor capability", family = BrushFamily.INK, renderBrushId = "editor-capability"),
         renderSeed = 42,
