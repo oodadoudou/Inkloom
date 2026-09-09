@@ -122,9 +122,12 @@ class RasterBlendSessionTest {
         for (y in 18 until 46) for (x in 8 until 38) bitmap.setPixel(x, y, Color.MAGENTA)
         val surface = PixelTileBitmapAdapter.import(bitmap)
         RasterTileBlendSession(surface).use { session ->
+            val startedCpu = android.os.Debug.threadCpuTimeNanos()
             val started = android.os.SystemClock.elapsedRealtimeNanos()
             val dirty = session.blend(26f, 32f, 220f, 32f, 18f, 1f, .72f)
             val elapsedMs = (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
+            val cpuMs = (android.os.Debug.threadCpuTimeNanos() - startedCpu) / 1_000_000f
+            android.util.Log.i("InkloomSmudgePerf", "194px capsule wall=${elapsedMs}ms cpu=${cpuMs}ms")
             assertTrue(dirty != null)
             assertTrue("A 194px coalesced smudge segment took ${elapsedMs}ms", elapsedMs < 16.7f)
             session.commit().close()

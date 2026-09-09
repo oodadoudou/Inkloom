@@ -269,13 +269,14 @@ class RasterTileBlendSession private constructor(
         if (transport != null && coverage != null && !transport.isRecycled && !coverage.isRecycled &&
             transport.width >= width && transport.height >= height && coverage.width >= width && coverage.height >= height
         ) return requireNotNull(transportCanvas) to requireNotNull(coverageCanvas)
-        transport?.recycle()
-        coverage?.recycle()
         val nextWidth = maxOf(width, transport?.width ?: 0)
         val nextHeight = maxOf(height, transport?.height ?: 0)
         val nextTransport = runCatching { Bitmap.createBitmap(nextWidth, nextHeight, Bitmap.Config.ARGB_8888) }.getOrNull() ?: return null
         val nextCoverage = runCatching { Bitmap.createBitmap(nextWidth, nextHeight, Bitmap.Config.ARGB_8888) }.getOrNull()
         if (nextCoverage == null) { nextTransport.recycle(); return null }
+        // Keep the current pair valid until both replacements exist, including failed allocation.
+        transport?.recycle()
+        coverage?.recycle()
         transportBitmap = nextTransport
         coverageBitmap = nextCoverage
         return Canvas(nextTransport).also { transportCanvas = it } to Canvas(nextCoverage).also { coverageCanvas = it }
