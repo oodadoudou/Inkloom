@@ -103,6 +103,33 @@ class InkCanvasEraserTest {
         }
     }
 
+    @Test fun immediateDrawingAfterHeldEraseUsesRestoredPenBeforeAnotherFrame() {
+        for (releaseOnUp in listOf(true, false)) {
+            val surface = opaqueSurface(400, 400)
+            val view = configuredView(mapOf("paint" to surface)).apply {
+                installV5TestInk(size = 36f, color = Color.GREEN)
+                switchInputConfiguration(EditorTool.PEN, null)
+                onShortcutAction = { activation ->
+                    if (activation.action == ShortcutAction.TOGGLE_ERASER) {
+                        switchInputConfiguration(if (activation.phase == ShortcutPhase.PRESS) EditorTool.ERASER else EditorTool.PEN, null)
+                    }
+                }
+            }
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                view.dispatchStylus(MotionEvent.ACTION_DOWN, 80f, 300f, 10L, MotionEvent.BUTTON_STYLUS_PRIMARY)
+                view.dispatchStylus(MotionEvent.ACTION_MOVE, 320f, 300f, 20L, MotionEvent.BUTTON_STYLUS_PRIMARY)
+                view.dispatchStylus(MotionEvent.ACTION_UP, 320f, 300f, 30L, if (releaseOnUp) 0 else MotionEvent.BUTTON_STYLUS_PRIMARY)
+                // No worker wait or frame between erasing and the next ordinary pen contact.
+                view.dispatchStylus(MotionEvent.ACTION_DOWN, 80f, 100f, 31L, 0)
+                view.dispatchStylus(MotionEvent.ACTION_MOVE, 320f, 100f, 40L, 0)
+                view.dispatchStylus(MotionEvent.ACTION_UP, 320f, 100f, 50L, 0)
+            }
+            settlePublishedStroke(view)
+            assertEquals("Completed erase must survive immediate drawing", 0, Color.alpha(surface.pixelAt(200, 300)))
+            assertTrue("The next contact must paint instead of continuing the temporary eraser", Color.green(surface.pixelAt(200, 100)) > 0)
+        }
+    }
+
     @Test fun canceledV5EraserContactRollsBackWithoutPublishing() {
         val surface = opaqueSurface(400, 400)
         val initialRevision = surface.revision

@@ -1768,7 +1768,19 @@ class InkCanvasView(context: Context) : View(context) {
             cancelActiveGestureForNavigation()
             if (pressedContactSwitch) stylusCommandConsumesContact = true
         }
-        dispatchOrDeferStylusButtonTransitions(buttonTransitions)
+        if (isStylus && effectiveAction == MotionEvent.ACTION_DOWN &&
+            activeTool == null && !v5StrokeController.isActive
+        ) {
+            // The previous Finish is already queued. Restore its temporary tool before opening
+            // another contact, even when no presentation frame has happened between contacts.
+            val completedEraser = deferredEraserReleaseStrokeId
+            deferredEraserReleaseStrokeId = null
+            flushDeferredStylusButtonReleases(completedEraser)
+            dispatchStylusButtonTransitions(buttonTransitions.filter { it.phase == ShortcutPhase.RELEASE })
+            dispatchStylusButtonTransitions(buttonTransitions.filter { it.phase == ShortcutPhase.PRESS })
+        } else {
+            dispatchOrDeferStylusButtonTransitions(buttonTransitions)
+        }
         if (stylusButtonAction.isCommand) stylusCommandConsumesContact = true
         if (StylusButtonAction.HAND in pressedButtonActions) {
             navigationX = event.x
