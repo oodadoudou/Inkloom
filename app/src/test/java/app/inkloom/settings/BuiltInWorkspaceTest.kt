@@ -25,16 +25,11 @@ class BuiltInWorkspaceTest {
         assertEquals(29f, restored.penSize)
     }
 
-    @Test fun `reading and minimal layouts remain available as presentation presets`() {
+    @Test fun `reading layout keeps pages visible and drawing controls hidden`() {
         val reading = AppSettings().applyToolboxWorkspace(BuiltInWorkspaces.snapshot(BuiltInWorkspace.READING))
-        val minimal = AppSettings().applyToolboxWorkspace(BuiltInWorkspaces.snapshot(BuiltInWorkspace.MINIMAL))
 
         assertFalse(reading.showToolbar)
         assertTrue(reading.showPageRail)
-        assertFalse(minimal.showPageRail)
-        assertFalse(minimal.showBrushPanel)
-        assertFalse(minimal.showLayerPanel)
-        assertTrue(minimal.showToolbar)
     }
 
     @Test fun `applying a preset to portrait does not overwrite landscape layout`() {

@@ -1,7 +1,7 @@
 package app.inkloom.settings
 
 /** Layout presets for the one editor surface shared by notes, PDFs and drawing. */
-enum class BuiltInWorkspace { STUDIO, READING, MINIMAL }
+enum class BuiltInWorkspace { STUDIO, READING }
 
 object BuiltInWorkspaces {
     /** Upgrades both orientations without touching input, brush or document preferences. */
@@ -33,14 +33,7 @@ object BuiltInWorkspaces {
                 showToolbar = false,
                 pagePanelDock = WorkspacePanelDock.LEFT,
             )
-            BuiltInWorkspace.MINIMAL -> defaults.copy(
-                showPageRail = false,
-                showBrushPanel = false,
-                showLayerPanel = false,
-                showToolbar = true,
-                toolbarDock = ToolbarDock.TOP,
-                verticalToolbar = false,
-            )
+
         }.captureToolboxWorkspace()
     }
 }

@@ -1805,7 +1805,7 @@ private fun EditorScreen(
                     DropdownMenuItem(text = { Text(tr("Export PDF", "导出 PDF")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { workspaceMenu = false; onExport() })
                     HorizontalDivider()
                     DropdownMenuItem(
-                        text = { Column { Text(tr("Drawing workspace", "绘画工作区")); Text(tr("Minimal canvas with pop-over pages, brushes and layers", "极简画布与弹出式页面、笔刷和图层"), fontSize = 10.sp, color = MutedInk) } },
+                        text = { Column { Text(tr("Drawing workspace", "绘画工作区")); Text(tr("Canvas with pop-over pages, brushes and layers", "画布与弹出式页面、笔刷和图层"), fontSize = 10.sp, color = MutedInk) } },
                         leadingIcon = { Icon(Icons.Outlined.Palette, null) },
                         onClick = { applyBuiltInWorkspace(BuiltInWorkspace.STUDIO) },
                     )
@@ -1814,11 +1814,7 @@ private fun EditorScreen(
                         leadingIcon = { Icon(Icons.Outlined.Visibility, null) },
                         onClick = { applyBuiltInWorkspace(BuiltInWorkspace.READING) },
                     )
-                    DropdownMenuItem(
-                        text = { Column { Text(tr("Minimal workspace", "极简工作区")); Text(tr("Canvas and compact toolbar only", "仅保留画布与紧凑工具条"), fontSize = 10.sp, color = MutedInk) } },
-                        leadingIcon = { Icon(Icons.Outlined.CropFree, null) },
-                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.MINIMAL) },
-                    )
+
                     HorizontalDivider()
                 }
             }
