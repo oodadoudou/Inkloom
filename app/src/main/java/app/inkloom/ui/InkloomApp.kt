@@ -8893,7 +8893,7 @@ private fun ProcreateBrushLibrary(
                                             groupDropBounds[category] = bounds
                                         }
                                     }
-                                    .background(if (draggingGroup == category) Color(0xFFDDE8F7) else if (draggingBrush != null && dropGroup && brushDragPosition?.let { groupDropBounds[category]?.contains(it) } == true) Color(0xFFDDE8F7) else if (draggingBrush != null && dropGroup) Color(0xFFF0F4FA) else if (selected) Color(0xFFE1E1E1) else Color.Transparent)
+                                    .background(if (draggingGroup == category) Color(0xFFDDE8F7) else if (draggingBrush != null && dropGroup && brushDragPosition?.let { groupDropBounds[category]?.contains(it) } == true) Color(0xFFDDE8F7) else if (draggingBrush != null && dropGroup) Color(0xFFF0F4FA) else if (selected) SageContainer else Color.Transparent)
                                     .clickable { selectedCategory = category }
                                     .then(groupDragModifier)
                                     .padding(start = (10 + BrushGroupOperations.depth(category) * 12).dp, end = 4.dp),
@@ -8909,7 +8909,7 @@ private fun ProcreateBrushLibrary(
                                         tint = MutedInk,
                                     )
                                 } else Spacer(Modifier.width(24.dp))
-                                Text(visibleCategoryLabel, color = Ink, fontSize = 11.sp, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                Text(visibleCategoryLabel, color = if (selected) Sage else Ink, fontSize = 11.sp, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                 Text(
                                     when (category) {
                                         recentCategory -> recentBrushIds.size
@@ -8981,7 +8981,7 @@ private fun ProcreateBrushLibrary(
                             onLongClick = { editBrush = brush },
                         )
                         RecentActions(brush) { Column(
-                            Modifier.fillMaxWidth().height(112.dp).semantics { contentDescription = brushPresetDescription }.brushDropTarget(brush).then(interaction).clip(RoundedCornerShape(6.dp)).background(if (batchSelected || draggingBrush?.id == brush.id || brushDropHovered(brush)) Color(0xFFDDE8F7) else if (selected) Color(0xFFE1E1E1) else Color.White).border(1.dp, if (batchSelected || selected) Ink else OutlineSoft, RoundedCornerShape(6.dp)).padding(7.dp),
+                            Modifier.fillMaxWidth().height(112.dp).semantics { contentDescription = brushPresetDescription }.brushDropTarget(brush).then(interaction).clip(RoundedCornerShape(6.dp)).background(if (batchSelected || draggingBrush?.id == brush.id || brushDropHovered(brush)) Color(0xFFDDE8F7) else if (selected) SageContainer else Color.White).border(1.dp, if (batchSelected || selected) Ink else OutlineSoft, RoundedCornerShape(6.dp)).padding(7.dp),
                         ) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text(brush.name, Modifier.weight(1f), color = Ink, fontSize = 10.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
@@ -9013,7 +9013,7 @@ private fun ProcreateBrushLibrary(
                             onLongClick = { editBrush = brush },
                         )
                         RecentActions(brush) { Column(
-                            Modifier.fillMaxWidth().height(84.dp).semantics { contentDescription = brushPresetDescription }.brushDropTarget(brush).then(interaction).background(if (batchSelected || draggingBrush?.id == brush.id || brushDropHovered(brush)) Color(0xFFDDE8F7) else if (selected) Color(0xFFE0EBE3) else Color.White).padding(horizontal = 12.dp, vertical = 5.dp),
+                            Modifier.fillMaxWidth().height(84.dp).semantics { contentDescription = brushPresetDescription }.brushDropTarget(brush).then(interaction).background(if (batchSelected || draggingBrush?.id == brush.id || brushDropHovered(brush)) Color(0xFFDDE8F7) else if (selected) SageContainer else Color.White).padding(horizontal = 12.dp, vertical = 5.dp),
                         ) {
                             Row(Modifier.fillMaxWidth().height(26.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(brush.name, Modifier.weight(1f), color = Ink, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
