@@ -26,7 +26,7 @@ import app.inkloom.settings.UiLanguage
 import app.inkloom.settings.text
 import kotlin.math.roundToInt
 
-/** Horizontal reveal coexists with vertical library scrolling and long-press brush editing. */
+/** Horizontal reveal coexists with vertical library scrolling and long-press brush dragging. */
 @Composable
 internal fun RecentBrushActions(
     enabled: Boolean,

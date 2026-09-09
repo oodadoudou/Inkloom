@@ -1897,7 +1897,7 @@ private fun EditorScreen(
                     HorizontalDivider()
                 }
             }
-            ProcreateTopButton(Icons.Outlined.AutoFixHigh, tr("Adjustments", "调整"), onClick = onSettings)
+            ProcreateTopButton(Icons.Outlined.Settings, tr("Settings", "设置"), onClick = onSettings)
             ProcreateTopButton(Icons.Outlined.Gesture, tr("Selection", "选择"),
                 selected = tool == EditorTool.SELECT || selectionActive,
                 onClick = {
@@ -8501,6 +8501,7 @@ private fun ProcreateBrushLibrary(
     val groupDropBounds = remember { mutableMapOf<String, Rect>() }
     val brushDragBounds = remember { mutableMapOf<String, Rect>() }
     val categoryViewport = remember { arrayOf<Rect?>(null) }
+    val presetViewport = remember { arrayOf<Rect?>(null) }
     var draggingBrush by remember { mutableStateOf<ImportedBrush?>(null) }
     var brushDragPosition by remember { mutableStateOf<Offset?>(null) }
     val liveBrushDragPoint by rememberUpdatedState(brushDragPosition)
@@ -8521,6 +8522,13 @@ private fun ProcreateBrushLibrary(
             }
             kotlinx.coroutines.delay(16)
         }
+    }
+    val hoveredBrushCategory = brushDragPosition?.let { point -> groupDropBounds.entries.firstOrNull { it.value.contains(point) }?.key }
+    LaunchedEffect(draggingBrush?.id, hoveredBrushCategory) {
+        if (draggingBrush == null || hoveredBrushCategory == null) return@LaunchedEffect
+        kotlinx.coroutines.delay(550)
+        selectedCategory = hoveredBrushCategory
+        collapsedGroupPaths = collapsedGroupPaths - hoveredBrushCategory
     }
     var draggingGroup by remember { mutableStateOf<String?>(null) }
     var groupDragPosition by remember { mutableStateOf<Offset?>(null) }
@@ -8597,45 +8605,32 @@ private fun ProcreateBrushLibrary(
             brushDragBounds[brush.id]?.contains(point) == true
     }
 
-    @Composable
-    fun Modifier.brushRowInteraction(brush: ImportedBrush): Modifier {
-        val origin = remember(brush.id) { arrayOf(Offset.Zero) }
-        val start by rememberUpdatedState<(Offset) -> Unit>({ local ->
-            draggingBrush = brush
-            brushDragPosition = origin[0] + local
-        })
-        val move by rememberUpdatedState<(Offset) -> Unit>({ local -> brushDragPosition = origin[0] + local })
-        val finish by rememberUpdatedState<() -> Unit>({
-            val point = brushDragPosition
-            val category = point?.let { p -> groupDropBounds.entries.firstOrNull { it.value.contains(p) }?.key }
-            val target = point?.let { p -> brushDragBounds.entries.firstOrNull { it.key != brush.id && it.value.contains(p) }?.key }
-            if (category != null) applyBrushGroupOperation(setOf(brush.id), category, copy = true)
-            else if (target != null && brush.format != BrushFormat.SYSTEM) {
-                val peers = BrushGroupOperations.orderForDisplay(brushes.filter {
-                    BrushGroupOperations.normalize(it.groupName).equals(BrushGroupOperations.normalize(brush.groupName), true)
-                })
-                val from = peers.indexOfFirst { it.id == brush.id }
-                val to = peers.indexOfFirst { it.id == target }
-                if (from >= 0 && to >= 0 && from != to) onReorderBrush(brush.id, to - from)
-            }
-            draggingBrush = null
-            brushDragPosition = null
-        })
-        return this.onGloballyPositioned { origin[0] = it.localToWindow(Offset.Zero) }
-            .clickable { if (selectedBrushId == brush.id) editBrush = brush else onBrushSelected(brush) }
-            .pointerInput(brush.id) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = { start(it) },
-                    onDrag = { change, _ -> change.consume(); move(change.position) },
-                    onDragEnd = { finish() },
-                    onDragCancel = { draggingBrush = null; brushDragPosition = null },
-                )
-            }
+    fun finishBrushDrag() {
+        val brush = draggingBrush ?: return
+        val point = brushDragPosition
+        val category = point?.let { p -> groupDropBounds.entries.firstOrNull { it.value.contains(p) }?.key }
+        val targetId = point?.let { p -> brushDragBounds.entries.firstOrNull { it.key != brush.id && it.value.contains(p) }?.key }
+        val targetBrush = (systemBrushes + brushes).firstOrNull { it.id == targetId }
+        if (category != null) applyBrushGroupOperation(setOf(brush.id), category, copy = true)
+        else if (targetBrush != null && !BrushGroupOperations.normalize(brush.groupName).equals(BrushGroupOperations.normalize(targetBrush.groupName), true)) {
+            applyBrushGroupOperation(setOf(brush.id), targetBrush.groupName, copy = false)
+        } else if (targetId != null && brush.format != BrushFormat.SYSTEM) {
+            val peers = BrushGroupOperations.orderForDisplay(brushes.filter {
+                BrushGroupOperations.normalize(it.groupName).equals(BrushGroupOperations.normalize(brush.groupName), true)
+            })
+            val from = peers.indexOfFirst { it.id == brush.id }
+            val to = peers.indexOfFirst { it.id == targetId }
+            if (from >= 0 && to >= 0 && from != to) onReorderBrush(brush.id, to - from)
+        }
+        else if (point != null && presetViewport[0]?.contains(point) == true && selectedCategory in importedCategories && !BrushGroupOperations.normalize(brush.groupName).equals(selectedCategory, true)) {
+            applyBrushGroupOperation(setOf(brush.id), selectedCategory, copy = false)
+        }
+        draggingBrush = null
+        brushDragPosition = null
     }
-
     @Composable
     fun BrushMoveHandle(brush: ImportedBrush) {
-        // The row owns the single long-press/drag recognizer, including this handle.
+        // The library surface owns long-press/drag, including this handle.
         Icon(Icons.Outlined.DragIndicator, tr("Move brush ${brush.name}", "移动笔刷 ${brush.name}"),
             tint = MutedInk, modifier = Modifier.size(40.dp)
                 .clickable { moveBrush = brush }.padding(10.dp))
@@ -8653,7 +8648,7 @@ private fun ProcreateBrushLibrary(
     var revealedCategory by remember { mutableStateOf(selectedCategory) }
     LaunchedEffect(selectedCategory, allCategories) {
         if (revealedCategory != selectedCategory) {
-            allCategories.distinct().indexOf(selectedCategory).takeIf { it >= 0 }?.let { categoryListState.animateScrollToItem(it) }
+            if (draggingBrush == null) allCategories.distinct().indexOf(selectedCategory).takeIf { it >= 0 }?.let { categoryListState.animateScrollToItem(it) }
             revealedCategory = selectedCategory
         }
     }
@@ -8694,6 +8689,23 @@ private fun ProcreateBrushLibrary(
         val saved = usage.scrollPositions[gridKey]
         androidx.compose.foundation.lazy.grid.LazyGridState(saved?.index?.coerceAtLeast(0) ?: 0, saved?.offset?.coerceAtLeast(0) ?: 0)
     }
+    LaunchedEffect(draggingBrush?.id, gridLayout, selectedCategory) {
+        if (draggingBrush == null) return@LaunchedEffect
+        while (true) {
+            val point = liveBrushDragPoint
+            val bounds = presetViewport[0]
+            if (point != null && bounds != null && point.x in bounds.left..bounds.right) {
+                val edge = 36f * edgeDensity
+                val velocity = when {
+                    point.y < bounds.top + edge -> -8f * edgeDensity
+                    point.y > bounds.bottom - edge -> 8f * edgeDensity
+                    else -> 0f
+                }
+                if (velocity != 0f) { if (gridLayout) presetGridState.scrollBy(velocity) else presetListState.scrollBy(velocity) }
+            }
+            kotlinx.coroutines.delay(16)
+        }
+    }
     val currentUsage by rememberUpdatedState(usage)
     val currentOnUsage by rememberUpdatedState(onUsage)
     DisposableEffect(selectedCategory, presetListState, presetGridState) {
@@ -8733,7 +8745,14 @@ private fun ProcreateBrushLibrary(
     val panelOrigin = remember { arrayOf(Offset.Zero) }
     val panelShape = RoundedCornerShape(14.dp)
     Surface(
-        modifier = modifier.onGloballyPositioned { panelOrigin[0] = it.localToWindow(Offset.Zero) }.shadow(12.dp, panelShape),
+        modifier = modifier.onGloballyPositioned { panelOrigin[0] = it.localToWindow(Offset.Zero) }
+            .brushLibraryDragSurface(
+                hit = { local -> if (managingBrushes) null else brushDragBounds.entries.firstOrNull { it.value.contains(panelOrigin[0] + local) }?.key },
+                start = { id, local -> draggingBrush = usableLibraryBrushes.firstOrNull { it.id == id }; brushDragPosition = panelOrigin[0] + local },
+                move = { local -> brushDragPosition = panelOrigin[0] + local },
+                finish = { finishBrushDrag() },
+                cancel = { draggingBrush = null; brushDragPosition = null },
+            ).shadow(12.dp, panelShape),
         shape = panelShape,
         color = Paper,
         contentColor = Ink,
@@ -8964,7 +8983,7 @@ private fun ProcreateBrushLibrary(
                 } else if (gridLayout) LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
                     state = presetGridState,
-                    modifier = Modifier.weight(1f).fillMaxHeight().semantics { contentDescription = brushListDescription },
+                    modifier = Modifier.weight(1f).fillMaxHeight().onGloballyPositioned { presetViewport[0] = it.boundsInWindow() }.semantics { contentDescription = brushListDescription },
                     contentPadding = PaddingValues(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -8975,7 +8994,7 @@ private fun ProcreateBrushLibrary(
                         val brushPresetDescription = tr("Brush preset ${brush.name}", "笔刷预设 ${brush.name}")
                         val interaction = if (managingBrushes) Modifier.clickable {
                             selectedBrushIds = if (brush.id in currentSelectedBrushIds) currentSelectedBrushIds - brush.id else currentSelectedBrushIds + brush.id
-                        } else Modifier.brushRowInteraction(brush)
+                        } else Modifier.clickable { if (selectedBrushId == brush.id) editBrush = brush else onBrushSelected(brush) }
                         RecentActions(brush) { Column(
                             Modifier.fillMaxWidth().height(112.dp).semantics { contentDescription = brushPresetDescription }.brushDropTarget(brush).then(interaction).clip(RoundedCornerShape(6.dp)).background(if (batchSelected || draggingBrush?.id == brush.id || brushDropHovered(brush)) SageContainer else if (selected) SageContainer else Paper).border(1.dp, if (batchSelected || selected) Ink else OutlineSoft, RoundedCornerShape(6.dp)).padding(7.dp),
                         ) {
@@ -8993,7 +9012,7 @@ private fun ProcreateBrushLibrary(
                     }
                 } else LazyColumn(
                     state = presetListState,
-                    modifier = Modifier.weight(1f).fillMaxHeight().semantics { contentDescription = brushListDescription },
+                    modifier = Modifier.weight(1f).fillMaxHeight().onGloballyPositioned { presetViewport[0] = it.boundsInWindow() }.semantics { contentDescription = brushListDescription },
                     contentPadding = PaddingValues(vertical = 6.dp),
                 ) {
                     items(displayed, key = { it.id }) { brush ->
@@ -9002,7 +9021,7 @@ private fun ProcreateBrushLibrary(
                         val brushPresetDescription = tr("Brush preset ${brush.name}", "笔刷预设 ${brush.name}")
                         val interaction = if (managingBrushes) Modifier.clickable {
                             selectedBrushIds = if (brush.id in currentSelectedBrushIds) currentSelectedBrushIds - brush.id else currentSelectedBrushIds + brush.id
-                        } else Modifier.brushRowInteraction(brush)
+                        } else Modifier.clickable { if (selectedBrushId == brush.id) editBrush = brush else onBrushSelected(brush) }
                         RecentActions(brush) { Column(
                             Modifier.fillMaxWidth().height(84.dp).semantics { contentDescription = brushPresetDescription }.brushDropTarget(brush).then(interaction).background(if (batchSelected || draggingBrush?.id == brush.id || brushDropHovered(brush)) SageContainer else if (selected) SageContainer else Paper).padding(horizontal = 12.dp, vertical = 5.dp),
                         ) {

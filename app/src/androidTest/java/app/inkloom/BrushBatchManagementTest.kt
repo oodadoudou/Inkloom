@@ -302,6 +302,26 @@ class BrushBatchManagementTest {
 
     }
 
+    @Test fun heldBrushSurvivesCategorySwitchAndMovesIntoItsList() {
+        openBrushes()
+        val row = composeRule.onNodeWithContentDescription("Brush preset Batch A")
+        val bounds = row.fetchSemanticsNode().boundsInRoot
+        val target = composeRule.onNodeWithContentDescription("Brush group Target").fetchSemanticsNode().boundsInRoot.center
+        row.performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveBy(target - bounds.center, 300)
+        }
+        composeRule.mainClock.advanceTimeBy(650)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Brush preset Target C").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Brush preset Target C").performTouchInput { moveTo(center); up() }
+        val store = BrushMetadataStore(composeRule.activity)
+        composeRule.waitUntil(5_000) { store.load().single { it.id == "batch-a" }.groupName == "Target" }
+        assertEquals(1, store.load().count { it.name == "Batch A" })
+        composeRule.onNodeWithText("Brush Studio").assertDoesNotExist()
+    }
+
     @Test fun wholeRowLongPressDragCopiesToAnotherGroup() {
         openBrushes()
         val row = composeRule.onNodeWithContentDescription("Brush preset Batch A")
