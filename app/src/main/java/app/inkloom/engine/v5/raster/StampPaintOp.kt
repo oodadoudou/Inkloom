@@ -285,11 +285,8 @@ class StampPaintOp(
             streamState: StreamState,
         ) {
             val definition = stream.definition
-            val jitter = definition.particlesPerPlotJitter
-            val count = if (jitter <= 0f || definition.particlesPerPlot == 1) definition.particlesPerPlot else {
-                val variation = (randomUnit(streamState.dabSequence, 71, definition.renderSeed) * 2f - 1f) * jitter
-                (definition.particlesPerPlot * (1f + variation)).toInt().coerceIn(1, 32)
-            }
+            val count = jitteredStampCount(definition.particlesPerPlot, definition.particlesPerPlotJitter,
+                randomUnit(streamState.dabSequence, 71, definition.renderSeed))
             repeat(count) { particle ->
                 output += resolveDab(sample, directionRadians, particle, stream, streamState)
             }
@@ -327,7 +324,7 @@ class StampPaintOp(
             val randomRotation = (randomUnit(dabSequence, particle * 2 + 2, definition.renderSeed) * 2f - 1f) *
                 definition.randomRotationRadians
             val strokeRotation = streamState.strokeRotationRadians ?: (
-                (randomUnit(0L, 89, definition.renderSeed) * 2f - 1f) * definition.strokeRotationJitterRadians
+                (randomUnit(context.transactionId, 89, definition.renderSeed) * 2f - 1f) * definition.strokeRotationJitterRadians
                 ).also { streamState.strokeRotationRadians = it }
             val angle = definition.rotationRadians + randomRotation + when {
                 definition.followStylusOrientation -> sample.orientationRadians

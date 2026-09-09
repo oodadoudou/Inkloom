@@ -49,6 +49,11 @@ data class WetPaintDefinition(
     val randomRotationRadians: Float = 0f,
     val renderSeed: Int = 0,
     val particlesPerPlot: Int = 1,
+    val particlesPerPlotJitter: Float = 0f,
+    val horizontalRoundnessJitter: Float = 0f,
+    val verticalRoundnessJitter: Float = 0f,
+    val directionRotationFactor: Float = 0f,
+    val strokeRotationJitterRadians: Float = 0f,
     val sizePressure: PressureResponse = PressureResponse.CONSTANT,
     val sizeTilt: TiltResponse = TiltResponse.CONSTANT,
     val opacityPressure: PressureResponse = PressureResponse.CONSTANT,
@@ -74,6 +79,11 @@ data class WetPaintDefinition(
         require(rotationRadians.isFinite())
         require(randomRotationRadians.isFinite() && randomRotationRadians >= 0f)
         require(particlesPerPlot in 1..32)
+        require(particlesPerPlotJitter.isFinite() && particlesPerPlotJitter in 0f..1f)
+        require(horizontalRoundnessJitter.isFinite() && horizontalRoundnessJitter in 0f..1f)
+        require(verticalRoundnessJitter.isFinite() && verticalRoundnessJitter in 0f..1f)
+        require(directionRotationFactor.isFinite() && directionRotationFactor in -1f..1f)
+        require(strokeRotationJitterRadians.isFinite() && strokeRotationJitterRadians >= 0f)
     }
 }
 
@@ -210,7 +220,9 @@ class WetPaintOp(
             val freshRatio = definition.charge * (1f - definition.dilution)
             track.reservoir = track.reservoir.mix(fresh, freshRatio)
             var dirty: PixelRect? = null
-            repeat(definition.particlesPerPlot) { particle ->
+            val count = jitteredStampCount(definition.particlesPerPlot, definition.particlesPerPlotJitter,
+                randomUnit(track.dabSequence, 71, definition.renderSeed))
+            repeat(count) { particle ->
                 rasterizeDeposit(sample, track, directionRadians, diameter, particle)?.let { bounds ->
                     dirty = dirty?.union(bounds) ?: bounds
                 }
@@ -230,17 +242,19 @@ class WetPaintOp(
                 tips[deterministicTipIndex(track.dabSequence, definition.renderSeed, tips.size)]
             }
             val tipAspect = tip?.let { it.width.toFloat() / it.height } ?: 1f
-            val radiusX = (if (tipAspect >= 1f) diameter * .5f else diameter * tipAspect * .5f)
+            val horizontal = 1f - randomUnit(track.dabSequence, particle * 13 + 7, definition.renderSeed) * definition.horizontalRoundnessJitter
+            val vertical = 1f - randomUnit(track.dabSequence, particle * 13 + 8, definition.renderSeed) * definition.verticalRoundnessJitter
+            val radiusX = ((if (tipAspect >= 1f) diameter * .5f else diameter * tipAspect * .5f) * horizontal)
                 .coerceAtLeast(.05f)
             val radiusY = (if (tipAspect <= 1f) diameter * .5f else diameter / tipAspect * .5f)
-                .times(definition.roundness).coerceAtLeast(.05f)
+                .times(definition.roundness * vertical).coerceAtLeast(.05f)
             val randomRotation = (randomUnit(track.dabSequence, particle, definition.renderSeed) * 2f - 1f) *
                 definition.randomRotationRadians
             val angle = definition.rotationRadians + randomRotation + when {
                 definition.followStylusOrientation -> sample.orientationRadians
                 definition.followStrokeDirection -> directionRadians
-                else -> 0f
-            }
+                else -> directionRadians * definition.directionRotationFactor
+            } + track.strokeRotation
             val cosine = cos(angle)
             val sine = sin(angle)
             val extentX = kotlin.math.abs(cosine * radiusX) + kotlin.math.abs(sine * radiusY) + 1f
@@ -439,6 +453,8 @@ class WetPaintOp(
             var reservoir = PremultipliedColor.fromStraight(definition.colorArgb)
             var reservoirInitialized = false
             var dabSequence = 0L
+            val strokeRotation = (randomUnit(context.transactionId, 89, definition.renderSeed) * 2f - 1f) *
+                definition.strokeRotationJitterRadians
         }
     }
 

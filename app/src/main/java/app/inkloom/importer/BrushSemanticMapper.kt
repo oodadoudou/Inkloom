@@ -154,13 +154,15 @@ object BrushSemanticMapper {
             else executed("$prefix.pathJitter", "StampSettings.lateralPathJitter/longitudinalPathJitter")
         }
         if (brush.shapeRoundnessHorizontalJitter != 0f || brush.shapeRoundnessVerticalJitter != 0f || brush.shapeTouchRotation != 0f) {
-            if (wetPrimary) preserved("$prefix.shapeDynamics", "Wet Paint shape jitter is retained but not executed by the wet depositor.")
-            else executed("$prefix.shapeDynamics", "StampSettings.roundnessJitter/directionRotationFactor")
+            executed("$prefix.shapeDynamics", if (wetPrimary) "WetPaintOp.roundnessJitter/directionRotationFactor"
+                else "StampSettings.roundnessJitter/directionRotationFactor", SemanticFidelity.APPROXIMATE,
+                "Independent shape compression and signed direction rotation; source random sequence is not reproduced.")
         }
         if (brush.shapeOrientToScreen) preserved("$prefix.orientToScreen", "Screen-locked tip orientation is retained but not yet projected through the viewport rotation.")
         if (brush.strokeRotationJitterDegrees != 0f || brush.stampCountJitter != 0f) {
-            if (wetPrimary) preserved("$prefix.stampJitter", "Wet Paint stamp jitter is retained but not executed by the wet depositor.")
-            else executed("$prefix.stampJitter", "StampSettings.strokeRotationJitter/particlesPerPlotJitter")
+            executed("$prefix.stampJitter", if (wetPrimary) "WetPaintOp.strokeRotationJitter/particlesPerPlotJitter"
+                else "StampSettings.strokeRotationJitter/particlesPerPlotJitter", SemanticFidelity.APPROXIMATE,
+                "Count remains bounded by authored maximum; rotation is stable within each transaction. Source random sequence is not reproduced.")
         }
         if (hasColorDynamics(brush)) preserved("$prefix.colorDynamics", "Stamp, stroke, pressure, tilt and secondary-color dynamics are retained but not executed by V5.")
         if (hasAdvancedMainDynamics(brush)) preserved("$prefix.advancedDynamics", "Spacing, thickness, velocity, random and non-graphite tilt dynamics are retained but not executed by V5.")

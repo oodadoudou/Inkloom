@@ -60,6 +60,49 @@ class WetBrushProductionTest {
         }
     }
 
+    @Test fun compiledWetShapeDynamicsReachActualNativeTipPixels() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val tipFile = java.io.File.createTempFile("wet-shape", ".png", context.cacheDir)
+        val tip = android.graphics.Bitmap.createBitmap(16, 8, android.graphics.Bitmap.Config.ARGB_8888)
+        tip.eraseColor(android.graphics.Color.TRANSPARENT)
+        android.graphics.Canvas(tip).drawRect(2f, 1f, 14f, 7f, android.graphics.Paint().apply { color = android.graphics.Color.WHITE })
+        tipFile.outputStream().use { tip.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }; tip.recycle()
+        try {
+            val base = BrushPresetV5(identity = PresetIdentity("wet-shape", "Wet shape", family = BrushFamily.WET_PAINT, renderBrushId = "wet-shape"),
+                renderSeed = 72, tip = TipSettings(160f), deposition = DepositionSettings(.12f, 1f),
+                dynamics = DynamicsSettings(PressureMappings(widthEnabled = false), TiltMappings()),
+                tipTexture = TipTextureSettings(procedural = false, assetPaths = listOf(tipFile.path)),
+                stamp = StampSettings(particlesPerPlot = 8),
+                wetMix = WetMixSettings(dilution = 0f, charge = 1f, attack = 1f, pull = 0f))
+            fun render(stamp: StampSettings): IntArray {
+                lateinit var view: InkCanvasView
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    view = InkCanvasView(context).apply {
+                        layout(0, 0, 160, 160); activeLayerId = "test"
+                        setRasterLayerSurfaces(mapOf("test" to PixelTileSurface(160, 160)))
+                        applyBrushPresetV5Configuration(base.copy(stamp = stamp), AppSettings()); prepareBrushAssetsNow()
+                    }
+                }
+                val samples = listOf(35f to 35f, 80f to 100f, 125f to 60f).mapIndexed { i, p ->
+                    RawDocumentSample(p.first, p.second, (i + 1) * 8_000_000L, (i + 1) * 8_000_000L, 1f, 0f, 0f, InputTool.STYLUS)
+                }
+                val bitmap = view.renderIsolatedBrushPreview(samples)
+                return try { IntArray(160 * 160).also { bitmap.getPixels(it, 0, 160, 0, 0, 160, 160) } }
+                finally { bitmap.recycle() }
+            }
+            val stamp = requireNotNull(base.stamp)
+            val normal = render(stamp)
+            assertTrue("Native fixture must contain actual pigment", normal.any { it ushr 24 > 0 })
+            for (variant in listOf(stamp.copy(horizontalRoundnessJitter = .8f), stamp.copy(verticalRoundnessJitter = .8f),
+                stamp.copy(directionRotationFactor = -.75f), stamp.copy(strokeRotationJitterDegrees = 90f),
+                stamp.copy(particlesPerPlotJitter = .9f))) {
+                val pixels = render(variant)
+                assertFalse("Compiled wet setting failed to reach raster: $variant", normal.contentEquals(pixels))
+                assertArrayEquals("Preview replay must keep deterministic shape variation", pixels, render(variant))
+            }
+        } finally { tipFile.delete() }
+    }
+
     private fun alpha(preset: BrushPresetV5, pressure: Float): Int {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         lateinit var view: InkCanvasView
