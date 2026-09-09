@@ -9,6 +9,12 @@ class CspScreenBrushSizeTest {
         assertEquals(40f, CspScreenBrushSize.physicalSize(40f, 4f, enabled = true), .0001f)
     }
 
+    @Test fun `screen size and ordinary size also respect zoom below fitted size`() {
+        assertEquals(160f, CspScreenBrushSize.documentSize(40f, .25f, enabled = true), .0001f)
+        assertEquals(40f, CspScreenBrushSize.physicalSize(40f, .25f, enabled = true), .0001f)
+        assertEquals(10f, CspScreenBrushSize.physicalSize(40f, .25f, enabled = false), .0001f)
+    }
+
     @Test fun `ordinary brush remains document-sized and follows canvas zoom`() {
         assertEquals(40f, CspScreenBrushSize.documentSize(40f, 4f, enabled = false), .0001f)
         assertEquals(160f, CspScreenBrushSize.physicalSize(40f, 4f, enabled = false), .0001f)

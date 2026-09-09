@@ -9,11 +9,11 @@ object CspScreenBrushSize {
     fun documentSize(authoredSize: Float, viewportScale: Float, enabled: Boolean): Float {
         val size = authoredSize.takeIf(Float::isFinite)?.coerceAtLeast(.01f) ?: .01f
         if (!enabled) return size
-        val scale = viewportScale.takeIf(Float::isFinite)?.coerceIn(1f, ViewportTransform.MAXIMUM_SCALE) ?: 1f
+        val scale = viewportScale.takeIf(Float::isFinite)?.coerceIn(ViewportTransform.MINIMUM_SCALE, ViewportTransform.MAXIMUM_SCALE) ?: 1f
         return size / scale
     }
 
     fun physicalSize(authoredSize: Float, viewportScale: Float, enabled: Boolean): Float =
         documentSize(authoredSize, viewportScale, enabled) *
-            (viewportScale.takeIf(Float::isFinite)?.coerceIn(1f, ViewportTransform.MAXIMUM_SCALE) ?: 1f)
+            (viewportScale.takeIf(Float::isFinite)?.coerceIn(ViewportTransform.MINIMUM_SCALE, ViewportTransform.MAXIMUM_SCALE) ?: 1f)
 }

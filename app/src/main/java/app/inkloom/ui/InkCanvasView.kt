@@ -1269,7 +1269,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (!includeInteractionOverlays) return
         val selectionPreview = selectionPolygon()
         if (selectionPreview.size >= 2) {
-            val overlayScale = viewportScale.coerceAtLeast(.1f)
+            val overlayScale = viewportScale.coerceAtLeast(ViewportTransform.MINIMUM_SCALE)
             lassoPath.reset()
             lassoPath.moveTo(selectionPreview.first().x * width, selectionPreview.first().y * height)
             for (index in 1 until selectionPreview.size) lassoPath.lineTo(selectionPreview[index].x * width, selectionPreview[index].y * height)
@@ -2405,7 +2405,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun drawBrushSizePreview(canvas: Canvas) {
         if (!brushSizeDragActive) return
         val documentSize = if (activeTool == EditorTool.ERASER) documentEraserSize(brushSizeDragCurrentSize) else documentBrushSize(brushSizeDragCurrentSize)
-        val radius = (documentSize * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f).coerceAtLeast(3f / viewportScale.coerceAtLeast(1f))
+        val radius = (documentSize * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f).coerceAtLeast(3f / viewportScale.coerceAtLeast(ViewportTransform.MINIMUM_SCALE))
         brushSizePreviewPaint.strokeWidth = 4f
         brushSizePreviewPaint.color = Color.WHITE
         canvas.drawCircle(brushSizeDragPreviewX, brushSizeDragPreviewY, radius, brushSizePreviewPaint)
@@ -2423,7 +2423,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun drawStylusHoverCursor(canvas: Canvas) {
         if (externalHoverCursor || !hoverCursorVisible || brushSizeDragActive) return
         val footprint = hoverCursorFootprint()
-        val zoom = viewportScale.coerceAtLeast(1f)
+        val zoom = viewportScale.coerceAtLeast(ViewportTransform.MINIMUM_SCALE)
         val radiusX = (footprint.first / 2f).coerceAtLeast(1.5f / zoom)
         val radiusY = (footprint.second / 2f).coerceAtLeast(1.5f / zoom)
         val checkpoint = canvas.save()
@@ -4416,7 +4416,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun trackDrawAndHold(samples: List<RawDocumentSample>, surface: PixelTileSurface) {
         if (heldPaintConfiguration == null || regularizedStroke != null) return
         val slop = 3f * resources.displayMetrics.density * surface.logicalWidth /
-            width.coerceAtLeast(1) / viewportScale.coerceAtLeast(.1f)
+            width.coerceAtLeast(1) / viewportScale.coerceAtLeast(ViewportTransform.MINIMUM_SCALE)
         samples.forEach { sample ->
             // Keep a bounded geometry trace even for a very long continuous contact.
             if (holdSamples.size >= 4096) {
