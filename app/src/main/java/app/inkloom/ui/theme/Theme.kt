@@ -1,7 +1,7 @@
 package app.inkloom.ui.theme
 
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -10,51 +10,33 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-val Sage = Color(0xFF1674D8)
-val SageContainer = Color(0xFFE5EFFB)
-val Paper = Color(0xFFFFFFFF)
-val Workspace = Color.White
-val Ink = Color(0xFF111111)
-val MutedInk = Color(0xFF626262)
-val OutlineSoft = Color(0xFFE0E4E1)
+val Sage = Color(0xFF686868)
+val SageContainer = Color(0xFF444444)
+val Paper = Color(0xFF242424)
+val Workspace = Color(0xFF191919)
+val Ink = Color(0xFFF2F2F2)
+val MutedInk = Color(0xFFB4B4B4)
+val OutlineSoft = Color(0xFF494949)
 
-private val InkloomColors = lightColorScheme(
-    primary = Sage,
-    onPrimary = Color.White,
-    primaryContainer = SageContainer,
-    onPrimaryContainer = Ink,
-    secondary = Color(0xFF333333),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFE5E5E5),
-    onSecondaryContainer = Ink,
-    tertiary = Color(0xFF555555),
-    onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFEAEAEA),
-    onTertiaryContainer = Ink,
-    error = Color(0xFFC93636),
-    onError = Color.White,
-    errorContainer = Color(0xFFFFE8E5),
-    onErrorContainer = Ink,
-    background = Color.White,
-    onBackground = Ink,
-    surface = Paper,
-    onSurface = Ink,
-    surfaceVariant = Color.White,
-    onSurfaceVariant = Color(0xFF444444),
-    outline = Color(0xFF747474),
-    outlineVariant = OutlineSoft,
-    inverseSurface = Color.White,
-    inverseOnSurface = Ink,
-    inversePrimary = Color(0xFFD0D0D0),
-    surfaceTint = Ink,
-    scrim = Color.Black,
-    surfaceBright = Color.White,
-    surfaceDim = Color.White,
-    surfaceContainer = Color.White,
-    surfaceContainerHigh = Color.White,
-    surfaceContainerHighest = Color.White,
-    surfaceContainerLow = Color.White,
-    surfaceContainerLowest = Color.White,
+private val InkloomColors = darkColorScheme(
+    primary = Color(0xFFDEDEDE), onPrimary = Color(0xFF171717),
+    primaryContainer = SageContainer, onPrimaryContainer = Ink,
+    secondary = Color(0xFFC8C8C8), onSecondary = Color.Black,
+    secondaryContainer = SageContainer, onSecondaryContainer = Ink,
+    tertiary = Color(0xFFBDBDBD), onTertiary = Color.Black,
+    tertiaryContainer = SageContainer, onTertiaryContainer = Ink,
+    error = Color(0xFFE0E0E0), onError = Color.Black,
+    errorContainer = Color(0xFF484848), onErrorContainer = Ink,
+    background = Workspace, onBackground = Ink,
+    surface = Paper, onSurface = Ink,
+    surfaceVariant = Color(0xFF303030), onSurfaceVariant = MutedInk,
+    outline = Color(0xFF888888), outlineVariant = OutlineSoft,
+    inverseSurface = Ink, inverseOnSurface = Workspace, inversePrimary = Color(0xFF444444),
+    surfaceTint = Color.Transparent, scrim = Color.Black,
+    surfaceBright = Color(0xFF383838), surfaceDim = Color(0xFF1D1D1D),
+    surfaceContainer = Paper, surfaceContainerHigh = Color(0xFF2B2B2B),
+    surfaceContainerHighest = Color(0xFF333333), surfaceContainerLow = Color(0xFF202020),
+    surfaceContainerLowest = Color(0xFF171717),
 )
 
 private val InkloomTypography = Typography(

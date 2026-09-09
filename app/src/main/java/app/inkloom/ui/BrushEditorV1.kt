@@ -16,6 +16,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import app.inkloom.ui.theme.Paper
+import app.inkloom.ui.theme.Ink
+import app.inkloom.ui.theme.SageContainer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -76,7 +79,7 @@ fun BrushEditorV1Dialog(
         Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(12.dp),
             contentAlignment = Alignment.Center) {
             Surface(Modifier.fillMaxSize().widthIn(max = 1200.dp).heightIn(max = 860.dp),
-                shape = RoundedCornerShape(16.dp), color = Color.White, contentColor = Color(0xFF202020)) {
+                shape = RoundedCornerShape(16.dp), color = Paper, contentColor = Ink) {
                 Column {
                     Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 18.dp),
                         verticalAlignment = Alignment.CenterVertically) {
@@ -112,7 +115,7 @@ fun BrushEditorV1Dialog(
                         Column {
                             Row(Modifier.weight(1f)) {
                                 LazyColumn(Modifier.width(if (wide) 174.dp else 128.dp).fillMaxHeight()
-                                    .background(Color(0xFFF6F6F6)), contentPadding = PaddingValues(8.dp)) {
+                                    .background(Paper), contentPadding = PaddingValues(8.dp)) {
                                     item {
                                         Text(session.current.identity.family.localizedLabel(language),
                                             Modifier.padding(12.dp), color = Color.Gray, fontSize = 12.sp)
@@ -120,7 +123,7 @@ fun BrushEditorV1Dialog(
                                     items(panels, key = { it.first.name }) { (group, _) ->
                                         Text(group.localizedLabel(language),
                                             Modifier.fillMaxWidth().clip(RoundedCornerShape(7.dp))
-                                                .background(if (group == activePanel.first) Color(0xFFE0EBE3) else Color.Transparent)
+                                                .background(if (group == activePanel.first) Ink else Color.Transparent)
                                                 .clickable { selectedGroup = group }
                                                 .padding(horizontal = 12.dp, vertical = 16.dp),
                                             fontSize = 13.sp)
@@ -266,7 +269,7 @@ private fun V5ScratchPad(preset: BrushPresetV5, settings: AppSettings, modifier:
     var previewScale by remember { mutableFloatStateOf(1f) }
     var previewColor by remember { mutableIntStateOf(AndroidColor.rgb(17, 17, 17)) }
     fun tr(en: String, zh: String) = settings.language.text(en, zh)
-    Column(modifier.background(Color(0xFFF8F8F8)).padding(12.dp)) {
+    Column(modifier.background(Paper).padding(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box {
                 IconButton(onClick = { optionsOpen = true }) {
@@ -289,7 +292,7 @@ private fun V5ScratchPad(preset: BrushPresetV5, settings: AppSettings, modifier:
                                         .semantics { contentDescription = tr("Preview color ", "预览颜色 ") + names[row * 4 + column] }
                                         .padding(8.dp).clip(CircleShape)
                                         .background(Color(color)).border(if (color == previewColor) 3.dp else 1.dp,
-                                            if (color == previewColor) Color(0xFF729982) else Color.LightGray, CircleShape))
+                                            if (color == previewColor) Ink else Color.LightGray, CircleShape))
                                 }
                             }
                         }

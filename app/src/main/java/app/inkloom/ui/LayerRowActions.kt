@@ -9,6 +9,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import app.inkloom.ui.theme.Paper
+import app.inkloom.ui.theme.Ink
+import app.inkloom.ui.theme.SageContainer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
@@ -39,10 +42,10 @@ internal fun LayerRowActions(actions: List<Pair<String, () -> Unit>>, onSelectSe
                 })) { content() }
         if (offset < 0) Box(Modifier.matchParentSize()) {
             Box(Modifier.align(Alignment.CenterEnd).width(with(LocalDensity.current) { (-offset).toDp() })
-                .fillMaxHeight().clipToBounds().background(Color(0xFFEDF0EE))) {
+                .fillMaxHeight().clipToBounds().background(Paper)) {
                 Row(Modifier.align(Alignment.CenterEnd).requiredWidth(revealWidth).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
-                    actions.forEach { (label, action) -> TextButton({ offset = 0f; action() }, Modifier.weight(1f).fillMaxHeight().background(if (label == destructiveLabel) Color(0xFFC93636) else Color.Transparent)) {
-                        Text(label, color = if (label == destructiveLabel) Color.White else Color(0xFF242424), fontSize = 12.sp, maxLines = 1)
+                    actions.forEach { (label, action) -> TextButton({ offset = 0f; action() }, Modifier.weight(1f).fillMaxHeight().background(if (label == destructiveLabel) SageContainer else Color.Transparent)) {
+                        Text(label, color = if (label == destructiveLabel) Color.White else Ink, fontSize = 12.sp, maxLines = 1)
                     } }
                 }
             }

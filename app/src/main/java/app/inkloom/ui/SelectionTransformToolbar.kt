@@ -45,7 +45,7 @@ internal fun SelectionTransformToolbar(
 ) {
     fun t(en: String, zh: String) = language.text(en, zh)
     var dimensionsOpen by remember { mutableStateOf(false) }
-    Surface(modifier.widthIn(max = 640.dp), shape = RoundedCornerShape(14.dp), color = Color.White, shadowElevation = 3.dp) {
+    Surface(modifier.widthIn(max = 640.dp), shape = RoundedCornerShape(14.dp), color = app.inkloom.ui.theme.Paper, shadowElevation = 3.dp) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 SelectionTransformMode.entries.forEach { mode ->
@@ -109,7 +109,7 @@ internal fun SelectionTransformToolbar(
         Dialog(onDismissRequest = { dimensionsOpen = false },
             properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
             Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp), contentAlignment = Alignment.Center) {
-                Surface(Modifier.widthIn(max = 360.dp), shape = MaterialTheme.shapes.extraLarge, color = Color.White) {
+                Surface(Modifier.widthIn(max = 360.dp), shape = MaterialTheme.shapes.extraLarge, color = app.inkloom.ui.theme.Paper) {
                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(t("Transform dimensions", "变换尺寸"), style = MaterialTheme.typography.titleLarge)
                         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {

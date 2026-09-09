@@ -302,9 +302,28 @@ class BrushBatchManagementTest {
 
     }
 
-    @Test fun stationaryLongPressOpensTheProductionBrushEditor() {
+    @Test fun wholeRowLongPressDragCopiesToAnotherGroup() {
+        openBrushes()
+        val row = composeRule.onNodeWithContentDescription("Brush preset Batch A")
+        val bounds = row.fetchSemanticsNode().boundsInRoot
+        val target = composeRule.onNodeWithContentDescription("Brush group Target").fetchSemanticsNode().boundsInRoot.center
+        row.performTouchInput {
+            down(Offset(width * .35f, height * .7f))
+            advanceEventTime(700)
+            moveBy(target - (bounds.topLeft + Offset(bounds.width * .35f, bounds.height * .7f)), 300)
+            up()
+        }
+        val store = BrushMetadataStore(composeRule.activity)
+        composeRule.waitUntil(5_000) { store.load().any { it.name == "Batch A copy" && it.groupName == "Target" } }
+        composeRule.onNodeWithText("Brush Studio").assertDoesNotExist()
+    }
+
+    @Test fun stationaryLongPressDoesNotEditAndSelectedTapOpensStudio() {
         openBrushes()
         composeRule.onNodeWithContentDescription("Brush preset Batch A").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Brush Studio").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Brush preset Batch A").performClick()
+        composeRule.onNodeWithContentDescription("Brush preset Batch A").performClick()
         composeRule.onNodeWithText("Brush Studio").assertIsDisplayed()
         composeRule.onNodeWithText("Drawing pad").assertIsDisplayed()
     }

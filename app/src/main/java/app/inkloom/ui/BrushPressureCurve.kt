@@ -7,6 +7,9 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import app.inkloom.ui.theme.Paper
+import app.inkloom.ui.theme.Ink
+import app.inkloom.ui.theme.SageContainer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -44,7 +47,7 @@ internal fun BrushPressureCurve(id: String, preset: BrushPresetV5, language: UiL
         onValue(preset.copy(dynamics = preset.dynamics.copy(pressure = next)))
     })
     val description = language.text("Editable brush pressure curve", "可编辑的笔刷压力曲线")
-    Canvas(Modifier.widthIn(max = 260.dp).fillMaxWidth().aspectRatio(1f).background(Color(0xFFF4F5F4)).padding(16.dp)
+    Canvas(Modifier.widthIn(max = 260.dp).fillMaxWidth().aspectRatio(1f).background(Paper).padding(16.dp)
         .semantics { contentDescription = description }
         .pointerInput(id) {
             awaitEachGesture {
@@ -89,11 +92,11 @@ internal fun BrushPressureCurve(id: String, preset: BrushPresetV5, language: UiL
             val x = input * size.width; val y = (1f - EditorCurves.evaluate(points, input)) * size.height
             if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
-        drawPath(path, Color(0xFF427658), style = Stroke(2.dp.toPx()))
+        drawPath(path, Ink, style = Stroke(2.dp.toPx()))
         points.forEach { point ->
             val at = Offset(point.x * size.width, (1f - point.y) * size.height)
             drawCircle(Color.White, 8.dp.toPx(), at)
-            drawCircle(Color(0xFF427658), 5.dp.toPx(), at)
+            drawCircle(Ink, 5.dp.toPx(), at)
         }
     }
     Text(language.text("Tap to add a point. Drag points to adjust the response.", "点击添加控制点，拖动控制点调整响应。"),

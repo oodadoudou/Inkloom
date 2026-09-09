@@ -401,22 +401,17 @@ class InkloomLaunchTest {
 
     @Test fun workspacePanelsCollapseToIconsAndLockTheirPlacement() {
         createNotebookAndOpenEditor()
-
-        composeRule.onNodeWithContentDescription("Change pages panel docking").performClick()
-        composeRule.onNodeWithText("Collapsed").performClick()
+        composeRule.onNodeWithContentDescription("Collapse panel").performClick()
         composeRule.onNodeWithContentDescription("Expand Pages panel").assertIsDisplayed()
-        assertEquals("COLLAPSED", AppSettingsStore(composeRule.activity).load().pagePanelMode.name)
-
-        composeRule.onNodeWithContentDescription("Change pages panel docking").performClick()
-        composeRule.onNodeWithText("Icon only").performClick()
         assertEquals("ICON_ONLY", AppSettingsStore(composeRule.activity).load().pagePanelMode.name)
+        composeRule.onNodeWithText("Dock right").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Expand Pages panel").performClick()
         composeRule.onNodeWithContentDescription("Change pages panel docking").performClick()
         composeRule.onNodeWithText("Lock position and size").performClick()
         assertTrue(AppSettingsStore(composeRule.activity).load().pagePanelLocked)
         composeRule.onNodeWithContentDescription("Change pages panel docking").performClick()
         composeRule.onNodeWithText("Dock right").assertIsNotEnabled()
         composeRule.onNodeWithText("Expanded").performClick()
-
         composeRule.onNodeWithContentDescription("Layers").performClick()
         composeRule.onNodeWithContentDescription("Change layers panel docking").performClick()
         composeRule.onNodeWithText("Collapsed").performClick()

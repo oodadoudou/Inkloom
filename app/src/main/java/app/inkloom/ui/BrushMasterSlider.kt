@@ -14,6 +14,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import app.inkloom.ui.theme.Paper
+import app.inkloom.ui.theme.Ink
+import app.inkloom.ui.theme.SageContainer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -131,7 +134,7 @@ internal fun BrushMasterSlider(
                 } },
                 properties = PopupProperties(focusable = false, dismissOnBackPress = false, dismissOnClickOutside = false),
             ) {
-                Surface(shape = RoundedCornerShape(12.dp), color = Color.White,
+                Surface(shape = RoundedCornerShape(12.dp), color = Paper,
                     border = CardDefaults.outlinedCardBorder()) {
                     Text(display(value), Modifier.padding(horizontal = 10.dp, vertical = 5.dp), color = Ink, fontSize = 13.sp)
                 }

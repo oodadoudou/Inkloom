@@ -352,7 +352,8 @@ class BrushMasterSettingsWindowTest {
 
     @Test fun advancedMotionControlsSaveThroughTheActualStudioWindow() {
         openPencil()
-        compose.onNodeWithContentDescription("Brush preset HB Pencil").performTouchInput { longClick() }
+        compose.onNodeWithContentDescription("Brush preset HB Pencil").performClick()
+        compose.onNodeWithContentDescription("Brush preset HB Pencil").performClick()
         compose.onNodeWithText("Stabilization").performClick()
         compose.onNodeWithContentDescription("Motion filtering slider").performSemanticsAction(SemanticsActions.SetProgress) { it(.7f) }
         compose.onNodeWithContentDescription("Expression slider").performSemanticsAction(SemanticsActions.SetProgress) { it(.4f) }

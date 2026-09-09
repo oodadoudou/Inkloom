@@ -32,7 +32,7 @@ import kotlin.math.sin
 
 private object BrushStrokePreviewCache {
     val workers = Semaphore(2)
-    val images = object : LruCache<String, Bitmap>(8 * 1024 * 1024) {
+    val images = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap) = value.allocationByteCount
     }
 }
@@ -49,6 +49,8 @@ internal fun BrushStrokePreview(brush: ImportedBrush, language: UiLanguage, modi
             return@produceState
         }
         try {
+            // Avoid building full painting views for rows only passing through during a fling.
+            kotlinx.coroutines.delay(80)
             BrushStrokePreviewCache.workers.withPermit {
                 val cached = BrushStrokePreviewCache.images.get(key)
                 if (cached != null) { value = cached; return@withPermit }
@@ -96,7 +98,7 @@ internal fun BrushStrokePreview(brush: ImportedBrush, language: UiLanguage, modi
         }
     }
     Box(modifier, contentAlignment = Alignment.Center) {
-        bitmap?.let { Image(it.asImageBitmap(), brush.name, Modifier.fillMaxSize()) }
+        bitmap?.let { Image(it.asImageBitmap(), brush.name, Modifier.fillMaxSize(), colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(app.inkloom.ui.theme.Ink)) }
             ?: failure?.let { Text(it, fontSize = 10.sp) }
     }
 }
