@@ -316,14 +316,16 @@ class InkloomLaunchTest {
             composeRule.waitUntil(10_000) {
                 composeRule.activity.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
             }
-            composeRule.onNodeWithContentDescription("Search this note").assertIsDisplayed()
+            composeRule.waitUntil(10_000) { composeRule.onAllNodesWithContentDescription("Actions").fetchSemanticsNodes().any { it.boundsInRoot.width > 0f } }
+            composeRule.onNodeWithContentDescription("Actions").assertIsDisplayed()
             assertEquals(false, AppSettingsStore(composeRule.activity).load().showPageRail)
 
             composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             composeRule.waitUntil(10_000) {
                 composeRule.activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
             }
-            composeRule.onNodeWithContentDescription("Search this note").assertIsDisplayed()
+            composeRule.waitUntil(10_000) { composeRule.onAllNodesWithContentDescription("Actions").fetchSemanticsNodes().any { it.boundsInRoot.width > 0f } }
+            composeRule.onNodeWithContentDescription("Actions").assertIsDisplayed()
             assertEquals(false, AppSettingsStore(composeRule.activity).load().showPageRail)
         } finally {
             composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -507,7 +509,8 @@ class InkloomLaunchTest {
 
     @Test fun editorExposesUnifiedPageAndPdfSearch() {
         createNotebookAndOpenEditor()
-        composeRule.onNodeWithContentDescription("Search this note").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
+        composeRule.onNodeWithText("Search this notebook").performClick()
 
         composeRule.onNodeWithText("Page, handwriting, image, or PDF text").assertIsDisplayed()
         composeRule.onNodeWithText("Recognize ink").assertDoesNotExist()

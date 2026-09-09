@@ -511,6 +511,7 @@ class SelectionWindowRegressionTest {
         compose.waitForIdle()
         var result: Offset? = null
         compose.waitUntil(5_000) {
+            if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.clearCache()
             fun visit(node: android.view.accessibility.AccessibilityNodeInfo?) {
                 if (node == null) return
                 if (node.text?.toString() == label || node.contentDescription?.toString() == label) {
