@@ -268,7 +268,9 @@ class StampPaintOp(
             if (length <= 1e-4f) return
             val direction = atan2(dy, dx)
             var travelled = 0f
-            var remaining = streamState.distanceToNextDab.coerceAtLeast(.05f)
+            // Residual phase may be smaller than a full dab spacing; clamping it
+            // makes dense input reports lose distance (or never emit another dab).
+            var remaining = streamState.distanceToNextDab.coerceAtLeast(0f)
             while (travelled + remaining <= length) {
                 travelled += remaining
                 val t = (travelled / length).coerceIn(0f, 1f)
@@ -276,7 +278,7 @@ class StampPaintOp(
                 resolveDabs(sample, direction, output, stream, streamState)
                 remaining = spacingFor(sample, stream.definition)
             }
-            streamState.distanceToNextDab = (remaining - (length - travelled)).coerceAtLeast(.05f)
+            streamState.distanceToNextDab = (remaining - (length - travelled)).coerceAtLeast(0f)
         }
 
         private fun resolveDabs(

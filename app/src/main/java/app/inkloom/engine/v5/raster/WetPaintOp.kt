@@ -193,14 +193,16 @@ class WetPaintOp(
                         val length = hypot(dx, dy)
                         val direction = atan2(dy, dx)
                         var travelled = 0f
-                        var remaining = track.distanceToNextDab.coerceAtLeast(.25f)
+                        // Residual phase may be smaller than a full dab spacing; clamping it
+                        // makes dense input reports lose distance (or never emit another dab).
+                        var remaining = track.distanceToNextDab.coerceAtLeast(0f)
                         while (travelled + remaining <= length) {
                             travelled += remaining
                             val resolved = interpolate(previous, sample, travelled / length)
                             deposit(resolved, track, direction)?.let { batchDirty = batchDirty?.union(it) ?: it }
                             remaining = spacing(resolved)
                         }
-                        track.distanceToNextDab = (remaining - (length - travelled)).coerceAtLeast(.25f)
+                        track.distanceToNextDab = (remaining - (length - travelled)).coerceAtLeast(0f)
                     }
                     track.lastSample = sample
                 }
