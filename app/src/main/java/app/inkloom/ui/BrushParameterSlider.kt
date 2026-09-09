@@ -41,7 +41,8 @@ internal fun BrushParameterSlider(
         track = { state ->
             SliderDefaults.Track(state, Modifier.height(3.dp),
                 colors = SliderDefaults.colors(activeTrackColor = app.inkloom.ui.theme.Sage,
-                    inactiveTrackColor = Color(0xFFE3E6EB)),
+                    inactiveTrackColor = Color(0xFFE3E6EB),
+                    activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent),
                 thumbTrackGapSize = 0.dp, trackInsideCornerSize = 1.5.dp,
                 drawStopIndicator = null)
         })

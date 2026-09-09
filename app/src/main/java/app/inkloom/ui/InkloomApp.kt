@@ -9508,7 +9508,7 @@ private fun SettingsDialog(
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     items(tabs.size) { index ->
                         TextButton(onClick = { settingsTab = index }, modifier = Modifier.height(44.dp).background(
-                            if (settingsTab == index) Color(0xFFE5EEE8) else Color.Transparent, RoundedCornerShape(8.dp))) {
+                            if (settingsTab == index) SageContainer else Color.Transparent, RoundedCornerShape(8.dp))) {
                             Text(tabs[index], fontSize = 12.sp, color = Ink)
                         }
                     }
