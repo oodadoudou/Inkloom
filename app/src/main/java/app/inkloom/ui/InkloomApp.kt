@@ -1204,8 +1204,8 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
 
 @Composable
 private fun RailItem(icon: ImageVector, label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Row(modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (selected) Workspace else Color.Transparent).clickable(onClick = onClick).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, tint = if (selected) Sage else Ink); Spacer(Modifier.width(12.dp)); Text(label, color = if (selected) Sage else Ink)
+    Row(modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (selected) SageContainer else Color.Transparent).clickable(onClick = onClick).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = if (selected) Ink else MutedInk); Spacer(Modifier.width(12.dp)); Text(label, color = if (selected) Ink else MutedInk)
     }
 }
 
@@ -1214,7 +1214,7 @@ private fun BrandMark(subtitle: String? = null) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Surface(color = Sage, shape = RoundedCornerShape(6.dp), modifier = Modifier.size(40.dp)) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Check, null, tint = Color.White) } }
         Spacer(Modifier.width(12.dp))
-        Column { Text("Inkloom", color = Sage, fontSize = 25.sp); if (subtitle != null) Text(subtitle, color = MutedInk, fontSize = 11.sp) }
+        Column { Text("Inkloom", color = MutedInk, fontSize = 25.sp); if (subtitle != null) Text(subtitle, color = MutedInk, fontSize = 11.sp) }
     }
 }
 
@@ -1252,9 +1252,9 @@ private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (Ink
             }
         }
         Column(Modifier.padding(14.dp)) {
-            Row { Text(document.title, fontSize = 17.sp, maxLines = 2, modifier = Modifier.weight(1f)); if (document.favorite) Icon(Icons.Default.Star, null, tint = Sage, modifier = Modifier.size(18.dp)) }
+            Row { Text(document.title, fontSize = 17.sp, maxLines = 2, modifier = Modifier.weight(1f)); if (document.favorite) Icon(Icons.Default.Star, null, tint = Ink, modifier = Modifier.size(18.dp)) }
             Spacer(Modifier.height(6.dp)); Text("${document.pages.size} ${tr("pages · saved locally", "页 · 已保存到本机")}", color = MutedInk, fontSize = 11.sp)
-            if (document.tags.isNotEmpty()) Text(document.tags.take(3).joinToString("  ") { "#$it" }, color = Sage, fontSize = 10.sp, maxLines = 1)
+            if (document.tags.isNotEmpty()) Text(document.tags.take(3).joinToString("  ") { "#$it" }, color = MutedInk, fontSize = 10.sp, maxLines = 1)
         }
     }
     if (renameOpen) AlertDialog(onDismissRequest = { renameOpen = false }, title = { Text(tr("Rename note", "重命名笔记")) }, text = { OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onRename(document.id, title); renameOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { renameOpen = false }) { Text(tr("Cancel", "取消")) } })
@@ -1860,7 +1860,7 @@ private fun EditorScreen(
                 )
                 DropdownMenu(expanded = notebookSwitcherOpen, onDismissRequest = { notebookSwitcherOpen = false },
                     modifier = Modifier.width(320.dp).heightIn(max = 440.dp)) {
-                    Text(tr("Switch notebook", "切换笔记"), Modifier.padding(16.dp), color = Sage)
+                    Text(tr("Switch notebook", "切换笔记"), Modifier.padding(16.dp), color = MutedInk)
                     documents.filter { it.trashedAt == null }.sortedByDescending { it.updatedAt }.forEach { note ->
                         DropdownMenuItem(
                             text = { Column { Text(note.title, maxLines = 2); Text(tr("${note.pages.size} pages", "${note.pages.size} 页"), fontSize = 11.sp, color = MutedInk) } },
@@ -3842,7 +3842,7 @@ private fun EditorScreen(
                         ListItem(
                             headlineContent = { Text(page.title, maxLines = 1, fontWeight = if (page.outlineLevel == 0) FontWeight.SemiBold else FontWeight.Normal) },
                             supportingContent = { Text(listOfNotNull(page.customNumber, page.tags.takeIf { it.isNotEmpty() }?.joinToString(" · ")).joinToString(" · ").ifBlank { tr("Page ${index + 1}", "第 ${index + 1} 页") }, color = MutedInk, maxLines = 1) },
-                            leadingContent = { if (page.bookmarked) Icon(Icons.Default.Bookmark, tr("Bookmarked", "已收藏"), tint = Sage) else Text((index + 1).toString(), color = MutedInk) },
+                            leadingContent = { if (page.bookmarked) Icon(Icons.Default.Bookmark, tr("Bookmarked", "已收藏"), tint = Ink) else Text((index + 1).toString(), color = MutedInk) },
                             trailingContent = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     if (hasChildren) IconButton(onClick = { onTogglePageOutlineCollapsed(document.id, page.id) }) { Icon(if (page.outlineCollapsed) Icons.Default.ArrowRight else Icons.Default.ArrowDropDown, if (page.outlineCollapsed) tr("Expand", "展开") else tr("Collapse", "折叠")) }
@@ -3961,7 +3961,7 @@ private fun EditorScreen(
                     ListItem(
                         headlineContent = { Text(page.title) },
                         supportingContent = { Text(hit.snippet, maxLines = 2) },
-                        leadingContent = { Text(when (hit.source) { PageSearchSource.PDF -> "PDF"; PageSearchSource.OBJECT -> "OBJ"; PageSearchSource.PAGE -> "PAGE"; PageSearchSource.HANDWRITING -> "INK"; PageSearchSource.IMAGE_OCR -> "OCR" }, color = Sage, fontSize = 9.sp) },
+                        leadingContent = { Text(when (hit.source) { PageSearchSource.PDF -> "PDF"; PageSearchSource.OBJECT -> "OBJ"; PageSearchSource.PAGE -> "PAGE"; PageSearchSource.HANDWRITING -> "INK"; PageSearchSource.IMAGE_OCR -> "OCR" }, color = MutedInk, fontSize = 9.sp) },
                         trailingContent = if (hit.source == PageSearchSource.HANDWRITING && hit.recognizedBlockId != null) {{
                             TextButton(onClick = { handwritingConversionHit = page to hit }) { Text(tr("To text", "转文字")) }
                         }} else null,
@@ -4819,8 +4819,8 @@ private fun PageRail(
                         .padding(4.dp),
                 ) {
                     PageInkPreview(page, assets, Modifier.matchParentSize().clip(RoundedCornerShape(2.dp)))
-                    if (page.background is PageBackground.Pdf) Text("PDF", fontSize = 9.sp, color = Sage)
-                    if (page.bookmarked) Icon(Icons.Default.Bookmark, tr("Bookmarked", "已收藏"), tint = Sage, modifier = Modifier.size(16.dp).align(Alignment.TopEnd))
+                    if (page.background is PageBackground.Pdf) Text("PDF", fontSize = 9.sp, color = MutedInk)
+                    if (page.bookmarked) Icon(Icons.Default.Bookmark, tr("Bookmarked", "已收藏"), tint = Ink, modifier = Modifier.size(16.dp).align(Alignment.TopEnd))
                     Box(
                         Modifier.align(Alignment.BottomEnd).size(24.dp).background(Paper, RoundedCornerShape(2.dp)).clickable { onOpenLayers(page.id) },
                         contentAlignment = Alignment.Center,
@@ -7512,13 +7512,13 @@ private fun PaintingLayerPanel(
                         }
                     },
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp,
+                    fontSize = 15.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
-                WorkspacePanelDockMenu(dock, onDock, tr("Change layers panel docking", "更改图层面板停靠方式"), Modifier.size(36.dp), panelMode, panelLocked, onPanelMode, onPanelLocked)
-                IconButton(onClick = { searchOpen = !searchOpen; if (!searchOpen) layerSearch = "" }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Search, tr("Search layers", "搜索图层"), tint = Ink) }
-                IconButton(onClick = onAddFolder, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.CreateNewFolder, tr("Add layer group", "添加图层组"), tint = Ink) }
-                IconButton(onClick = onAdd, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Add, tr("Add layer", "添加图层"), tint = Ink) }
-                IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Close, tr("Close layers panel", "关闭图层面板"), tint = Ink) }
+                WorkspacePanelDockMenu(dock, onDock, tr("Change layers panel docking", "更改图层面板停靠方式"), Modifier.size(28.dp), panelMode, panelLocked, onPanelMode, onPanelLocked)
+                IconButton(onClick = { searchOpen = !searchOpen; if (!searchOpen) layerSearch = "" }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Search, tr("Search layers", "搜索图层"), tint = Ink) }
+                IconButton(onClick = onAddFolder, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.CreateNewFolder, tr("Add layer group", "添加图层组"), tint = Ink) }
+                IconButton(onClick = onAdd, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Add, tr("Add layer", "添加图层"), tint = Ink) }
+                IconButton(onClick = onClose, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Close, tr("Close layers panel", "关闭图层面板"), tint = Ink) }
             }
             HorizontalDivider(color = OutlineSoft)
             if (searchOpen) OutlinedTextField(
@@ -8159,7 +8159,7 @@ private fun BrushPanel(
             title = { Text(brush.name) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Text("${brush.format.label} · ${brush.compatibility.label}", color = Sage)
+                    Text("${brush.format.label} · ${brush.compatibility.label}", color = MutedInk)
                     Spacer(Modifier.height(12.dp))
                     brush.report.forEach { Text("• $it", modifier = Modifier.padding(vertical = 3.dp)) }
                     if (brush.semanticMappings.isNotEmpty()) {
@@ -8632,8 +8632,8 @@ private fun ProcreateBrushLibrary(
     fun BrushMoveHandle(brush: ImportedBrush) {
         // The library surface owns long-press/drag, including this handle.
         Icon(Icons.Outlined.DragIndicator, tr("Move brush ${brush.name}", "移动笔刷 ${brush.name}"),
-            tint = MutedInk, modifier = Modifier.size(40.dp)
-                .clickable { moveBrush = brush }.padding(10.dp))
+            tint = MutedInk, modifier = Modifier.size(24.dp)
+                .clickable { moveBrush = brush }.padding(3.dp))
     }
     LaunchedEffect(allCategories, pendingCategoryReveal) {
         if (pendingCategoryReveal == null && selectedCategory !in allCategories) selectedCategory = allCategories.first()
@@ -8929,7 +8929,7 @@ private fun ProcreateBrushLibrary(
                                         tint = MutedInk,
                                     )
                                 } else Spacer(Modifier.width(24.dp))
-                                Text(visibleCategoryLabel, color = if (selected) Sage else Ink, fontSize = 11.sp, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                Text(visibleCategoryLabel, color = Ink, fontSize = 11.sp, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                 Text(
                                     when (category) {
                                         recentCategory -> recentBrushIds.size
@@ -9446,7 +9446,7 @@ private fun ImportedBrushRow(
     ) {
         Row(Modifier.height(if (compact) 40.dp else 52.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             if (multiSelecting && editable) {
-                Icon(if (multiSelected) Icons.Default.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, if (multiSelected) tr("Selected", "已选择") else tr("Not selected", "未选择"), Modifier.size(24.dp), tint = if (multiSelected) Sage else MutedInk)
+                Icon(if (multiSelected) Icons.Default.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, if (multiSelected) tr("Selected", "已选择") else tr("Not selected", "未选择"), Modifier.size(24.dp), tint = if (multiSelected) Ink else MutedInk)
             } else if (editable) {
                 Icon(
                     Icons.Outlined.DragIndicator,
@@ -9535,12 +9535,12 @@ private fun SettingsDialog(
                 key(settingsTab) {
                 LazyColumn(Modifier.heightIn(max = 560.dp).semantics { contentDescription = "Settings content" }, verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(top = 12.dp)) {
                 if (settingsTab == 0) {
-                item { Text(tr("LANGUAGE", "语言"), color = Sage, fontSize = 12.sp) }
+                item { Text(tr("LANGUAGE", "语言"), color = MutedInk, fontSize = 12.sp) }
                 item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = settings.language == UiLanguage.ENGLISH, onClick = { onChange(settings.copy(language = UiLanguage.ENGLISH)) }, label = { Text("English") })
                     FilterChip(selected = settings.language == UiLanguage.SIMPLIFIED_CHINESE, onClick = { onChange(settings.copy(language = UiLanguage.SIMPLIFIED_CHINESE)) }, label = { Text("简体中文") })
                 } }
-                item { Text(tr("INTERFACE", "界面"), color = Sage, fontSize = 12.sp) }
+                item { Text(tr("INTERFACE", "界面"), color = MutedInk, fontSize = 12.sp) }
                 item { SettingSwitch(tr("Show page sidebar", "显示页面侧栏"), null, settings.showPageRail) { onChange(settings.copy(showPageRail = it)) } }
                 item { SettingSwitch(tr("Show floating toolbar", "显示浮动工具栏"), null, settings.showToolbar) { onChange(settings.copy(showToolbar = it)) } }
                 item { Text(tr("Toolbar docking", "工具栏停靠"), color = MutedInk, fontSize = 11.sp); LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ToolbarDock.entries.forEach { dock -> item { FilterChip(selected = settings.toolbarDock == dock, onClick = { onChange(settings.copy(toolbarDock = dock, verticalToolbar = if (dock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT)) true else if (dock in setOf(ToolbarDock.TOP, ToolbarDock.BOTTOM)) false else settings.verticalToolbar)) }, label = { Text(when (dock) { ToolbarDock.FREE -> tr("Free", "自由"); ToolbarDock.TOP -> tr("Top", "顶部"); ToolbarDock.BOTTOM -> tr("Bottom", "底部"); ToolbarDock.LEFT -> tr("Left", "左侧"); ToolbarDock.RIGHT -> tr("Right", "右侧") }) }) } } } }
@@ -9549,7 +9549,7 @@ private fun SettingsDialog(
 
                 }
                 if (settingsTab == 1) {
-                item { Text(tr("INPUT", "输入"), color = Sage, fontSize = 12.sp) }
+                item { Text(tr("INPUT", "输入"), color = MutedInk, fontSize = 12.sp) }
                 item { SettingSwitch(tr("Draw with finger", "手指书写"), tr("Off by default. Fingers navigate and zoom.", "默认关闭；手指用于移动和缩放。"), settings.fingerDrawing) { onChange(settings.copy(fingerDrawing = it)) } }
                 item { SettingSwitch(tr("Draw and hold", "停笔规整"), tr("Hold the pen down to regularize a line or curve. Keep holding to adjust its endpoint.", "画完线条后停住笔尖，规整成直线或曲线；继续按住可调整端点。"), settings.drawAndHoldEnabled) { onChange(settings.copy(drawAndHoldEnabled = it)) } }
                 if (settings.drawAndHoldEnabled) item {
@@ -9598,17 +9598,17 @@ private fun SettingsDialog(
 
                 }
                 if (settingsTab == 3) {
-                item { Text(tr("PEN BUTTONS", "笔按键"), color = Sage, fontSize = 12.sp) }
+                item { Text(tr("PEN BUTTONS", "笔按键"), color = MutedInk, fontSize = 12.sp) }
                 item { Text(tr("Hold temporarily switches tools and restores the previous brush, size, opacity and color on release. Tap keeps the selected tool active. The pen-tail eraser always erases only while touching the screen.", "“按住”会临时切换工具，松开后恢复原笔刷、大小、不透明度和颜色；“单击”会保持切换后的工具。笔尾橡皮只在接触屏幕时擦除。"), color = MutedInk, fontSize = 11.sp) }
                 item { StylusActionRow(tr("Primary button", "主按键"), settings.stylusPrimaryButton, settings.stylusPrimaryTrigger, { onChange(settings.copy(stylusPrimaryButton = it)) }, { onChange(settings.copy(stylusPrimaryTrigger = it)) }) }
                 item { StylusActionRow(tr("Secondary button", "副按键"), settings.stylusSecondaryButton, settings.stylusSecondaryTrigger, { onChange(settings.copy(stylusSecondaryButton = it)) }, { onChange(settings.copy(stylusSecondaryTrigger = it)) }) }
-                item { Text(tr("TOOLBOX & KEYBOARD", "TOOLBOX 与键盘"), color = Sage, fontSize = 12.sp) }
+                item { Text(tr("TOOLBOX & KEYBOARD", "TOOLBOX 与键盘"), color = MutedInk, fontSize = 12.sp) }
                 item { Text(tr("CSP-compatible defaults are active. Customize them for Wacom ExpressKeys, a keyboard, or another Toolbox controller.", "已启用兼容 CSP 的默认键位。可为 Wacom ExpressKey、键盘或其他 Toolbox 控制器自定义。"), color = MutedInk, fontSize = 12.sp) }
                 item { OutlinedButton(onClick = { shortcutEditorOpen = true }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Keyboard, null); Spacer(Modifier.width(8.dp)); Text(tr("Customize shortcuts", "自定义快捷键")) } }
 
                 }
                 if (settingsTab == 4) {
-                item { Text(tr("DATA & BACKUP", "数据与备份"), color = Sage, fontSize = 12.sp) }
+                item { Text(tr("DATA & BACKUP", "数据与备份"), color = MutedInk, fontSize = 12.sp) }
                 item { Text(tr("A full backup includes notes, folders, imported brushes and sources, PDFs, images, input settings, panel layouts, Toolbox shortcuts, quick slots and the custom color palette. Content is restored with new IDs so existing work is never overwritten.", "完整备份包含笔记、文件夹、导入笔刷及源文件、PDF、图片、输入设置、面板布局、Toolbox 快捷键、快速槽与自定义色板。内容恢复时会生成新 ID，不覆盖现有作品。"), color = MutedInk, fontSize = 12.sp) }
                 item { Button(onClick = onExportBackup, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Backup, null); Spacer(Modifier.width(8.dp)); Text(tr("Export full library backup", "导出完整资料库备份")) } }
                 item { OutlinedButton(onClick = onRestoreBackup, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Restore, null); Spacer(Modifier.width(8.dp)); Text(tr("Restore library backup", "恢复资料库备份")) } }
@@ -9747,7 +9747,7 @@ private fun ShortcutEditorDialog(settings: AppSettings, brushes: List<ImportedBr
                         }
                         ListItem(
                             headlineContent = { Text(shortcutActionDisplayLabel(action, settings, language), fontSize = 13.sp) },
-                            supportingContent = { Text(if (listeningFor == action) tr("Press a key combination…", "请按组合键…") else chords.joinToString(" / ").ifBlank { tr("Not assigned", "未分配") }, color = if (listeningFor == action) Sage else MutedInk) },
+                            supportingContent = { Text(if (listeningFor == action) tr("Press a key combination…", "请按组合键…") else chords.joinToString(" / ").ifBlank { tr("Not assigned", "未分配") }, color = if (listeningFor == action) Ink else MutedInk) },
                             trailingContent = {
                                 Row {
                                     if (chords.isNotEmpty()) IconButton(onClick = { onChange(settings.copy(shortcutBindings = settings.shortcutBindings.filterNot { it.action == action })) }) { Icon(Icons.Outlined.LinkOff, tr("Remove shortcut", "移除快捷键")) }
@@ -10217,7 +10217,7 @@ private fun PressureCurveEditor(values: List<Float>, onChange: (List<Float>) -> 
             Text(tr("Input pressure →", "输入压力 →"), fontSize = 10.sp, color = MutedInk)
             if (selected >= 0 && selected * 2 + 1 < shown.size) Text(
                 "${(shown[selected * 2] * 100).toInt()}% → ${(shown[selected * 2 + 1] * 100).toInt()}%",
-                fontSize = 11.sp, color = Sage,
+                fontSize = 11.sp, color = MutedInk,
             ) else Text(tr("Output ↑", "输出 ↑"), fontSize = 10.sp, color = MutedInk)
         }
         Text(tr("Tap to add a point. Drag in both directions; drag outside to remove. Test below after releasing.",

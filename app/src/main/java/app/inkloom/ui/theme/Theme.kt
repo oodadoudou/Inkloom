@@ -59,5 +59,7 @@ fun InkloomTheme(content: @Composable () -> Unit) {
         medium = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
         large = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
         extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-    ), content = content)
+    ), content = {
+        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides Ink) { content() }
+    })
 }
