@@ -662,18 +662,7 @@ class StampPaintOp(
             val dy = y - centerY
             val localX = cosine * dx + sine * dy
             val localY = -sine * dx + cosine * dy
-            val u = (localX / radiusX + 1f) * .5f
-            val v = (localY / radiusY + 1f) * .5f
-            if (radiusX >= 1f && radiusY >= 1f) return tip.coverageAtLevel(u, v, tipLevel)
-            // Integrate the pixel footprint at the tip boundary instead of dropping a small
-            // stamp whenever its geometric support misses the pixel centre.
-            val footprint = kotlin.math.abs(cosine) + kotlin.math.abs(sine)
-            fun overlap(position: Float, radius: Float): Float =
-                (minOf(position + footprint * .5f, radius) - maxOf(position - footprint * .5f, -radius))
-                    .coerceAtLeast(0f) / footprint
-            val area = overlap(localX, radiusX) * overlap(localY, radiusY)
-            if (area <= 0f) return 0f
-            return tip.coverageAtLevel(u.coerceIn(0f, 1f), v.coerceIn(0f, 1f), tipLevel) * area
+            return tip.coverageAtPixel(localX, localY, radiusX, radiusY, cosine, sine, tipLevel)
         }
     }
 

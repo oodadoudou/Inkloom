@@ -141,6 +141,7 @@ class WetPaintOp(
         private var lastOrdinal = -1L
         private val tracks = sampleTransforms.map { WetTrack() }
         private var dirtyBounds: PixelRect? = null
+        private val finePixelColors = HashMap<Long, PremultipliedColor>()
 
         override fun apply(batch: PaintBatch): PaintResult = applyInternal(batch, finishing = false)
 
@@ -154,12 +155,14 @@ class WetPaintOp(
         override fun publish(): PublishedPaintDelta {
             check(state == State.FINISHED)
             state = State.PUBLISHED
+            finePixelColors.clear()
             return PublishedPaintDelta(delta.publish(), document.snapshot(), dirtyBounds)
         }
 
         override fun cancel() {
             requireActiveOrFinished()
             state = State.CANCELED
+            finePixelColors.clear()
             delta.rollback()
         }
 
@@ -210,7 +213,7 @@ class WetPaintOp(
         private fun deposit(sample: StrokeSample, track: WetTrack, directionRadians: Float): PixelRect? {
             val diameter = definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure) *
                 definition.sizeTilt.evaluate(sample.tiltRadians)
-            if (diameter <= .1f) return null
+            if (diameter <= 0f) return null
             val picked = sampleColour(sample.point.x, sample.point.y, diameter * .5f)
             if (!track.reservoirInitialized) {
                 if (picked.a > .001f) track.reservoir = picked
@@ -285,6 +288,8 @@ class WetPaintOp(
             val selectionScaleX = selection?.let { it.logicalWidth.toFloat() / document.logicalWidth } ?: 1f
             val selectionScaleY = selection?.let { it.logicalHeight.toFloat() / document.logicalHeight } ?: 1f
             val tipLevel = tip?.levelForOutput(radiusX * 2f, radiusY * 2f) ?: 0
+            val fineTip = radiusX < 1f || radiusY < 1f
+            if (!fineTip) finePixelColors.clear()
             var wrotePixel = false
             for (row in firstRow..lastRow) for (column in firstColumn..lastColumn) {
                 val tileLeft = column * document.tileSize
@@ -298,7 +303,7 @@ class WetPaintOp(
                 if (overlap.isEmpty) continue
                 val local = PixelRect(overlap.left - tileLeft, overlap.top - tileTop, overlap.right - tileLeft, overlap.bottom - tileTop)
                 delta.editTile(PixelTileKey(column, row), local) { pixels, stride ->
-                    if (selection == null) {
+                    if (selection == null && !fineTip) {
                         val tipLevelData = tip?.nativeLevel(tipLevel)
                         val grainLevelData = definition.grain?.nativeLevel(0)
                         val nativeResult = if (tipLevelData == null && grainLevelData == null) NativeRasterOps.depositRoundWet(
@@ -370,11 +375,7 @@ class WetPaintOp(
                         var coverage = if (tip != null) {
                             val localX = cosine * dx + sine * dy
                             val localY = -sine * dx + cosine * dy
-                            tip.coverageAtLevel(
-                                (localX / radiusX + 1f) * .5f,
-                                (localY / radiusY + 1f) * .5f,
-                                tipLevel,
-                            )
+                            tip.coverageAtPixel(localX, localY, radiusX, radiusY, cosine, sine, tipLevel)
                         } else {
                             val distanceSquared = dx * dx + dy * dy
                             if (distanceSquared >= outerRadiusSquared) continue
@@ -411,7 +412,14 @@ class WetPaintOp(
                         )
                         val index = (y - tileTop) * stride + x - tileLeft
                         val before = pixels[index]
-                        val after = track.reservoir.sourceOver(before, deposition)
+                        val after = if (fineTip) {
+                            // Do not round each tiny deposit back to zero before the next dab.
+                            val key = y.toLong() * document.logicalWidth + x
+                            val previous = finePixelColors[key] ?: PremultipliedColor.fromPacked(before)
+                            val accumulated = track.reservoir.over(previous, deposition)
+                            finePixelColors[key] = accumulated
+                            accumulated.packed()
+                        } else track.reservoir.sourceOver(before, deposition)
                         if (after != before) {
                             pixels[index] = after
                             wrotePixel = true
@@ -444,9 +452,12 @@ class WetPaintOp(
             return if (count == 0) PremultipliedColor.ZERO else total / count.toFloat()
         }
 
-        private fun spacing(sample: StrokeSample): Float =
-            (definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure) * definition.spacingRatio)
-                .coerceAtLeast(.25f)
+        private fun spacing(sample: StrokeSample): Float {
+            val diameter = definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure)
+            // A fixed quarter-pixel floor can exceed the entire low-pressure tip diameter.
+            val minimum = minOf(.25f, (diameter * .25f).coerceAtLeast(.05f))
+            return (diameter * definition.spacingRatio).coerceAtLeast(minimum)
+        }
 
         private fun requireActiveOrFinished() = check(state == State.ACTIVE || state == State.FINISHED)
 
@@ -490,6 +501,19 @@ private data class PremultipliedColor(val a: Float, val r: Float, val g: Float, 
         return PremultipliedColor(a + (other.a - a) * t, r + (other.r - r) * t, g + (other.g - g) * t, b + (other.b - b) * t)
     }
 
+    fun over(destination: PremultipliedColor, coverage: Float): PremultipliedColor {
+        val sourceAlpha = (a * coverage).coerceIn(0f, 1f)
+        val inverse = 1f - sourceAlpha
+        return PremultipliedColor(sourceAlpha + destination.a * inverse,
+            r * coverage + destination.r * inverse, g * coverage + destination.g * inverse,
+            b * coverage + destination.b * inverse)
+    }
+
+    fun packed(): Int = (a * 255f + .5f).toInt().coerceIn(0, 255).shl(24) or
+        (r * 255f + .5f).toInt().coerceIn(0, 255).shl(16) or
+        (g * 255f + .5f).toInt().coerceIn(0, 255).shl(8) or
+        (b * 255f + .5f).toInt().coerceIn(0, 255)
+
     fun sourceOver(destination: Int, coverage: Float): Int {
         val sourceAlpha = (a * coverage).coerceIn(0f, 1f)
         val inverse = 1f - sourceAlpha
@@ -505,6 +529,8 @@ private data class PremultipliedColor(val a: Float, val r: Float, val g: Float, 
 
     companion object {
         val ZERO = PremultipliedColor(0f, 0f, 0f, 0f)
+        fun fromPacked(argb: Int) = PremultipliedColor((argb ushr 24) / 255f,
+            ((argb ushr 16) and 255) / 255f, ((argb ushr 8) and 255) / 255f, (argb and 255) / 255f)
         fun fromStraight(argb: Int): PremultipliedColor {
             val a = ((argb ushr 24) and 0xff) / 255f
             return PremultipliedColor(

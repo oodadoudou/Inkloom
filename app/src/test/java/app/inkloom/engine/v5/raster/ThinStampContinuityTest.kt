@@ -10,10 +10,13 @@ import org.junit.Test
 
 class ThinStampContinuityTest {
     @Test fun subpixelSolidStrokeCannotDisappearBetweenPixelCenters() {
-        for (diameter in listOf(.2f, .5f, 1f, 1.5f)) for (offset in listOf(0f, .2f, .5f, .8f)) for (slope in listOf(0f, .2f)) {
+        for (diameter in listOf(.1f, .2f, .5f, 1f, 1.5f)) for (offset in listOf(0f, .2f, .5f, .8f)) for (slope in listOf(0f, .2f)) for (wet in listOf(false, true)) {
             val surface = PixelTileSurface(96, 48)
-            val op = StampPaintOp(surface, StampBrushDefinition(diameterPixels = diameter,
-                colorArgb = 0xff000000.toInt(), tips = listOf(BrushTipMask(1, 1, byteArrayOf(-1))), spacingRatio = .1f))
+            val tips = listOf(BrushTipMask(1, 1, byteArrayOf(-1)))
+            val op: PaintOp = if (wet) WetPaintOp(surface, WetPaintDefinition(diameter, 0xff000000.toInt(),
+                tips = tips, charge = 1f, dilution = 0f, attack = 1f, pull = 0f, spacingRatio = .1f))
+                else StampPaintOp(surface, StampBrushDefinition(diameterPixels = diameter,
+                    colorArgb = 0xff000000.toInt(), tips = tips, spacingRatio = .1f))
             val session = op.begin(PaintOpContext(1, 0, "thin")) as PublishablePaintOpSession
             val samples = listOf(StrokeSample(1, DocumentPoint(8f, 20f + offset), 1, 1f, 0f, 0f),
                 StrokeSample(2, DocumentPoint(88f, 20f + offset + 80f * slope), 2, 1f, 0f, 0f))

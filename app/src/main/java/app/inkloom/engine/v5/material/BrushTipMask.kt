@@ -49,6 +49,20 @@ class BrushTipMask(
     internal fun coverageAtLevel(u: Float, v: Float, levelIndex: Int): Float =
         sample(mipLevels[levelIndex.coerceIn(0, mipLevels.lastIndex)], u, v)
 
+    internal fun coverageAtPixel(localX: Float, localY: Float, radiusX: Float, radiusY: Float,
+                                 cosine: Float, sine: Float, level: Int): Float {
+        val u = (localX / radiusX + 1f) * .5f
+        val v = (localY / radiusY + 1f) * .5f
+        if (radiusX >= 1f && radiusY >= 1f) return coverageAtLevel(u, v, level)
+        val footprint = kotlin.math.abs(cosine) + kotlin.math.abs(sine)
+        fun overlap(position: Float, radius: Float): Float =
+            (minOf(position + footprint * .5f, radius) - maxOf(position - footprint * .5f, -radius))
+                .coerceAtLeast(0f) / footprint
+        val area = overlap(localX, radiusX) * overlap(localY, radiusY)
+        if (area <= 0f) return 0f
+        return coverageAtLevel(u.coerceIn(0f, 1f), v.coerceIn(0f, 1f), level) * area
+    }
+
     /** Zero-copy immutable view used only while a bounded native raster call is active. */
     internal fun nativeLevel(levelIndex: Int): NativeLevel =
         mipLevels[levelIndex.coerceIn(0, mipLevels.lastIndex)].let {

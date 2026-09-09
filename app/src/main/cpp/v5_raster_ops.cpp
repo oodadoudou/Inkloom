@@ -541,10 +541,20 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeDepositTexturedWet(
             if (has_tip) {
                 const float local_x = cosine * dx + sine * dy;
                 const float local_y = -sine * dx + cosine * dy;
-                coverage = sample_alpha_mask(
-                    tip, tip_width, tip_height,
-                    (local_x / radius_x + 1.0f) * 0.5f,
-                    (local_y / radius_y + 1.0f) * 0.5f);
+                const float u = (local_x / radius_x + 1.0f) * 0.5f;
+                const float v = (local_y / radius_y + 1.0f) * 0.5f;
+                if (radius_x >= 1.0f && radius_y >= 1.0f) {
+                    coverage = sample_alpha_mask(tip, tip_width, tip_height, u, v);
+                } else {
+                    const float footprint = std::abs(cosine) + std::abs(sine);
+                    auto overlap = [footprint](float position, float radius) {
+                        return std::max(0.0f, std::min(position + footprint * 0.5f, radius) -
+                            std::max(position - footprint * 0.5f, -radius)) / footprint;
+                    };
+                    const float area = overlap(local_x, radius_x) * overlap(local_y, radius_y);
+                    coverage = area <= 0.0f ? 0.0f : sample_alpha_mask(tip, tip_width, tip_height,
+                        std::clamp(u, 0.0f, 1.0f), std::clamp(v, 0.0f, 1.0f)) * area;
+                }
             } else {
                 const float distance_squared = dx * dx + dy * dy;
                 if (distance_squared >= outer_squared) continue;

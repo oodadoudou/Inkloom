@@ -207,6 +207,47 @@ class RealBrushCorpusRenderingTest {
         } finally { assetRoot.deleteRecursively() }
     }
 
+    @Test fun marineLinerHasNoTransparentBreaksAtFineSizes() {
+        val source = File("/data/local/tmp/inkloom-target-brushes/marine.brushset")
+        assumeTrue("LOCAL_FIXTURE_REQUIRED: marine.brushset", source.isFile)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val root = File(instrumentation.targetContext.cacheDir, "marine-thin-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            val brush = BrushPresetV5Import.convertOrReject(parse(source, BrushFormat.PROCREATE, root).first { it.name == "海怪-勾线笔" })
+            val failures = mutableListOf<String>()
+            for (size in listOf(1f, 2f, 4f)) for (pressure in listOf(.15f, .4f, .8f)) {
+                val surface = PixelTileSurface(1000, 1000)
+                val view = InkCanvasView(instrumentation.targetContext).apply {
+                    layout(0, 0, 1000, 1000)
+                    activeLayerId = "paint"
+                    setRasterLayerSurfaces(mapOf("paint" to surface))
+                    applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, size, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+                    onPaintCapabilityRejected = { Log.e("MarineThin", "rejected: $it") }
+                    prepareBrushAssetsNow()
+                }
+                instrumentation.runOnMainSync {
+                    fun send(action: Int, x: Float, time: Long) {
+                        val event = stylusEvent(action, x, 500f, time, pressure)
+                        try { view.onTouchEvent(event) } finally { event.recycle() }
+                    }
+                    send(MotionEvent.ACTION_DOWN, 100f, 1)
+                    repeat(80) { send(MotionEvent.ACTION_MOVE, 110f + it * 10f, 2L + it) }
+                    send(MotionEvent.ACTION_UP, 900f, 83)
+                }
+                view.awaitV5StrokeWorkerIdleForTest()
+                instrumentation.runOnMainSync {
+                    val bitmap = Bitmap.createBitmap(1000, 1000, Bitmap.Config.ARGB_8888)
+                    view.draw(Canvas(bitmap))
+                    bitmap.recycle()
+                }
+                val missing = (250..750).count { x -> (493..507).none { y -> surface.pixelAt(x, y) ushr 24 > 0 } }
+                Log.i("MarineThin", "GAP_COUNT size=$size pressure=$pressure missing=$missing")
+                if (missing > 0) failures += "size=$size pressure=$pressure missing=$missing"
+            }
+            assertTrue("Marine liner gaps: $failures", failures.isEmpty())
+        } finally { root.deleteRecursively() }
+    }
+
     private fun verifyRealBrush(
         extension: String,
         format: BrushFormat,
