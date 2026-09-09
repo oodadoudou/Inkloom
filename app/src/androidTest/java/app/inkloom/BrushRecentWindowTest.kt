@@ -55,7 +55,7 @@ class BrushRecentWindowTest {
         compose.waitUntil(5_000) { store.load().recentIds.firstOrNull() == "system-hb-pencil" }
         swipeAndTap("Brush preset HB Pencil", "Pin")
         compose.waitUntil(5_000) { "system-hb-pencil" in store.load().pinnedIds }
-        tap("Brush preset HB Pencil")
+        // The brush is already active; a second tap intentionally opens Studio.
         tap("Close brushes panel"); tap("Brushes")
         compose.waitUntil(5_000) { store.load().category == BrushUsageState.RECENT_CATEGORY }
         bounds("Pinned brush")

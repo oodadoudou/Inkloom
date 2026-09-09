@@ -35,7 +35,9 @@ class SelectionWindowRegressionTest {
             context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE).edit().clear()
                 .putString("language", "ENGLISH").putInt("studioWorkspaceVersion", 2)
                 .putBoolean("showBrushPanel", false).putBoolean("showLayerPanel", false)
-                .putBoolean("showPageRail", false).commit()
+                .putBoolean("showPageRail", false)
+                .putString("persistentDrawingTool", "PEN")
+                .putString("persistentBrushPresetId", "system-g-pen").commit()
             context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE).edit().clear().commit()
             context.filesDir.resolve("library.json").delete()
             base.evaluate()
@@ -50,6 +52,7 @@ class SelectionWindowRegressionTest {
     private fun checkDeselect(button: String) {
         tap("New Note"); tap("Create")
         val view = canvas()
+        assertEquals(app.inkloom.model.EditorTool.PEN, view.tool)
         tap("Selection"); tap("Rectangle selection")
         stroke(pagePoint(view, .2f, .3f), pagePoint(view, .6f, .6f))
         compose.waitForIdle()
