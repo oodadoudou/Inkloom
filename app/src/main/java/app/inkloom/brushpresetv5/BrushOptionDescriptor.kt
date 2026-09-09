@@ -291,12 +291,22 @@ object BrushOptionDescriptors {
      * execute. This prevents the editor from offering controls such as realtime taper before the
      * corresponding PaintOp exists.
      */
-    fun productionPanels(preset: BrushPresetV5): List<Pair<BrushOptionGroup, List<BrushOptionDescriptor>>> =
-        (forFamily(preset.identity.family) + BrushMaterialOptions.forPreset(preset) + DualBrushEditorOptions.forPreset(preset) + BrushAdvancedOptions.forPreset(preset))
+    fun productionPanels(preset: BrushPresetV5): List<Pair<BrushOptionGroup, List<BrushOptionDescriptor>>> {
+        val backend = CompiledBrushProgramV5.compile(preset).backend
+        val stampFootprint = backend in setOf(RenderBackend.ASSET_STAMP, RenderBackend.PROCEDURAL_STAMP, RenderBackend.WET_PAINT)
+        val footprintOptions = if (stampFootprint) (TIP + SPACING).map { option ->
+            option.copy(capability = null, valueRange = when(option.id) {
+                "aspect" -> .01f..1f
+                "spacing" -> .01f..2f
+                else -> option.valueRange
+            })
+        } else emptyList()
+        return (footprintOptions + forFamily(preset.identity.family) + BrushMaterialOptions.forPreset(preset) + DualBrushEditorOptions.forPreset(preset) + BrushAdvancedOptions.forPreset(preset)).distinctBy { it.id }
             .groupBy { it.group }.mapNotNull { (group, options) ->
             val executable = options.filter { option -> option.hasExecutableEdit(preset) }
             if (executable.isEmpty()) null else group to executable
         } + listOf(BrushOptionGroup.SOURCES to emptyList())
+    }
 
     private fun BrushOptionDescriptor.hasExecutableEdit(preset: BrushPresetV5): Boolean {
         val current = get(preset)

@@ -58,6 +58,9 @@ class BrushMaterialEditorTest {
             val source=preset(BrushFamily.DECORATION).copy(tipTexture=TipTextureSettings(procedural=false,assetPath=file.path),
                 stamp=StampSettings(), spacing=SpacingSettings(value=.2f),
                 dual=DualBrushSettings(listOf(file.path),compositeMode=DualCompositeMode.MULTIPLY,textureGrain=TextureGrainSettings(file.path,1f)))
+            val ink=source.copy(identity=source.identity.copy(family=BrushFamily.INK),dual=null)
+            val inkOptions=BrushOptionDescriptors.productionPanels(ink).flatMap { it.second }
+            assertFalse(render(ink).contentEquals(render(inkOptions.single { it.id=="aspect" }.apply(ink,.25f))))
             val options=BrushOptionDescriptors.productionPanels(source).flatMap { it.second }
             val normal=render(source)
             for((id,value) in listOf("dualSize" to .25f,"dualFlow" to .15f,"dualTextureDepth" to 0f)) {
