@@ -49,17 +49,20 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeAccumulateStampCoverage(
         grain_density, grain_cosine, grain_sine, grain_wavelength, grain_movement, grain_phase_x, grain_phase_y}) {
         if (!std::isfinite(value)) return JNI_FALSE;
     }
-    jbyte* tip = env->GetByteArrayElements(tip_array, nullptr);
+    // One bounded tile ROI only. Validation is complete before pinning; inside the critical
+    // region there are no allocations, blocking operations or JNI calls except nested pin/release.
+    // Avoid copying immutable tip/grain arrays again for every stamp that intersects a tile.
+    jbyte* tip = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(tip_array, nullptr));
     if (tip == nullptr) return JNI_FALSE;
-    jbyte* grain = grain_array == nullptr ? nullptr : env->GetByteArrayElements(grain_array, nullptr);
+    jbyte* grain = grain_array == nullptr ? nullptr : static_cast<jbyte*>(env->GetPrimitiveArrayCritical(grain_array, nullptr));
     if (grain_array != nullptr && grain == nullptr) {
-        env->ReleaseByteArrayElements(tip_array, tip, JNI_ABORT);
+        env->ReleasePrimitiveArrayCritical(tip_array, tip, JNI_ABORT);
         return JNI_FALSE;
     }
-    jbyte* destination = env->GetByteArrayElements(destination_array, nullptr);
+    jbyte* destination = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(destination_array, nullptr));
     if (destination == nullptr) {
-        if (grain != nullptr) env->ReleaseByteArrayElements(grain_array, grain, JNI_ABORT);
-        env->ReleaseByteArrayElements(tip_array, tip, JNI_ABORT);
+        if (grain != nullptr) env->ReleasePrimitiveArrayCritical(grain_array, grain, JNI_ABORT);
+        env->ReleasePrimitiveArrayCritical(tip_array, tip, JNI_ABORT);
         return JNI_FALSE;
     }
     for (int y = top; y < bottom; ++y) for (int x = left; x < right; ++x) {
@@ -88,9 +91,9 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeAccumulateStampCoverage(
         const int existing = static_cast<std::uint8_t>(destination[index]);
         destination[index] = static_cast<jbyte>(std::min(255, incoming + existing * (255 - incoming) / 255));
     }
-    env->ReleaseByteArrayElements(destination_array, destination, 0);
-    if (grain != nullptr) env->ReleaseByteArrayElements(grain_array, grain, JNI_ABORT);
-    env->ReleaseByteArrayElements(tip_array, tip, JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(destination_array, destination, 0);
+    if (grain != nullptr) env->ReleasePrimitiveArrayCritical(grain_array, grain, JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(tip_array, tip, JNI_ABORT);
     return JNI_TRUE;
 }
 
@@ -132,17 +135,17 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeCompositeDualCoverage(
         required > env->GetArrayLength(destination_array) ||
         (primary_array != nullptr && required > env->GetArrayLength(primary_array)) ||
         (secondary_array != nullptr && required > env->GetArrayLength(secondary_array))) return JNI_FALSE;
-    jbyte* primary = primary_array == nullptr ? nullptr : env->GetByteArrayElements(primary_array, nullptr);
+    jbyte* primary = primary_array == nullptr ? nullptr : static_cast<jbyte*>(env->GetPrimitiveArrayCritical(primary_array, nullptr));
     if (primary_array != nullptr && primary == nullptr) return JNI_FALSE;
-    jbyte* secondary = secondary_array == nullptr ? nullptr : env->GetByteArrayElements(secondary_array, nullptr);
+    jbyte* secondary = secondary_array == nullptr ? nullptr : static_cast<jbyte*>(env->GetPrimitiveArrayCritical(secondary_array, nullptr));
     if (secondary_array != nullptr && secondary == nullptr) {
-        if (primary != nullptr) env->ReleaseByteArrayElements(primary_array, primary, JNI_ABORT);
+        if (primary != nullptr) env->ReleasePrimitiveArrayCritical(primary_array, primary, JNI_ABORT);
         return JNI_FALSE;
     }
-    jint* destination = env->GetIntArrayElements(destination_array, nullptr);
+    jint* destination = static_cast<jint*>(env->GetPrimitiveArrayCritical(destination_array, nullptr));
     if (destination == nullptr) {
-        if (secondary != nullptr) env->ReleaseByteArrayElements(secondary_array, secondary, JNI_ABORT);
-        if (primary != nullptr) env->ReleaseByteArrayElements(primary_array, primary, JNI_ABORT);
+        if (secondary != nullptr) env->ReleasePrimitiveArrayCritical(secondary_array, secondary, JNI_ABORT);
+        if (primary != nullptr) env->ReleasePrimitiveArrayCritical(primary_array, primary, JNI_ABORT);
         return JNI_FALSE;
     }
     const auto rgb = static_cast<std::uint32_t>(color);
@@ -157,9 +160,9 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeCompositeDualCoverage(
             (alpha << 24) | (((rgb >> 16 & 255) * alpha / 255) << 16) |
             (((rgb >> 8 & 255) * alpha / 255) << 8) | ((rgb & 255) * alpha / 255));
     }
-    env->ReleaseIntArrayElements(destination_array, destination, 0);
-    if (secondary != nullptr) env->ReleaseByteArrayElements(secondary_array, secondary, JNI_ABORT);
-    if (primary != nullptr) env->ReleaseByteArrayElements(primary_array, primary, JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(destination_array, destination, 0);
+    if (secondary != nullptr) env->ReleasePrimitiveArrayCritical(secondary_array, secondary, JNI_ABORT);
+    if (primary != nullptr) env->ReleasePrimitiveArrayCritical(primary_array, primary, JNI_ABORT);
     return JNI_TRUE;
 }
 
@@ -186,17 +189,17 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeDepositUniformStamp(
         grain_density, grain_cosine, grain_sine, grain_wavelength, grain_movement, grain_phase_x, grain_phase_y}) {
         if (!std::isfinite(value)) return JNI_FALSE;
     }
-    jbyte* tip = env->GetByteArrayElements(tip_array, nullptr);
+    jbyte* tip = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(tip_array, nullptr));
     if (tip == nullptr) return JNI_FALSE;
-    jbyte* grain = grain_array == nullptr ? nullptr : env->GetByteArrayElements(grain_array, nullptr);
+    jbyte* grain = grain_array == nullptr ? nullptr : static_cast<jbyte*>(env->GetPrimitiveArrayCritical(grain_array, nullptr));
     if (grain_array != nullptr && grain == nullptr) {
-        env->ReleaseByteArrayElements(tip_array, tip, JNI_ABORT);
+        env->ReleasePrimitiveArrayCritical(tip_array, tip, JNI_ABORT);
         return JNI_FALSE;
     }
-    jint* destination = env->GetIntArrayElements(destination_array, nullptr);
+    jint* destination = static_cast<jint*>(env->GetPrimitiveArrayCritical(destination_array, nullptr));
     if (destination == nullptr) {
-        if (grain != nullptr) env->ReleaseByteArrayElements(grain_array, grain, JNI_ABORT);
-        env->ReleaseByteArrayElements(tip_array, tip, JNI_ABORT);
+        if (grain != nullptr) env->ReleasePrimitiveArrayCritical(grain_array, grain, JNI_ABORT);
+        env->ReleasePrimitiveArrayCritical(tip_array, tip, JNI_ABORT);
         return JNI_FALSE;
     }
     for (int y = top; y < bottom; ++y) for (int x = left; x < right; ++x) {
@@ -232,8 +235,8 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeDepositUniformStamp(
         const auto blue = std::min(255u, (rgb & 255) * incoming / 255 + (old & 255) * inverse / 255);
         destination[index] = static_cast<jint>((alpha << 24) | (red << 16) | (green << 8) | blue);
     }
-    env->ReleaseIntArrayElements(destination_array, destination, 0);
-    if (grain != nullptr) env->ReleaseByteArrayElements(grain_array, grain, JNI_ABORT);
-    env->ReleaseByteArrayElements(tip_array, tip, JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(destination_array, destination, 0);
+    if (grain != nullptr) env->ReleasePrimitiveArrayCritical(grain_array, grain, JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(tip_array, tip, JNI_ABORT);
     return JNI_TRUE;
 }

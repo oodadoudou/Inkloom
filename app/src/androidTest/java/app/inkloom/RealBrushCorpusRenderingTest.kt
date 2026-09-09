@@ -388,15 +388,26 @@ class RealBrushCorpusRenderingTest {
         }
         try {
             val frameTimes = ArrayList<Long>(90)
+            val inputTimes = ArrayList<Long>(90)
+            val workerTimes = ArrayList<Long>(90)
+            val presentationTimes = ArrayList<Long>(90)
             instrumentation.runOnMainSync {
                 view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 120f, 620f, 100L))
                 repeat(90) { index ->
                     val started = android.os.SystemClock.elapsedRealtimeNanos()
                     view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 128f + index * 8f, 620f + (index % 7) * 3f, 110L + index))
+                    val inputEnded = android.os.SystemClock.elapsedRealtimeNanos()
                     view.awaitV5StrokeWorkerIdleForTest()
+                    val workerEnded = android.os.SystemClock.elapsedRealtimeNanos()
                     bitmap.eraseColor(Color.TRANSPARENT)
                     view.draw(Canvas(bitmap))
-                    if (index >= 8) frameTimes += android.os.SystemClock.elapsedRealtimeNanos() - started
+                    val ended = android.os.SystemClock.elapsedRealtimeNanos()
+                    if (index >= 8) {
+                        frameTimes += ended - started
+                        inputTimes += inputEnded - started
+                        workerTimes += workerEnded - inputEnded
+                        presentationTimes += ended - workerEnded
+                    }
                 }
             }
             view.awaitV5StrokeWorkerIdleForTest()
@@ -408,6 +419,12 @@ class RealBrushCorpusRenderingTest {
             }
             view.awaitV5StrokeWorkerIdleForTest()
             instrumentation.runOnMainSync { }
+            fun stageP95(values: List<Long>): Float {
+                val ordered = values.sorted()
+                return ordered[(ordered.size * 95 / 100).coerceAtMost(ordered.lastIndex)] / 1_000_000f
+            }
+            Log.i("InkloomV5Perf", "real_sut_stage=${brush.name} input_p95=${stageP95(inputTimes)} " +
+                "worker_p95=${stageP95(workerTimes)} presentation_p95=${stageP95(presentationTimes)}")
             val sorted = frameTimes.sorted()
             val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
             Log.i(
