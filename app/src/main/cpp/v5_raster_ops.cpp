@@ -612,6 +612,26 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeUnpremultiplyInPlace(
     return JNI_TRUE;
 }
 
+extern "C" JNIEXPORT jboolean JNICALL
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativePremultiplyInPlace(
+    JNIEnv* env, jobject, jintArray pixels_array) {
+    if (pixels_array == nullptr) return JNI_FALSE;
+    const jsize size = env->GetArrayLength(pixels_array);
+    auto* pixels = static_cast<jint*>(env->GetPrimitiveArrayCritical(pixels_array, nullptr));
+    if (pixels == nullptr) return JNI_FALSE;
+    for (jsize index = 0; index < size; ++index) {
+        const std::uint32_t pixel = static_cast<std::uint32_t>(pixels[index]);
+        const std::uint32_t alpha = pixel >> 24;
+        if (alpha == 0 || alpha == 255) continue;
+        const auto red = (((pixel >> 16) & 255) * alpha + 127) / 255;
+        const auto green = (((pixel >> 8) & 255) * alpha + 127) / 255;
+        const auto blue = ((pixel & 255) * alpha + 127) / 255;
+        pixels[index] = static_cast<jint>((alpha << 24) | (red << 16) | (green << 8) | blue);
+    }
+    env->ReleasePrimitiveArrayCritical(pixels_array, pixels, 0);
+    return JNI_TRUE;
+}
+
 extern "C" JNIEXPORT jint JNICALL
 Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeNonTransparentPixelCount(
     JNIEnv* env,
@@ -1186,4 +1206,42 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeAffineSelectionAlpha(
     env->ReleasePrimitiveArrayCritical(input_array, input, JNI_ABORT);
     env->ReleasePrimitiveArrayCritical(output_array, output, 0);
     return non_zero;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeSamplePigmentBuckets(
+    JNIEnv* env, jobject, jintArray pixels_array, jint width, jint height,
+    jint columns, jint rows, jfloatArray output_array) {
+#pragma clang fp contract(off)
+    if (!pixels_array || !output_array || width <= 0 || height <= 0 || columns < 2 || columns > 32 || rows < 2 || rows > 32 ||
+        static_cast<std::int64_t>(width) * height > env->GetArrayLength(pixels_array) ||
+        columns * rows * 4 > env->GetArrayLength(output_array)) return JNI_FALSE;
+    auto* output = env->GetFloatArrayElements(output_array, nullptr);
+    if (!output) return JNI_FALSE;
+    auto* pixels = static_cast<jint*>(env->GetPrimitiveArrayCritical(pixels_array, nullptr));
+    if (!pixels) { env->ReleaseFloatArrayElements(output_array, output, JNI_ABORT); return JNI_FALSE; }
+    for (int row = 0; row < rows; ++row) {
+        const int top = std::clamp(static_cast<int>(std::floor(row * static_cast<float>(height) / rows)), 0, height - 1);
+        const int bottom = std::clamp(static_cast<int>(std::ceil((row + 1) * static_cast<float>(height) / rows)), top + 1, height);
+        for (int col = 0; col < columns; ++col) {
+            const int left = std::clamp(static_cast<int>(std::floor(col * static_cast<float>(width) / columns)), 0, width - 1);
+            const int right = std::clamp(static_cast<int>(std::ceil((col + 1) * static_cast<float>(width) / columns)), left + 1, width);
+            float a = 0, r = 0, g = 0, b = 0;
+            for (int y = top; y < bottom; ++y) for (int x = left; x < right; ++x) {
+                const auto color = static_cast<std::uint32_t>(pixels[static_cast<std::size_t>(y) * width + x]);
+                const float alpha = (color >> 24) / 255.f;
+                a += alpha;
+                r += ((color >> 16) & 255) / 255.f * alpha;
+                g += ((color >> 8) & 255) / 255.f * alpha;
+                b += (color & 255) / 255.f * alpha;
+            }
+            const float scale = 1.f / ((bottom - top) * (right - left));
+            const int index = (row * columns + col) * 4;
+            output[index] = r * scale; output[index + 1] = g * scale;
+            output[index + 2] = b * scale; output[index + 3] = a * scale;
+        }
+    }
+    env->ReleasePrimitiveArrayCritical(pixels_array, pixels, JNI_ABORT);
+    env->ReleaseFloatArrayElements(output_array, output, 0);
+    return JNI_TRUE;
 }

@@ -18,10 +18,11 @@ internal class PigmentBucketReservoir(
     private val green = FloatArray(columns * rows)
     private val blue = FloatArray(columns * rows)
     private val alpha = FloatArray(columns * rows)
+    private val sampled = FloatArray(columns * rows * 4)
     private var initialized = false
 
     val bucketCount: Int get() = columns * rows
-    val retainedByteSize: Long get() = bucketCount.toLong() * 4 * Float.SIZE_BYTES
+    val retainedByteSize: Long get() = bucketCount.toLong() * 8 * Float.SIZE_BYTES
     val isInitialized: Boolean get() = initialized
     val hasPigment: Boolean get() = alpha.any { it > MIN_ALPHA }
 
@@ -33,6 +34,16 @@ internal class PigmentBucketReservoir(
         require(width > 0 && height > 0 && pixels.size >= width * height)
         val mix = if (initialized) rate.coerceIn(0f, 1f) else 1f
         val retain = 1f - mix
+        if (NativeRasterOps.samplePigmentBuckets(pixels, width, height, columns, rows, sampled)) {
+            for (index in 0 until bucketCount) {
+                red[index] = red[index] * retain + sampled[index * 4] * mix
+                green[index] = green[index] * retain + sampled[index * 4 + 1] * mix
+                blue[index] = blue[index] * retain + sampled[index * 4 + 2] * mix
+                alpha[index] = alpha[index] * retain + sampled[index * 4 + 3] * mix
+            }
+            initialized = true
+            return
+        }
         for (row in 0 until rows) {
             val top = floor(row * height / rows.toFloat()).toInt().coerceIn(0, height - 1)
             val bottom = ceil((row + 1) * height / rows.toFloat()).toInt().coerceIn(top + 1, height)

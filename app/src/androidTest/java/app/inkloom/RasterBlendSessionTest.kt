@@ -64,7 +64,7 @@ class RasterBlendSessionTest {
             session.blend(200f, 200f, 230f, 210f, 24f, .8f, .7f)
             assertTrue(session.workingByteSize in 1..(4L * 128 * 128 * 4))
             assertEquals(64, session.pigmentBucketCount)
-            assertEquals(64L * 4 * Float.SIZE_BYTES, session.pigmentReservoirByteSize)
+            assertEquals(64L * 8 * Float.SIZE_BYTES, session.pigmentReservoirByteSize)
         }
         bitmap.recycle()
     }

@@ -9,6 +9,51 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class NativePremultipliedTileCompositeTest {
+    @Test fun nativePigmentPickupMatchesExactFloatReference() {
+        for ((width, height) in listOf(1 to 1, 3 to 5, 26 to 26, 37 to 29, 256 to 64)) {
+            val pixels = IntArray(width * height) { i -> i * 1664525 + 1013904223 }
+            for (buckets in listOf(2, 8, 32)) {
+                val expected = FloatArray(buckets * buckets * 4)
+                for (row in 0 until buckets) for (col in 0 until buckets) {
+                    val top = kotlin.math.floor(row * height / buckets.toFloat()).toInt().coerceIn(0, height - 1)
+                    val bottom = kotlin.math.ceil((row + 1) * height / buckets.toFloat()).toInt().coerceIn(top + 1, height)
+                    val left = kotlin.math.floor(col * width / buckets.toFloat()).toInt().coerceIn(0, width - 1)
+                    val right = kotlin.math.ceil((col + 1) * width / buckets.toFloat()).toInt().coerceIn(left + 1, width)
+                    val index = (row * buckets + col) * 4
+                    for (y in top until bottom) for (x in left until right) {
+                        val color = pixels[y * width + x]
+                        val a = (color ushr 24) / 255f
+                        expected[index] += (color ushr 16 and 255) / 255f * a
+                        expected[index + 1] += (color ushr 8 and 255) / 255f * a
+                        expected[index + 2] += (color and 255) / 255f * a
+                        expected[index + 3] += a
+                    }
+                    val scale = 1f / ((bottom - top) * (right - left))
+                    repeat(4) { expected[index + it] *= scale }
+                }
+                val actual = FloatArray(expected.size)
+                assertTrue(NativeRasterOps.samplePigmentBuckets(pixels, width, height, buckets, buckets, actual))
+                assertArrayEquals("$width x $height, $buckets buckets", expected, actual, 0f)
+            }
+        }
+    }
+
+    @Test fun nativePremultiplyMatchesEveryAlphaAndChannelValue() {
+        val actual = IntArray(65536) { i ->
+            val alpha = i / 256; val channel = i % 256
+            (alpha shl 24) or (channel shl 16) or ((255 - channel) shl 8) or ((channel * 73) % 256)
+        }
+        val expected = actual.map { pixel ->
+            val alpha = pixel ushr 24
+            if (alpha == 0 || alpha == 255) pixel else {
+                fun channel(shift: Int) = (((pixel ushr shift and 255) * alpha + 127) / 255) shl shift
+                (alpha shl 24) or channel(16) or channel(8) or channel(0)
+            }
+        }.toIntArray()
+        assertTrue(NativeRasterOps.premultiplyInPlace(actual))
+        assertArrayEquals(expected, actual)
+    }
+
     @Test fun nativePixelHashUsesStableArgbByteOrder() {
         val pixels = intArrayOf(0x00000000, 0xff123456.toInt(), 0x80402010.toInt())
         var expected = 14695981039346656037UL

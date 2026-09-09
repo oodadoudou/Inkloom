@@ -236,6 +236,15 @@ internal object NativeRasterOps {
     fun unpremultiplyInPlace(pixels: IntArray): Boolean =
         nativeLibraryLoaded && nativeUnpremultiplyInPlace(pixels)
 
+    /** RGBA footprint averages; false uses the host reference implementation. */
+    fun samplePigmentBuckets(pixels: IntArray, width: Int, height: Int, columns: Int, rows: Int, output: FloatArray): Boolean =
+        nativeLibraryLoaded && nativeSamplePigmentBuckets(pixels, width, height, columns, rows, output)
+
+    private external fun nativeSamplePigmentBuckets(pixels: IntArray, width: Int, height: Int, columns: Int, rows: Int, output: FloatArray): Boolean
+
+    fun premultiplyInPlace(pixels: IntArray): Boolean =
+        nativeLibraryLoaded && nativePremultiplyInPlace(pixels)
+
     /** Returns -1 when native execution is unavailable. */
     fun nonTransparentPixelCount(pixels: IntArray): Int =
         if (nativeLibraryLoaded) nativeNonTransparentPixelCount(pixels) else -1
@@ -452,6 +461,7 @@ internal object NativeRasterOps {
         blendMode: Int,
     ): Int
     private external fun nativeUnpremultiplyInPlace(pixels: IntArray): Boolean
+    private external fun nativePremultiplyInPlace(pixels: IntArray): Boolean
     private external fun nativeNonTransparentPixelCount(pixels: IntArray): Int
     private external fun nativeHashPremultipliedPixels(pixels: IntArray): Long
 

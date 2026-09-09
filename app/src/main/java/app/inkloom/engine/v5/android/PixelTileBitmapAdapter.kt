@@ -282,10 +282,12 @@ internal object PixelTileBitmapAdapter {
         }
         val pixels = IntArray(Math.multiplyExact(bitmap.width, bitmap.height))
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        var index = 0
-        while (index < pixels.size) {
-            pixels[index] = premultiply(pixels[index])
-            index++
+        if (!NativeRasterOps.premultiplyInPlace(pixels)) {
+            var index = 0
+            while (index < pixels.size) {
+                pixels[index] = premultiply(pixels[index])
+                index++
+            }
         }
         transaction.replacePremultipliedPixels(destination, pixels)
     }
@@ -299,10 +301,12 @@ internal object PixelTileBitmapAdapter {
         require(bitmap.width == destination.width && bitmap.height == destination.height)
         require(pixels.size == bitmap.width * bitmap.height)
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        var index = 0
-        while (index < pixels.size) {
-            pixels[index] = premultiply(pixels[index])
-            index++
+        if (!NativeRasterOps.premultiplyInPlace(pixels)) {
+            var index = 0
+            while (index < pixels.size) {
+                pixels[index] = premultiply(pixels[index])
+                index++
+            }
         }
         transaction.replacePremultipliedPixels(destination, pixels)
     }

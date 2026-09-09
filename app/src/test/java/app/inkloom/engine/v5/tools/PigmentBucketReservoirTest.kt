@@ -37,6 +37,6 @@ class PigmentBucketReservoirTest {
         val color = output[0]
         assertTrue(((color ushr 16) and 0xff) > (color and 0xff))
         assertTrue((color and 0xff) > 0)
-        assertEquals(4L * 4 * Float.SIZE_BYTES, reservoir.retainedByteSize)
+        assertEquals(4L * 8 * Float.SIZE_BYTES, reservoir.retainedByteSize)
     }
 }
