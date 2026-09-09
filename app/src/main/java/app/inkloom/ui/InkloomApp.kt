@@ -6180,7 +6180,7 @@ private fun ProcreateSidebar(
             description = tr("Brush size", "笔刷大小"),
             display = { progress ->
                 val value = .5f + progress * progress * 399.5f
-                if (value < 10f) "%.1f".format(value) else value.toInt().toString()
+                (if (value < 10f) "%.1f".format(value) else value.toInt().toString()) + " px"
             },
             onProgress = { onSize(.5f + it * it * 399.5f) },
         )

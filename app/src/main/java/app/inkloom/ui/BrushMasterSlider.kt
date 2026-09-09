@@ -20,7 +20,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
@@ -107,11 +114,28 @@ internal fun BrushMasterSlider(
             drawCircle(Color(0xFF262626), 7f, Offset(centerX, thumbY), style = Stroke(1.5f))
         }
         draft?.let { value ->
-            Surface(
-                Modifier.align(Alignment.CenterEnd).graphicsLayer(translationX = 62f),
-                shape = RoundedCornerShape(12.dp), color = Color.White,
-                border = CardDefaults.outlinedCardBorder(),
-            ) { Text(display(value), Modifier.padding(horizontal = 10.dp, vertical = 5.dp), color = Ink, fontSize = 11.sp) }
+            val gap = with(LocalDensity.current) { 12.dp.roundToPx() }
+            // A separate non-focusable window escapes the narrow dock's rounded clipping.
+            // Place next to the current thumb; flip inward when the dock is at the right edge.
+            Popup(
+                popupPositionProvider = remember(value, gap) { object : PopupPositionProvider {
+                    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize,
+                        layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+                        val right = anchorBounds.right + gap
+                        val x = if (right + popupContentSize.width <= windowSize.width - gap) right
+                            else anchorBounds.left - gap - popupContentSize.width
+                        val thumbY = anchorBounds.top + 10 + ((anchorBounds.height - 20) * (1f - value)).toInt()
+                        return IntOffset(x.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0)),
+                            (thumbY - popupContentSize.height / 2).coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0)))
+                    }
+                } },
+                properties = PopupProperties(focusable = false, dismissOnBackPress = false, dismissOnClickOutside = false),
+            ) {
+                Surface(shape = RoundedCornerShape(12.dp), color = Color.White,
+                    border = CardDefaults.outlinedCardBorder()) {
+                    Text(display(value), Modifier.padding(horizontal = 10.dp, vertical = 5.dp), color = Ink, fontSize = 13.sp)
+                }
+            }
         }
     }
 }

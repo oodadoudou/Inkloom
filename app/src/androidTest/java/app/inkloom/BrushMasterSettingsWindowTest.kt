@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ApplicationProvider
@@ -112,6 +113,40 @@ class BrushMasterSettingsWindowTest {
             drawAt(.4f)
             assertEquals("system-hb-pencil", canvas().lastBrushExecutionFingerprint?.presetId)
         } finally { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    @Test fun sizeDragShowsPixelReadoutOutsideTheNarrowDockWithoutCommittingEarly() {
+        openPencil()
+        tap("Close brushes panel")
+        val before = canvas().baseWidth
+        val slider = bounds("Brush size")
+        dragMaster("Brush size", cancel = true) {
+            val labels = compose.onAllNodesWithText(" px", substring = true).fetchSemanticsNodes()
+            assertEquals("Visible numeric size with units", 1, labels.size)
+            val label = labels.single()
+            assertTrue(label.boundsInWindow.width > 30f)
+            val automation = instrumentation.uiAutomation
+            val info = automation.serviceInfo
+            info.flags = info.flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+            automation.serviceInfo = info
+            var screenBounds: android.graphics.Rect? = null
+            fun visit(node: android.view.accessibility.AccessibilityNodeInfo?) {
+                if (node == null) return
+                if (node.text?.toString()?.endsWith(" px") == true) screenBounds = android.graphics.Rect().also(node::getBoundsInScreen)
+                repeat(node.childCount) { visit(node.getChild(it)) }
+            }
+            compose.waitUntil(3_000) {
+                automation.clearCache()
+                automation.windows.forEach { visit(it.root) }
+                screenBounds != null
+            }
+            assertTrue("Readout must escape the dock clip: $screenBounds vs $slider", requireNotNull(screenBounds).left >= slider.right)
+            assertEquals(before, canvas().baseWidth, .001f)
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
+                "screencap -p /data/local/tmp/inkloom-173-size-readout.png")).use { it.readBytes() }
+        }
+        assertTrue(compose.onAllNodesWithText(" px", substring = true).fetchSemanticsNodes().isEmpty())
+        assertEquals(before, canvas().baseWidth, .001f)
     }
 
     @Test fun eraserMastersSurviveSwitchingWhilePaintMastersStayIndependent() {
