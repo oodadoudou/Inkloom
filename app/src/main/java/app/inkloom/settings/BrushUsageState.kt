@@ -11,11 +11,26 @@ data class BrushUsageState(
     val recentIds: List<String> = emptyList(),
     val pinnedIds: List<String> = emptyList(),
     val category: String? = null,
+    val categoryPins: Map<String, List<String>> = emptyMap(),
     val lastPaintBrushId: String? = null,
     val lastEraserBrushId: String? = null,
     val scrollPositions: Map<String, BrushLibraryScrollPosition> = emptyMap(),
     val categoryScroll: BrushLibraryScrollPosition = BrushLibraryScrollPosition(),
 ) {
+    fun toggleCategoryPin(category: String, id: String): BrushUsageState {
+        if (id.isBlank()) return this
+        val old = categoryPins[category].orEmpty()
+        val updated = if (id in old) old - id else listOf(id) + old
+        return copy(categoryPins = if (updated.isEmpty()) categoryPins - category
+            else categoryPins + (category to updated))
+    }
+
+    fun orderInCategory(category: String, ids: List<String>): List<String> {
+        val pins = categoryPins[category].orEmpty().filter { it in ids }
+        val pinned = pins.toHashSet()
+        return pins + ids.filterNot { it in pinned }
+    }
+
     fun used(id: String, eraser: Boolean? = null): BrushUsageState {
         if (id.isBlank()) return this
         return copy(

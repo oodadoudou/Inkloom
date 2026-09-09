@@ -151,6 +151,18 @@ class BrushBatchManagementTest {
         )
     }
 
+    @Test fun swipeDeleteRemovesOnlyTheChosenImportedBrush() {
+        openBrushes()
+        val store = BrushMetadataStore(composeRule.activity)
+        val before = store.load()
+        val row = windowBounds("Brush preset Batch A")
+        windowDrag(Offset(row.left + row.width() * .7f, row.exactCenterY()),
+            Offset(row.left + row.width() * .08f, row.exactCenterY()))
+        composeRule.onNodeWithText("Delete").performClick()
+        composeRule.waitUntil(5_000) { store.load().none { it.id == "batch-a" } }
+        assertEquals(before.filterNot { it.id == "batch-a" }, store.load())
+    }
+
     @Test fun ordinaryListAndGridSwipesOnlyScrollBrushes() {
         openBrushes()
         val store = BrushMetadataStore(composeRule.activity)

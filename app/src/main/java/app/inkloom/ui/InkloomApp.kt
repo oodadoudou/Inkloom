@@ -8786,7 +8786,7 @@ private fun ProcreateBrushLibrary(
     }
     val visibleLibraryBrushes = usableLibraryBrushes.filterNot(ImportedBrush::hidden)
     val recentBrushIds = usage.displayedIds(visibleLibraryBrushes.mapTo(linkedSetOf(), ImportedBrush::id))
-    val displayed = if (selectedCategory == recentCategory) {
+    val categoryBrushes = if (selectedCategory == recentCategory) {
         val byId = visibleLibraryBrushes.associateBy(ImportedBrush::id)
         recentBrushIds.mapNotNull(byId::get)
     } else visibleLibraryBrushes.filter { brush ->
@@ -8795,6 +8795,10 @@ private fun ProcreateBrushLibrary(
             ungroupedLabel -> brush.format != BrushFormat.SYSTEM
             else -> if (brush.format == BrushFormat.SYSTEM) brush.groupName == selectedCategory else BrushGroupOperations.isWithin(brush.groupName, selectedCategory)
         }
+    }
+    val displayed = if (selectedCategory == recentCategory) categoryBrushes else {
+        val byId = categoryBrushes.associateBy(ImportedBrush::id)
+        usage.orderInCategory(selectedCategory, categoryBrushes.map(ImportedBrush::id)).mapNotNull(byId::get)
     }
     LaunchedEffect(brushes) {
         val availableIds = usableLibraryBrushes.mapTo(linkedSetOf(), ImportedBrush::id)
@@ -8829,15 +8833,23 @@ private fun ProcreateBrushLibrary(
 
     val quickBrush = usableLibraryBrushes.firstOrNull { it.id == selectedBrushId }
     @Composable fun RecentActions(brush: ImportedBrush, content: @Composable () -> Unit) {
+        val recent = selectedCategory == recentCategory
+        val pinned = brush.id in (if (recent) usage.pinnedIds else usage.categoryPins[selectedCategory].orEmpty())
         RecentBrushActions(
-            enabled = selectedCategory == recentCategory && !managingBrushes,
-            pinned = brush.id in usage.pinnedIds, language = settings.language,
-            onPin = { onUsage(if (brush.id in usage.pinnedIds) usage.unpin(brush.id) else usage.pin(brush.id)) },
-            onFind = {
+            enabled = !managingBrushes,
+            pinned = pinned, language = settings.language,
+            onPin = { onUsage(if (recent) {
+                if (pinned) usage.unpin(brush.id) else usage.pin(brush.id)
+            } else usage.toggleCategoryPin(selectedCategory, brush.id)) },
+            onFind = if (recent) ({
                 onBrushSelected(brush)
                 selectedCategory = allCategories.firstOrNull { it.equals(brush.groupName, true) } ?: ungroupedLabel
-            },
-            onClear = { onUsage(usage.clear(brush.id)) }, content = content,
+            }) else null,
+            onClear = if (!recent && brush.format == BrushFormat.SYSTEM) null else ({
+                if (recent) onUsage(usage.clear(brush.id)) else onDeleteBrush(brush.id)
+            }),
+            clearText = if (recent) null else if (brush.format == BrushFormat.SYSTEM) tr("Hide", "隐藏") else tr("Delete", "删除"),
+            content = content,
         )
     }
     val panelShape = RoundedCornerShape(14.dp)
@@ -9095,7 +9107,7 @@ private fun ProcreateBrushLibrary(
                         ) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text(brush.name, Modifier.weight(1f), color = Ink, fontSize = 10.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                if (brush.id in usage.pinnedIds) Icon(Icons.Outlined.PushPin, tr("Pinned brush", "已置顶笔刷"), Modifier.size(16.dp))
+                                if (brush.id in (if (selectedCategory == recentCategory) usage.pinnedIds else usage.categoryPins[selectedCategory].orEmpty())) Icon(Icons.Outlined.PushPin, tr("Pinned brush", "已置顶笔刷"), Modifier.size(16.dp))
                                 if (!managingBrushes && selectedCategory != recentCategory) BrushMoveHandle(brush)
                             }
                             Spacer(Modifier.height(4.dp))
@@ -9128,7 +9140,7 @@ private fun ProcreateBrushLibrary(
                             Row(Modifier.fillMaxWidth().height(26.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(brush.name, Modifier.weight(1f), color = Ink, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                 if (batchSelected) Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp), tint = Ink)
-                                if (brush.id in usage.pinnedIds) Icon(Icons.Outlined.PushPin, tr("Pinned brush", "已置顶笔刷"), Modifier.size(16.dp))
+                                if (brush.id in (if (selectedCategory == recentCategory) usage.pinnedIds else usage.categoryPins[selectedCategory].orEmpty())) Icon(Icons.Outlined.PushPin, tr("Pinned brush", "已置顶笔刷"), Modifier.size(16.dp))
                                 if (!managingBrushes && selectedCategory != recentCategory) BrushMoveHandle(brush)
                             }
                             BrushTipPreview(brush, Modifier.fillMaxWidth().weight(1f))

@@ -34,6 +34,19 @@ class BrushRecentWindowTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    @Test fun currentCategorySwipePinSurvivesClosingAndUnpinRestoresOrder() {
+        tap("New Note"); tap("Create"); tap("Brushes"); tap("Brush category Pencil")
+        val store = BrushUsageStore(context)
+        swipeAndTap("Brush preset HB Pencil", "Pin")
+        compose.waitUntil(5_000) { "system-hb-pencil" in store.load().categoryPins["Pencil"].orEmpty() }
+        assertTrue(store.load().pinnedIds.isEmpty())
+        tap("Close brushes panel"); tap("Brushes")
+        bounds("Pinned brush")
+        swipeAndTap("Brush preset HB Pencil", "Unpin")
+        compose.waitUntil(5_000) { store.load().categoryPins["Pencil"].isNullOrEmpty() }
+        bounds("Brush preset HB Pencil")
+    }
+
     @Test fun swipePinFindAndClearKeepFactoryBrushAndSurviveReopening() {
         tap("New Note"); tap("Create"); tap("Brushes")
         tap("Brush category Pencil"); tap("Brush preset HB Pencil")

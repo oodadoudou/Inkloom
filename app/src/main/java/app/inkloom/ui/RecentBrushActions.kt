@@ -30,23 +30,21 @@ internal fun RecentBrushActions(
     pinned: Boolean,
     language: UiLanguage,
     onPin: () -> Unit,
-    onFind: () -> Unit,
-    onClear: () -> Unit,
+    onFind: (() -> Unit)?,
+    onClear: (() -> Unit)?,
+    clearText: String? = null,
     content: @Composable () -> Unit,
 ) {
     if (!enabled) { content(); return }
     val pinLabel = if (pinned) language.text("Unpin", "取消置顶") else language.text("Pin", "置顶")
     val findLabel = language.text("Find", "查找原组")
-    val clearLabel = language.text("Clear", "清除记录")
+    val clearLabel = clearText ?: language.text("Clear", "清除记录")
+    val actions = listOfNotNull(pinLabel to onPin, onFind?.let { findLabel to it }, onClear?.let { clearLabel to it })
     var offset by remember { mutableFloatStateOf(0f) }
     BoxWithConstraints(Modifier.fillMaxWidth().clipToBounds().semantics {
-        customActions = listOf(
-            CustomAccessibilityAction(pinLabel) { onPin(); true },
-            CustomAccessibilityAction(findLabel) { onFind(); true },
-            CustomAccessibilityAction(clearLabel) { onClear(); true },
-        )
+        customActions = actions.map { (label, action) -> CustomAccessibilityAction(label) { action(); true } }
     }) {
-        val revealWidth = minOf(maxWidth, 210.dp)
+        val revealWidth = minOf(maxWidth, (actions.size * 70).dp)
         val widthPx = with(LocalDensity.current) { revealWidth.toPx() }
         Box(Modifier.fillMaxWidth().offset { IntOffset(offset.roundToInt(), 0) }
             .draggable(rememberDraggableState { delta -> offset = (offset + delta).coerceIn(-widthPx, 0f) },
@@ -61,7 +59,7 @@ internal fun RecentBrushActions(
                 .fillMaxHeight().clipToBounds().background(Color(0xFFECECEC))) {
                 Row(Modifier.align(Alignment.CenterEnd).requiredWidth(revealWidth).fillMaxHeight(),
                     verticalAlignment = Alignment.CenterVertically) {
-                    listOf(pinLabel to onPin, findLabel to onFind, clearLabel to onClear).forEach { (label, action) ->
+                    actions.forEach { (label, action) ->
                         TextButton(onClick = { offset = 0f; action() }, modifier = Modifier.weight(1f).fillMaxHeight()) {
                             Text(label, fontSize = 11.sp, maxLines = 2)
                         }

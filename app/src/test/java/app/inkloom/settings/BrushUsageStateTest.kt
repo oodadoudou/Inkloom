@@ -6,6 +6,20 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class BrushUsageStateTest {
+    @Test fun currentListPinsAreIndependentUnlimitedAndRestoreSourceOrder() {
+        val ids = (0..1023).map { "brush-$it" }
+        var state = BrushUsageState()
+        ids.forEach { state = state.toggleCategoryPin("CSP/Ink", it) }
+        assertEquals(ids.reversed(), state.orderInCategory("CSP/Ink", ids))
+        assertEquals(ids, state.orderInCategory("All", ids))
+        assertTrue(state.pinnedIds.isEmpty())
+        state = Json.decodeFromString<BrushUsageState>(Json.encodeToString(state)).used(ids.first())
+        assertEquals(ids.reversed(), state.orderInCategory("CSP/Ink", ids))
+        ids.forEach { state = state.toggleCategoryPin("CSP/Ink", it) }
+        assertEquals(ids, state.orderInCategory("CSP/Ink", ids))
+        assertTrue(state.categoryPins.isEmpty())
+    }
+
     @Test fun browsingLocationSurvivesSerializationAndToolChanges() {
         val state = BrushUsageState(category = "CSP/Ink", scrollPositions = mapOf(
             "list:CSP/Ink" to BrushLibraryScrollPosition(25, 37),
