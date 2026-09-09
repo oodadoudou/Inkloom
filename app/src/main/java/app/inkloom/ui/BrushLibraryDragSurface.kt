@@ -44,6 +44,9 @@ internal fun Modifier.brushLibraryDragSurface(
                 while (true) {
                     val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    // Compose marks synthetic cancellation packets consumed. They must never
+                    // be interpreted as a successful pointer-up over a drop target.
+                    if (change.isConsumed) break
                     change.consume()
                     currentMove.value(change.position)
                     if (!change.pressed) {

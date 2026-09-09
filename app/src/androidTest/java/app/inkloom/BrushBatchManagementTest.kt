@@ -235,9 +235,9 @@ class BrushBatchManagementTest {
             handleDrag("Brush preset Batch B", cancel = cancel)
         }
         handleDrag(null)
-        assertEquals("Dropping outside targets must not move records", before, store.load())
+        assertTrue("Dropping outside targets must not change any brush metadata", before == store.load())
         drag(cancel = true)
-        assertEquals(before, store.load())
+        assertTrue("Cancelled drag must not change any brush metadata", before == store.load())
         assertEquals(0, composeRule.onAllNodesWithContentDescription("Exit brush management").fetchSemanticsNodes().size)
         drag(cancel = false)
         composeRule.waitUntil(5_000) {
