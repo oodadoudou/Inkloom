@@ -27,6 +27,21 @@ import java.io.FileOutputStream
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasHoverCursorTest {
+    @Test fun nonBrushToolsExposeDistinctCursorsAndReturnToBrush() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val view = InkCanvasView(instrumentation.targetContext).apply { layout(0, 0, 800, 600) }
+            for ((tool, code) in listOf(EditorTool.EYEDROPPER to 1, EditorTool.FILL to 2, EditorTool.GRADIENT to 3, EditorTool.PEN to 0)) {
+                view.tool = tool
+                stylusHover(300f, 250f).also { assertTrue(view.onHoverEvent(it)); it.recycle() }
+                val state = view.hoverCursorSnapshot()
+                assertEquals(1f, state[0], 0f)
+                assertEquals(code.toFloat(), state[8], 0f)
+                assertEquals(300f, state[1], .01f)
+            }
+        }
+    }
+
     @Test
     fun stylusHoverUsesCurrentBrushDiameterAndTracksZoomedCoordinates() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()

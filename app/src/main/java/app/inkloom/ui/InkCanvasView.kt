@@ -595,6 +595,8 @@ class InkCanvasView(context: Context) : View(context) {
     private val brushSizePreviewPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val brushSizePreviewTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 30f; typeface = android.graphics.Typeface.DEFAULT_BOLD }
     private val hoverCursorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val toolCursorGlyph = ToolCursorGlyph()
+    private var hoverToolCode = 0
     private var hoverCursorVisible = false
     private var hoverCursorX = 0f
     private var hoverCursorY = 0f
@@ -625,6 +627,7 @@ class InkCanvasView(context: Context) : View(context) {
             if (field == value) return
             if (value != EditorTool.SELECT) { commitSelectionContour(); finishSelectionColorFill(true); finishSelectionTransform(apply = true) }
             field = value
+            hoverToolCode = ToolCursorGlyph.code(value)
             if (hoverCursorVisible) {
                 hoverCursorUsesEraser = value == EditorTool.ERASER
                 invalidateInternalHoverCursor()
@@ -1283,7 +1286,8 @@ class InkCanvasView(context: Context) : View(context) {
         val stylus = toolType == MotionEvent.TOOL_TYPE_STYLUS || toolType == MotionEvent.TOOL_TYPE_ERASER
         if (stylus) dispatchOrDeferStylusButtonTransitions(updateStylusButtonState(event.buttonState))
         val cursorTool = if (toolType == MotionEvent.TOOL_TYPE_ERASER) EditorTool.ERASER else resolveTool(event, toolType)
-        val drawableTool = cursorTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)
+        val drawableTool = ToolCursorGlyph.code(cursorTool) != 0 || cursorTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)
+        hoverToolCode = ToolCursorGlyph.code(cursorTool)
         when (event.actionMasked) {
             MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
                 if (!stylus || !drawableTool) {
@@ -2606,6 +2610,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun drawStylusHoverCursor(canvas: Canvas) {
         if (externalHoverCursor || !hoverCursorVisible || brushSizeDragActive) return
+        if (toolCursorGlyph.draw(canvas, hoverToolCode, hoverCursorX, hoverCursorY, resources.displayMetrics.density / viewportScale.coerceAtLeast(ViewportTransform.MINIMUM_SCALE))) return
         val footprint = hoverCursorFootprint()
         val zoom = viewportScale.coerceAtLeast(ViewportTransform.MINIMUM_SCALE)
         val radiusX = (footprint.first / 2f).coerceAtLeast(1.5f / zoom)
@@ -2645,6 +2650,7 @@ class InkCanvasView(context: Context) : View(context) {
             BrushCursorGeometry.fixedScreenRotation(rotation, viewportRotationDegrees, orientToScreen = false),
             if (followStylus) 1f else 0f,
             if (followStroke) 1f else 0f,
+            hoverToolCode.toFloat(),
         )
     }
 
@@ -2656,7 +2662,8 @@ class InkCanvasView(context: Context) : View(context) {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP -> {
                 val cursorTool = if (event.getToolType(pointerIndex) == MotionEvent.TOOL_TYPE_ERASER) EditorTool.ERASER else resolveTool(event, event.getToolType(pointerIndex))
-                if (cursorTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)) return
+                hoverToolCode = ToolCursorGlyph.code(cursorTool)
+                if (hoverToolCode == 0 && cursorTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)) return
                 val point = canvasPoint(event, pointerIndex)
                 updateHoverCursorPacket(
                     x = point.first,

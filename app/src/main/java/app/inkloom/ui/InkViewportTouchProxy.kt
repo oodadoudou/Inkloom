@@ -156,6 +156,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
     private fun drawCursor(canvas: Canvas) {
         canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
         if (!hoverVisible) return
+        if (toolCursorGlyph.draw(canvas, hoverToolCode, hoverX, hoverY, resources.displayMetrics.density)) return
         val radiusX = (hoverWidth / 2f).coerceAtLeast(1.5f)
         val radiusY = (hoverHeight / 2f).coerceAtLeast(1.5f)
         val checkpoint = canvas.save()
@@ -242,6 +243,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         }
         val canvas = target ?: return clearHoverCursor()
         val snapshot = canvas.hoverCursorSnapshot()
+        hoverToolCode = snapshot.getOrElse(8) { 0f }.toInt()
         if (snapshot[0] == 0f || !event.isStylusEvent()) return clearHoverCursor()
         val pointerIndex = event.stylusPointerIndex(activeStylusPointerId)
         if (pointerIndex < 0) return clearHoverCursor()
@@ -267,6 +269,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         if (event.actionMasked !in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP)) return
         val canvas = target ?: return clearHoverCursor()
         val snapshot = canvas.hoverCursorSnapshot()
+        hoverToolCode = snapshot.getOrElse(8) { 0f }.toInt()
         if (snapshot[0] == 0f) return clearHoverCursor()
         val pointerIndex = event.stylusPointerIndex(activeStylusPointerId)
         if (pointerIndex < 0) return clearHoverCursor()
@@ -290,9 +293,13 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         cursorSurface.clear()
     }
 
+    private val toolCursorGlyph = ToolCursorGlyph()
+    @Volatile private var hoverToolCode = 0
+
     private fun refreshCursorStyle() {
         val canvas = target ?: return
         val snapshot = canvas.hoverCursorSnapshot()
+        hoverToolCode = snapshot.getOrElse(8) { 0f }.toInt()
         hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(app.inkloom.document.ViewportTransform.MINIMUM_SCALE)
         hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(app.inkloom.document.ViewportTransform.MINIMUM_SCALE)
         hoverRotationDegrees = BrushCursorGeometry.normalizeDegrees(snapshot.getOrElse(5) { 0f }, hoverDynamicRotationDegrees)
