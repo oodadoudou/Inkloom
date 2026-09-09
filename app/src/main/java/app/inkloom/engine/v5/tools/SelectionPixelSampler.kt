@@ -15,6 +15,7 @@ internal class SelectionPixelSampler(
     private val source: SelectionSamplerSource = SelectionSamplerSource(pixels, selection),
 ) {
     fun selectedArgb(x: Float, y: Float): Int {
+        if (!x.isFinite() || !y.isFinite() || x < -2f || y < -2f || x > pixels.logicalWidth + 2f || y > pixels.logicalHeight + 2f) return 0
         if (interpolation == SelectionInterpolation.NEAREST) return atArgb(floor(x).toInt(), floor(y).toInt())
         var a = 0f; var r = 0f; var g = 0f; var b = 0f
         weights(x, y) { sx, sy, weight ->
@@ -30,6 +31,7 @@ internal class SelectionPixelSampler(
     }
 
     fun selectedF16(x: Float, y: Float): Long {
+        if (!x.isFinite() || !y.isFinite() || x < -2f || y < -2f || x > pixels.logicalWidth + 2f || y > pixels.logicalHeight + 2f) return 0L
         if (interpolation == SelectionInterpolation.NEAREST) {
             val sx = floor(x).toInt(); val sy = floor(y).toInt()
             return scaleF16(source.f16(sx, sy), alpha(sx, sy) / 255f)
@@ -48,6 +50,7 @@ internal class SelectionPixelSampler(
     }
 
     fun maskAlpha(x: Float, y: Float): Int {
+        if (!x.isFinite() || !y.isFinite() || x < -2f || y < -2f || x > selection.logicalWidth + 2f || y > selection.logicalHeight + 2f) return 0
         if (interpolation == SelectionInterpolation.NEAREST) return source.mask(floor(x).toInt(), floor(y).toInt())
         var value = 0f
         weights(x, y) { sx, sy, weight -> value += source.mask(sx, sy) * weight }

@@ -23,11 +23,27 @@ data class SelectionAffineTransform(
     val rotationDegrees: Float = 0f,
     val translateX: Float = 0f,
     val translateY: Float = 0f,
-) {
+) : SelectionRasterTransform {
     init {
         require(centerX.isFinite() && centerY.isFinite())
         require(scaleX.isFinite() && scaleX != 0f && scaleY.isFinite() && scaleY != 0f)
         require(rotationDegrees.isFinite() && translateX.isFinite() && translateY.isFinite())
+    }
+
+    override val isIdentity get() = scaleX == 1f && scaleY == 1f && rotationDegrees.mod(360f) == 0f && translateX == 0f && translateY == 0f
+
+    override fun forward(x: Float, y: Float): Pair<Float, Float> {
+        val cosine = cos(Math.toRadians(rotationDegrees.toDouble())).toFloat()
+        val sine = sin(Math.toRadians(rotationDegrees.toDouble())).toFloat()
+        val dx = (x-centerX)*scaleX; val dy = (y-centerY)*scaleY
+        return centerX+translateX+dx*cosine-dy*sine to centerY+translateY+dx*sine+dy*cosine
+    }
+    override fun inverseCoefficients(): FloatArray {
+        val cosine = cos(Math.toRadians(rotationDegrees.toDouble())).toFloat()
+        val sine = sin(Math.toRadians(rotationDegrees.toDouble())).toFloat()
+        val a=cosine/scaleX; val b=sine/scaleX; val c=-sine/scaleY; val d=cosine/scaleY
+        return floatArrayOf(a,b,c,d,centerX-a*(centerX+translateX)-b*(centerY+translateY),
+            centerY-c*(centerX+translateX)-d*(centerY+translateY))
     }
 }
 
@@ -63,7 +79,7 @@ class RasterSelectionTransformSession(
     private var closed = false
 
 
-    fun update(transform: SelectionAffineTransform, interpolation: SelectionInterpolation = SelectionInterpolation.NEAREST): RasterSelectionTransformResult {
+    fun update(transform: SelectionRasterTransform, interpolation: SelectionInterpolation = SelectionInterpolation.NEAREST): RasterSelectionTransformResult {
         check(!closed) { "Transform session is closed" }
         previewRecord?.let { record ->
             surface.apply(record, PixelTileSurface.HistoryDirection.UNDO)
@@ -71,10 +87,10 @@ class RasterSelectionTransformSession(
         }
         previewRecord = null
 
-        val identity = transform.scaleX == 1f && transform.scaleY == 1f && transform.rotationDegrees.mod(360f) == 0f &&
-            transform.translateX == 0f && transform.translateY == 0f
+        val affine = transform as? SelectionAffineTransform
+        val identity = transform.isIdentity
         val sampler = SelectionPixelSampler(originalPixels, originalSelection, interpolation, samplingSource)
-        val inverse = InverseAffine(transform)
+        val inverse = InverseSelectionMapping(transform)
         val halo = when (interpolation) { SelectionInterpolation.NEAREST -> 0; SelectionInterpolation.BILINEAR -> 1; SelectionInterpolation.BICUBIC -> 2 }
         val samplingBounds = PixelRect(sourceBounds.left - halo, sourceBounds.top - halo, sourceBounds.right + halo, sourceBounds.bottom + halo)
         val transformedBounds = transformedBounds(samplingBounds, transform, surface.logicalWidth, surface.logicalHeight)
@@ -139,15 +155,15 @@ class RasterSelectionTransformSession(
             throw failure
         }
         previewDirty = dirty
-        val maskTranslation = transform.copy(
-            translateX = transform.translateX * maskScaleX,
-            translateY = transform.translateY * maskScaleY,
+        val maskTranslation = affine?.copy(
+            translateX = affine.translateX * maskScaleX,
+            translateY = affine.translateY * maskScaleY,
         )
         val maskDestinationKeys = mapTileKeys(destinationKeys, surface.tileSize, surface.logicalWidth, surface.logicalHeight,
             originalSelection.tileSize, originalSelection.logicalWidth, originalSelection.logicalHeight)
-        previewSelection = integerTranslation(maskTranslation)?.let { (dx, dy) ->
+        previewSelection = if (identity) originalSelection else maskTranslation?.let(::integerTranslation)?.let { (dx, dy) ->
             transformMaskTranslation(originalSelection, maskSourceKeys, dx, dy)
-        } ?: if (transform.scaleX == 1f && transform.scaleY == 1f && transform.rotationDegrees.mod(360f) == 0f) {
+        } ?: if (maskTranslation != null && affine.scaleX == 1f && affine.scaleY == 1f && affine.rotationDegrees.mod(360f) == 0f) {
             if (interpolation == SelectionInterpolation.NEAREST) transformMaskTranslation(originalSelection, maskSourceKeys,
                 ceil(maskTranslation.translateX - .5f).toInt(), ceil(maskTranslation.translateY - .5f).toInt())
             else translateFilteredMask(maskDestinationKeys, maskTranslation.translateX, maskTranslation.translateY, interpolation)
@@ -177,9 +193,10 @@ class RasterSelectionTransformSession(
     override fun close() = cancel()
 
     private data class NativeSource(val bounds: PixelRect, val pixels: Any, val alpha: ByteArray)
-    private fun nativeSource(destination: PixelRect, inverse: InverseAffine, halo: Int): NativeSource? {
+    private fun nativeSource(destination: PixelRect, inverse: InverseSelectionMapping, halo: Int): NativeSource? {
         val corners = listOf(destination.left to destination.top, destination.right to destination.top,
             destination.right to destination.bottom, destination.left to destination.bottom)
+        if (inverse.crossesHorizon(corners)) return null
         val xs = corners.map { inverse.x(it.first.toFloat(), it.second.toFloat()) }
         val ys = corners.map { inverse.y(it.first.toFloat(), it.second.toFloat()) }
         val bounds = PixelRect(floor(xs.min()).toInt().coerceIn(0, surface.logicalWidth) - halo - 1,
@@ -195,7 +212,7 @@ class RasterSelectionTransformSession(
         return NativeSource(bounds, pixels, rasterAlpha(bounds))
     }
     private fun nativeTile(source: NativeSource, pixels: Any, retainedAlpha: ByteArray, destination: PixelRect,
-                           stride: Int, inverse: InverseAffine, interpolation: SelectionInterpolation): Boolean =
+                           stride: Int, inverse: InverseSelectionMapping, interpolation: SelectionInterpolation): Boolean =
         NativeRasterOps.affineSelectionTile(source.pixels, source.alpha, source.bounds.left, source.bounds.top, source.bounds.width, source.bounds.height,
             pixels, retainedAlpha, destination.left, destination.top, stride, destination.width, destination.height, inverse.coefficients,
             interpolation.ordinal, surface.pixelFormat.isHighPrecision)
@@ -267,11 +284,11 @@ class RasterSelectionTransformSession(
     private fun transformMask(
         source: MaskTileSurfaceSnapshot,
         destinationKeys: Set<PixelTileKey>,
-        transform: SelectionAffineTransform,
+        transform: SelectionRasterTransform,
         sampler: SelectionPixelSampler,
         interpolation: SelectionInterpolation,
     ): MaskTileSurfaceSnapshot {
-        val inverse = InverseAffine(transform)
+        val inverse = InverseSelectionMapping(transform)
         val destination = MaskTileSurface(source.logicalWidth, source.logicalHeight, source.tileSize)
         if (destinationKeys.isEmpty()) return destination.snapshot()
         val transaction = destination.beginWrite("transform sparse selection alpha")
@@ -307,13 +324,17 @@ class RasterSelectionTransformSession(
     }
 
     private fun affineMaskTile(source: MaskTileSurfaceSnapshot, tile: PixelRect, output: ByteArray,
-                               inverse: InverseAffine, interpolation: SelectionInterpolation): Int {
+                               inverse: InverseSelectionMapping, interpolation: SelectionInterpolation): Int {
         val m = inverse.coefficients.copyOf()
         m[1] *= maskScaleX / maskScaleY; m[2] *= maskScaleY / maskScaleX
         m[4] *= maskScaleX; m[5] *= maskScaleY
+        if (m.size == 9) { m[6] /= maskScaleX; m[7] /= maskScaleY }
         val points = listOf(tile.left to tile.top, tile.right to tile.top, tile.left to tile.bottom, tile.right to tile.bottom)
-        val xs = points.map { (x, y) -> m[0]*x + m[1]*y + m[4] }
-        val ys = points.map { (x, y) -> m[2]*x + m[3]*y + m[5] }
+        fun denominator(x: Int, y: Int) = if (m.size == 9) m[6]*x+m[7]*y+m[8] else 1f
+        val denominators = points.map { (x,y) -> denominator(x,y) }
+        if (denominators.min() <= 0f && denominators.max() >= 0f) return -1
+        val xs = points.map { (x, y) -> (m[0]*x + m[1]*y + m[4])/denominator(x,y) }
+        val ys = points.map { (x, y) -> (m[2]*x + m[3]*y + m[5])/denominator(x,y) }
         val halo = if (interpolation == SelectionInterpolation.BICUBIC) 2 else 1
         val roi = PixelRect(floor(xs.min()).toInt().coerceIn(0, source.logicalWidth) - halo,
             floor(ys.min()).toInt().coerceIn(0, source.logicalHeight) - halo,
@@ -425,7 +446,7 @@ class RasterSelectionTransformSession(
     private fun transformedTileKeys(
         sourceKeys: Set<PixelTileKey>,
         tileSize: Int,
-        transform: SelectionAffineTransform,
+        transform: SelectionRasterTransform,
         width: Int,
         height: Int,
         halo: Int,
@@ -437,7 +458,10 @@ class RasterSelectionTransformSession(
                 minOf((key.column + 1) * tileSize, width) + halo,
                 minOf((key.row + 1) * tileSize, height) + halo,
             )
-            val bounds = transformedBounds(sourceTile, transform, width, height)
+            val selectedTile = if (transform is SelectionProjectiveMapping) sourceTile.intersect(
+                PixelRect(sourceBounds.left-halo, sourceBounds.top-halo, sourceBounds.right+halo, sourceBounds.bottom+halo)) else sourceTile
+            if (selectedTile.isEmpty) return@forEach
+            val bounds = transformedBounds(selectedTile, transform, width, height)
             if (bounds.isEmpty) return@forEach
             for (row in bounds.top / tileSize..(bounds.bottom - 1) / tileSize) {
                 for (column in bounds.left / tileSize..(bounds.right - 1) / tileSize) add(PixelTileKey(column, row))
@@ -445,22 +469,22 @@ class RasterSelectionTransformSession(
         }
     }
 
-    private class InverseAffine(transform: SelectionAffineTransform) {
-        private val cosine = cos(Math.toRadians(transform.rotationDegrees.toDouble())).toFloat()
-        private val sine = sin(Math.toRadians(transform.rotationDegrees.toDouble())).toFloat()
-        private val a = cosine / transform.scaleX
-        private val b = sine / transform.scaleX
-        private val c = -sine / transform.scaleY
-        private val d = cosine / transform.scaleY
-        private val tx = transform.centerX - a * (transform.centerX + transform.translateX) - b * (transform.centerY + transform.translateY)
-        private val ty = transform.centerY - c * (transform.centerX + transform.translateX) - d * (transform.centerY + transform.translateY)
-        val coefficients = floatArrayOf(a, b, c, d, tx, ty)
-        fun x(x: Float, y: Float) = a * x + b * y + tx
-        fun y(x: Float, y: Float) = c * x + d * y + ty
+    private class InverseSelectionMapping(transform: SelectionRasterTransform) {
+        val coefficients = transform.inverseCoefficients()
+        fun denominator(x: Float, y: Float) = if (coefficients.size == 9) coefficients[6]*x+coefficients[7]*y+coefficients[8] else 1f
+        fun x(x: Float, y: Float) = (coefficients[0]*x+coefficients[1]*y+coefficients[4])/denominator(x,y)
+        fun y(x: Float, y: Float) = (coefficients[2]*x+coefficients[3]*y+coefficients[5])/denominator(x,y)
+        fun crossesHorizon(points: List<Pair<Int, Int>>): Boolean {
+            if (coefficients.size == 6) return false
+            val w = points.map { denominator(it.first.toFloat(), it.second.toFloat()) }
+            return w.min() <= 0f && w.max() >= 0f
+        }
     }
 
     companion object {
-        internal fun transformedBounds(bounds: PixelRect, transform: SelectionAffineTransform, width: Int, height: Int): PixelRect {
+        internal fun transformedBounds(bounds: PixelRect, transform: SelectionRasterTransform, width: Int, height: Int): PixelRect {
+            if (transform is SelectionProjectiveMapping && transform.crossesHorizon(bounds.left,bounds.top,bounds.right,bounds.bottom))
+                return PixelRect(0,0,width,height)
             val corners = arrayOf(
                 bounds.left.toFloat() to bounds.top.toFloat(),
                 bounds.right.toFloat() to bounds.top.toFloat(),
@@ -475,15 +499,7 @@ class RasterSelectionTransformSession(
             )
         }
 
-        private fun forwardPoint(x: Float, y: Float, transform: SelectionAffineTransform): Pair<Float, Float> {
-            val radians = Math.toRadians(transform.rotationDegrees.toDouble())
-            val cos = cos(radians).toFloat()
-            val sin = sin(radians).toFloat()
-            val dx = (x - transform.centerX) * transform.scaleX
-            val dy = (y - transform.centerY) * transform.scaleY
-            return transform.centerX + transform.translateX + dx * cos - dy * sin to
-                transform.centerY + transform.translateY + dx * sin + dy * cos
-        }
+        private fun forwardPoint(x: Float, y: Float, transform: SelectionRasterTransform) = transform.forward(x, y)
 
         private fun scalePremultiplied(color: Int, alpha: Int): Int {
             if (alpha <= 0 || color == 0) return 0

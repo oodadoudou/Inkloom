@@ -721,13 +721,13 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeAffineSelectionTile(
 #pragma clang fp contract(off)
     if (!source_array || !source_alpha_array || !destination_array || !destination_alpha_array || !inverse_array ||
         source_width <= 0 || source_height <= 0 || width <= 0 || height <= 0 || stride < width || interpolation < 0 || interpolation > 2 ||
-        env->GetArrayLength(inverse_array) != 6) return JNI_FALSE;
+        (env->GetArrayLength(inverse_array) != 6 && env->GetArrayLength(inverse_array) != 9)) return JNI_FALSE;
     const auto source_count = static_cast<std::int64_t>(source_width) * source_height;
     const auto destination_count = static_cast<std::int64_t>(stride) * height;
     if (source_count > env->GetArrayLength(static_cast<jarray>(source_array)) || source_count > env->GetArrayLength(source_alpha_array) ||
         destination_count > env->GetArrayLength(static_cast<jarray>(destination_array)) ||
         static_cast<std::int64_t>(width) * height > env->GetArrayLength(destination_alpha_array)) return JNI_FALSE;
-    float m[6]; env->GetFloatArrayRegion(inverse_array, 0, 6, m);
+    float m[9] = {0,0,0,0,0,0,0,0,1}; env->GetFloatArrayRegion(inverse_array, 0, env->GetArrayLength(inverse_array), m);
     void* source = env->GetPrimitiveArrayCritical(static_cast<jarray>(source_array), nullptr);
     if (!source) return JNI_FALSE;
     void* destination = env->GetPrimitiveArrayCritical(static_cast<jarray>(destination_array), nullptr);
@@ -775,7 +775,7 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeAffineSelectionTile(
     };
     for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
         const float gx = tile_left + x + .5f, gy = tile_top + y + .5f;
-        auto moved = sample(m[0]*gx + m[1]*gy + m[4] - source_left, m[2]*gx + m[3]*gy + m[5] - source_top);
+        auto moved = sample((m[0]*gx + m[1]*gy + m[4]) / (m[6]*gx + m[7]*gy + m[8]) - source_left, (m[2]*gx + m[3]*gy + m[5]) / (m[6]*gx + m[7]*gy + m[8]) - source_top);
         const auto index = static_cast<std::size_t>(y) * stride + x;
         const int retained_mask = 255 - static_cast<std::uint8_t>(destination_alpha[y * width + x]);
         if (high_precision) {

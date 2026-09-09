@@ -1178,10 +1178,10 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeAffineSelectionAlpha(
     jbyteArray output_array, jint left, jint top, jint width, jint height, jfloatArray matrix_array, jint interpolation) {
 #pragma clang fp contract(off)
     if (!input_array || !output_array || !matrix_array || source_width <= 0 || source_height <= 0 || width <= 0 || height <= 0 ||
-        interpolation < 0 || interpolation > 2 || env->GetArrayLength(matrix_array) != 6 ||
+        interpolation < 0 || interpolation > 2 || (env->GetArrayLength(matrix_array) != 6 && env->GetArrayLength(matrix_array) != 9) ||
         static_cast<std::int64_t>(source_width) * source_height > env->GetArrayLength(input_array) ||
         static_cast<std::int64_t>(width) * height > env->GetArrayLength(output_array)) return -1;
-    float m[6]; env->GetFloatArrayRegion(matrix_array, 0, 6, m);
+    float m[9] = {0,0,0,0,0,0,0,0,1}; env->GetFloatArrayRegion(matrix_array, 0, env->GetArrayLength(matrix_array), m);
     auto* input = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(input_array, nullptr));
     if (!input) return -1;
     auto* output = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(output_array, nullptr));
@@ -1209,7 +1209,7 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeAffineSelectionAlpha(
     int non_zero = 0;
     for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
         const float gx = left + x + .5f, gy = top + y + .5f;
-        const float value = sample(m[0]*gx + m[1]*gy + m[4] - source_left, m[2]*gx + m[3]*gy + m[5] - source_top);
+        const float value = sample((m[0]*gx + m[1]*gy + m[4]) / (m[6]*gx + m[7]*gy + m[8]) - source_left, (m[2]*gx + m[3]*gy + m[5]) / (m[6]*gx + m[7]*gy + m[8]) - source_top);
         const auto alpha = std::clamp(static_cast<int>(std::floor(value + .5f)), 0, 255);
         output[static_cast<std::size_t>(y) * width + x] = static_cast<jbyte>(alpha);
         if (alpha != 0) ++non_zero;

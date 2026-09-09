@@ -6,7 +6,7 @@ import org.junit.Test
 
 class SelectionTransformGeometryTest {
     @Test fun everyResizeNodeKeepsOppositeAnchorAcrossRotationsAndModes() {
-        for (angle in listOf(0f, 33f, 90f, 217f)) for (mode in SelectionTransformMode.entries) {
+        for (angle in listOf(0f, 33f, 90f, 217f)) for (mode in listOf(SelectionTransformMode.FREEFORM, SelectionTransformMode.UNIFORM)) {
             val start = SelectionTransformPose(500f, 300f, 180f, 95f, angle)
             for (node in SelectionTransformNode.entries.take(8)) {
                 val pointer = start.point(node.x, node.y)

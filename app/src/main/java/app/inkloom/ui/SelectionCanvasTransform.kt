@@ -17,6 +17,7 @@ internal class SelectionCanvasTransform(
     private val rasterHeight: Int,
     private val density: Float,
     private val changed: (SelectionTransformPose) -> Unit,
+    private val rejected: () -> Unit = {},
 ) {
     var pose = original
         private set
@@ -56,7 +57,10 @@ internal class SelectionCanvasTransform(
                     ?.takeIf { hypot(it.second.first - x, it.second.second - y) <= radius }?.first ?: SelectionTransformNode.MOVE
             }
             MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> if (dragging) {
-                replace(start.drag(node, startX, startY, px, py, mode))
+                if (mode == SelectionTransformMode.DISTORT) {
+                    val next = start.distort(node, px-startX, py-startY)
+                    if (next != null) replace(next) else if (event.actionMasked == MotionEvent.ACTION_UP) rejected()
+                } else replace(start.drag(node, startX, startY, px, py, mode))
                 if (event.actionMasked == MotionEvent.ACTION_UP) dragging = false
             }
             MotionEvent.ACTION_CANCEL -> cancelGesture()
@@ -64,8 +68,15 @@ internal class SelectionCanvasTransform(
         return true
     }
 
-    private fun handles(w: Int, h: Int, zoom: Float) = SelectionTransformNode.entries.filter { it != SelectionTransformNode.MOVE }.map { node ->
-        val point = pose.point(node.x, node.y)
+    private fun handles(w: Int, h: Int, zoom: Float) = SelectionTransformNode.entries.filter { it != SelectionTransformNode.MOVE && (mode != SelectionTransformMode.DISTORT || it != SelectionTransformNode.ROTATE) }.map { node ->
+        val point = if (mode == SelectionTransformMode.DISTORT) {
+            val q = pose.sourceCorners()
+            val index = SelectionTransformNode.entries.indexOf(node)
+            if (index % 2 == 0) q[index/2] else {
+                val a=q[index/2]; val b=q[(index/2+1)%4]
+                (a.first+b.first)/2 to (a.second+b.second)/2
+            }
+        } else pose.point(node.x, node.y)
         var x = point.first * w / rasterWidth; var y = point.second * h / rasterHeight
         if (node == SelectionTransformNode.ROTATE) {
             val offset = SelectionTransformPose.rotate(0f, -32f * density / zoom.coerceAtLeast(.1f), pose.angle)
@@ -82,8 +93,10 @@ internal class SelectionCanvasTransform(
         path.close()
         paint.style = Paint.Style.STROKE; paint.strokeWidth = 1.5f * scale; paint.color = Color.rgb(57, 103, 85)
         canvas.drawPath(path, paint)
-        val top = points[1].second; val rotate = points.last().second
-        canvas.drawLine(top.first, top.second, rotate.first, rotate.second, paint)
+        if (mode != SelectionTransformMode.DISTORT) {
+            val top = points[1].second; val rotate = points.last().second
+            canvas.drawLine(top.first, top.second, rotate.first, rotate.second, paint)
+        }
         points.forEach { (_, point) ->
             paint.style = Paint.Style.FILL; paint.color = Color.WHITE
             canvas.drawCircle(point.first, point.second, 6f * scale, paint)

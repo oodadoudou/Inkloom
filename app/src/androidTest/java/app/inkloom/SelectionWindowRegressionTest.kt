@@ -209,6 +209,44 @@ class SelectionWindowRegressionTest {
         org.junit.Assert.assertFalse(view.hasActiveSelection())
     }
 
+    @Test fun perspectiveCornerThenAffineMoveCancelAndApplyUseTheSameOriginal() {
+        tap("New Note"); tap("Create")
+        val view=canvas()
+        stroke(pagePoint(view,.3f,.4f),pagePoint(view,.5f,.4f))
+        compose.waitUntil(10_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 }
+        val source=requireNotNull(view.activeRasterSnapshotForTest())
+        val all=app.inkloom.engine.v5.surface.PixelRect(0,0,source.logicalWidth,source.logicalHeight)
+        val pixels=source.copyPremultipliedPixels(all)
+        tap("Selection"); tap("Rectangle selection")
+        stroke(pagePoint(view,.2f,.3f),pagePoint(view,.6f,.5f)); compose.waitForIdle()
+        tap("Free transform"); tap("Distort")
+        val original=requireNotNull(view.selectionTransformUiState).pose
+        val q=original.sourceCorners()
+        stroke(pagePoint(view,q[0].first/source.logicalWidth,q[0].second/source.logicalHeight),pagePoint(view,.3f,.33f))
+        compose.waitForIdle()
+        val distorted=requireNotNull(view.selectionTransformUiState).pose
+        assertTrue(distorted.corners != null)
+        assertEquals(q.drop(1),distorted.corners!!.drop(1))
+        assertTrue(!pixels.contentEquals(requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all)))
+        tap("Uniform")
+        stroke(pagePoint(view,.75f,.4f),pagePoint(view,.8f,.4f))
+        compose.waitForIdle()
+        val moved=requireNotNull(view.selectionTransformUiState).pose
+        assertTrue(moved.corners != null)
+        distorted.corners.zip(moved.corners!!).forEach { (a,b) -> assertEquals(a.first+source.logicalWidth*.05f,b.first,2f) }
+        tap("Cancel transform")
+        org.junit.Assert.assertArrayEquals(pixels,requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all))
+        tap("Free transform"); tap("Distort")
+        stroke(pagePoint(view,q[0].first/source.logicalWidth,q[0].second/source.logicalHeight),pagePoint(view,.3f,.33f))
+        tap("Apply transform")
+        val after=requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all)
+        assertTrue(!pixels.contentEquals(after))
+        hoverThenTap(toolbarCenter("Undo")); compose.waitForIdle()
+        org.junit.Assert.assertArrayEquals(pixels,requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all))
+        hoverThenTap(toolbarCenter("Redo")); compose.waitForIdle()
+        org.junit.Assert.assertArrayEquals(after,requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all))
+    }
+
     @Test fun pinchDuringTransformKeepsDraftAndBackCancelsBeforeDrawingAgain() {
         tap("New Note"); tap("Create")
         val view = canvas()

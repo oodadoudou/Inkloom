@@ -425,7 +425,7 @@ class InkCanvasView(context: Context) : View(context) {
         set(value) {
             if (field == value) return
             field = value
-            selectionCanvasTransform?.let { updateRasterSelectionTransform(it.pose.affineFrom(it.original)) }
+            selectionCanvasTransform?.let { updateRasterSelectionTransform(it.pose.rasterMappingFrom(it.original)) }
         }
     private var selectionCanvasTransform: SelectionCanvasTransform? = null
     internal var onSelectionTransformChanged: (SelectionTransformUiState?) -> Unit = {}
@@ -4328,16 +4328,24 @@ class InkCanvasView(context: Context) : View(context) {
         ))
     }
 
-    private fun updateRasterSelectionTransform(transform: SelectionAffineTransform) {
+    private fun updateRasterSelectionTransform(transform: app.inkloom.engine.v5.tools.SelectionRasterTransform) {
         val session = rasterSelectionTransformSession ?: return
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return
         val result = session.update(transform, selectionInterpolation)
         if (documentSelectionState != null) {
             documentSelectionState?.replaceFrom(result.selection)
             selectionBoundaryPreviewMatrix = android.graphics.Matrix().apply {
-                setScale(transform.scaleX, transform.scaleY, transform.centerX, transform.centerY)
-                postRotate(transform.rotationDegrees, transform.centerX, transform.centerY)
-                postTranslate(transform.translateX, transform.translateY)
+                if (transform is SelectionAffineTransform) {
+                    setScale(transform.scaleX, transform.scaleY, transform.centerX, transform.centerY)
+                    postRotate(transform.rotationDegrees, transform.centerX, transform.centerY)
+                    postTranslate(transform.translateX, transform.translateY)
+                } else {
+                    val m = transform.inverseCoefficients()
+                    val inverse = android.graphics.Matrix().apply {
+                        setValues(floatArrayOf(m[0],m[1],m[4],m[2],m[3],m[5],m[6],m[7],m[8]))
+                    }
+                    check(inverse.invert(this)) { "Degenerate perspective" }
+                }
                 preScale(surface.logicalWidth.toFloat() / width.coerceAtLeast(1), surface.logicalHeight.toFloat() / height.coerceAtLeast(1))
                 postScale(width.toFloat() / surface.logicalWidth, height.toFloat() / surface.logicalHeight)
             }
@@ -5440,7 +5448,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun flipSelection(horizontal: Boolean): Boolean {
         selectionCanvasTransform?.let { draft ->
-            draft.replace(if (horizontal) draft.pose.copy(flippedX = !draft.pose.flippedX) else draft.pose.copy(flippedY = !draft.pose.flippedY))
+            draft.replace(draft.pose.withPose(if (horizontal) draft.pose.copy(flippedX = !draft.pose.flippedX) else draft.pose.copy(flippedY = !draft.pose.flippedY)))
             return true
         }
         val bounds = selectionBounds() ?: return false
@@ -5703,13 +5711,13 @@ class InkCanvasView(context: Context) : View(context) {
             bounds.width() * surface.logicalWidth, bounds.height() * surface.logicalHeight,
         )
         selectionCanvasTransform = SelectionCanvasTransform(original, surface.logicalWidth, surface.logicalHeight,
-            resources.displayMetrics.density) { pose ->
-            runCatching { updateRasterSelectionTransform(pose.affineFrom(original)) }.onFailure {
+            resources.displayMetrics.density, changed = { pose ->
+            runCatching { updateRasterSelectionTransform(pose.rasterMappingFrom(original)) }.onFailure {
                 finishSelectionTransform(apply = false)
                 onPaintCapabilityRejected("Unable to transform this selection: ${it.message.orEmpty()}")
             }
             onSelectionTransformChanged(selectionTransformUiState)
-        }
+        }, rejected = { onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "请勿交叉或重合变换角点" else "Keep the four transform corners convex and apart") })
         tool = EditorTool.SELECT
         onSelectionTransformChanged(selectionTransformUiState)
         invalidate()
@@ -5719,12 +5727,13 @@ class InkCanvasView(context: Context) : View(context) {
     internal fun setSelectionTransformMode(mode: app.inkloom.engine.v5.tools.SelectionTransformMode) {
         selectionCanvasTransform?.mode = mode
         onSelectionTransformChanged(selectionTransformUiState)
+        invalidate()
     }
 
     internal fun setSelectionTransformDimensions(width: Float, height: Float, angle: Float) {
         if (!listOf(width, height, angle).all(Float::isFinite) || width < 1f || height < 1f) return
         val draft = selectionCanvasTransform ?: return
-        draft.replace(draft.pose.copy(width = width, height = height, angle = angle.mod(360f)))
+        draft.replace(draft.pose.withPose(draft.pose.copy(width = width, height = height, angle = angle.mod(360f))))
     }
 
     internal fun resetSelectionTransform() { selectionCanvasTransform?.reset() }
@@ -5733,7 +5742,7 @@ class InkCanvasView(context: Context) : View(context) {
         val draft = selectionCanvasTransform ?: return false
         selectionCanvasTransform = null
 
-        if (apply && draft.pose != draft.original) finishRasterSelectionTransform() else cancelRasterSelectionTransform()
+        if (apply && !draft.pose.rasterMappingFrom(draft.original).isIdentity) finishRasterSelectionTransform() else cancelRasterSelectionTransform()
         onSelectionTransformChanged(null)
         invalidate()
         return true
@@ -5872,9 +5881,9 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun transformSelection(scale: Float, rotationDegrees: Float) {
         selectionCanvasTransform?.let { draft ->
-            if (scale.isFinite() && scale > 0f && rotationDegrees.isFinite()) draft.replace(draft.pose.copy(
+            if (scale.isFinite() && scale > 0f && rotationDegrees.isFinite()) draft.replace(draft.pose.withPose(draft.pose.copy(
                 width = (draft.pose.width * scale).coerceAtLeast(1f), height = (draft.pose.height * scale).coerceAtLeast(1f),
-                angle = (draft.pose.angle + rotationDegrees).mod(360f)))
+                angle = (draft.pose.angle + rotationDegrees).mod(360f))))
             return
         }
         val bounds = selectionBounds() ?: return

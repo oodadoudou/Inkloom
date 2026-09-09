@@ -45,7 +45,7 @@ internal fun SelectionTransformToolbar(
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
             SelectionTransformMode.entries.forEach { mode ->
                 FilterChip(selected = state.mode == mode, onClick = { onMode(mode) },
-                    label = { Text(if (mode == SelectionTransformMode.FREEFORM) t("Freeform", "自由变换") else t("Uniform", "等比变换")) })
+                    label = { Text(when (mode) { SelectionTransformMode.FREEFORM -> t("Freeform", "自由变换"); SelectionTransformMode.UNIFORM -> t("Uniform", "等比变换"); SelectionTransformMode.DISTORT -> t("Distort", "扭曲") }) })
                 Spacer(Modifier.width(4.dp))
             }
             Box {
