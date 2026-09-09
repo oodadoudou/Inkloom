@@ -215,7 +215,8 @@ class RealBrushCorpusRenderingTest {
         try {
             val brush = BrushPresetV5Import.convertOrReject(parse(source, BrushFormat.PROCREATE, root).first { it.name == "海怪-勾线笔" })
             val failures = mutableListOf<String>()
-            for (size in listOf(1f, 2f, 4f)) for (pressure in listOf(.15f, .4f, .8f)) {
+            val references = mutableMapOf<Pair<Float, Float>, IntArray>()
+            for (step in listOf(10, 100)) for (size in listOf(1f, 2f, 4f)) for (pressure in listOf(.15f, .4f, .8f)) {
                 val surface = PixelTileSurface(1000, 1000)
                 val view = InkCanvasView(instrumentation.targetContext).apply {
                     layout(0, 0, 1000, 1000)
@@ -231,8 +232,9 @@ class RealBrushCorpusRenderingTest {
                         try { view.onTouchEvent(event) } finally { event.recycle() }
                     }
                     send(MotionEvent.ACTION_DOWN, 100f, 1)
-                    repeat(80) { send(MotionEvent.ACTION_MOVE, 110f + it * 10f, 2L + it) }
-                    send(MotionEvent.ACTION_UP, 900f, 83)
+                    val reports = 800 / step
+                    repeat(reports) { send(MotionEvent.ACTION_MOVE, 100f + (it + 1) * step, 2L + it) }
+                    send(MotionEvent.ACTION_UP, 900f, reports + 3L)
                 }
                 view.awaitV5StrokeWorkerIdleForTest()
                 instrumentation.runOnMainSync {
@@ -241,8 +243,14 @@ class RealBrushCorpusRenderingTest {
                     bitmap.recycle()
                 }
                 val missing = (250..750).count { x -> (493..507).none { y -> surface.pixelAt(x, y) ushr 24 > 0 } }
-                Log.i("MarineThin", "GAP_COUNT size=$size pressure=$pressure missing=$missing")
-                if (missing > 0) failures += "size=$size pressure=$pressure missing=$missing"
+                val pixels = IntArray(501 * 15) { i -> surface.pixelAt(250 + i % 501, 493 + i / 501) }
+                val key = size to pressure
+                val reference = references[key]
+                val error = if (reference == null) 0 else pixels.indices.maxOf { i ->
+                    kotlin.math.abs((pixels[i] ushr 24) - (reference[i] ushr 24)) }
+                if (reference == null) references[key] = pixels
+                Log.i("MarineThin", "GAP_COUNT step=$step size=$size pressure=$pressure missing=$missing alphaError=$error")
+                if (missing > 0 || error > 1) failures += "step=$step size=$size pressure=$pressure missing=$missing alphaError=$error"
             }
             assertTrue("Marine liner gaps: $failures", failures.isEmpty())
         } finally { root.deleteRecursively() }
