@@ -619,7 +619,7 @@ class InkCanvasView(context: Context) : View(context) {
     var tool: EditorTool = EditorTool.PEN
         set(value) {
             if (field == value) return
-            if (value != EditorTool.SELECT) { commitSelectionContour(); finishSelectionTransform(apply = true) }
+            if (value != EditorTool.SELECT) { commitSelectionContour(); finishSelectionColorFill(true); finishSelectionTransform(apply = true) }
             field = value
             if (hoverCursorVisible) {
                 hoverCursorUsesEraser = value == EditorTool.ERASER
@@ -639,6 +639,7 @@ class InkCanvasView(context: Context) : View(context) {
     var viewportRotationDegrees: Float = 0f
         set(value) { field = ViewportTransform.normalizeDegrees(value.takeIf(Float::isFinite) ?: 0f); invalidate() }
     var inkColor: Int = Color.rgb(17, 17, 17)
+        set(value) { if (field == value) return; field = value; if (selectionColorFillEnabled) updateSelectionColorFill() }
     var secondaryInkColor: Int = Color.WHITE
     var baseWidth: Float = 5f
         set(value) {
@@ -659,7 +660,7 @@ class InkCanvasView(context: Context) : View(context) {
     var brushRenderSeed: Int = brushId.hashCode()
     var activeLayerId: String = app.inkloom.document.LayerIds.INK
         set(value) {
-            if (field != value) finishSelectionTransform(apply = true)
+            if (field != value) { finishSelectionColorFill(true); finishSelectionTransform(apply = true) }
             field = value
         }
     var layerOpacities: Map<String, Float> = emptyMap()
@@ -998,6 +999,9 @@ class InkCanvasView(context: Context) : View(context) {
     /** Binds selection alpha to the document runtime before any page content is installed. */
     internal fun bindDocumentSelectionState(state: DocumentSelectionState) {
         if (documentSelectionState === state) return
+        finishSelectionColorFill(true)
+        finishAutomaticSelection(false)
+        clearLassoInput()
         finishSelectionFeather(apply = false)
         finishSelectionTransform(apply = false)
         val isolated = isolatedTestSelectionAlphaMask
@@ -1395,6 +1399,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onDetachedFromWindow() {
+        finishSelectionColorFill(true)
         finishAutomaticSelection(false)
         finishSelectionFeather(apply = false)
         finishSelectionTransform(apply = false)
@@ -3743,6 +3748,7 @@ class InkCanvasView(context: Context) : View(context) {
             undo = { restore(beforeAlpha, beforeRadius, beforeBase) },
             redo = { restore(afterAlpha, afterRadius, afterBase) },
         )
+        updateSelectionColorFill()
     }
 
     @VisibleForTesting
@@ -5506,6 +5512,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun undo() {
+        finishSelectionColorFill(true)
         v5LassoSession?.let { if (it.undoContact()) { syncLassoPreview(it.preview()); invalidate(); return } }
         finishSelectionTransform(apply = true)
         val edit = editHistory.takeUndo() ?: return
@@ -5725,6 +5732,56 @@ class InkCanvasView(context: Context) : View(context) {
         return true
     }
 
+    private data class SelectionColorFillDraft(
+        val layerId: String, val surface: PixelTileSurface,
+        var edit: app.inkloom.engine.v5.surface.RasterSelectionEdit? = null,
+    )
+    private var selectionColorFillDraft: SelectionColorFillDraft? = null
+    var selectionColorFillEnabled: Boolean = false
+        private set
+
+    fun setSelectionColorFill(enabled: Boolean): Boolean {
+        if (!enabled) { finishSelectionColorFill(true); selectionColorFillEnabled = false; return true }
+        if (activeLayerId in protectedLayerIds || editingLayerMaskId != null || rasterTileSurfaceFor(activeLayerId) == null) {
+            onPaintCapabilityRejected("Select an unlocked paint layer before filling")
+            return false
+        }
+        selectionColorFillEnabled = true
+        if (hasSelection()) updateSelectionColorFill()
+        return true
+    }
+
+    private fun updateSelectionColorFill() {
+        if (!selectionColorFillEnabled || tool != EditorTool.SELECT) return
+        val mask = selectionMaskForRasterTools()?.takeUnless { it.isEmpty } ?: return
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return
+        if (activeLayerId in protectedLayerIds || editingLayerMaskId != null) return
+        v5StrokeController.awaitIdle()
+        if (selectionColorFillDraft?.surface?.let { it !== surface } == true) finishSelectionColorFill(true)
+        val draft = selectionColorFillDraft ?: SelectionColorFillDraft(activeLayerId, surface).also { selectionColorFillDraft = it }
+        val previousBounds = draft.edit?.dirtyBounds
+        draft.edit?.let { surface.apply(it.record, PixelTileSurface.HistoryDirection.UNDO); it.record.close() }
+        draft.edit = RasterSelectionContent.fill(surface, mask, inkColor, inkOpacity, preserveAlpha = activeLayerId in alphaLockedLayers)
+        val dirty = draft.edit?.dirtyBounds?.let { previousBounds?.union(it) ?: it } ?: previousBounds
+        if (dirty != null) invalidateV5Damage(surface, dirty)
+        invalidate()
+    }
+
+    fun finishSelectionColorFill(apply: Boolean) {
+        val draft = selectionColorFillDraft ?: return
+        selectionColorFillDraft = null
+        draft.edit?.let { edit ->
+            if (apply && edit.record.changedTileCount > 0) {
+                recordRasterToolTransaction(draft.layerId, draft.surface, edit.record,
+                    Rect(edit.dirtyBounds.left, edit.dirtyBounds.top, edit.dirtyBounds.right, edit.dirtyBounds.bottom))
+            } else {
+                draft.surface.apply(edit.record, PixelTileSurface.HistoryDirection.UNDO)
+                edit.record.close()
+                invalidateV5Damage(draft.surface, edit.dirtyBounds)
+            }
+        }
+    }
+
     fun fillSelection(): Boolean {
         finishSelectionTransform(apply = true)
         val mask = selectionMaskForRasterTools() ?: return false
@@ -5795,6 +5852,8 @@ class InkCanvasView(context: Context) : View(context) {
 
     /** Begin one reversible transform, retaining native source pixels until Apply or Cancel. */
     fun enterFreeTransform(): Boolean {
+        commitSelectionContour()
+        finishSelectionColorFill(true)
         if (selectionCanvasTransform != null) return true
         if (!hasSelection() || !validateRasterSelectionTransform()) return false
         if (!beginRasterSelectionTransform()) return false
@@ -5869,6 +5928,8 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun clearSelection(): Boolean {
+        finishSelectionColorFill(true)
+        clearLassoInput()
         finishSelectionFeather(apply = false)
         finishSelectionTransform(apply = true)
         if (!hasSelection()) return false
