@@ -325,15 +325,26 @@ class InkCanvasView(context: Context) : View(context) {
     internal fun awaitV5StrokeWorkerIdleForTest() = v5StrokeController.awaitIdle()
     @VisibleForTesting
     internal fun activeRasterSnapshotForTest() = rasterTileSurfaceFor(activeLayerId)?.snapshot()
-    private var pendingSmudgeX = 0f
-    private var pendingSmudgeY = 0f
+    private data class RasterToolPoint(val x: Float, val y: Float, val pressure: Float = 1f)
+    private val pendingSmudge = ArrayDeque<RasterToolPoint>()
+    private val pendingLiquify = ArrayDeque<RasterToolPoint>()
+    private var rasterToolStabilizer: app.inkloom.engine.v5.stroke.StrokeCoordinateStabilizer? = null
+    private var rasterToolInputWidth = 1f
+    private var rasterToolInputHeight = 1f
+    private var rasterToolLastRawX = 0f
+    private var rasterToolLastRawY = 0f
+    private var rasterToolLastPressure = 1f
+    var rasterToolStrokeStabilization: Float = 0f
     private var hasPendingSmudge = false
     private var smudgeFrameScheduled = false
     private val smudgeFrame = Runnable {
         smudgeFrameScheduled = false
         if (hasPendingSmudge) {
             hasPendingSmudge = false
-            extendSmudge(pendingSmudgeX, pendingSmudgeY)
+            while (pendingSmudge.isNotEmpty()) {
+                val point = pendingSmudge.removeFirst()
+                extendSmudge(point.x, point.y)
+            }
         }
     }
     private var rasterTileLiquifySession: RasterTileLiquifySession? = null
@@ -341,9 +352,6 @@ class InkCanvasView(context: Context) : View(context) {
     private var liquifyLastY = 0f
     private var liquifyChanged = false
     private var liquifyDirtyBounds: Rect? = null
-    private var pendingLiquifyX = 0f
-    private var pendingLiquifyY = 0f
-    private var pendingLiquifyPressure = 1f
     private var liquifyPressure = 1f
     private var liquifyHoldEligible = false
     private var liquifyMovedBeyondSlop = false
@@ -357,7 +365,10 @@ class InkCanvasView(context: Context) : View(context) {
         liquifyFrameScheduled = false
         if (hasPendingLiquify) {
             hasPendingLiquify = false
-            extendLiquify(pendingLiquifyX, pendingLiquifyY, pendingLiquifyPressure)
+            while (pendingLiquify.isNotEmpty()) {
+                val point = pendingLiquify.removeFirst()
+                extendLiquify(point.x, point.y, point.pressure)
+            }
         }
     }
     private val liquifyHoldFrame = object : Runnable {
@@ -802,6 +813,7 @@ class InkCanvasView(context: Context) : View(context) {
     var onPaintCapabilityRejected: (String) -> Unit = { reason ->
         post { android.widget.Toast.makeText(context, reason, android.widget.Toast.LENGTH_SHORT).show() }
     }
+    var feedbackLanguage = app.inkloom.settings.UiLanguage.ENGLISH
     var onShortcutAction: (ShortcutActivation) -> Unit = {}
     var shortcutBindings: List<ShortcutBinding> = CspShortcutResolver.defaultBindings
     var shortcutAxisBindings: List<AxisShortcutBinding> = emptyList()
@@ -2154,11 +2166,11 @@ class InkCanvasView(context: Context) : View(context) {
                     invalidate()
                 }
                 else if (activeTool == EditorTool.SMUDGE) {
-                    scheduleSmudge(normalizedX, normalizedY)
+                    appendRasterToolEvent(event, pointerIndex, terminal = false)
                     v5PaintFinishedWithDamageInvalidation = true
                 }
                 else if (activeTool == EditorTool.LIQUIFY) {
-                    scheduleLiquify(normalizedX, normalizedY, event.getPressure(pointerIndex))
+                    appendRasterToolEvent(event, pointerIndex, terminal = false)
                     v5PaintFinishedWithDamageInvalidation = true
                 }
                 else if (activeTool == EditorTool.EYEDROPPER) {
@@ -2245,14 +2257,14 @@ class InkCanvasView(context: Context) : View(context) {
                     gradientStart = null; gradientEnd = null
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.SMUDGE) {
+                    appendRasterToolEvent(event, pointerIndex, terminal = true)
                     flushSmudgeFrame()
-                    if (normalizedX != smudgeLastX || normalizedY != smudgeLastY) extendSmudge(normalizedX, normalizedY)
                     commitSmudgeGesture()
                     v5PaintFinishedWithDamageInvalidation = true
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.LIQUIFY) {
+                    appendRasterToolEvent(event, pointerIndex, terminal = true)
                     flushLiquifyFrame()
-                    if (normalizedX != liquifyLastX || normalizedY != liquifyLastY) extendLiquify(normalizedX, normalizedY, event.getPressure(pointerIndex))
                     finishLiquifyGesture()
                     v5PaintFinishedWithDamageInvalidation = true
                     parent?.requestDisallowInterceptTouchEvent(false)
@@ -3882,15 +3894,54 @@ class InkCanvasView(context: Context) : View(context) {
         invalidate()
     }
 
+    private fun beginRasterToolInput(x: Float, y: Float, surface: PixelTileSurface, pressure: Float = 1f) {
+        rasterToolInputWidth = surface.logicalWidth.toFloat()
+        rasterToolInputHeight = surface.logicalHeight.toFloat()
+        rasterToolLastRawX = x; rasterToolLastRawY = y
+        rasterToolLastPressure = pressure
+        rasterToolStabilizer = app.inkloom.engine.v5.stroke.StrokeCoordinateStabilizer(
+            globalStrokeStabilization.coerceIn(0f, 1f), rasterToolStrokeStabilization.coerceIn(0f, 1f))
+        rasterToolStabilizer?.apply(DocumentPoint(x * rasterToolInputWidth, y * rasterToolInputHeight))
+    }
+
+    private fun stabilizeRasterToolPoint(x: Float, y: Float, pressure: Float): RasterToolPoint {
+        rasterToolLastRawX = x; rasterToolLastRawY = y
+        rasterToolLastPressure = pressure
+        val raw = DocumentPoint(x * rasterToolInputWidth, y * rasterToolInputHeight)
+        val point = rasterToolStabilizer?.apply(raw) ?: raw
+        return RasterToolPoint(point.x / rasterToolInputWidth, point.y / rasterToolInputHeight, pressure)
+    }
+
+    private fun appendRasterToolEvent(event: MotionEvent, pointer: Int, terminal: Boolean) {
+        fun append(x: Float, y: Float, pressure: Float) {
+            if (activeTool == EditorTool.SMUDGE) scheduleSmudge(x, y)
+            else scheduleLiquify(x, y, pressure)
+        }
+        for (index in 0 until event.historySize) {
+            val point = historicalCanvasPoint(event, pointer, index)
+            append(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1),
+                event.getHistoricalPressure(pointer, index))
+        }
+        val point = canvasPoint(event, pointer)
+        val x = point.first / width.coerceAtLeast(1)
+        val y = point.second / height.coerceAtLeast(1)
+        // UP at the last accepted position does not create an extra deformation or filter tail.
+        if (!terminal || x != rasterToolLastRawX || y != rasterToolLastRawY) {
+            append(x, y, if (terminal) rasterToolLastPressure else event.getPressure(pointer))
+        }
+    }
+
     private fun beginSmudgeGesture(normalizedX: Float, normalizedY: Float): Boolean {
         removeCallbacks(smudgeFrame)
         smudgeFrameScheduled = false
         hasPendingSmudge = false
+        pendingSmudge.clear()
         rasterTileBlendSession?.close()
         rasterTileBlendSession = null
         val surface = rasterTileSurfaceFor(activeLayerId)
             ?.takeUnless { activeLayerId in protectedLayerIds }
             ?: return false
+        beginRasterToolInput(normalizedX, normalizedY, surface)
         rasterTileBlendSession = RasterTileBlendSession(
             surface,
             selectionMaskForRasterTools(),
@@ -3904,8 +3955,8 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun scheduleSmudge(x: Float, y: Float) {
-        pendingSmudgeX = x
-        pendingSmudgeY = y
+        if (pendingSmudge.size >= 64) flushSmudgeFrame()
+        pendingSmudge.addLast(stabilizeRasterToolPoint(x, y, 1f))
         hasPendingSmudge = true
         if (!smudgeFrameScheduled) {
             smudgeFrameScheduled = true
@@ -3957,7 +4008,9 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(smudgeFrame)
         smudgeFrameScheduled = false
         hasPendingSmudge = false
+        pendingSmudge.clear()
         val tileSession = rasterTileBlendSession
+        var committed = false
         if (tileSession != null) {
             if (smudgeChanged) {
                 val record = tileSession.commit()
@@ -3965,6 +4018,7 @@ class InkCanvasView(context: Context) : View(context) {
                 val bounds = smudgeDirtyBounds
                 if (record.changedTileCount > 0 && surface != null && bounds != null) {
                     recordRasterToolTransaction(activeLayerId, surface, record, bounds)
+                    committed = true
                 } else record.close()
             } else tileSession.restoreOriginal()
             tileSession.close()
@@ -3972,12 +4026,16 @@ class InkCanvasView(context: Context) : View(context) {
         rasterTileBlendSession = null
         smudgeChanged = false
         smudgeDirtyBounds = null
+        if (tileSession != null && !committed) onPaintCapabilityRejected(
+            if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "可编辑区域内没有可涂抹的内容"
+            else "Blend produced no pixel changes in the editable area")
     }
 
     private fun cancelSmudgeGesture() {
         removeCallbacks(smudgeFrame)
         smudgeFrameScheduled = false
         hasPendingSmudge = false
+        pendingSmudge.clear()
         val tileSession = rasterTileBlendSession
         val surface = rasterTileSurfaceFor(activeLayerId)
         val dirty = smudgeDirtyBounds
@@ -4001,11 +4059,13 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(liquifyHoldFrame)
         liquifyFrameScheduled = false
         hasPendingLiquify = false
+        pendingLiquify.clear()
         rasterTileLiquifySession?.close()
         rasterTileLiquifySession = null
         val surface = rasterTileSurfaceFor(activeLayerId)
             ?.takeUnless { activeLayerId in protectedLayerIds }
             ?: return false
+        beginRasterToolInput(x, y, surface, pressure)
         rasterTileLiquifySession = RasterTileLiquifySession(surface, selectionMaskForRasterTools())
         liquifyLastX = x.coerceIn(0f, 1f)
         liquifyLastY = y.coerceIn(0f, 1f)
@@ -4035,9 +4095,8 @@ class InkCanvasView(context: Context) : View(context) {
             removeCallbacks(liquifyHoldStart)
             removeCallbacks(liquifyHoldFrame)
         }
-        pendingLiquifyX = x
-        pendingLiquifyY = y
-        pendingLiquifyPressure = pressure.coerceIn(0f, 1f)
+        if (pendingLiquify.size >= 64) flushLiquifyFrame()
+        pendingLiquify.addLast(stabilizeRasterToolPoint(x, y, pressure.coerceIn(0f, 1f)))
         hasPendingLiquify = true
         if (!liquifyFrameScheduled) {
             liquifyFrameScheduled = true
@@ -4093,7 +4152,9 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(liquifyHoldFrame)
         liquifyFrameScheduled = false
         hasPendingLiquify = false
+        pendingLiquify.clear()
         val tileSession = rasterTileLiquifySession
+        var committed = false
         if (tileSession != null) {
             if (liquifyChanged) {
                 val record = tileSession.commit()
@@ -4101,6 +4162,7 @@ class InkCanvasView(context: Context) : View(context) {
                 val bounds = liquifyDirtyBounds
                 if (record.changedTileCount > 0 && surface != null && bounds != null) {
                     recordRasterToolTransaction(activeLayerId, surface, record, bounds)
+                    committed = true
                 } else record.close()
             } else tileSession.restoreOriginal()
             tileSession.close()
@@ -4109,6 +4171,9 @@ class InkCanvasView(context: Context) : View(context) {
         liquifyHoldEligible = false
         liquifyChanged = false
         liquifyDirtyBounds = null
+        if (tileSession != null && !committed) onPaintCapabilityRejected(
+            if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "可编辑区域内没有发生液化变化"
+            else "Liquify produced no pixel changes in the editable area")
     }
 
     private fun cancelLiquifyGesture() {
@@ -4117,6 +4182,7 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(liquifyHoldFrame)
         liquifyFrameScheduled = false
         hasPendingLiquify = false
+        pendingLiquify.clear()
         val tileSession = rasterTileLiquifySession
         val surface = rasterTileSurfaceFor(activeLayerId)
         val dirty = liquifyDirtyBounds

@@ -5352,6 +5352,7 @@ internal fun InkCanvasView.applyBrushPresetV5Configuration(
     prepareAssets: Boolean = true,
 ) {
     val compiled = CompiledBrushProgramV5.compile(preset)
+    feedbackLanguage = settings.language
     globalStrokeStabilization = settings.globalStrokeStabilization
     switchInputConfiguration(EditorTool.PEN, preset.identity.id)
     setCompiledBrushProgramV5(compiled, prepareAssets = prepareAssets)
@@ -5392,6 +5393,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     // discarded at this boundary and the selected system eraser preset is used instead.
     val activeBrush = if (selectedTool == EditorTool.ERASER) selectedBrush?.takeIf(BrushRoleClassifier::isEraser) else selectedBrush
     val paintTool = selectedTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)
+    feedbackLanguage = settings.language
     val defaultPreset = if (paintTool && activeBrush == null) BrushPresetV5(
             identity = PresetIdentity(
                 id = when (selectedTool) {
@@ -5494,6 +5496,9 @@ internal fun InkCanvasView.applyBrushConfiguration(
     brushAntiAliasMode = activeBrush?.antiAliasMode ?: CspAntiAlias.MEDIUM
     brushColorMix = activeBrush?.colorMix ?: 0f
     smudgeHardness = activeBrush?.hardness ?: .5f
+    rasterToolStrokeStabilization = if (selectedTool in setOf(EditorTool.SMUDGE, EditorTool.LIQUIFY)) {
+        compiledBrushProgramV5Cache.resolveEncoded(activeBrush?.v5PresetJson)?.strokeShaping?.smoothing ?: 0f
+    } else 0f
     notifyHoverCursorStyleChanged()
 }
 

@@ -60,7 +60,7 @@ class CausalStrokeSession(
         require(globalSmoothing.isFinite() && globalSmoothing in 0f..1f)
     }
 
-    private val filters = listOf(globalSmoothing, smoothing).filter { it > 0f }.map(::CoordinateFilter)
+    private val stabilizer = StrokeCoordinateStabilizer(globalSmoothing, smoothing)
     /** Professional realtime correction may soften jitter but must never trail the physical tip
      * by an unbounded distance. This document-space cap keeps even maximum smoothing within a
      * small, predictable tail instead of accumulating the error of an unconstrained EMA. */
@@ -97,7 +97,7 @@ class CausalStrokeSession(
         require(inputs.all { it.sequence > lastSequence })
         inputs.lastOrNull()?.let { lastSequence = it.sequence }
         val output = inputs.map { input ->
-            val point = filters.fold(input.point) { point, filter -> filter.apply(point) }
+            val point = stabilizer.apply(input.point)
             StrokeSample(
                 input.sequence,
                 point,
@@ -116,29 +116,6 @@ class CausalStrokeSession(
             ).outset(maximumRadius)
         }
         return PaintBatch(transactionId, ordinal++, output, bounds, terminal)
-    }
-
-    private class CoordinateFilter(amount: Float) {
-        private val response = (1f - amount * .85f).coerceIn(.15f, 1f)
-        private val maximumLagPixels = .5f + amount * 3.5f
-        private var previous: DocumentPoint? = null
-
-        fun apply(point: DocumentPoint): DocumentPoint {
-            val prior = previous
-            val filtered = if (prior == null) point else {
-                val x = prior.x + (point.x - prior.x) * response
-                val y = prior.y + (point.y - prior.y) * response
-                val dx = x - point.x; val dy = y - point.y
-                val lag = kotlin.math.hypot(dx, dy)
-                if (lag <= maximumLagPixels || lag <= 1e-6f) DocumentPoint(x, y)
-                else {
-                    val scale = maximumLagPixels / lag
-                    DocumentPoint(point.x + dx * scale, point.y + dy * scale)
-                }
-            }
-            previous = filtered
-            return filtered
-        }
     }
 
     private enum class State { NEW, ACTIVE, FINISHED, CANCELED }

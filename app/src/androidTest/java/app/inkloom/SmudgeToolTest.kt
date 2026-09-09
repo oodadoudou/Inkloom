@@ -15,6 +15,8 @@ import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v5.presentation.InvalidationReason
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -28,15 +30,119 @@ class SmudgeToolTest {
         return result
     }
 
-    private fun event(time: Long, action: Int, x: Float, y: Float): MotionEvent {
-        val props = MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_FINGER }
+    private fun event(time: Long, action: Int, x: Float, y: Float, stylus: Boolean = false): MotionEvent {
+        val props = MotionEvent.PointerProperties().apply { id = 0; toolType = if (stylus) MotionEvent.TOOL_TYPE_STYLUS else MotionEvent.TOOL_TYPE_FINGER }
         val coords = MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = 1f; size = .1f; touchMajor = 8f }
-        return MotionEvent.obtain(0L, time, action, 1, arrayOf(props), arrayOf(coords), 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+        return MotionEvent.obtain(0L, time, action, 1, arrayOf(props), arrayOf(coords), 0, 0, 1f, 1f, 0, 0,
+            if (stylus) InputDevice.SOURCE_STYLUS else InputDevice.SOURCE_TOUCHSCREEN, 0)
     }
 
     private fun send(view: InkCanvasView, time: Long, action: Int, x: Float, y: Float) {
         val e = event(time, action, x, y)
         try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(e) } } finally { e.recycle() }
+    }
+
+    @Test fun rasterToolsPreserveEveryHistoricalPointAcrossFrameSchedules() {
+        listOf(EditorTool.SMUDGE, EditorTool.LIQUIFY).forEach { tool ->
+            listOf(0f, 1f).forEach { strength ->
+                val separate = correctionRaster(tool, strength, strength, batching = 0)
+                assertArrayEquals("$tool must retain all points queued before one frame", separate,
+                    correctionRaster(tool, strength, strength, batching = 1))
+                assertArrayEquals("$tool must consume Android historical samples", separate,
+                    correctionRaster(tool, strength, strength, batching = 2))
+            }
+        }
+    }
+
+    @Test fun emptyRasterToolContactsHaveOneExplicitTerminalReason() {
+        listOf(EditorTool.SMUDGE, EditorTool.LIQUIFY).forEach { selectedTool ->
+            val reasons = mutableListOf<String>()
+            var commits = 0
+            val view = canvas {
+                tool = selectedTool; fingerDrawingEnabled = true; activeLayerId = "empty"
+                setRasterLayerSurfaces(mapOf("empty" to PixelTileSurface(200, 200)))
+                onPaintCapabilityRejected = { reasons += it }
+                onRasterLayerCommitted = { commits++ }
+            }
+            send(view, 0, MotionEvent.ACTION_DOWN, 50f, 100f)
+            send(view, 8, MotionEvent.ACTION_MOVE, 150f, 100f)
+            send(view, 16, MotionEvent.ACTION_UP, 150f, 100f)
+            assertEquals(0, commits)
+            assertEquals("Every completed contact has one terminal result", 1, reasons.size)
+            assertTrue(reasons.single().contains("no pixel changes"))
+        }
+    }
+
+    @Test fun rasterToolsExecuteBothIndependentStabilizersAndFreezeThemAtDown() {
+        listOf(EditorTool.SMUDGE, EditorTool.LIQUIFY).forEach { tool ->
+            val raw = correctionRaster(tool, 0f, 0f)
+            val global = correctionRaster(tool, 1f, 0f)
+            val brush = correctionRaster(tool, 0f, 1f)
+            val both = correctionRaster(tool, 1f, 1f)
+            assertFalse("$tool global setting must reach pixels", raw.contentEquals(global))
+            assertArrayEquals("The same amount uses the same filter in either slot", global, brush)
+            assertFalse("$tool both stages must execute", both.contentEquals(global))
+            assertArrayEquals("Settings changed during a contact apply on the next DOWN", both,
+                correctionRaster(tool, 1f, 1f, changeWhileDown = true))
+        }
+    }
+
+    @Test fun cancelRestoresRasterAndTheNextContactStartsWithFreshCorrectionState() {
+        listOf(EditorTool.SMUDGE, EditorTool.LIQUIFY).forEach { tool ->
+            assertArrayEquals(correctionRaster(tool, 1f, 1f),
+                correctionRaster(tool, 1f, 1f, cancelBefore = true))
+        }
+    }
+
+    private fun correctionRaster(tool: EditorTool, global: Float, brush: Float, batching: Int = 0,
+        changeWhileDown: Boolean = false, cancelBefore: Boolean = false): IntArray {
+        val seed = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888).apply {
+            for (y in 35 until 160) for (x in 25 until 110) setPixel(x, y,
+                if ((x / 7 + y / 9) % 2 == 0) Color.RED else Color.BLUE)
+        }
+        val original = IntArray(40000).also { seed.getPixels(it, 0, 200, 0, 0, 200, 200) }
+        val surface = PixelTileBitmapAdapter.import(seed)
+        seed.recycle()
+        val view = canvas {
+            this.tool = tool; baseWidth = 100f; activeLayerId = "paint"
+            globalStrokeStabilization = global; rasterToolStrokeStabilization = brush
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+        }
+        val points = (0..24).map { i -> 55f + i * 3f to (90f + i * .8f + if (i % 2 == 0) 3f else -3f) }
+        fun pixels(): IntArray = PixelTileBitmapAdapter.render(surface.snapshot()).let { bitmap ->
+            try { IntArray(40000).also { bitmap.getPixels(it, 0, 200, 0, 0, 200, 200) } }
+            finally { bitmap.recycle() }
+        }
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            fun dispatch(time: Long, action: Int, point: Pair<Float, Float>) {
+                event(time, action, point.first, point.second, stylus = true).also {
+                    try { view.onTouchEvent(it) } finally { it.recycle() }
+                }
+            }
+            if (cancelBefore) {
+                dispatch(0, MotionEvent.ACTION_DOWN, points.first())
+                dispatch(8, MotionEvent.ACTION_MOVE, points[8]); view.flushRealtimeToolFrame()
+                dispatch(16, MotionEvent.ACTION_CANCEL, points[8])
+                assertArrayEquals("Cancel must restore the original pigment", original, pixels())
+            }
+            dispatch(100, MotionEvent.ACTION_DOWN, points.first())
+            if (changeWhileDown) { view.globalStrokeStabilization = 0f; view.rasterToolStrokeStabilization = 0f }
+            if (batching == 2) {
+                val move = event(108, MotionEvent.ACTION_MOVE, points[1].first, points[1].second, stylus = true)
+                try {
+                    for (i in 2..points.lastIndex) move.addBatch(100L + i * 8,
+                        arrayOf(MotionEvent.PointerCoords().apply {
+                            x = points[i].first; y = points[i].second; pressure = 1f; size = .1f
+                        }), 0)
+                    view.onTouchEvent(move)
+                } finally { move.recycle() }
+            } else for (i in 1..points.lastIndex) {
+                dispatch(100L + i * 8, MotionEvent.ACTION_MOVE, points[i])
+                if (batching == 0) view.flushRealtimeToolFrame()
+            }
+            dispatch(310, MotionEvent.ACTION_UP, points.last())
+        }
+        return pixels()
     }
 
     @Test fun draggingBlendPublishesOneRasterPigmentTransaction() {
