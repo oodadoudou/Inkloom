@@ -140,7 +140,7 @@ class RasterTileEditSession(
         return plan.writeBounds
     }
 
-    /** Allocation-stable sampled edit for high-frequency tools whose ROI remains on-page. */
+    /** Allocation-stable sampled edit, including transparent samples beyond page edges. */
     internal fun editWithReusableRoi(
         plan: RasterRoiPlan,
         sampleGeneration: RasterSampleGeneration = RasterSampleGeneration.CURRENT,
@@ -149,16 +149,30 @@ class RasterTileEditSession(
         requireActive()
         val requestedRead = requireNotNull(plan.requestedReadBounds)
         val clippedRead = plan.clippedReadBounds
-        if (clippedRead != requestedRead) return editWithRoi(plan, sampleGeneration, operation)
+        if (clippedRead != requestedRead && plan.abyssPolicy != RasterAbyssPolicy.TRANSPARENT) {
+            return editWithRoi(plan, sampleGeneration, operation)
+        }
         lastRoiPlan = plan
         if (plan.writeBounds.isEmpty) return null
         val sample = scratch(reusableSamples, requestedRead.width, requestedRead.height)
-        when (sampleGeneration) {
-            RasterSampleGeneration.CURRENT -> PixelTileBitmapAdapter.renderInto(
-                transaction, requestedRead, sample.bitmap, sample.pixels,
-            )
-            RasterSampleGeneration.ORIGINAL -> PixelTileBitmapAdapter.renderInto(
-                original, requestedRead, sample.bitmap, sample.pixels,
+        val read = if (clippedRead == requestedRead) sample else {
+            sample.bitmap.eraseColor(android.graphics.Color.TRANSPARENT)
+            clippedRead?.let { scratch(reusableSamples, it.width, it.height) }
+        }
+        if (read != null && clippedRead != null) {
+            when (sampleGeneration) {
+                RasterSampleGeneration.CURRENT -> PixelTileBitmapAdapter.renderInto(
+                    transaction, clippedRead, read.bitmap, read.pixels,
+                )
+                RasterSampleGeneration.ORIGINAL -> PixelTileBitmapAdapter.renderInto(
+                    original, clippedRead, read.bitmap, read.pixels,
+                )
+            }
+            if (read !== sample) Canvas(sample.bitmap).drawBitmap(
+                read.bitmap,
+                (clippedRead.left - requestedRead.left).toFloat(),
+                (clippedRead.top - requestedRead.top).toFloat(),
+                sourcePaint,
             )
         }
         val output = scratch(reusableOutputs, plan.writeBounds.width, plan.writeBounds.height)

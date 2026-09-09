@@ -4,6 +4,10 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.engine.v5.tools.RasterTileBlendSession
+import app.inkloom.engine.v5.tools.RasterTileEditSession
+import app.inkloom.engine.v5.tools.RasterRoiPlan
+import app.inkloom.engine.v5.tools.RasterSampleGeneration
+import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.tools.RasterAbyssPolicy
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection
@@ -115,6 +119,47 @@ class RasterBlendSessionTest {
         assertTrue(Color.green(carried) > Color.red(carried))
         assertTrue(Color.green(carried) > Color.blue(carried))
         bitmap.recycle()
+    }
+
+    @Test fun reusableTransparentEdgeSamplesMatchReferenceAndClearPreviousScratchPixels() {
+        val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
+        for (y in 0 until 16) for (x in 0 until 16) {
+            bitmap.setPixel(x, y, Color.argb(64 + x * 10, x * 13, y * 15, 90))
+        }
+        val reads = listOf(
+            PixelRect(0, 0, 16, 16), PixelRect(-8, -8, 8, 8),
+            PixelRect(8, 8, 24, 24), PixelRect(40, 40, 56, 56),
+            PixelRect(-8, 8, 8, 24), PixelRect(8, -8, 24, 8),
+        )
+        fun sampleSequence(reuse: Boolean, generation: RasterSampleGeneration): List<List<Int>> {
+            val captured = mutableListOf<List<Int>>()
+            RasterTileEditSession(PixelTileBitmapAdapter.import(bitmap), "edge samples").use { session ->
+                reads.forEachIndexed { index, read ->
+                    val plan = RasterRoiPlan.create(PixelRect(0, 0, 16, 16), 16, 16, 128, readCore = read)
+                    val operation: (Bitmap, PixelRect, Bitmap) -> Unit = { sample, bounds, output ->
+                        assertEquals(read, bounds)
+                        val pixels = IntArray(256)
+                        sample.getPixels(pixels, 0, 16, 0, 0, 16, 16)
+                        captured += pixels.toList()
+                        output.eraseColor(Color.argb(100 + index * 20, index * 40, 70, 120))
+                    }
+                    if (reuse) session.editWithReusableRoi(plan, generation, operation)
+                    else session.editWithRoi(plan, generation, operation)
+                }
+                session.commit().close()
+            }
+            return captured
+        }
+        try {
+            RasterSampleGeneration.entries.forEach { generation ->
+                val expected = sampleSequence(false, generation)
+                val actual = sampleSequence(true, generation)
+                assertEquals("$generation transparent edge sampling", expected, actual)
+                assertTrue("Fully outside sample must not retain earlier scratch pigment", actual[3].all { it == 0 })
+            }
+        } finally {
+            bitmap.recycle()
+        }
     }
 
     @Test fun oneFastCoalescedInputProducesAContinuousSmudgeCapsule() {
