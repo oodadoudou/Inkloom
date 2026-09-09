@@ -1455,14 +1455,17 @@ class InkCanvasView(context: Context) : View(context) {
         val previewCheckpoint = canvas.save()
         selectionBoundaryPreviewMatrix?.let(canvas::concat)
         selectionBoundaryRect.set(0f, 0f, width.toFloat(), height.toFloat())
-        boundary.draw(canvas, selectionBoundaryRect, selectionBoundaryPaint)
-
         val clip = android.graphics.RectF(
             content.left * width.toFloat() / boundary.width,
             content.top * height.toFloat() / boundary.height,
             content.right * width.toFloat() / boundary.width,
             content.bottom * height.toFloat() / boundary.height,
         )
+        if (canvas.quickReject(clip)) {
+            canvas.restoreToCount(previewCheckpoint)
+            return
+        }
+        boundary.draw(canvas, selectionBoundaryRect, selectionBoundaryPaint)
         val checkpoint = canvas.saveLayer(clip, null)
         boundary.draw(canvas, selectionBoundaryRect, selectionMaskPaint)
         selectionAntMatrix.reset()
