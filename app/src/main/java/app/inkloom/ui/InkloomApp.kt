@@ -786,6 +786,7 @@ fun InkloomApp(initialIntent: Intent?) {
                 brushPicker.launch(arrayOf("*/*"))
             },
             onImportBrushFolder = { brushFolderPicker.launch(null) },
+            onBrushGridLayout = { updateSettings(settings.copy(brushGridLayout = it)) },
             onExportBrush = { brush ->
                 pendingBrushExport = brush
                 val safeName = brush.name.replace(Regex("[^A-Za-z0-9._-]"), "_").trim('_').ifBlank { "Inkloom-Brush" }
@@ -1308,6 +1309,7 @@ private fun EditorScreen(
     onToggleBrushes: () -> Unit,
     onImportBrushes: (String?) -> Unit,
     onImportBrushFolder: () -> Unit,
+    onBrushGridLayout: (Boolean) -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
     onReplaceBrushes: (List<ImportedBrush>) -> Unit,
@@ -2228,7 +2230,7 @@ private fun EditorScreen(
         val visibleBrushPanelBounds = WorkspacePanelPlacement.clamp(brushPanelBounds, workspaceWidthDp, usableWorkspaceHeightDp, minimumWidthDp = 176f)
         val visibleLayerPanelBounds = WorkspacePanelPlacement.clamp(layerPanelBounds, workspaceWidthDp, usableWorkspaceHeightDp, minimumWidthDp = 176f)
         LaunchedEffect(visiblePagePanelBounds) { if (pagePanelBounds != visiblePagePanelBounds) pagePanelBounds = visiblePagePanelBounds }
-        LaunchedEffect(visibleBrushPanelBounds) { if (brushPanelBounds != visibleBrushPanelBounds) brushPanelBounds = visibleBrushPanelBounds }
+        // Clamp only the presentation. A delayed effect must not overwrite a newer resize or the saved width.
         LaunchedEffect(visibleLayerPanelBounds) { if (layerPanelBounds != visibleLayerPanelBounds) layerPanelBounds = visibleLayerPanelBounds }
         val orderedPanelTabs = WorkspacePanelTabs.normalizeOrder(settings.panelTabOrder)
         fun visibleTabsAt(dock: WorkspacePanelDock, includePages: Boolean = true) = orderedPanelTabs.filter { panel ->
@@ -3681,6 +3683,7 @@ private fun EditorScreen(
                 onBrushSelected = ::selectWorkspaceBrush,
                 onImportBrushes = onImportBrushes,
                 onImportBrushFolder = onImportBrushFolder,
+            onBrushGridLayout = onBrushGridLayout,
                 onExportBrush = onExportBrush,
                 onQuickBrushCommit = { updated ->
                     val committed = updated.copy(lastUsedAt = System.currentTimeMillis())
@@ -7790,6 +7793,7 @@ private fun BrushPanel(
     onBrushSelected: (ImportedBrush) -> Unit,
     onImportBrushes: (String?) -> Unit,
     onImportBrushFolder: () -> Unit,
+    onBrushGridLayout: (Boolean) -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
     onQuickBrushCommit: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
@@ -7840,6 +7844,7 @@ private fun BrushPanel(
             onBrushSelected = onBrushSelected,
             onImportBrushes = onImportBrushes,
             onImportBrushFolder = onImportBrushFolder,
+            onBrushGridLayout = onBrushGridLayout,
             onExportBrush = onExportBrush,
             onQuickBrushCommit = onQuickBrushCommit,
             onUpdateBrush = onUpdateBrush,
@@ -8534,6 +8539,7 @@ private fun ProcreateBrushLibrary(
     onBrushSelected: (ImportedBrush) -> Unit,
     onImportBrushes: (String?) -> Unit,
     onImportBrushFolder: () -> Unit,
+    onBrushGridLayout: (Boolean) -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
     onQuickBrushCommit: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
@@ -8589,7 +8595,7 @@ private fun ProcreateBrushLibrary(
     var editBrush by remember { mutableStateOf<ImportedBrush?>(null) }
     var menuBrush by remember { mutableStateOf<ImportedBrush?>(null) }
     var moveBrush by remember { mutableStateOf<ImportedBrush?>(null) }
-    var gridLayout by rememberSaveable { mutableStateOf(false) }
+    val gridLayout = settings.brushGridLayout
     var menuGroup by remember { mutableStateOf<String?>(null) }
     var renameGroup by remember { mutableStateOf<String?>(null) }
     var renameGroupValue by remember { mutableStateOf("") }
@@ -8860,7 +8866,7 @@ private fun ProcreateBrushLibrary(
                         }
                     }
                 }
-                IconButton(onClick = { gridLayout = !gridLayout }, modifier = Modifier.size(38.dp)) {
+                IconButton(onClick = { onBrushGridLayout(!gridLayout) }, modifier = Modifier.size(38.dp)) {
                     Icon(if (gridLayout) Icons.Outlined.ViewList else Icons.Outlined.GridView, if (gridLayout) tr("List view", "列表视图") else tr("Grid view", "网格视图"), tint = Ink)
                 }
                 IconButton(

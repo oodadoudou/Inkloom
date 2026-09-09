@@ -38,6 +38,8 @@ class AppSettingsBackupCodecTest {
             freeDockActivePanel = WorkspacePanelKind.BRUSHES,
             panelTabOrder = "LAYERS,BRUSHES,PAGES",
             brushPanelXDp = 333f,
+            brushGridLayout = true,
+            brushPanelWidthDp = 527f,
             toolbarDock = ToolbarDock.LEFT,
             singleFingerDoubleTapUndo = true,
             twoFingerRotation = true,

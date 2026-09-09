@@ -60,6 +60,7 @@ data class AppSettings(
     val brushPanelXDp: Float = 1180f,
     val brushPanelYDp: Float = 18f,
     val brushPanelWidthDp: Float = 400f,
+    val brushGridLayout: Boolean = false,
     val brushPanelHeightDp: Float = 620f,
     val layerPanelXDp: Float = 1440f,
     val layerPanelYDp: Float = 18f,
@@ -241,6 +242,7 @@ class AppSettingsStore(context: Context) {
             pagePanelHeightDp = preferences.getFloat("pagePanelHeightDp", 620f).coerceIn(120f, 1600f),
             brushPanelXDp = preferences.getFloat("brushPanelXDp", 1180f).coerceIn(-2400f, 2400f),
             brushPanelYDp = preferences.getFloat("brushPanelYDp", 18f).coerceIn(-2400f, 2400f),
+            brushGridLayout = preferences.getBoolean("brushGridLayout", false),
             brushPanelWidthDp = preferences.getFloat("brushPanelWidthDp", 400f).coerceIn(80f, 1200f),
             brushPanelHeightDp = preferences.getFloat("brushPanelHeightDp", 620f).coerceIn(120f, 1600f),
             layerPanelXDp = preferences.getFloat("layerPanelXDp", 1440f).coerceIn(-2400f, 2400f),
@@ -398,6 +400,7 @@ class AppSettingsStore(context: Context) {
             .putFloat("pagePanelHeightDp", persisted.pagePanelHeightDp)
             .putFloat("brushPanelXDp", persisted.brushPanelXDp)
             .putFloat("brushPanelYDp", persisted.brushPanelYDp)
+            .putBoolean("brushGridLayout", persisted.brushGridLayout)
             .putFloat("brushPanelWidthDp", persisted.brushPanelWidthDp)
             .putFloat("brushPanelHeightDp", persisted.brushPanelHeightDp)
             .putFloat("layerPanelXDp", persisted.layerPanelXDp)

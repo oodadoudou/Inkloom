@@ -252,6 +252,27 @@ class BrushMasterSettingsWindowTest {
         compose.waitForIdle()
     }
 
+    @Test fun resizedBrushWindowAndGridViewSurviveCloseAndActivityRecreation() {
+        openPencil()
+        val left=center("Resize brushes panel · left edge")
+        val before=context.getSharedPreferences("inkloom_settings",Context.MODE_PRIVATE).getFloat("brushPanelWidthDp",400f)
+        stroke(left,left+Offset(-120f,0f))
+        compose.waitForIdle()
+        val saved=context.getSharedPreferences("inkloom_settings",Context.MODE_PRIVATE).getFloat("brushPanelWidthDp",400f)
+        assertTrue("Resize must persist actual width: $before -> $saved",saved>before+20f)
+        tap("Grid view")
+        assertTrue(context.getSharedPreferences("inkloom_settings",Context.MODE_PRIVATE).getBoolean("brushGridLayout",false))
+        tap("Close brushes panel");tap("Brushes")
+        center("List view")
+        assertEquals(saved,context.getSharedPreferences("inkloom_settings",Context.MODE_PRIVATE).getFloat("brushPanelWidthDp",0f),.01f)
+        compose.activityRule.scenario.recreate();compose.waitForIdle()
+        center("List view")
+        val leftAfter=bounds("Resize brushes panel · left edge").left
+        val rightAfter=bounds("Resize brushes panel · right edge").right
+        val density=context.resources.displayMetrics.density
+        assertEquals(saved,(rightAfter-leftAfter)/density,1f)
+    }
+
     private fun openPencil() {
         tap("New Note")
         tap("Create")
