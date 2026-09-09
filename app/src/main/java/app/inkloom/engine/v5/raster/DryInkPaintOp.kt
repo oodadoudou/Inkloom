@@ -278,26 +278,20 @@ class DryInkPaintOp(
                 (1f - definition.flowPressureMinimum) * pressure.coerceIn(0f, 1f))
             val sourceAlpha = (((definition.colorArgb ushr 24) and 0xff) * definition.opacity * pressureOpacity * pressureFlow * coverage)
                 .toInt().coerceIn(0, 255)
-            if (sourceAlpha == 0) return destination
-            val inverse = 255 - sourceAlpha
-            val destinationAlpha = (destination ushr 24) and 0xff
-            val sourceRed = ((definition.colorArgb ushr 16) and 0xff) * sourceAlpha / 255
-            val sourceGreen = ((definition.colorArgb ushr 8) and 0xff) * sourceAlpha / 255
-            val sourceBlue = (definition.colorArgb and 0xff) * sourceAlpha / 255
-            val outputAlpha = sourceAlpha + destinationAlpha * inverse / 255
-            val outputRed = sourceRed + ((destination ushr 16) and 0xff) * inverse / 255
-            val outputGreen = sourceGreen + ((destination ushr 8) and 0xff) * inverse / 255
-            val outputBlue = sourceBlue + (destination and 0xff) * inverse / 255
-            return (outputAlpha.coerceAtMost(255) shl 24) or
-                (outputRed.coerceAtMost(255) shl 16) or
-                (outputGreen.coerceAtMost(255) shl 8) or
-                outputBlue.coerceAtMost(255)
+            // Segments are geometry of one continuous ribbon, not separate deposits.
+            // The delta is gesture-local; source-over against the previous stroke happens
+            // exactly once at publication. Repeated caps must not darken sample joints.
+            if (sourceAlpha <= (destination ushr 24)) return destination
+            return (sourceAlpha shl 24) or
+                ((((definition.colorArgb ushr 16) and 0xff) * sourceAlpha / 255) shl 16) or
+                ((((definition.colorArgb ushr 8) and 0xff) * sourceAlpha / 255) shl 8) or
+                ((definition.colorArgb and 0xff) * sourceAlpha / 255)
         }
 
         private fun eraseCoverageOver(destination: Int, coverage: Float): Int {
             val eraseAlpha = (255f * definition.opacity * coverage).toInt().coerceIn(0, 255)
             val existing = (destination ushr 24) and 0xff
-            val accumulated = (eraseAlpha + existing * (255 - eraseAlpha) / 255).coerceAtMost(255)
+            val accumulated = maxOf(eraseAlpha, existing)
             return (accumulated shl 24) or (accumulated shl 16) or (accumulated shl 8) or accumulated
         }
 

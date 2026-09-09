@@ -15,6 +15,33 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DryInkPaintOpTest {
+    @Test fun `fast low opacity ribbon has no darker input joints and builds between strokes`() {
+        fun draw(surface: PixelTileSurface, step: Int, id: Long) {
+            val session = DryInkPaintOp(surface, DryInkDefinition(6f, 0xff304090.toInt(),
+                opacity = .25f, minimumPressureScale = 1f))
+                .begin(PaintOpContext(id, surface.revision, "fast ribbon")) as DryInkPaintOp.Session
+            val samples = (16..240 step step).mapIndexed { i, x ->
+                app.inkloom.engine.v5.stroke.StrokeSample(i.toLong(), DocumentPoint(x.toFloat(), 32f),
+                    i * 8_000_000L, 1f, 0f, 0f)
+            }
+            samples.forEachIndexed { i, point -> session.apply(app.inkloom.engine.v5.stroke.PaintBatch(
+                id, i.toLong(), listOf(point), null, false)) }
+            session.finish(app.inkloom.engine.v5.stroke.PaintBatch.empty(id, samples.size.toLong(), true))
+            session.publish().record.close()
+        }
+        val fast = PixelTileSurface(256, 64, 64)
+        val slow = PixelTileSurface(256, 64, 64)
+        draw(fast, 16, 1); draw(slow, 1, 1)
+        val once = fast.pixelAt(120, 32) ushr 24
+        assertEquals("25% opacity stays per stroke", 63, once)
+        for (x in 20..235) {
+            assertEquals("fast join at $x", once, fast.pixelAt(x, 32) ushr 24)
+            assertEquals("input-rate dependent opacity at $x", once, slow.pixelAt(x, 32) ushr 24)
+        }
+        draw(fast, 16, 2)
+        assertEquals("independent second stroke composites over first", 110, fast.pixelAt(120, 32) ushr 24)
+    }
+
     @Test fun `dry ink is visible before up and up does not replay earlier geometry`() {
         val surface = PixelTileSurface(512, 512, 64)
         val stroke = DirectStrokeSession(10L, 8f)
