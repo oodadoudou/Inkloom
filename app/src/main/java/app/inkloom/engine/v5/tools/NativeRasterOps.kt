@@ -233,6 +233,19 @@ internal object NativeRasterOps {
         left: Int, top: Int, right: Int, bottom: Int, mode: Int, color: Int, erase: Boolean,
     ): Boolean
 
+    /** Bounded rectangle copy without interpreted Kotlin work for every scanline. */
+    fun copyPixelRows(
+        source: IntArray, destination: IntArray, sourceOffset: Int, destinationOffset: Int,
+        width: Int, height: Int, sourceStride: Int, destinationStride: Int,
+    ): Boolean = nativeLibraryLoaded && nativeCopyPixelRows(
+        source, destination, sourceOffset, destinationOffset, width, height, sourceStride, destinationStride,
+    )
+
+    private external fun nativeCopyPixelRows(
+        source: IntArray, destination: IntArray, sourceOffset: Int, destinationOffset: Int,
+        width: Int, height: Int, sourceStride: Int, destinationStride: Int,
+    ): Boolean
+
     /** Same quantization as unpremultiply + Bitmap.setPixels, in one bounded native write. */
     fun writePremultipliedBitmap(bitmap: Bitmap, pixels: IntArray): Boolean =
         nativeLibraryLoaded && bitmap.isMutable && nativeWritePremultipliedBitmap(bitmap, pixels)

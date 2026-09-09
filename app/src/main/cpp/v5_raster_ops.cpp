@@ -5,6 +5,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <vector>
 
@@ -1272,5 +1273,36 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeWritePremultipliedBitmap(
         }
     }
     env->ReleasePrimitiveArrayCritical(pixels_array, const_cast<jint*>(source), JNI_ABORT);
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeCopyPixelRows(
+    JNIEnv* env, jobject, jintArray source_array, jintArray destination_array,
+    jint source_offset, jint destination_offset, jint width, jint height,
+    jint source_stride, jint destination_stride) {
+    if (!source_array || !destination_array || env->IsSameObject(source_array, destination_array) ||
+        source_offset < 0 || destination_offset < 0 || width <= 0 || height <= 0 ||
+        source_stride < width || destination_stride < width) return JNI_FALSE;
+    const auto source_end = static_cast<std::int64_t>(source_offset) +
+        static_cast<std::int64_t>(height - 1) * source_stride + width;
+    const auto destination_end = static_cast<std::int64_t>(destination_offset) +
+        static_cast<std::int64_t>(height - 1) * destination_stride + width;
+    if (source_end > env->GetArrayLength(source_array) ||
+        destination_end > env->GetArrayLength(destination_array)) return JNI_FALSE;
+    const auto* source = static_cast<const jint*>(env->GetPrimitiveArrayCritical(source_array, nullptr));
+    if (!source) return JNI_FALSE;
+    auto* destination = static_cast<jint*>(env->GetPrimitiveArrayCritical(destination_array, nullptr));
+    if (!destination) {
+        env->ReleasePrimitiveArrayCritical(source_array, const_cast<jint*>(source), JNI_ABORT);
+        return JNI_FALSE;
+    }
+    for (int y = 0; y < height; ++y) {
+        std::memcpy(destination + destination_offset + static_cast<std::size_t>(y) * destination_stride,
+            source + source_offset + static_cast<std::size_t>(y) * source_stride,
+            static_cast<std::size_t>(width) * sizeof(jint));
+    }
+    env->ReleasePrimitiveArrayCritical(destination_array, destination, 0);
+    env->ReleasePrimitiveArrayCritical(source_array, const_cast<jint*>(source), JNI_ABORT);
     return JNI_TRUE;
 }

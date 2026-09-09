@@ -234,13 +234,12 @@ class PixelTileSurfaceSnapshot internal constructor(
                 tileLeft, tileTop, minOf(tileLeft + tileSize, logicalWidth), minOf(tileTop + tileSize, logicalHeight),
             ).intersect(source)
             if (overlap.isEmpty) return@forEach
-            for (y in overlap.top until overlap.bottom) {
-                val sourceOffset = (y - tileTop) * tileSize + overlap.left - tileLeft
-                val destinationOffset = (y - source.top) * source.width + overlap.left - source.left
-                (tile.pixels as Argb8888TileBuffer).values.copyInto(
-                    output, destinationOffset, sourceOffset, sourceOffset + overlap.width,
-                )
-            }
+            copyPixelRows(
+                (tile.pixels as Argb8888TileBuffer).values, output,
+                (overlap.top - tileTop) * tileSize + overlap.left - tileLeft,
+                (overlap.top - source.top) * source.width + overlap.left - source.left,
+                overlap.width, overlap.height, tileSize, source.width,
+            )
         }
     }
 
@@ -868,11 +867,12 @@ class PixelTileWriteTransaction internal constructor(
                 minOf(tileLeft + surface.tileSize, surface.logicalWidth),
                 minOf(tileTop + surface.tileSize, surface.logicalHeight),
             ).intersect(source)
-            for (y in overlap.top until overlap.bottom) {
-                val tileOffset = (y - tileTop) * surface.tileSize + overlap.left - tileLeft
-                val outputOffset = (y - source.top) * source.width + overlap.left - source.left
-                pixels.values.copyInto(output, outputOffset, tileOffset, tileOffset + overlap.width)
-            }
+            copyPixelRows(
+                pixels.values, output,
+                (overlap.top - tileTop) * surface.tileSize + overlap.left - tileLeft,
+                (overlap.top - source.top) * source.width + overlap.left - source.left,
+                overlap.width, overlap.height, surface.tileSize, source.width,
+            )
         }
     }
 
@@ -913,11 +913,12 @@ class PixelTileWriteTransaction internal constructor(
                 overlap.bottom - tileTop,
             )
             editTile(key, dirtyLocal) { tilePixels, tileStride ->
-                for (y in overlap.top until overlap.bottom) {
-                    val sourceOffset = (y - destination.top) * rowStride + overlap.left - destination.left
-                    val tileOffset = (y - tileTop) * tileStride + overlap.left - tileLeft
-                    pixels.copyInto(tilePixels, tileOffset, sourceOffset, sourceOffset + overlap.width)
-                }
+                copyPixelRows(
+                    pixels, tilePixels,
+                    (overlap.top - destination.top) * rowStride + overlap.left - destination.left,
+                    (overlap.top - tileTop) * tileStride + overlap.left - tileLeft,
+                    overlap.width, overlap.height, rowStride, tileStride,
+                )
             }
         }
     }
@@ -1035,4 +1036,17 @@ class PixelTileWriteTransaction internal constructor(
     }
 
     private enum class State { ACTIVE, COMMITTED, CANCELLED }
+}
+
+/** Native Android bulk copy; the JVM reference preserves the identical scanline contract. */
+private fun copyPixelRows(
+    source: IntArray, destination: IntArray, sourceOffset: Int, destinationOffset: Int,
+    width: Int, height: Int, sourceStride: Int, destinationStride: Int,
+) {
+    if (NativeRasterOps.copyPixelRows(source, destination, sourceOffset, destinationOffset,
+            width, height, sourceStride, destinationStride)) return
+    for (row in 0 until height) {
+        val start = sourceOffset + row * sourceStride
+        source.copyInto(destination, destinationOffset + row * destinationStride, start, start + width)
+    }
 }

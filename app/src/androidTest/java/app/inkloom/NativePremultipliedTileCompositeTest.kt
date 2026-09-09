@@ -9,6 +9,30 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class NativePremultipliedTileCompositeTest {
+    @Test fun nativeRowCopyPreservesPaddingAndRejectsInvalidOrAliasedRanges() {
+        for (width in listOf(1, 7, 64, 129)) for (height in listOf(1, 3, 40)) {
+            val sourceStride = width + 5
+            val destinationStride = width + 9
+            val source = IntArray(sourceStride * (height + 2)) { it * 1664525 + 1013904223 }
+            val preserved = source.copyOf()
+            val actual = IntArray(destinationStride * (height + 2)) { 0x12345678 }
+            val expected = actual.copyOf()
+            for (row in 0 until height) {
+                val start = 2 + row * sourceStride
+                source.copyInto(expected, 3 + row * destinationStride, start, start + width)
+            }
+            assertTrue(NativeRasterOps.copyPixelRows(source, actual, 2, 3, width, height, sourceStride, destinationStride))
+            assertArrayEquals(expected, actual)
+            assertArrayEquals(preserved, source)
+            val beforeInvalid = actual.copyOf()
+            assertTrue(!NativeRasterOps.copyPixelRows(source, actual, 2, 3, width, Int.MAX_VALUE, sourceStride, destinationStride))
+            assertTrue(!NativeRasterOps.copyPixelRows(source, actual, -1, 3, width, height, sourceStride, destinationStride))
+            assertTrue(!NativeRasterOps.copyPixelRows(source, actual, 2, 3, width, height, width - 1, destinationStride))
+            assertTrue(!NativeRasterOps.copyPixelRows(actual, actual, 2, 3, width, height, destinationStride, destinationStride))
+            assertArrayEquals(beforeInvalid, actual)
+        }
+    }
+
     @Test fun fusedBitmapWriteMatchesAndroidSetPixelsForEveryAlphaAndChannel() {
         val input = IntArray(65536) { index ->
             val a = index / 256; val value = index % 256
