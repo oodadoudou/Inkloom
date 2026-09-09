@@ -6,19 +6,19 @@ import java.util.concurrent.atomic.AtomicLong
 
 /** A logical pixel rectangle using an exclusive right/bottom edge. */
 data class PixelRect(
-    val left: Int,
-    val top: Int,
-    val right: Int,
-    val bottom: Int,
+    @JvmField val left: Int,
+    @JvmField val top: Int,
+    @JvmField val right: Int,
+    @JvmField val bottom: Int,
 ) {
     init {
         require(right >= left) { "right must be >= left" }
         require(bottom >= top) { "bottom must be >= top" }
     }
 
-    val width: Int get() = right - left
-    val height: Int get() = bottom - top
-    val isEmpty: Boolean get() = width == 0 || height == 0
+    inline val width: Int get() = right - left
+    inline val height: Int get() = bottom - top
+    inline val isEmpty: Boolean get() = width == 0 || height == 0
 
     fun union(other: PixelRect): PixelRect = when {
         isEmpty -> other
@@ -43,7 +43,7 @@ data class PixelRect(
     }
 }
 
-data class PixelTileKey(val column: Int, val row: Int)
+data class PixelTileKey(@JvmField val column: Int, @JvmField val row: Int)
 
 /** Metadata for one immutable tile generation. Pixel storage is intentionally not exposed. */
 data class PixelTileInfo(
@@ -282,9 +282,9 @@ class PixelTileSurfaceSnapshot internal constructor(
  * while published snapshots remain readable without observing partial edits.
  */
 class PixelTileSurface(
-    val logicalWidth: Int,
-    val logicalHeight: Int,
-    val tileSize: Int = DEFAULT_TILE_SIZE,
+    @JvmField val logicalWidth: Int,
+    @JvmField val logicalHeight: Int,
+    @JvmField val tileSize: Int = DEFAULT_TILE_SIZE,
     val surfaceId: String = UUID.randomUUID().toString(),
     val pixelFormat: PixelTileFormat = PixelTileFormat.PREMULTIPLIED_SRGB_8888,
 ) {
