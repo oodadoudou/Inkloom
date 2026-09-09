@@ -30,6 +30,14 @@ class PressureCalibrationTest {
         assertEquals(listOf(0f, 0f, .25f, .9f, .5f, .9f, .75f, .9f, 1f, 1f), normalized)
     }
 
+    @Test fun identityCurvePreservesExactPressureForPreviewAndLiveParity() {
+        val curves = listOf(PressureResponseCurve.LINEAR, listOf(0f, 0f, .37f, .37f, 1f, 1f))
+        for (curve in curves) for (i in 0..1000) {
+            val pressure = i / 1000f
+            assertEquals(pressure.toBits(), PressureResponseCurve.apply(pressure, curve).toBits())
+        }
+    }
+
     @Test fun freelyPositionedKnotsAreInterpolatedAndRemainMonotone() {
         val curve = listOf(0f, 0f, .13f, .34f, .68f, .82f, 1f, 1f)
         assertEquals(curve, PressureResponseCurve.decode(PressureResponseCurve.encode(curve)))

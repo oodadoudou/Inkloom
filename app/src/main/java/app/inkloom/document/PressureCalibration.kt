@@ -79,6 +79,8 @@ object PressureResponseCurve {
     fun apply(input: Float, values: List<Float>): Float {
         val curve = normalize(values)
         val x = (input.takeIf(Float::isFinite) ?: 0f).coerceIn(0f, 1f)
+        // An identity curve must preserve pressure bits, including preview/live raster parity.
+        if (curve.indices.step(2).all { curve[it] == curve[it + 1] }) return x
         val count = curve.size / 2
         var left = 0
         while (left < count - 2 && x > curve[(left + 1) * 2]) left++
