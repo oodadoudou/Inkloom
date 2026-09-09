@@ -46,10 +46,11 @@ def main():
         candidates.update(artifacts.rglob('*.apk'))
         candidates.update(artifacts.rglob('*.aab'))
     # Profile output is no longer a deliverable. Leave active Debug/test build products alone.
-    outputs = root / 'app' / 'build' / 'outputs'
-    if outputs.exists():
-        candidates.update(p for p in outputs.rglob('*') if p.is_file() and
-                          any(part.lower() == 'profile' for part in p.relative_to(outputs).parts))
+    for folder in ('outputs', 'intermediates'):
+        generated = root / 'app' / 'build' / folder
+        if generated.exists():
+            candidates.update(p for p in generated.rglob('*') if p.is_file() and
+                              any(part.lower() == 'profile' for part in p.relative_to(generated).parts))
     files = sorted(p for p in candidates if p.is_file() and not p.is_symlink() and p != keep)
     entries = [{'path': str(p.relative_to(root)), 'bytes': p.stat().st_size} for p in files]
     print(json.dumps({'mode': 'delete' if args.apply else 'dry-run', 'keep': str(keep.relative_to(root)),
