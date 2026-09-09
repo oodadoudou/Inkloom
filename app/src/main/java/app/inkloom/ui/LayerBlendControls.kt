@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -31,13 +32,15 @@ internal val layerBlendGroups = listOf(
 
 @Composable
 internal fun LayerBlendControls(layer: InkLayer, language: UiLanguage, onOpacity: (Float) -> Unit, onMode: (LayerBlendMode) -> Unit) {
+    val orderedModes = layerBlendGroups.flatMap { it + listOf<LayerBlendMode?>(null) }
+    val scroll = rememberLazyListState((orderedModes.indexOf(layer.blendMode) - 1).coerceAtLeast(0))
     Column(Modifier.fillMaxWidth().background(SageContainer)) {
         Row(Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(language.text("Opacity", "不透明度"), Modifier.width(68.dp), fontSize = 12.sp)
             BrushParameterSlider(layer.opacity, onOpacity, Modifier.weight(1f), valueRange = 0f..1f)
             Text("${(layer.opacity * 100).toInt()}%", Modifier.padding(start = 8.dp), fontSize = 12.sp)
         }
-        LazyColumn(Modifier.fillMaxWidth().height(176.dp).semantics { contentDescription = "Layer blend modes" }) {
+        LazyColumn(Modifier.fillMaxWidth().height(176.dp).semantics { contentDescription = "Layer blend modes" }, state = scroll) {
             layerBlendGroups.forEachIndexed { index, modes ->
                 if (index > 0) item { HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = OutlineSoft) }
                 items(modes, key = { it.name }) { mode ->

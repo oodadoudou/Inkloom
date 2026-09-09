@@ -1126,6 +1126,48 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Layer 2 copy").assertIsDisplayed()
     }
 
+    @Test fun layerBlendChoicesStayInlineAndRightSwipeAddsSecondarySelection() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Layers").performClick()
+        composeRule.onNodeWithContentDescription("Add layer").performClick()
+        composeRule.onNodeWithContentDescription("Layer blending Layer 1").performClick()
+        composeRule.onNodeWithText("Multiply").performClick()
+        composeRule.onNodeWithContentDescription("Layer blend modes").assertIsDisplayed()
+        val blendLayerId = requireNotNull(findInkCanvasView()).activeLayerId
+        composeRule.runOnIdle {
+            assertEquals(app.inkloom.document.LayerBlendMode.MULTIPLY,
+                FileDocumentStore(composeRule.activity.filesDir).list().flatMap { it.pages }.flatMap { it.layers }.single { it.id == blendLayerId }.blendMode)
+        }
+        composeRule.onNodeWithContentDescription("Layer blending Layer 1").performClick()
+        composeRule.onNodeWithContentDescription("Add layer").performClick()
+        val active = FileDocumentStore(composeRule.activity.filesDir).list().flatMap { it.pages }
+            .single { page -> page.layers.any { it.id == blendLayerId } }.layers.single { it.name == "Layer 2" }.id
+        composeRule.waitUntil(5_000) { requireNotNull(findInkCanvasView()).activeLayerId == active }
+        composeRule.onNodeWithContentDescription("Reorder layer Layer 1").performTouchInput { swipe(centerLeft, centerRight, 250) }
+        composeRule.onNodeWithContentDescription("Exit layer selection").assertIsDisplayed()
+        assertEquals("Secondary selection must not change the drawing target", active, requireNotNull(findInkCanvasView()).activeLayerId)
+        composeRule.onNodeWithContentDescription("Reorder layer Layer 1").performTouchInput { swipe(centerLeft, centerRight, 250) }
+        assertTrue(composeRule.onAllNodesWithContentDescription("Exit layer selection").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test fun longPressLayerDropIntoFolderCommitsHierarchyOnce() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Layers").performClick()
+        composeRule.onNodeWithContentDescription("Add layer group").performClick()
+        composeRule.onNodeWithContentDescription("Add layer").performClick()
+        val source = composeRule.onNodeWithContentDescription("Reorder layer Layer 1")
+        val target = composeRule.onNodeWithContentDescription("Reorder layer Folder 1")
+        val distance = target.fetchSemanticsNode().boundsInRoot.center.y - source.fetchSemanticsNode().boundsInRoot.center.y
+        source.performTouchInput {
+            down(center); advanceEventTime(700); moveBy(Offset(0f, distance)); advanceEventTime(100); up()
+        }
+        val activeLayer = requireNotNull(findInkCanvasView()).activeLayerId
+        composeRule.runOnIdle {
+            val layers = FileDocumentStore(composeRule.activity.filesDir).list().flatMap { it.pages }.single { page -> page.layers.any { it.id == activeLayer } }.layers
+            assertEquals(layers.single { it.name == "Folder 1" }.id, layers.single { it.name == "Layer 1" }.parentId)
+        }
+    }
+
     private fun findInkCanvasView(): InkCanvasView? {
         var found: InkCanvasView? = null
         InstrumentationRegistry.getInstrumentation().runOnMainSync {

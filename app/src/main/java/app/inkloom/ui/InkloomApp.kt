@@ -7462,8 +7462,10 @@ private fun PaintingLayerPanel(
     val rowBounds = remember { mutableMapOf<String, androidx.compose.ui.geometry.Rect>() }
     var draggingLayerId by remember { mutableStateOf<String?>(null) }
     var dropLayerId by remember { mutableStateOf<String?>(null) }
+    var dropIntoFolder by remember { mutableStateOf(false) }
     val currentLayers by rememberUpdatedState(page.layers)
     val currentMove by rememberUpdatedState(onMove)
+    val currentMoveToFolder by rememberUpdatedState(onMoveToFolder)
     var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
     var renameValue by remember { mutableStateOf("") }
     var propertiesLayerId by remember { mutableStateOf<String?>(null) }
@@ -7552,7 +7554,7 @@ private fun PaintingLayerPanel(
                     val rowInk = if (layer.id == activeLayerId) Color.White else Ink
                     LayerRowActions(swipeActions, destructiveLabel = tr("Delete", "删除"), onSelectSecondary = {
                         if (layer.id != activeLayerId && layer.role != LayerRole.BACKGROUND) {
-                            selectedLayerIds = if (layer.id in selectedLayerIds) selectedLayerIds - layer.id else selectedLayerIds + layer.id
+                            selectedLayerIds = app.inkloom.document.LayerSecondarySelection.toggle(activeLayerId, selectedLayerIds, layer.id)
                         }
                     }) {
                     Row(
@@ -7588,14 +7590,25 @@ private fun PaintingLayerPanel(
                                     val source = currentLayers.firstOrNull { it.id == layer.id }
                                     dropLayerId = currentLayers.firstOrNull { candidate ->
                                         candidate.id != layer.id && candidate.role != LayerRole.BACKGROUND &&
-                                            candidate.parentId == source?.parentId && rowBounds[candidate.id]?.let { dragY in it.top..it.bottom } == true
+                                            (candidate.parentId == source?.parentId || candidate in LayerHierarchy.availableFolders(currentLayers, layer.id)) &&
+                                            rowBounds[candidate.id]?.let { dragY in it.top..it.bottom } == true
                                     }?.id
+                                    dropIntoFolder = dropLayerId?.let { id ->
+                                        val bounds = rowBounds[id]
+                                        currentLayers.any { it.id == id && it.role == LayerRole.FOLDER } && bounds != null &&
+                                            dragY in (bounds.top + bounds.height * .25f)..(bounds.bottom - bounds.height * .25f)
+                                    } == true
                                 },
                                 onDragCancel = { draggingLayerId = null; dropLayerId = null },
                                 onDragEnd = {
                                     val from = currentLayers.indexOfFirst { it.id == layer.id }
                                     val to = currentLayers.indexOfFirst { it.id == dropLayerId }
-                                    if (moved && from >= 0 && to >= 0 && layer.role != LayerRole.BACKGROUND) currentMove(layer.id, to - from)
+                                    if (moved && from >= 0 && to >= 0 && layer.role != LayerRole.BACKGROUND) {
+                                        val destination = currentLayers[to]
+                                        if (dropIntoFolder && destination.role == LayerRole.FOLDER && destination.id != currentLayers[from].parentId) {
+                                            currentMoveToFolder(layer.id, destination.id)
+                                        } else currentMove(layer.id, to - from)
+                                    }
                                     
                                     draggingLayerId = null; dropLayerId = null
                                 },
