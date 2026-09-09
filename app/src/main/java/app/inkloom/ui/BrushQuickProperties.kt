@@ -112,7 +112,7 @@ private fun CommittedBrushSlider(
             override fun tryEmit(interaction: Interaction): Boolean { observe(interaction); return delegate.tryEmit(interaction) }
         }
     }
-    Slider(value.coerceIn(range.start, range.endInclusive), onValueChange = {
+    BrushParameterSlider(value.coerceIn(range.start, range.endInclusive), onValueChange = {
         gesture.changed()
         onChange(it)
     }, onValueChangeFinished = { gesture.finished(commit) }, valueRange = range,

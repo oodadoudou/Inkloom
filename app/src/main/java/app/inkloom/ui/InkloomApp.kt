@@ -9592,7 +9592,7 @@ private fun BrushTipPreview(brush: ImportedBrush, modifier: Modifier = Modifier)
 private fun BrushSettingSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValue: (Float) -> Unit) {
     val name = localizedBrushLabel(label)
     val description = tr("$name slider", "$name 滑块")
-    Column { Row { Text(name, Modifier.weight(1f), fontSize = 12.sp); Text(if (range.endInclusive > 10f) "%.1f".format(value) else "%.2f".format(value), color = MutedInk, fontSize = 11.sp) }; Slider(value, onValue, valueRange = range, modifier = Modifier.semantics { contentDescription = description }) }
+    Column { Row { Text(name, Modifier.weight(1f), fontSize = 12.sp); Text(if (range.endInclusive > 10f) "%.1f".format(value) else "%.2f".format(value), color = MutedInk, fontSize = 11.sp) }; BrushParameterSlider(value, onValue, valueRange = range, modifier = Modifier.semantics { contentDescription = description }) }
 }
 @Composable
 private fun SettingsDialog(

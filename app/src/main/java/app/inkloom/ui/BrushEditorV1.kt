@@ -241,14 +241,9 @@ private fun BrushOptionRow(
                 Text(if (displayScale == 100f) "${(current * 100).toInt()}%" else "%.2f".format(java.util.Locale.ROOT, current), fontSize = 12.sp)
             }
         }
-        Slider(current.coerceIn(option.valueRange.start, option.valueRange.endInclusive),
+        BrushParameterSlider(current.coerceIn(option.valueRange.start, option.valueRange.endInclusive),
             { onValue(option.apply(value, it)) }, valueRange = option.valueRange,
-            modifier = Modifier.fillMaxWidth().semantics { contentDescription = language.text("$label slider", "$label 滑块") },
-            thumb = { Box(Modifier.size(20.dp).shadow(2.dp, CircleShape)
-                .background(Color.White, CircleShape).border(1.dp, Color(0xFFD4D8D5), CircleShape)) },
-            track = { state -> SliderDefaults.Track(state, Modifier.height(4.dp),
-                colors = SliderDefaults.colors(activeTrackColor = Color(0xFF427658), inactiveTrackColor = Color(0xFFE1E5E2)),
-                thumbTrackGapSize = 0.dp, trackInsideCornerSize = 2.dp) })
+            modifier = Modifier.semantics { contentDescription = language.text("$label slider", "$label 滑块") })
     }
     if (numericOpen) {
         val parsed = numeric.toFloatOrNull()?.div(displayScale)?.takeIf { it.isFinite() && it in option.valueRange }
