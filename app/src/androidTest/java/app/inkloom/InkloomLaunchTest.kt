@@ -382,7 +382,8 @@ class InkloomLaunchTest {
         assertEquals(false, restored.showToolbar)
 
         composeRule.onNodeWithContentDescription("Actions").performClick()
-        composeRule.onNodeWithText("Minimal workspace").performClick()
+        composeRule.onNodeWithText("Minimal workspace").assertDoesNotExist()
+        composeRule.onNodeWithText("Drawing workspace").performClick()
         restored = AppSettingsStore(composeRule.activity).load()
         assertEquals(false, restored.showPageRail)
         assertEquals(false, restored.showBrushPanel)

@@ -8,6 +8,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
@@ -44,6 +46,24 @@ class BrushWindowReturnTest {
         }
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
+
+    @Test fun editorTitleSwitchesNotebooksWithoutReturningToGallery() {
+        val title = "Switcher ${System.nanoTime()}"
+        tap("New Note")
+        compose.onNode(hasSetTextAction()).performTextReplacement(title)
+        tap("Create")
+        compose.onNodeWithContentDescription("Switch notebook").performTouchInput { click() }
+        compose.waitForIdle()
+        compose.onNodeWithText("Distributed Systems").performTouchInput { click() }
+        compose.waitForIdle()
+        compose.onNodeWithText("Distributed Systems").assertExists()
+        compose.onNodeWithText("1/3").assertExists()
+        compose.onNodeWithContentDescription("Switch notebook").performTouchInput { click() }
+        compose.waitForIdle()
+        compose.onNodeWithText(title).performTouchInput { click() }
+        compose.waitForIdle()
+        compose.onNodeWithText("1/1").assertExists()
+    }
 
     @Test fun lastPagePlusCreatesBlankMatchingTemplateAndNormalNextStillNavigates() {
         tap("New Note")
