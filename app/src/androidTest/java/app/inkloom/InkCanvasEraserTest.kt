@@ -148,6 +148,61 @@ class InkCanvasEraserTest {
         assertEquals("Every completed erase gesture must commit exactly once", 100, commits)
     }
 
+    @Test fun rejectedPalmLiftDoesNotCancelAnInProgressErase() {
+        verifyPalmDuringErase(palmFirst = true)
+    }
+
+    @Test fun palmLandingAndLeavingCannotRestartOrFinishThePenStroke() {
+        verifyPalmDuringErase(palmFirst = false)
+    }
+
+    private fun verifyPalmDuringErase(palmFirst: Boolean) {
+        for (penType in listOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)) {
+            val surface = opaqueSurface(400, 400)
+            val initialRevision = surface.revision
+            var commits = 0
+            val view = configuredView(mapOf("paint" to surface)).apply {
+                eraserWidth = 24f
+                onRasterLayerCommitted = { commits++ }
+            }
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                fun packet(action: Int, x: Float, time: Long, palm: Boolean = true, flags: Int = 0, pen: Boolean = true) {
+                    val types = if (!pen) listOf(MotionEvent.TOOL_TYPE_FINGER)
+                        else if (!palm) listOf(penType)
+                        else if (palmFirst) listOf(MotionEvent.TOOL_TYPE_FINGER, penType)
+                        else listOf(penType, MotionEvent.TOOL_TYPE_FINGER)
+                    val props = types.map { type -> MotionEvent.PointerProperties().apply {
+                        id = if (type == MotionEvent.TOOL_TYPE_FINGER) 9 else 31; toolType = type
+                    } }.toTypedArray()
+                    val coords = types.map { type -> MotionEvent.PointerCoords().apply {
+                        this.x = if (type == MotionEvent.TOOL_TYPE_FINGER) 380f else x
+                        y = if (type == MotionEvent.TOOL_TYPE_FINGER) 370f else 200f
+                        pressure = .8f; touchMajor = if (type == MotionEvent.TOOL_TYPE_FINGER) 80f else 1f
+                    } }.toTypedArray()
+                    val event = MotionEvent.obtain(10L, time, action, types.size, props, coords, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, flags)
+                    try { view.onTouchEvent(event) } finally { event.recycle() }
+                }
+                if (palmFirst) {
+                    packet(MotionEvent.ACTION_DOWN, 40f, 10L, pen = false)
+                    packet(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 40f, 20L)
+                } else {
+                    packet(MotionEvent.ACTION_DOWN, 40f, 10L, palm = false)
+                    packet(MotionEvent.ACTION_MOVE, 130f, 20L, palm = false)
+                    packet(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 140f, 30L)
+                }
+                packet(MotionEvent.ACTION_MOVE, 240f, 40L)
+                val palmIndex = if (palmFirst) 0 else 1
+                packet(MotionEvent.ACTION_POINTER_UP or (palmIndex shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 240f, 50L, flags = MotionEvent.FLAG_CANCELED)
+                packet(MotionEvent.ACTION_MOVE, 350f, 60L, palm = false)
+                packet(MotionEvent.ACTION_UP, 350f, 70L, palm = false)
+            }
+            settlePublishedStroke(view)
+            assertEquals("Palm events must not split or cancel pen type $penType", 1, commits)
+            assertEquals(initialRevision + 1, surface.revision)
+            for (x in listOf(80, 200, 310)) assertEquals("Erase must survive on both sides of palm transition at x=$x", 0, Color.alpha(surface.pixelAt(x, 200)))
+        }
+    }
+
     private fun configuredView(surfaces: Map<String, PixelTileSurface>): InkCanvasView {
         lateinit var view: InkCanvasView
         InstrumentationRegistry.getInstrumentation().runOnMainSync {

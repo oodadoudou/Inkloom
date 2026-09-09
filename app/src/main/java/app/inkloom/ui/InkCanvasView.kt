@@ -1725,16 +1725,19 @@ class InkCanvasView(context: Context) : View(context) {
             ?: event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val eventToolType = event.getToolType(pointerIndex)
         val isStylus = eventToolType == MotionEvent.TOOL_TYPE_STYLUS || eventToolType == MotionEvent.TOOL_TYPE_ERASER
-        if (isStylus && event.actionMasked in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN)) {
-            activeStylusPointerId = event.getPointerId(pointerIndex)
-        }
-        // Some EMR devices report a resting palm first and the pen as POINTER_DOWN. Promote the
-        // pen's own lifecycle so it starts a fresh stroke instead of appending to stale native
-        // input state (the source of sporadic marks near 0,0).
+        // POINTER_DOWN/UP and FLAG_CANCELED belong to actionIndex, not every pointer in the
+        // packet. A palm landing must not restart the pen, and a rejected palm lift must not
+        // cancel its private erase delta. Preserve the pen's coordinate as a MOVE in that case.
+        val pointerTransition = event.actionMasked == MotionEvent.ACTION_POINTER_DOWN ||
+            event.actionMasked == MotionEvent.ACTION_POINTER_UP
         val effectiveAction = when {
+            isStylus && pointerTransition && event.actionIndex != pointerIndex -> MotionEvent.ACTION_MOVE
             isStylus && event.actionMasked == MotionEvent.ACTION_POINTER_DOWN -> MotionEvent.ACTION_DOWN
             isStylus && event.actionMasked == MotionEvent.ACTION_POINTER_UP -> MotionEvent.ACTION_UP
             else -> event.actionMasked
+        }
+        if (isStylus && effectiveAction == MotionEvent.ACTION_DOWN) {
+            activeStylusPointerId = event.getPointerId(pointerIndex)
         }
         if (effectiveAction == MotionEvent.ACTION_DOWN && !hasFocus()) requestFocus()
         if (effectiveAction == MotionEvent.ACTION_DOWN && event.pointerCount == 1 &&
