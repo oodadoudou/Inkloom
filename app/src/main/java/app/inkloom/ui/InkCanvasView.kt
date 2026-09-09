@@ -5631,6 +5631,18 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun selectionMaskSurfaceSnapshot(): MaskTileSurfaceSnapshot? = selectionMaskForRasterTools()
 
+    fun loadSavedSelection(snapshot: MaskTileSurfaceSnapshot): Boolean {
+        val state = documentSelectionState ?: return false
+        if (snapshot.logicalWidth != state.logicalWidth || snapshot.logicalHeight != state.logicalHeight) return false
+        commitSelectionContour()
+        val before = state.snapshot()
+        val radius = selectionFeatherPixels
+        val base = selectionFeatherBase
+        if (!replaceSelectionFromMask(snapshot)) return false
+        recordSelectionHistory(state, before, radius, base)
+        return true
+    }
+
     fun replaceSelectionFromMask(snapshot: MaskTileSurfaceSnapshot?): Boolean {
         finishSelectionTransform(apply = true)
         val documentState = documentSelectionState ?: return false

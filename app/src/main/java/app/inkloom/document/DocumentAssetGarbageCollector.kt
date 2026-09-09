@@ -27,6 +27,7 @@ object DocumentAssetGarbageCollector {
                     is PageBackground.Image -> retain(background.assetPath)
                     is PageBackground.Paper -> Unit
                 }
+                page.savedSelections.forEach { retain(it.surface.assetPath) }
                 page.layers.forEach { layer ->
                     retain(layer.mask?.surface?.assetPath)
                 }

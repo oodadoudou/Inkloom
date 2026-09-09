@@ -551,6 +551,7 @@ class DocumentAssetService(private val context: Context) {
                     is PageBackground.Image -> background.copy(assetPath = "assets/${File(background.assetPath).name}")
                     is PageBackground.Paper -> background
                 },
+                savedSelections = page.savedSelections.map { it.copy(surface = it.surface.copy(assetPath = "assets/${File(it.surface.assetPath).name}")) },
                 layers = page.layers.map { layer -> layer.copy(
                     rasterTileSurface = portableRaster(layer.rasterTileSurface),
                     mask = layer.mask?.copy(surface = layer.mask.surface?.let { reference ->
@@ -568,6 +569,7 @@ class DocumentAssetService(private val context: Context) {
             zip.putNextEntry(ZipEntry("manifest.json")); zip.write(DocumentCheckpointCodec.encode(portable).encodeToByteArray()); zip.closeEntry()
             val assets = listOfNotNull(document.coverImagePath) +
                 document.pages.mapNotNull { page -> when (val background = page.background) { is PageBackground.Pdf -> background.assetPath; is PageBackground.Image -> background.assetPath; else -> null } } +
+                document.pages.flatMap { it.savedSelections }.map { it.surface.assetPath } +
                 document.pages.flatMap(InkPage::layers).mapNotNull { it.mask?.surface?.assetPath } +
                 document.pages.flatMap { it.elements }.mapNotNull { element -> when (element) { is PageElement.Image -> element.assetPath; is PageElement.Fill -> element.maskAssetPath; is PageElement.Shape -> element.maskAssetPath; else -> null } }
             writeDistinctFiles(zip, "assets", assets)
@@ -662,6 +664,7 @@ class DocumentAssetService(private val context: Context) {
                         is PageBackground.Image -> background.copy(assetPath = retained(background.assetPath))
                         is PageBackground.Paper -> background
                     },
+                    savedSelections = page.savedSelections.map { it.copy(surface = it.surface.copy(assetPath = retained(it.surface.assetPath))) },
                     layers = page.layers.map { layer -> layer.copy(
                         rasterTileSurface = retainedRaster(layer.rasterTileSurface),
                         mask = layer.mask?.copy(surface = layer.mask.surface?.let { reference ->

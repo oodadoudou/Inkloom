@@ -350,6 +350,9 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         document.copy(pages = PdfGotoLinkNavigation.rotateDestinationCoordinates(rotated, pageId), updatedAt = System.currentTimeMillis())
     }
 
+    fun setSavedSelections(documentId: String, pageId: String, selections: List<SavedSelection>) =
+        updatePage(documentId, pageId) { it.copy(savedSelections = selections) }
+
     fun addLayer(
         documentId: String,
         pageId: String,

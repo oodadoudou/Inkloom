@@ -774,6 +774,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onClearPageInk = viewModel::clearPageInk,
             onSetPageCrop = viewModel::setPageCrop,
             onRotatePage = viewModel::rotatePageClockwise,
+            onSetSavedSelections = viewModel::setSavedSelections,
             onAddLayer = viewModel::addLayer,
             onAddLayerFolder = viewModel::addLayerFolder,
             onRenameLayer = viewModel::renameLayer,
@@ -1279,6 +1280,7 @@ private fun EditorScreen(
     onClearPageInk: (String, String) -> Unit,
     onSetPageCrop: (String, String, PageCrop) -> Unit,
     onRotatePage: (String, String) -> Unit,
+    onSetSavedSelections: (String, String, List<app.inkloom.document.SavedSelection>) -> Unit,
     onAddLayer: (String, String, String) -> Unit,
     onAddLayerFolder: (String, String) -> Unit,
     onRenameLayer: (String, String, String, String) -> Unit,
@@ -1364,6 +1366,10 @@ private fun EditorScreen(
         ))
     }
     var selectionFeather by remember { mutableFloatStateOf(0f) }
+    var savedSelectionsOpen by remember(selectedPage.id) { mutableStateOf(false) }
+    val trSelectionName = tr("Selection", "选区")
+    val selectionSaveError = tr("Could not save the selection", "无法保存选区")
+    val selectionLoadError = tr("Could not load this selection for the current page", "无法在当前页面载入此选区")
     var selectionActive by remember(document.id, selectedPage.id) { mutableStateOf(false) }
     var selectionTransformState by remember(document.id, selectedPage.id) { mutableStateOf<SelectionTransformUiState?>(null) }
     BackHandler(enabled = selectionTransformState != null) { canvasView?.finishSelectionTransform(apply = false) }
@@ -3204,7 +3210,32 @@ private fun EditorScreen(
                     onDeselect = { finishSelectionTool(deselect = true) },
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp),
                 )
+                if (savedSelectionsOpen) SavedSelectionsPanel(
+                    selectedPage.savedSelections, assets, settings.language, selectionActive,
+                    onSave = {
+                        canvasView?.commitSelectionContour()
+                        canvasView?.selectionMaskSurfaceSnapshot()?.takeUnless { it.isEmpty }?.let { mask ->
+                            runCatching {
+                                val reference = assets.saveMaskTileSurface(mask)
+                                try {
+                                    val entry = app.inkloom.document.SavedSelection(name = trSelectionName + " ${selectedPage.savedSelections.size + 1}", surface = reference)
+                                    onSetSavedSelections(document.id, selectedPage.id, selectedPage.savedSelections + entry)
+                                } finally { assets.releaseAssetReservation(reference.assetPath) }
+                            }.onFailure { Toast.makeText(context, selectionSaveError, Toast.LENGTH_LONG).show() }
+                        }
+                    },
+                    onLoad = { entry ->
+                        runCatching {
+                            val mask = app.inkloom.document.SavedSelectionGeometry.rotated(assets.loadMaskTileSurface(entry.surface).snapshot(), entry.rotationQuarterTurns)
+                            check(canvasView?.loadSavedSelection(mask) == true)
+                            savedSelectionsOpen = false
+                        }.onFailure { Toast.makeText(context, selectionLoadError, Toast.LENGTH_LONG).show() }
+                    },
+                    onDelete = { entry -> onSetSavedSelections(document.id, selectedPage.id, selectedPage.savedSelections.filterNot { it.id == entry.id }) },
+                    onDismiss = { savedSelectionsOpen = false },
+                )
                 if (tool == EditorTool.SELECT && selectionActive && selectionTransformState == null) SelectionLauncher(
+                    onSaveLoad = { savedSelectionsOpen = true },
                     featherPixels = selectionFeather,
                     interpolation = settings.selectionInterpolation,
                     onInterpolation = { onSettingsChange(settings.copy(selectionInterpolation = it)) },
@@ -10345,6 +10376,7 @@ private fun SelectionInputBar(
 
 @Composable
 private fun SelectionLauncher(
+    onSaveLoad: () -> Unit,
     featherPixels: Float,
     interpolation: app.inkloom.engine.v5.tools.SelectionInterpolation,
     onInterpolation: (app.inkloom.engine.v5.tools.SelectionInterpolation) -> Unit,
@@ -10404,6 +10436,7 @@ private fun SelectionLauncher(
                 Icon(Icons.Outlined.DragIndicator, null, Modifier.size(14.dp), tint = MutedInk)
             }
             VerticalDivider(Modifier.height(22.dp), color = OutlineSoft)
+            SelectionLauncherButton(Icons.Outlined.Save, tr("Save & Load", "保存与载入"), onSaveLoad)
             SelectionLauncherButton(Icons.Outlined.Check, tr("Done", "完成"), onDone)
             SelectionLauncherButton(Icons.Outlined.Close, tr("Deselect", "取消选区"), onDeselect)
             SelectionLauncherButton(Icons.Outlined.Flip, tr("Invert selection", "反选"), onInvert)

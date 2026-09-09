@@ -112,6 +112,7 @@ class LibraryBackupService(private val filesRoot: File) {
                         is PageBackground.Pdf -> background.copy(assetPath = register(background.assetPath, DOCUMENT_ASSETS)!!)
                         is PageBackground.Image -> background.copy(assetPath = register(background.assetPath, DOCUMENT_ASSETS)!!)
                     },
+                    savedSelections = page.savedSelections.map { it.copy(surface = it.surface.copy(assetPath = register(it.surface.assetPath, DOCUMENT_ASSETS)!!)) },
                     layers = page.layers.map { layer -> layer.copy(
                         rasterTileSurface = registerRaster(layer.rasterTileSurface),
                         mask = layer.mask?.copy(surface = layer.mask.surface?.let { reference ->
@@ -249,6 +250,7 @@ class LibraryBackupService(private val filesRoot: File) {
                                 is PageBackground.Pdf -> background.copy(assetPath = retained(background.assetPath, DOCUMENT_ASSETS)!!)
                                 is PageBackground.Image -> background.copy(assetPath = retained(background.assetPath, DOCUMENT_ASSETS)!!)
                             },
+                            savedSelections = page.savedSelections.map { it.copy(surface = it.surface.copy(assetPath = retained(it.surface.assetPath, DOCUMENT_ASSETS)!!)) },
                             layers = page.layers.map { layer -> layer.copy(
                                 rasterTileSurface = retainedRaster(layer.rasterTileSurface),
                                 mask = layer.mask?.copy(surface = layer.mask.surface?.let { reference ->

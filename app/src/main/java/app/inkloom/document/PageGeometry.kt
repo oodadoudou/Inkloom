@@ -9,6 +9,7 @@ object PageGeometry {
             height = oldWidth,
             backgroundRotationQuarterTurns = (page.backgroundRotationQuarterTurns + 1).mod(4),
             crop = PageCropTransform.rotateClockwise(page.crop),
+            savedSelections = page.savedSelections.map { it.copy(rotationQuarterTurns = (it.rotationQuarterTurns + 1).mod(4)) },
             layers = page.layers.map { layer ->
                 layer.copy(
                     rasterRotationQuarterTurns = if (layer.isPaintSurfaceLayer()) {

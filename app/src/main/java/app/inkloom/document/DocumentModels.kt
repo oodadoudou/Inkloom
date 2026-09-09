@@ -59,8 +59,17 @@ data class InkPage(
     val pdfGotoLinks: List<PdfGotoLink> = emptyList(),
     val pdfLinkIndexVersion: Int = 0,
     val recognizedTextBlocks: List<RecognizedTextBlock> = emptyList(),
+    val savedSelections: List<SavedSelection> = emptyList(),
     val handwritingIndexFingerprint: String = "",
     val imageOcrFingerprint: String = "",
+)
+
+@Serializable
+data class SavedSelection(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val surface: MaskTileSurfaceRef,
+    val rotationQuarterTurns: Int = 0,
 )
 
 @Serializable
