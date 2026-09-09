@@ -5101,7 +5101,8 @@ class InkCanvasView(context: Context) : View(context) {
                     val wet = WetPaintDefinition(
                         diameterPixels = diameterPixels,
                         colorArgb = inkColor,
-                        opacity = (inkOpacity * program.deposition.flow).coerceIn(0f, 1f),
+                        opacity = inkOpacity.coerceIn(0f, 1f),
+                        flow = program.deposition.flow.coerceIn(0f, 1f),
                         hardness = program.tip.hardness.coerceIn(0f, 1f),
                         dilution = authored.dilution.coerceIn(0f, 1f),
                         charge = authored.charge.coerceIn(0f, 1f),

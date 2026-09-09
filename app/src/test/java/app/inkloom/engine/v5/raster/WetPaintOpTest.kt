@@ -15,6 +15,26 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WetPaintOpTest {
+    @Test fun `low opacity wet stroke leaves room for a second independent stroke`() {
+        val surface = PixelTileSurface(256, 64, 64)
+        fun draw(id: Long) {
+            val paint = WetPaintOp(surface, WetPaintDefinition(20f, 0xff2050a0.toInt(),
+                opacity = .25f, charge = 1f, attack = 1f, dilution = 0f, pull = 0f,
+                spacingRatio = .05f))
+                .begin(PaintOpContext(id, surface.revision, "wet-opacity")) as WetPaintOp.Session
+            val stroke = DirectStrokeSession(id, 10f)
+            paint.apply(stroke.begin(sample(0, InputPhase.DOWN, 16f, 32f)))
+            paint.finish(stroke.finish(sample(1, InputPhase.UP, 240f, 32f)))
+            paint.publish().record.close()
+        }
+        draw(1)
+        val first = surface.pixelAt(128, 32) ushr 24
+        assertTrue("Master opacity must not saturate from dab count: $first", first in 55..64)
+        draw(2)
+        val second = surface.pixelAt(128, 32) ushr 24
+        assertTrue("Second stroke should deepen color: $first -> $second", second in 98..113)
+    }
+
     @Test fun `wet opacity and flow use their own pressure curves`() {
         val response = app.inkloom.engine.v5.material.PressureResponse(true, .2f,
             listOf(0f to 0f, .5f to .8f, 1f to 1f))

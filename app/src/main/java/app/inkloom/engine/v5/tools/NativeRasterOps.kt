@@ -95,6 +95,7 @@ internal object NativeRasterOps {
         reservoirRed: Float,
         reservoirGreen: Float,
         reservoirBlue: Float,
+        opacityLimit: Float = 1f,
     ): Int = if (nativeLibraryLoaded) nativeDepositRoundWet(
         destination,
         stride,
@@ -114,7 +115,7 @@ internal object NativeRasterOps {
         reservoirAlpha,
         reservoirRed,
         reservoirGreen,
-        reservoirBlue,
+        reservoirBlue, opacityLimit,
     ) else -1
 
     /** Textured wet deposition; -1 means fall back to the Kotlin reference implementation. */
@@ -155,6 +156,7 @@ internal object NativeRasterOps {
         reservoirRed: Float,
         reservoirGreen: Float,
         reservoirBlue: Float,
+        opacityLimit: Float = 1f,
     ): Int = if (nativeLibraryLoaded) nativeDepositTexturedWet(
         destination, stride, tileLeft, tileTop, left, top, right, bottom,
         centerX, centerY, radiusX, radiusY, cosine, sine,
@@ -162,7 +164,7 @@ internal object NativeRasterOps {
         tip, tipWidth, tipHeight, grain, grainWidth, grainHeight,
         grainDensity, grainCosine, grainSine, grainWavelength, grainMovement,
         grainPhaseX, grainPhaseY, baseDeposition, transferMode,
-        reservoirAlpha, reservoirRed, reservoirGreen, reservoirBlue,
+        reservoirAlpha, reservoirRed, reservoirGreen, reservoirBlue, opacityLimit,
     ) else -1
 
     /** Exact bounded dual-stream alpha accumulation; false leaves the destination untouched. */
@@ -430,6 +432,7 @@ internal object NativeRasterOps {
         reservoirRed: Float,
         reservoirGreen: Float,
         reservoirBlue: Float,
+        opacityLimit: Float,
     ): Int
     private external fun nativeDepositTexturedWet(
         destination: IntArray,
@@ -468,6 +471,7 @@ internal object NativeRasterOps {
         reservoirRed: Float,
         reservoirGreen: Float,
         reservoirBlue: Float,
+        opacityLimit: Float,
     ): Int
     private external fun nativeMaterializePremultipliedTile(
         contribution: IntArray,

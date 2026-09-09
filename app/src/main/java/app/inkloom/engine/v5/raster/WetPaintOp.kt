@@ -61,10 +61,12 @@ data class WetPaintDefinition(
     val flowPressure: PressureResponse = PressureResponse.CONSTANT,
     val blend: DryBlend = DryBlend.SOURCE_OVER,
     val transferMode: DabTransferMode = DabTransferMode.UNIFORM_GLAZE,
+    val flow: Float = 1f,
 ) {
     init {
         require(diameterPixels.isFinite() && diameterPixels in .1f..4096f)
         require(opacity.isFinite() && opacity in 0f..1f)
+        require(flow.isFinite() && flow in 0f..1f)
         require(hardness.isFinite() && hardness in 0f..1f)
         require(dilution.isFinite() && dilution in 0f..1f)
         require(charge.isFinite() && charge in 0f..1f)
@@ -285,7 +287,7 @@ class WetPaintOp(
             val innerRadius = (outerRadius - edge).coerceAtLeast(0f)
             val innerRadiusSquared = innerRadius * innerRadius
             val inverseEdge = 1f / edge
-            val baseDeposition = definition.opacity * definition.opacityPressure.evaluate(sample.pressure) *
+            val baseDeposition = definition.opacity * definition.flow * definition.opacityPressure.evaluate(sample.pressure) *
                 definition.flowPressure.evaluate(sample.pressure) * definition.attack * (.3f + .7f * definition.charge)
             val selectionScaleX = selection?.let { it.logicalWidth.toFloat() / document.logicalWidth } ?: 1f
             val selectionScaleY = selection?.let { it.logicalHeight.toFloat() / document.logicalHeight } ?: 1f
@@ -328,6 +330,7 @@ class WetPaintOp(
                             reservoirRed = track.reservoir.r,
                             reservoirGreen = track.reservoir.g,
                             reservoirBlue = track.reservoir.b,
+                            opacityLimit = definition.opacity,
                         ) else NativeRasterOps.depositTexturedWet(
                             destination = pixels,
                             stride = stride,
@@ -365,6 +368,7 @@ class WetPaintOp(
                             reservoirRed = track.reservoir.r,
                             reservoirGreen = track.reservoir.g,
                             reservoirBlue = track.reservoir.b,
+                            opacityLimit = definition.opacity,
                         )
                         if (nativeResult >= 0) {
                             if (nativeResult > 0) wrotePixel = true
@@ -418,10 +422,10 @@ class WetPaintOp(
                             // Do not round each tiny deposit back to zero before the next dab.
                             val key = y.toLong() * document.logicalWidth + x
                             val previous = finePixelColors[key] ?: PremultipliedColor.fromPacked(before)
-                            val accumulated = track.reservoir.over(previous, deposition)
+                            val accumulated = track.reservoir.over(previous, deposition).limitAlpha(definition.opacity)
                             finePixelColors[key] = accumulated
                             accumulated.packed()
-                        } else track.reservoir.sourceOver(before, deposition)
+                        } else track.reservoir.sourceOver(before, deposition, definition.opacity)
                         if (after != before) {
                             pixels[index] = after
                             wrotePixel = true
@@ -511,22 +515,32 @@ private data class PremultipliedColor(val a: Float, val r: Float, val g: Float, 
             b * coverage + destination.b * inverse)
     }
 
+    fun limitAlpha(maximum: Float): PremultipliedColor =
+        if (a <= maximum || a <= 0f) this else {
+            val scale = maximum / a
+            PremultipliedColor(maximum, r * scale, g * scale, b * scale)
+        }
+
     fun packed(): Int = (a * 255f + .5f).toInt().coerceIn(0, 255).shl(24) or
         (r * 255f + .5f).toInt().coerceIn(0, 255).shl(16) or
         (g * 255f + .5f).toInt().coerceIn(0, 255).shl(8) or
         (b * 255f + .5f).toInt().coerceIn(0, 255)
 
-    fun sourceOver(destination: Int, coverage: Float): Int {
+    fun sourceOver(destination: Int, coverage: Float, opacityLimit: Float): Int {
         val sourceAlpha = (a * coverage).coerceIn(0f, 1f)
         val inverse = 1f - sourceAlpha
         val da = ((destination ushr 24) and 0xff) / 255f
         val dr = ((destination ushr 16) and 0xff) / 255f
         val dg = ((destination ushr 8) and 0xff) / 255f
         val db = (destination and 0xff) / 255f
-        return ((sourceAlpha + da * inverse) * 255f + .5f).toInt().coerceIn(0, 255).shl(24) or
-            ((r * coverage + dr * inverse) * 255f + .5f).toInt().coerceIn(0, 255).shl(16) or
-            ((g * coverage + dg * inverse) * 255f + .5f).toInt().coerceIn(0, 255).shl(8) or
-            ((b * coverage + db * inverse) * 255f + .5f).toInt().coerceIn(0, 255)
+        val alpha = sourceAlpha + da * inverse
+        // Limit only this gesture's contribution; committed strokes remain the backdrop.
+        // Keep full-opacity wet mixing bit-identical and keep flow independent of the ceiling.
+        val scale = if (alpha > opacityLimit && alpha > 0f) opacityLimit / alpha else 1f
+        return (minOf(alpha, opacityLimit) * 255f + .5f).toInt().coerceIn(0, 255).shl(24) or
+            ((r * coverage + dr * inverse) * scale * 255f + .5f).toInt().coerceIn(0, 255).shl(16) or
+            ((g * coverage + dg * inverse) * scale * 255f + .5f).toInt().coerceIn(0, 255).shl(8) or
+            ((b * coverage + db * inverse) * scale * 255f + .5f).toInt().coerceIn(0, 255)
     }
 
     companion object {

@@ -13,6 +13,33 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WetBrushProductionTest {
+    @Test fun compiledWetMasterOpacityAndFlowRemainDistinctOnLongStrokes() {
+        fun render(opacity: Float, flow: Float): Int {
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            lateinit var view: InkCanvasView
+            instrumentation.runOnMainSync {
+                view = InkCanvasView(instrumentation.targetContext).apply {
+                    layout(0, 0, 160, 160); activeLayerId = "test"
+                    setRasterLayerSurfaces(mapOf("test" to PixelTileSurface(160, 160)))
+                    applyBrushPresetV5Configuration(BrushPresetV5(
+                        identity = PresetIdentity("wet-opacity", "Wet opacity", family = BrushFamily.WET_PAINT, renderBrushId = "wet-opacity"),
+                        renderSeed = 41, tip = TipSettings(20f), deposition = DepositionSettings(opacity, flow),
+                        dynamics = DynamicsSettings(PressureMappings(widthEnabled = false), TiltMappings()),
+                        wetMix = WetMixSettings(dilution = 0f, charge = 1f, attack = 1f, pull = 0f)), AppSettings())
+                    prepareBrushAssetsNow()
+                }
+            }
+            val bitmap = view.renderIsolatedBrushPreview(listOf(20f, 140f).mapIndexed { i, x ->
+                RawDocumentSample(x, 80f, (i + 1) * 8_000_000L, (i + 1) * 8_000_000L, 1f, 0f, 0f, InputTool.STYLUS)
+            })
+            return try { bitmap.getPixel(80, 80) ushr 24 } finally { bitmap.recycle() }
+        }
+        val opacity = render(.25f, 1f)
+        val flow = render(1f, .25f)
+        assertTrue("Master opacity saturates: $opacity", opacity in 40..64)
+        assertTrue("Flow was incorrectly used as whole-stroke opacity: $flow", flow > opacity + 40)
+    }
+
     @Test fun emptyGrainRemainsTransparentInNativeAndSelectionPaths() {
         for (selected in listOf(false, true)) {
             val surface = PixelTileSurface(96, 96)

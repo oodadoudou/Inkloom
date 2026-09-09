@@ -407,7 +407,9 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeDepositRoundWet(
     jfloat reservoir_alpha,
     jfloat reservoir_red,
     jfloat reservoir_green,
-    jfloat reservoir_blue) {
+    jfloat reservoir_blue,
+    jfloat opacity_limit) {
+    if (!std::isfinite(opacity_limit) || opacity_limit < 0.f || opacity_limit > 1.f) return -1;
     if (destination_array == nullptr || stride <= 0 || left < tile_left || top < tile_top ||
         right <= left || bottom <= top || right - tile_left > stride || bottom - tile_top > stride ||
         !std::isfinite(center_x) || !std::isfinite(center_y) || outer_radius <= 0.0f ||
@@ -446,11 +448,13 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeDepositRoundWet(
             const auto to_byte = [](float value) -> std::uint32_t {
                 return static_cast<std::uint32_t>(std::clamp(static_cast<int>(value * 255.0f + 0.5f), 0, 255));
             };
+            const float output_alpha = source_alpha + destination_alpha * inverse;
+            const float scale = output_alpha > opacity_limit && output_alpha > 0.f ? opacity_limit / output_alpha : 1.f;
             const std::uint32_t after =
-                (to_byte(source_alpha + destination_alpha * inverse) << 24) |
-                (to_byte(reservoir_red * deposition + destination_red * inverse) << 16) |
-                (to_byte(reservoir_green * deposition + destination_green * inverse) << 8) |
-                to_byte(reservoir_blue * deposition + destination_blue * inverse);
+                (to_byte(std::min(output_alpha, opacity_limit)) << 24) |
+                (to_byte((reservoir_red * deposition + destination_red * inverse) * scale) << 16) |
+                (to_byte((reservoir_green * deposition + destination_green * inverse) * scale) << 8) |
+                to_byte((reservoir_blue * deposition + destination_blue * inverse) * scale);
             if (after != before) {
                 destination[index] = static_cast<jint>(after);
                 changed = true;
@@ -500,7 +504,9 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeDepositTexturedWet(
     jfloat reservoir_alpha,
     jfloat reservoir_red,
     jfloat reservoir_green,
-    jfloat reservoir_blue) {
+    jfloat reservoir_blue,
+    jfloat opacity_limit) {
+    if (!std::isfinite(opacity_limit) || opacity_limit < 0.f || opacity_limit > 1.f) return -1;
     const bool has_tip = tip_array != nullptr;
     const bool has_grain = grain_array != nullptr;
     if (destination_array == nullptr || stride <= 0 || left < tile_left || top < tile_top ||
@@ -584,11 +590,13 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeDepositTexturedWet(
             const auto to_byte = [](float value) -> std::uint32_t {
                 return static_cast<std::uint32_t>(std::clamp(static_cast<int>(value * 255.0f + 0.5f), 0, 255));
             };
+            const float output_alpha = source_alpha + ((before >> 24) & 0xff) / 255.0f * inverse;
+            const float scale = output_alpha > opacity_limit && output_alpha > 0.f ? opacity_limit / output_alpha : 1.f;
             const std::uint32_t after =
-                (to_byte(source_alpha + ((before >> 24) & 0xff) / 255.0f * inverse) << 24) |
-                (to_byte(reservoir_red * deposition + ((before >> 16) & 0xff) / 255.0f * inverse) << 16) |
-                (to_byte(reservoir_green * deposition + ((before >> 8) & 0xff) / 255.0f * inverse) << 8) |
-                to_byte(reservoir_blue * deposition + (before & 0xff) / 255.0f * inverse);
+                (to_byte(std::min(output_alpha, opacity_limit)) << 24) |
+                (to_byte((reservoir_red * deposition + ((before >> 16) & 0xff) / 255.0f * inverse) * scale) << 16) |
+                (to_byte((reservoir_green * deposition + ((before >> 8) & 0xff) / 255.0f * inverse) * scale) << 8) |
+                to_byte((reservoir_blue * deposition + (before & 0xff) / 255.0f * inverse) * scale);
             if (after != before) {
                 destination[index] = static_cast<jint>(after);
                 changed = true;
