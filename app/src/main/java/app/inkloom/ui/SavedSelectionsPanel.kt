@@ -42,8 +42,10 @@ internal fun SavedSelectionsPanel(
             }
         } },
         text = {
+            // Keep the footer stationary when the first saved selection replaces the empty state.
+            Box(Modifier.fillMaxWidth().height(240.dp)) {
             if (entries.isEmpty()) Text(t("Select an area, then tap + to save it.", "选取一个区域后，点 + 保存。"))
-            else LazyColumn(Modifier.heightIn(max = 380.dp)) {
+            else LazyColumn(Modifier.fillMaxSize()) {
                 items(entries, key = SavedSelection::id) { entry ->
                     Row(Modifier.fillMaxWidth().clickable { onLoad(entry) }.padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically) {
@@ -66,6 +68,7 @@ internal fun SavedSelectionsPanel(
                         }
                     }
                 }
+            }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(t("Done", "完成")) } })
