@@ -62,6 +62,8 @@
 - Place the deliverable in `dist/` with the version, source commit, and `debug` in its filename, and provide a direct clickable file link in the final response. Keep the APK and its source/hash evidence consistent.
 - After validating every new APK and its source/hash evidence, remove superseded APKs, their obsolete delivery sidecars, unused Profile outputs, and known disposable intermediate files. Keep only the current Debug delivery in `dist/`; preserve real brush fixtures, source files, active build caches, and useful regression evidence. Use `scripts/clean_generated_artifacts.py --keep <current-debug-apk> --apply` after reviewing its dry run. Never delete the current deliverable before its replacement has been validated.
 
+- After validating each new Debug delivery, run `scripts/sync_debug_delivery.py --apk <current-debug-apk>` to copy the APK and evidence into Google Drive Desktop at `My Drive/Inkloom/Debug`. Remove only superseded managed deliveries after the new Drive copy passes SHA-256 verification. Do not upload build caches, source fixtures, or Profile APKs; distinguish local sync-folder verification from cloud download verification.
+
 ## Dual-notebook workspace requirement — deferred by user
 
 - Latest user instruction (2026-09-08): split view is not needed for now. Do not implement it in the current completion work; retain the design for a later explicit request.
