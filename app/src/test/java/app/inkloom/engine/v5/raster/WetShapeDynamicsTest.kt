@@ -40,7 +40,8 @@ class WetShapeDynamicsTest {
         assertArrayEquals(draw(definition(), transaction = 3), draw(definition(), transaction = 4))
     }
 
-    private fun definition() = WetPaintDefinition(36f, 0xff305090.toInt(), opacity = .12f,
+    // Count jitter is a flow/build-up effect: leave the master opacity ceiling open.
+    private fun definition() = WetPaintDefinition(36f, 0xff305090.toInt(), opacity = 1f, flow = .12f,
         charge = 1f, dilution = 0f, attack = 1f, pull = 0f,
         tips = listOf(BrushTipMask(8, 4, ByteArray(32) { 255.toByte() })),
         particlesPerPlot = 8, spacingRatio = .3f, renderSeed = 72)
