@@ -521,6 +521,62 @@ fun InkloomApp(initialIntent: Intent?) {
             }
         }
     }
+    var folderImportProgress by remember { mutableStateOf<String?>(null) }
+    var folderImportReport by remember { mutableStateOf<String?>(null) }
+    val stopFolderImport = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    val brushFolderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null && folderImportProgress == null) {
+            stopFolderImport.set(false)
+            folderImportProgress = settings.language.text("Scanning brush folders…", "正在扫描笔刷文件夹…")
+            importScope.launch {
+                val issues=mutableListOf<String>()
+                var imported=0; var duplicates=0; var rejected=0; var processed=0; var skipped=0; var total=0
+                try {
+                    val tree=app.inkloom.importer.BrushDocumentTree(context.contentResolver,uri)
+                    val plan=withContext(Dispatchers.IO) {
+                        runCatching { context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                        tree.scan(stopFolderImport::get)
+                    }
+                    issues += plan.errors; skipped=plan.skipped; total=plan.files.size
+                    brushGroups=BrushGroupOperations.reconcileRegisteredGroups(brushGroups+plan.groups,importedBrushes)
+                    withContext(Dispatchers.IO) { brushGroupStore.save(brushGroups) }
+                    for(source in plan.files) {
+                        if(stopFolderImport.get()) break
+                        folderImportProgress="${processed+1} / $total\n${source.path}"
+                        val result=withContext(Dispatchers.IO) { repository.importDetailed(tree.uri(source.id)) }
+                        val batch=result.getOrNull()
+                        if(batch == null) issues += "${source.path}: ${result.exceptionOrNull()?.message}"
+                        else {
+                            rejected += batch.ledger.summary.rejectedUnsupported+batch.ledger.summary.failed
+                            batch.ledger.records.filter { it.rejectionReasons.isNotEmpty() }.forEach { record -> issues += "${source.path} · ${record.sourceBrushName}: ${record.rejectionReasons.joinToString()}" }
+                            val additions=batch.renderableBrushes.mapNotNull { brush ->
+                                runCatching { app.inkloom.importer.BrushFolderImport.assign(source,brush) }.getOrElse { issues += "${source.path}: ${it.message}"; null }
+                            }
+                            val merged=app.inkloom.importer.BrushFolderImport.merge(importedBrushes,additions)
+                            imported += merged.size-importedBrushes.size; duplicates += additions.size-(merged.size-importedBrushes.size)
+                            importedBrushes=merged
+                            brushGroups=BrushGroupOperations.reconcileRegisteredGroups(brushGroups,merged)
+                            // Persist each completed file before allowing Stop or another source.
+                            withContext(Dispatchers.IO) { brushStore.save(merged); brushGroupStore.save(brushGroups) }
+                        }
+                        processed++
+                    }
+                } catch(failure: Exception) { issues += failure.message.orEmpty() }
+                finally {
+                    folderImportProgress=null
+                    val summary=settings.language.text(
+                        "${if(stopFolderImport.get()) "Stopped" else "Finished"}: $processed / $total files. Imported $imported brushes; $duplicates duplicates; $rejected rejected or failed brushes; $skipped non-brush files skipped.",
+                        "${if(stopFolderImport.get()) "已停止" else "已完成"}：$processed / $total 个文件。新增 $imported 支笔刷，跳过 $duplicates 支重复笔刷，$rejected 支笔刷不支持或失败，跳过 $skipped 个非笔刷文件。")
+                    folderImportReport=(listOf(summary)+issues).joinToString("\n\n")
+                }
+            }
+        }
+    }
+    if(folderImportProgress != null) AlertDialog(onDismissRequest={},title={Text(settings.language.text("Importing brushes", "正在导入笔刷"))},
+        text={Column(verticalArrangement=Arrangement.spacedBy(12.dp)) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(folderImportProgress.orEmpty()); Text(settings.language.text("Completed files are saved. Stop takes effect after the current file.", "已完成的文件会保存。停止将在当前文件处理完后生效。")) }},
+        confirmButton={TextButton(onClick={stopFolderImport.set(true)}) {Text(settings.language.text("Stop import", "停止导入"))}})
+    folderImportReport?.let { report -> AlertDialog(onDismissRequest={folderImportReport=null},title={Text(settings.language.text("Folder import result", "文件夹导入结果"))},
+        text={Column(Modifier.heightIn(max=420.dp).verticalScroll(rememberScrollState())) {Text(report)}},confirmButton={TextButton(onClick={folderImportReport=null}) {Text(settings.language.text("Done", "完成"))}}) }
     val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
             context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -727,8 +783,9 @@ fun InkloomApp(initialIntent: Intent?) {
             },
             onImportBrushes = { group ->
                 pendingBrushImportGroup = group?.let(BrushGroupOperations::normalize)?.takeIf(String::isNotBlank)
-                brushPicker.launch(arrayOf("application/octet-stream", "application/zip", "application/vnd.inkloom.brush+zip", "image/*"))
+                brushPicker.launch(arrayOf("*/*"))
             },
+            onImportBrushFolder = { brushFolderPicker.launch(null) },
             onExportBrush = { brush ->
                 pendingBrushExport = brush
                 val safeName = brush.name.replace(Regex("[^A-Za-z0-9._-]"), "_").trim('_').ifBlank { "Inkloom-Brush" }
@@ -1250,6 +1307,7 @@ private fun EditorScreen(
     onBack: () -> Unit,
     onToggleBrushes: () -> Unit,
     onImportBrushes: (String?) -> Unit,
+    onImportBrushFolder: () -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
     onReplaceBrushes: (List<ImportedBrush>) -> Unit,
@@ -3622,6 +3680,7 @@ private fun EditorScreen(
                 onClose = { if (brushesOpen) onToggleBrushes() },
                 onBrushSelected = ::selectWorkspaceBrush,
                 onImportBrushes = onImportBrushes,
+                onImportBrushFolder = onImportBrushFolder,
                 onExportBrush = onExportBrush,
                 onQuickBrushCommit = { updated ->
                     val committed = updated.copy(lastUsedAt = System.currentTimeMillis())
@@ -7730,6 +7789,7 @@ private fun BrushPanel(
     onClose: () -> Unit,
     onBrushSelected: (ImportedBrush) -> Unit,
     onImportBrushes: (String?) -> Unit,
+    onImportBrushFolder: () -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
     onQuickBrushCommit: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
@@ -7779,6 +7839,7 @@ private fun BrushPanel(
             onClose = onClose,
             onBrushSelected = onBrushSelected,
             onImportBrushes = onImportBrushes,
+            onImportBrushFolder = onImportBrushFolder,
             onExportBrush = onExportBrush,
             onQuickBrushCommit = onQuickBrushCommit,
             onUpdateBrush = onUpdateBrush,
@@ -7940,6 +8001,7 @@ private fun BrushPanel(
                         leadingIcon = { Icon(Icons.Outlined.FileDownload, null) },
                         onClick = { addMenu = false; onImportBrushes(selectedGroup?.takeUnless { it == UNGROUPED_BRUSH_FILTER }) },
                     )
+                    DropdownMenuItem(text = { Text(tr("Import folder", "导入文件夹")) }, onClick = { addMenu = false; onImportBrushFolder() })
                     DropdownMenuItem(
                         text = { Text(tr("Manage groups", "管理分组")) },
                         leadingIcon = { Icon(Icons.Outlined.CreateNewFolder, null) },
@@ -8471,6 +8533,7 @@ private fun ProcreateBrushLibrary(
     onClose: () -> Unit,
     onBrushSelected: (ImportedBrush) -> Unit,
     onImportBrushes: (String?) -> Unit,
+    onImportBrushFolder: () -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
     onQuickBrushCommit: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
@@ -8827,6 +8890,7 @@ private fun ProcreateBrushLibrary(
                             addMenu = false
                             onImportBrushes(selectedCategory.takeIf { it != allLabel && it != ungroupedLabel && it != recentCategory })
                         })
+                        DropdownMenuItem(text = { Text(tr("Import folder", "导入文件夹")) }, leadingIcon = { Icon(Icons.Outlined.FolderOpen, null) }, onClick = { addMenu = false; onImportBrushFolder() })
                         DropdownMenuItem(text = { Text(tr("Manage brush sets", "管理笔刷组")) }, leadingIcon = { Icon(Icons.Outlined.CreateNewFolder, null) }, onClick = { addMenu = false; manageGroups = true })
                     }
                 }

@@ -235,6 +235,6 @@ object BrushGroupOperations {
         return brushes.map { brush -> if (groups.any { group -> isWithin(brush.groupName, group) }) reordered.next() else brush }
     }
 
-    const val MAX_NAME_LENGTH = 40
-    const val MAX_PATH_LENGTH = 160
+    const val MAX_NAME_LENGTH = 128
+    const val MAX_PATH_LENGTH = 4096
 }

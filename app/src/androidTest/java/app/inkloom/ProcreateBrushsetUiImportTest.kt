@@ -61,6 +61,37 @@ class ProcreateBrushsetUiImportTest {
 
     @Test fun ordinaryBrushsetImportedUnderErasersStillPaintsAndPersists() = assertVisibleImport("Erasers")
 
+    @Test fun folderPickerPreservesNestedGroupsAndReimportDoesNotDuplicate() {
+        val instrumentation=InstrumentationRegistry.getInstrumentation()
+        composeRule.onNodeWithText("New Note").performClick();composeRule.onNodeWithText("Create").performClick()
+        fun importFolder() {
+            composeRule.onNodeWithContentDescription("Brushes").performClick()
+            composeRule.onNodeWithContentDescription("Add brush or group").performClick()
+            composeRule.onNodeWithText("Import folder").performClick()
+            waitForAccessibilityNode(5_000) { it.contentDescription?.toString()=="Show roots" }?.let(::clickNodeOrAncestor)
+            waitForAccessibilityNode(3_000) { it.text?.toString() in setOf("Downloads","Download") && it.isVisibleToUser && clickNodeOrAncestor(it) }
+            // A repeated tree grant can reopen directly inside the previously selected folder.
+            waitForAccessibilityNode(3_000) { it.text?.toString()=="Inkloom-Folder-Test" && clickNodeOrAncestor(it) }
+            assertTrue(waitForAccessibilityNode(5_000) { it.text?.toString()?.equals("Use this folder",true)==true && clickNodeOrAncestor(it) } != null)
+            waitForAccessibilityNode(5_000) { it.text?.toString()?.equals("Allow",true)==true }?.let(::clickNodeOrAncestor)
+            composeRule.waitUntil(120_000) { composeRule.onAllNodesWithText("Folder import result").fetchSemanticsNodes().isNotEmpty() }
+            composeRule.onNodeWithText("Done").performClick()
+            composeRule.onNodeWithContentDescription("Close brushes panel").performClick()
+        }
+        importFolder()
+        val context=ApplicationProvider.getApplicationContext<Context>()
+        val brushes=app.inkloom.importer.BrushMetadataStore(context).load()
+        val groups=app.inkloom.importer.BrushGroupStore(context).load()
+        assertTrue(groups.containsAll(listOf("Inkloom-Folder-Test","Inkloom-Folder-Test/Ink","Inkloom-Folder-Test/Paint/Soft","Inkloom-Folder-Test/Empty")))
+        assertTrue(brushes.any { it.groupName=="Inkloom-Folder-Test/Ink" })
+        assertTrue(brushes.any { it.groupName=="Inkloom-Folder-Test/Paint/Soft" })
+        val count=brushes.size
+        importFolder()
+        assertEquals(count,app.inkloom.importer.BrushMetadataStore(context).load().size)
+        composeRule.activityRule.scenario.recreate();composeRule.waitForIdle()
+        assertEquals(groups,app.inkloom.importer.BrushGroupStore(context).load())
+    }
+
     private fun assertVisibleImport(targetGroup: String?) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.uiAutomation.serviceInfo = instrumentation.uiAutomation.serviceInfo.apply {
