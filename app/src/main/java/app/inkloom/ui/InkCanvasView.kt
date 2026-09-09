@@ -430,10 +430,14 @@ class InkCanvasView(context: Context) : View(context) {
     private var selectionCanvasTransform: SelectionCanvasTransform? = null
     internal var onSelectionTransformChanged: (SelectionTransformUiState?) -> Unit = {}
     internal val selectionTransformUiState: SelectionTransformUiState?
-        get() = selectionCanvasTransform?.let { SelectionTransformUiState(it.pose, it.mode, it.snapping, it.magnetics, it.snapDistance) }
+        get() = selectionCanvasTransform?.let { SelectionTransformUiState(it.pose, it.mode, it.snapping, it.magnetics, it.snapDistance, mixedSelectionDraft != null) }
 
     private var selectionTransformCenterX = 0f
     private var selectionTransformCenterY = 0f
+    internal var onPrepareMixedSelection: (String, Int) -> MixedSelectionSource? = { _,_ -> null }
+    private var mixedSelectionDraft: MixedSelectionDraft? = null
+    private val mixedElementExpected = mutableMapOf<String, app.inkloom.document.LayerElementEdit>()
+    private val mixedElementOverrides = mutableMapOf<String, LayerElementBitmaps?>()
     private var rasterSelectionTransformSession: RasterSelectionTransformSession? = null
     private var rasterSelectionTransformOriginalMask: MaskTileSurfaceSnapshot? = null
     private val selectionAntPattern = Bitmap.createBitmap(
@@ -1019,6 +1023,7 @@ class InkCanvasView(context: Context) : View(context) {
         finishSelectionFeather(apply = false)
         finishSelectionTransform(apply = false)
         val isolated = isolatedTestSelectionAlphaMask
+        mixedElementOverrides.clear(); mixedElementExpected.clear()
         documentSelectionState = state
         if (isolated != null && state.isEmpty) state.replaceFrom(isolated.surface.snapshot())
         isolatedTestSelectionAlphaMask = null
@@ -1036,7 +1041,12 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun setPageBackground(bitmap: Bitmap?) { backgroundBitmap = bitmap; invalidate() }
 
-    fun setLayerElementBitmaps(value: Map<String, LayerElementBitmaps>) {
+    fun setLayerElementBitmaps(value: Map<String, LayerElementBitmaps>, elements: List<PageElement>? = null) {
+        if(elements != null) mixedElementExpected.toMap().forEach { (layer,edit) ->
+            if(elements.filter { it.id in edit.sourceIds } == edit.replacement) {
+                mixedElementOverrides.remove(layer); mixedElementExpected.remove(layer)
+            }
+        }
         if (layerElementBitmaps != value) {
             layerElementBitmaps = value
             resetStrokeTiles()
@@ -1659,7 +1669,7 @@ class InkCanvasView(context: Context) : View(context) {
         layerId: String,
         includeElements: Boolean,
     ) {
-        val elements = if (includeElements) layerElementBitmaps[layerId] else null
+        val elements = if (includeElements) { if(mixedElementOverrides.containsKey(layerId)) mixedElementOverrides[layerId] else layerElementBitmaps[layerId] } else null
         val rasterSurface = rasterLayerTileSurfaces[layerId]
         val baseIds = alphaLockBaseContentIds[layerId].orEmpty()
         val hasCapturedAlpha = layerId in alphaLockedLayers && baseIds.isNotEmpty()
@@ -4472,10 +4482,23 @@ class InkCanvasView(context: Context) : View(context) {
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
         val selection = selectionMaskForRasterTools()?.takeUnless(MaskTileSurfaceSnapshot::isEmpty) ?: return false
         return runCatching {
+            v5StrokeController.awaitIdle()
+            if (!mixedElementOverrides.containsKey(activeLayerId) || mixedElementOverrides[activeLayerId] != null) {
+                val prepared=onPrepareMixedSelection(activeLayerId,surface.logicalWidth)
+                if(prepared != null) {
+                    mixedSelectionDraft=try { MixedSelectionDraft(prepared,surface) } catch(failure: Throwable) { prepared.bitmap.recycle(); prepared.release(); throw failure }
+                    mixedElementOverrides[activeLayerId]=null
+                    invalidateLayerComposition()
+                }
+            }
             rasterSelectionTransformOriginalMask = selection
             rasterSelectionTransformSession = RasterSelectionTransformSession(surface, selection)
             true
         }.getOrElse {
+            mixedSelectionDraft?.let { draft -> draft.undo(); draft.close() }
+            mixedSelectionDraft = null
+            mixedElementOverrides.remove(activeLayerId)
+            invalidateLayerComposition()
             rasterSelectionTransformOriginalMask = null
             onPaintCapabilityRejected("Unable to prepare this selection for transformation: ${it.message.orEmpty()}")
             false
@@ -4525,34 +4548,52 @@ class InkCanvasView(context: Context) : View(context) {
         val session = rasterSelectionTransformSession ?: return false
         rasterSelectionTransformSession = null
         val originalSelection = rasterSelectionTransformOriginalMask
+        val mixed=mixedSelectionDraft
+        mixedSelectionDraft=null
         rasterSelectionTransformOriginalMask = null
-        val result = session.commit() ?: run { session.close(); rebuildSelectionDerivedState(); return false }
+        val result = session.commit() ?: run { session.close(); mixed?.let { it.undo(); mixedElementOverrides.remove(activeLayerId); it.close() }; rebuildSelectionDerivedState(); return false }
         rebuildSelectionDerivedState()
-        val record = result.transactionRecord ?: return false
+        val record = result.transactionRecord ?: run {
+            mixed?.let { it.undo(); mixedElementOverrides.remove(activeLayerId); it.close() }
+            invalidateLayerComposition()
+            return false
+        }
         rasterTileSurfaceFor(activeLayerId)?.let { surface ->
             val layerId = activeLayerId
-            publishRasterSelectionEdit(layerId, surface, result.dirtyBounds)
+            val dirty=mixed?.bounds ?: result.dirtyBounds
+            fun publish(elements: List<PageElement>?) {
+                if(mixed != null) {
+                    val edit=app.inkloom.document.LayerElementEdit(mixed.source.elements.mapTo(mutableSetOf()) { it.id },elements.orEmpty())
+                    mixedElementExpected[layerId]=edit
+                    onRasterLayerCommitted?.invoke(RasterLayerCommit(layerId,surface.snapshot(),dirty,edit))
+                    invalidateLayerComposition(); invalidate()
+                } else publishRasterSelectionEdit(layerId,surface,dirty)
+            }
+            publish(if(mixed != null) emptyList() else null)
             recordExternalEdit(
                 undo = {
                     surface.apply(record, app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection.UNDO)
+                    mixed?.let { it.undo(); mixedElementOverrides[layerId]=LayerElementBitmaps(it.source.bitmap,null) }
                     originalSelection?.let { original ->
                         documentSelectionState?.replaceFrom(original)
                             ?: replaceSelectionAlphaMask(SparseAlphaMask.fromSnapshot(original), resetFeather = false)
                     }
                     rebuildSelectionDerivedState()
-                    publishRasterSelectionEdit(layerId, surface, result.dirtyBounds)
+                    publish(mixed?.source?.elements)
                 },
                 redo = {
+                    mixed?.let { it.redo(); mixedElementOverrides[layerId]=null }
                     surface.apply(record, app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection.REDO)
                     documentSelectionState?.replaceFrom(result.selection)
                         ?: replaceSelectionAlphaMask(SparseAlphaMask.fromSnapshot(result.selection), resetFeather = false)
                     rebuildSelectionDerivedState()
-                    publishRasterSelectionEdit(layerId, surface, result.dirtyBounds)
+                    publish(if(mixed != null) emptyList() else null)
                 },
-                dispose = record::close,
+                dispose = { record.close(); mixed?.let { if(mixedElementOverrides[layerId]?.base === it.source.bitmap) mixedElementOverrides.remove(layerId); it.close() } },
             )
         } ?: run {
             record.close()
+            mixed?.let { it.undo(); mixedElementOverrides.remove(activeLayerId); it.close() }
             return false
         }
         return true
@@ -4562,6 +4603,9 @@ class InkCanvasView(context: Context) : View(context) {
         val session = rasterSelectionTransformSession ?: return
         rasterSelectionTransformSession = null
         session.cancel()
+        mixedSelectionDraft?.let { it.undo(); mixedElementOverrides.remove(activeLayerId); it.close() }
+        mixedSelectionDraft=null
+        invalidateLayerComposition()
         rasterSelectionTransformOriginalMask?.let { original ->
             documentSelectionState?.replaceFrom(original)
                 ?: replaceSelectionAlphaMask(SparseAlphaMask.fromSnapshot(original), resetFeather = false)
@@ -5985,7 +6029,6 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun validateRasterSelectionTransform(): Boolean {
-        if (rejectRetainedObjectPixelEdit()) return false
         val surface = rasterTileSurfaceFor(activeLayerId)
         val rejection = when {
             activeLayerId in protectedLayerIds -> "Unlock the active layer before transforming its selection"
@@ -6017,15 +6060,23 @@ class InkCanvasView(context: Context) : View(context) {
             }
             onSelectionTransformChanged(selectionTransformUiState)
         }, rejected = { onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "请勿交叉或重合变换角点" else "Keep the four transform corners convex and apart") })
-        selectionCanvasTransform?.contentTargets = rasterLayerTileSurfaces.filterKeys { it != activeLayerId && it in layerOrder }.values.flatMap { target ->
-            val keys=target.snapshot().tileKeys
-            if(keys.isEmpty()) emptyList() else {
-                val l=keys.minOf { it.column }*target.tileSize.toFloat()/target.logicalWidth*surface.logicalWidth
-                val r=((keys.maxOf { it.column }+1)*target.tileSize).coerceAtMost(target.logicalWidth).toFloat()/target.logicalWidth*surface.logicalWidth
-                val t=keys.minOf { it.row }*target.tileSize.toFloat()/target.logicalHeight*surface.logicalHeight
-                val b=((keys.maxOf { it.row }+1)*target.tileSize).coerceAtMost(target.logicalHeight).toFloat()/target.logicalHeight*surface.logicalHeight
-                listOf(l to t,(l+r)/2 to (t+b)/2,r to b)
+        selectionCanvasTransform?.contentTargets = layerOrder.filter { it != activeLayerId }.flatMap { layerId ->
+            var bounds: RectF? = null
+            fun include(rect: RectF) { bounds?.union(rect) ?: run { bounds=rect } }
+            rasterLayerTileSurfaces[layerId]?.snapshot()?.let { snapshot ->
+                app.inkloom.engine.v5.tools.selectionContentBounds(snapshot)?.let { b ->
+                    include(RectF(b.left.toFloat()/snapshot.logicalWidth,b.top.toFloat()/snapshot.logicalHeight,
+                        b.right.toFloat()/snapshot.logicalWidth,b.bottom.toFloat()/snapshot.logicalHeight))
+                }
             }
+            val elements=if(mixedElementOverrides.containsKey(layerId)) mixedElementOverrides[layerId] else layerElementBitmaps[layerId]
+            listOfNotNull(elements?.base,elements?.additions).filterNot(Bitmap::isRecycled).forEach { bitmap ->
+                NativeRasterOps.alphaBounds(bitmap)?.let { b -> include(RectF(b.left.toFloat()/bitmap.width,b.top.toFloat()/bitmap.height,
+                    b.right.toFloat()/bitmap.width,b.bottom.toFloat()/bitmap.height)) }
+            }
+            bounds?.let { b -> listOf(b.left*surface.logicalWidth to b.top*surface.logicalHeight,
+                b.centerX()*surface.logicalWidth to b.centerY()*surface.logicalHeight,
+                b.right*surface.logicalWidth to b.bottom*surface.logicalHeight) }.orEmpty()
         }
         tool = EditorTool.SELECT
         onSelectionTransformChanged(selectionTransformUiState)

@@ -10,6 +10,8 @@ data class RasterLayerCommit(
     val layerId: String,
     val snapshot: PixelTileSurfaceSnapshot,
     val dirtyBounds: PixelRect,
+    /** Null keeps elements; a list atomically replaces the edited layer's retained elements. */
+    val layerElements: app.inkloom.document.LayerElementEdit? = null,
 ) {
     init {
         require(layerId.isNotBlank())

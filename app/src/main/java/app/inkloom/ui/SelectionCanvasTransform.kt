@@ -8,7 +8,7 @@ import android.view.MotionEvent
 import app.inkloom.engine.v5.tools.*
 import kotlin.math.*
 
-internal data class SelectionTransformUiState(val pose: SelectionTransformPose, val mode: SelectionTransformMode, val snapping: Boolean = false, val magnetics: Boolean = false, val snapDistance: Float = 12f)
+internal data class SelectionTransformUiState(val pose: SelectionTransformPose, val mode: SelectionTransformMode, val snapping: Boolean = false, val magnetics: Boolean = false, val snapDistance: Float = 12f, val mixed: Boolean = false)
 
 /** Geometry owns the draft; its callback always samples the original raster and selection. */
 internal class SelectionCanvasTransform(

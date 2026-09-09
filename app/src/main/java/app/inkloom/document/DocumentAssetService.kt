@@ -232,6 +232,8 @@ class DocumentAssetService(private val context: Context) {
         return pixelTileStore.referencedFiles(File(reference.manifestAssetPath))
     }
 
+    fun retainHistoryAssets(paths: List<String>): () -> Unit = assetLifecycle.retainHistoryAssets(paths)
+
     fun releaseAssetReservation(path: String?) = assetLifecycle.releaseAssetReservation(path)
 
     fun releaseRasterTileReservation(reference: RasterTileSurfaceRef?) =

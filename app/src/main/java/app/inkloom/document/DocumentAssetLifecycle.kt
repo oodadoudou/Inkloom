@@ -11,6 +11,15 @@ internal class DocumentAssetLifecycle(
     private val pixelTileStore: PixelTileArchiveStore,
 ) {
     private val lock = Any()
+    private val historyAssets = mutableMapOf<String,Int>()
+    fun retainHistoryAssets(paths: List<String>): () -> Unit {
+        val retained=paths.map { File(it).canonicalPath }.toSet()
+        synchronized(lock) { retained.forEach { historyAssets[it]=(historyAssets[it] ?: 0)+1 } }
+        return { synchronized(lock) { retained.forEach { path ->
+            val count=(historyAssets[path] ?: 1)-1; if(count==0) historyAssets.remove(path) else historyAssets[path]=count
+        } } }
+    }
+
     private val pendingDocumentAssets = linkedSetOf<String>()
     private val pendingRasterTileManifests = linkedSetOf<String>()
 
@@ -87,7 +96,7 @@ internal class DocumentAssetLifecycle(
             directory,
             documents,
             pageTemplates,
-            pendingDocumentAssets.toSet(),
+            pendingDocumentAssets.toSet() + historyAssets.keys,
         )
         val retainedManifests = documents.flatMap { document ->
             document.pages.flatMap { page ->

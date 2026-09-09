@@ -405,8 +405,9 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         layerId: String,
         reference: RasterTileSurfaceRef?,
         rotationQuarterTurns: Int = 0,
+        layerElements: app.inkloom.document.LayerElementEdit? = null,
     ) = updatePage(documentId, pageId) { page ->
-        page.copy(layers = page.layers.map { layer ->
+        page.copy(elements = layerElements?.apply(page.elements) ?: page.elements, layers = page.layers.map { layer ->
             if (layer.id != layerId || !layer.isPaintSurfaceLayer()) layer
             else layer.copy(
                 rasterTileSurface = reference,

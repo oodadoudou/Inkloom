@@ -1350,7 +1350,7 @@ private fun EditorScreen(
     onToggleLayerLock: (String, String, String) -> Unit,
     onSetLayerOpacity: (String, String, String, Float) -> Unit,
     onSetLayerBlendMode: (String, String, String, LayerBlendMode) -> Unit,
-    onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int) -> Unit,
+    onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit,
     onToggleLayerAlphaLock: (String, String, String) -> Unit,
     onToggleLayerClippedToBelow: (String, String, String) -> Unit,
     onToggleLayerReference: (String, String, String) -> Unit,
@@ -5119,7 +5119,7 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
+private fun PaperCanvas(onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val selectionMaskSize = remember(renderedPage.width, renderedPage.height) {
         requireNotNull(SelectionMaskCompositor.maskSize(renderedPage.width, renderedPage.height))
@@ -5282,6 +5282,20 @@ private fun PaperCanvas(onApplySelectionLayerTransfer: (String, String, String, 
         }
     }
     fun installRasterCommit(view: InkCanvasView) {
+        view.onPrepareMixedSelection = { layerId, nativeWidth ->
+            val elements=page.elements.filter { it.layerId==layerId }
+            if(elements.isEmpty()) null else {
+                val release=assets.retainHistoryAssets(elements.mapNotNull { element -> when(element) {
+                    is PageElement.Image -> element.assetPath
+                    is PageElement.Fill -> element.maskAssetPath
+                    is PageElement.Shape -> element.maskAssetPath
+                    else -> null
+                } })
+                try { MixedSelectionSource(elements,assets.renderElementLayerBitmap(page,layerId,nativeWidth),release) }
+                catch(failure: Throwable) { release(); throw failure }
+            }
+        }
+
         installSelectionTransfer(view)
 
         view.onRasterLayerCommitted = commit@{ commit ->
@@ -5329,7 +5343,7 @@ private fun PaperCanvas(onApplySelectionLayerTransfer: (String, String, String, 
                             // projection data. Document/Compose state is always published on main,
                             // even when a test or future host supplies a non-main parent scope.
                             rasterSurfaceRuntime.acceptPublished(capturedPage, layerId, savedReference, previous.second)
-                            onSetLayerRasterTileSurface(documentId, capturedPage.id, layerId, savedReference, previous.second)
+                            onSetLayerRasterTileSurface(documentId, capturedPage.id, layerId, savedReference, previous.second, commit.layerElements)
                         }
                         assets.releaseRasterTileReservation(savedReference)
                         newReference = null
@@ -5492,7 +5506,7 @@ private fun PaperCanvas(onApplySelectionLayerTransfer: (String, String, String, 
                 view.viewportRotationDegrees = viewportState.rotationDegrees
                 view.setProtectedLayerIds(lockedLayerIds)
                 view.setPageBackground(background)
-                view.setLayerElementBitmaps(layerElementBitmaps)
+                view.setLayerElementBitmaps(layerElementBitmaps, page.elements)
                 view.setRasterLayerSurfaces(rasterLayerSurfaces)
                 view.activeLayerId = activeLayerId
                 view.layerOpacities = layerOpacities

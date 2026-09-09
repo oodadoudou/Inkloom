@@ -409,6 +409,78 @@ class SelectionWindowRegressionTest {
         org.junit.Assert.assertArrayEquals(original, pixels())
     }
 
+    @Test fun warpHandleDragNudgeSnappingCancelAndApplyCrossWindowDispatcher() {
+        tap("New Note"); tap("Create")
+        val view=canvas()
+        stroke(pagePoint(view,.25f,.4f),pagePoint(view,.55f,.5f))
+        compose.waitUntil(10_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0)>0 }
+        val snapshot=view.activeRasterSnapshotForTest()!!
+        val bounds=app.inkloom.engine.v5.surface.PixelRect(0,0,snapshot.logicalWidth,snapshot.logicalHeight)
+        val original=snapshot.copyPremultipliedPixels(bounds)
+        tap("Selection");tap("Rectangle selection")
+        stroke(pagePoint(view,.2f,.3f),pagePoint(view,.6f,.6f))
+        tap("Transform selection");tap("Warp")
+        stroke(pagePoint(view,.2f+.4f/3,.4f),pagePoint(view,.2f+.4f/3+.035f,.43f))
+        compose.waitForIdle()
+        assertTrue(view.selectionTransformUiState!!.pose.mesh != null)
+        assertTrue(!original.contentEquals(view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(bounds)))
+        tap("Cancel transform")
+        org.junit.Assert.assertArrayEquals(original,view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(bounds))
+        tap("Transform selection")
+        val start=view.selectionTransformUiState!!.pose.centerX
+        tap("Nudge → 1 px")
+        assertEquals(start+1,view.selectionTransformUiState!!.pose.centerX,.001f)
+        tap("Snapping");tap("Magnetics")
+        assertTrue(view.selectionTransformUiState!!.magnetics)
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);compose.waitForIdle()
+        tap("Apply transform")
+        tapAt(toolbarCenter("Undo"));compose.waitForIdle()
+        org.junit.Assert.assertArrayEquals(original,view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(bounds))
+    }
+
+    @Test fun mixedImageAndPaintApplyUndoRedoAndReopenKeepOneDocumentResult() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        stroke(pagePoint(view,.25f,.45f),pagePoint(view,.5f,.5f))
+        compose.waitUntil(10_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0)>0 }
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync { model=androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java] }
+        val documentId=model.state.value.selectedDocumentId!!
+        val pageId=model.state.value.selectedPageId!!
+        fun page()=model.state.value.documents.first { it.id==documentId }.pages.first { it.id==pageId }
+        val png=compose.activity.cacheDir.resolve("mixed-window-image.png")
+        android.graphics.Bitmap.createBitmap(80,40,android.graphics.Bitmap.Config.ARGB_8888).also { bitmap ->
+            bitmap.eraseColor(android.graphics.Color.BLUE)
+            png.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }; bitmap.recycle()
+        }
+        val image=model.assets.importPageImage(android.net.Uri.fromFile(png)).copy(x=.15f,y=.3f,width=.6f,height=.1f,layerId=view.activeLayerId)
+        instrumentation.runOnMainSync { model.addElement(documentId,pageId,image) }
+        compose.waitForIdle()
+        val snapshot=view.activeRasterSnapshotForTest()!!
+        val bounds=app.inkloom.engine.v5.surface.PixelRect(0,0,snapshot.logicalWidth,snapshot.logicalHeight)
+        val original=snapshot.copyPremultipliedPixels(bounds)
+        tap("Selection"); tap("Rectangle selection")
+        stroke(pagePoint(view,.1f,.25f),pagePoint(view,.55f,.55f))
+        tap("Transform selection")
+        assertTrue(view.selectionTransformUiState!!.mixed)
+        tap("Nudge → 1 px"); tap("Cancel transform")
+        assertEquals(listOf(image),page().elements)
+        org.junit.Assert.assertArrayEquals(original,view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(bounds))
+        tap("Transform selection"); tap("Nudge → 1 px"); tap("Apply transform")
+        compose.waitUntil(20_000) { page().elements.none { it.id==image.id } }
+        val applied=view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(bounds)
+        assertTrue(!original.contentEquals(applied))
+        assertTrue(java.io.File(image.assetPath).isFile)
+        tapAt(toolbarCenter("Undo")); compose.waitUntil(20_000) { page().elements.any { it.id==image.id } }
+        org.junit.Assert.assertArrayEquals(original,view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(bounds))
+        tapAt(toolbarCenter("Redo")); compose.waitUntil(20_000) { page().elements.none { it.id==image.id } }
+        org.junit.Assert.assertArrayEquals(applied,view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(bounds))
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        val reopened=canvas()
+        compose.waitUntil(20_000) { reopened.activeRasterSnapshotForTest()?.copyPremultipliedPixels(bounds)?.contentEquals(applied)==true }
+        png.delete()
+    }
+
     private fun pagePoint(view: InkCanvasView, x: Float, y: Float): Offset {
         val point = floatArrayOf(x * view.width, y * view.height)
         instrumentation.runOnMainSync {

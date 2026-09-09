@@ -53,6 +53,7 @@ internal fun SelectionTransformToolbar(
                 TextButton(onClick = { onFinish(false) }) { Text(t("Cancel transform", "取消变换")) }
                 TextButton(onClick = { onFinish(true) }) { Text(t("Apply transform", "应用变换")) }
             }
+            if(state.mixed) Text(t("Apply converts this layer’s images and objects to editable pixels. Undo restores the originals.", "应用后，本图层的图片和对象转为可绘制像素；撤销可恢复原对象。"),fontSize=11.sp,color=Color.DarkGray)
             HorizontalDivider(Modifier.widthIn(max = 880.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
             Box {
