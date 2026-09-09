@@ -69,6 +69,7 @@ import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -1345,7 +1346,7 @@ private fun EditorScreen(
     onRotatePage: (String, String) -> Unit,
     onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit,
     onSetSavedSelections: (String, String, List<app.inkloom.document.SavedSelection>) -> Unit,
-    onAddLayer: (String, String, String) -> Unit,
+    onAddLayer: (String, String, String) -> String,
     onAddLayerFolder: (String, String) -> Unit,
     onRenameLayer: (String, String, String, String) -> Unit,
     onToggleLayerVisibility: (String, String, String) -> Unit,
@@ -2623,7 +2624,7 @@ private fun EditorScreen(
                 onColor = ::changeBrushColor,
                 onSelect = { activeLayerId = it },
                 onSelectContents = ::selectLayerContents,
-                onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
+                onAdd = { activeLayerId = onAddLayer(document.id, selectedPage.id, "Layer") },
                 onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
@@ -2949,7 +2950,7 @@ private fun EditorScreen(
                             ShortcutAction.DESELECT -> finishSelectionTool(deselect = true)
                             ShortcutAction.UNDO -> canvasView?.undo()
                             ShortcutAction.REDO -> canvasView?.redo()
-                            ShortcutAction.NEW_LAYER -> onAddLayer(document.id, selectedPage.id, "Layer")
+                            ShortcutAction.NEW_LAYER -> { activeLayerId = onAddLayer(document.id, selectedPage.id, "Layer") }
                             ShortcutAction.MERGE_LAYER_DOWN -> onMergeLayerDown(document.id, selectedPage.id, activeLayerId)?.let { activeLayerId = it }
                             ShortcutAction.SELECT_LAYER_ABOVE -> LayerShortcutSelection.adjacentEditable(selectedPage.layers, activeLayerId, 1)?.let { activeLayerId = it }
                             ShortcutAction.SELECT_LAYER_BELOW -> LayerShortcutSelection.adjacentEditable(selectedPage.layers, activeLayerId, -1)?.let { activeLayerId = it }
@@ -3406,7 +3407,7 @@ private fun EditorScreen(
                 onColor = ::changeBrushColor,
                 onSelect = { activeLayerId = it },
                 onSelectContents = ::selectLayerContents,
-                onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
+                onAdd = { activeLayerId = onAddLayer(document.id, selectedPage.id, "Layer") },
                 onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
@@ -3484,7 +3485,7 @@ private fun EditorScreen(
                     onColor = ::changeBrushColor,
                     onSelect = { activeLayerId = it },
                 onSelectContents = ::selectLayerContents,
-                    onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
+                    onAdd = { activeLayerId = onAddLayer(document.id, selectedPage.id, "Layer") },
                     onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
                     onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                     onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
@@ -3612,7 +3613,7 @@ private fun EditorScreen(
                 onColor = ::changeBrushColor,
                 onSelect = { activeLayerId = it },
                 onSelectContents = ::selectLayerContents,
-                onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
+                onAdd = { activeLayerId = onAddLayer(document.id, selectedPage.id, "Layer") },
                 onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
@@ -7445,6 +7446,11 @@ private fun PaintingLayerPanel(
     onPanelDragEnd: () -> Unit,
     onPanelDragCancel: () -> Unit,
 ) {
+    val rowBounds = remember { mutableMapOf<String, androidx.compose.ui.geometry.Rect>() }
+    var draggingLayerId by remember { mutableStateOf<String?>(null) }
+    var dropLayerId by remember { mutableStateOf<String?>(null) }
+    val currentLayers by rememberUpdatedState(page.layers)
+    val currentMove by rememberUpdatedState(onMove)
     var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
     var renameValue by remember { mutableStateOf("") }
     var blendMenu by remember { mutableStateOf(false) }
@@ -7539,18 +7545,25 @@ private fun PaintingLayerPanel(
             LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(filteredLayers, key = { it.id }) { layer ->
                     var menu by remember { mutableStateOf(false) }
+                    var maskMenu by remember { mutableStateOf(false) }
+                    DisposableEffect(layer.id) { onDispose { rowBounds.remove(layer.id) } }
                     val folderTargets = LayerHierarchy.availableFolders(page.layers, layer.id)
                     val selected = layer.id == activeLayerId || layer.id in selectedLayerIds
                     val depth = LayerHierarchy.depth(page.layers, layer)
                     val canSelect = layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && !LayerHierarchy.effectiveLocked(page.layers, layer)
+                    val swipeActions = buildList<Pair<String, () -> Unit>> {
+                        add((if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) to { onLock(layer.id) })
+                        if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) add(tr("Duplicate", "复制") to { onDuplicate(layer.id) })
+                        if (layer.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER)) add(tr("Delete", "删除") to { onDelete(layer.id) })
+                    }
+                    LayerRowActions(swipeActions) {
                     Row(
-                        Modifier.fillMaxWidth().padding(start = (8 + depth * 14).dp, end = 8.dp).height(64.dp).clip(RoundedCornerShape(7.dp)).background(if (selected) Color(0xFFE5EEE8) else Color.White).combinedClickable(
+                        Modifier.fillMaxWidth().onGloballyPositioned { rowBounds[layer.id] = it.boundsInRoot() }.padding(start = (8 + depth * 14).dp, end = 8.dp).height(64.dp).clip(RoundedCornerShape(7.dp)).background(if (dropLayerId == layer.id) Color(0xFFCEDFD4) else if (selected) Color(0xFFE5EEE8) else Color.White).combinedClickable(
                             onClick = {
                                 if (selectedLayerIds.isNotEmpty()) selectedLayerIds = if (layer.id in selectedLayerIds) selectedLayerIds - layer.id else selectedLayerIds + layer.id
                                 else if (layer.id == activeLayerId || layer.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) menu = true
                                 else if (canSelect) onSelect(layer.id)
                             },
-                            onLongClick = { selectedLayerIds = if (layer.id in selectedLayerIds) selectedLayerIds - layer.id else selectedLayerIds + layer.id },
                         ).padding(horizontal = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -7561,8 +7574,37 @@ private fun PaintingLayerPanel(
                             }
                         }
                         Spacer(Modifier.width(9.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(layer.name, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, fontSize = 13.sp, color = Ink)
+                        val reorderDescription = "${tr("Reorder layer", "拖动排序图层")} ${layer.name}"
+                        Column(Modifier.weight(1f).semantics { contentDescription = reorderDescription }.pointerInput(layer.id) {
+                            var dragY = 0f
+                            var moved = false
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    draggingLayerId = layer.id
+                                    dragY = rowBounds[layer.id]?.center?.y ?: 0f
+                                    moved = false
+                                },
+                                onDrag = { change, amount ->
+                                    change.consume()
+                                    moved = moved || kotlin.math.abs(amount.y) > 1f
+                                    dragY += amount.y
+                                    val source = currentLayers.firstOrNull { it.id == layer.id }
+                                    dropLayerId = currentLayers.firstOrNull { candidate ->
+                                        candidate.id != layer.id && candidate.role != LayerRole.BACKGROUND &&
+                                            candidate.parentId == source?.parentId && rowBounds[candidate.id]?.let { dragY in it.top..it.bottom } == true
+                                    }?.id
+                                },
+                                onDragCancel = { draggingLayerId = null; dropLayerId = null },
+                                onDragEnd = {
+                                    val from = currentLayers.indexOfFirst { it.id == layer.id }
+                                    val to = currentLayers.indexOfFirst { it.id == dropLayerId }
+                                    if (moved && from >= 0 && to >= 0 && layer.role != LayerRole.BACKGROUND) currentMove(layer.id, to - from)
+                                    else if (!moved) selectedLayerIds = if (layer.id in selectedLayerIds) selectedLayerIds - layer.id else selectedLayerIds + layer.id
+                                    draggingLayerId = null; dropLayerId = null
+                                },
+                            )
+                        }) {
+                            Text(if (draggingLayerId == layer.id) "↕ ${layer.name}" else layer.name, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, fontSize = 13.sp, color = Ink)
 
                         }
                         if (layer.locked) Icon(Icons.Outlined.Lock, tr("Locked", "已锁定"), Modifier.size(15.dp), tint = MutedInk)
@@ -7579,6 +7621,9 @@ private fun PaintingLayerPanel(
                         val layerActionsDescription = "${tr("Layer actions", "图层操作")} ${layer.name}"
                         Box(Modifier.semantics { contentDescription = layerActionsDescription }) {
                             IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), tint = Ink) }
+                            DropdownMenu(maskMenu, { maskMenu = false }) {
+                                LayerMaskMenuItems(layer) { command -> maskMenu = false; onMaskCommand(layer.id, command) }
+                            }
                             DropdownMenu(menu, { menu = false }) {
                                 DropdownMenuItem(text = { Text(if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) }, onClick = { menu = false; onLock(layer.id) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.alphaLock) tr("Unlock alpha", "解锁透明度") else tr("Lock alpha", "锁定透明度")) }, onClick = { menu = false; onToggleAlphaLock(layer.id) })
@@ -7586,7 +7631,7 @@ private fun PaintingLayerPanel(
                                 if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(if (layer.reference) tr("Unset reference layer", "取消参考图层") else tr("Set as reference layer", "设为参考图层")) }, onClick = { menu = false; onToggleReference(layer.id) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.draft) tr("Unset draft layer", "取消草稿图层") else tr("Set as draft layer", "设为草稿图层")) }, onClick = { menu = false; onToggleDraft(layer.id) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Select contents", "选取内容")) }, onClick = { menu = false; onSelectContents(layer.id) })
-                                LayerMaskMenuItems(layer) { command -> menu = false; onMaskCommand(layer.id, command) }
+                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Mask", "蒙版")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; maskMenu = true })
                                 DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
                                 if (layer.role == LayerRole.FOLDER) DropdownMenuItem(text = { Text(if (layer.collapsed) tr("Expand folder", "展开文件夹") else tr("Collapse folder", "折叠文件夹")) }, onClick = { menu = false; onToggleFolderCollapsed(layer.id) })
                                 if (layer.parentId != null) DropdownMenuItem(text = { Text(tr("Move out of folder", "移出文件夹")) }, onClick = { menu = false; onMoveToFolder(layer.id, null) })
@@ -7598,6 +7643,7 @@ private fun PaintingLayerPanel(
                                 if (layer.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Delete", "删除")) }, onClick = { menu = false; onDelete(layer.id) })
                             }
                         }
+                    }
                     }
                 }
             }

@@ -9,6 +9,19 @@ class LayerHierarchyTest {
     private val folder = InkLayer(id = "folder", name = "Sketches", role = LayerRole.FOLDER)
     private val child = InkLayer(id = "child", name = "Pencil", parentId = folder.id)
 
+    @Test fun reorderPreservesBackgroundAndParentAndSupportsSingleLongDistanceCommit() {
+        val a = InkLayer(id = "a", name = "a")
+        val b = InkLayer(id = "b", name = "b")
+        val page = InkPage(layers = listOf(InkLayer(id = "paper", name = "paper", role = LayerRole.BACKGROUND), a, b, folder, child))
+        val moved = LayerHierarchy.moveBy(page, a.id, 2)
+        assertEquals(listOf("paper", "b", "folder", "a", "child"), moved.layers.map(InkLayer::id))
+        assertEquals(page, LayerHierarchy.moveBy(page, "paper", 2))
+        assertEquals(page, LayerHierarchy.moveBy(page, a.id, -1))
+        assertEquals(page, LayerHierarchy.moveBy(page, child.id, -1))
+        assertEquals(page, LayerHierarchy.moveBy(page, "missing", 1))
+        assertEquals(page, LayerHierarchy.moveBy(moved, a.id, -2))
+    }
+
     @Test fun childInheritsFolderVisibilityAndLockWithoutLosingOwnState() {
         val hiddenFolder = folder.copy(visible = false, locked = true)
         val layers = listOf(hiddenFolder, child)

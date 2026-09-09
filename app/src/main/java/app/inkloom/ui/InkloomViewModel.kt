@@ -367,11 +367,14 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         documentId: String,
         pageId: String,
         name: String = "Layer",
-    ) = updatePage(documentId, pageId) { page ->
-        val suffix = page.layers.count { it.role == LayerRole.CUSTOM } + 1
-        page.copy(layers = page.layers + InkLayer(
-            name = if (name == "Layer") "Layer $suffix" else name.trim().ifBlank { "Layer $suffix" },
-        ))
+    ): String {
+        val id = java.util.UUID.randomUUID().toString()
+        updatePage(documentId, pageId) { page ->
+            val suffix = page.layers.count { it.role == LayerRole.CUSTOM } + 1
+            page.copy(layers = page.layers + InkLayer(id = id,
+                name = if (name == "Layer") "Layer $suffix" else name.trim().ifBlank { "Layer $suffix" }))
+        }
+        return id
     }
 
     fun addLayerFolder(documentId: String, pageId: String) = updatePage(documentId, pageId) { page ->
@@ -522,9 +525,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun moveLayer(documentId: String, pageId: String, layerId: String, delta: Int) = updatePage(documentId, pageId) { page ->
-        val from = page.layers.indexOfFirst { it.id == layerId }
-        val to = (from + delta).coerceIn(0, page.layers.lastIndex)
-        if (from < 0 || from == to) page else page.copy(layers = page.layers.toMutableList().apply { add(to, removeAt(from)) })
+        LayerHierarchy.moveBy(page, layerId, delta)
     }
 
     fun duplicateLayer(documentId: String, pageId: String, layerId: String): String? {
