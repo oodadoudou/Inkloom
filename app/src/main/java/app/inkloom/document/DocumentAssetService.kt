@@ -354,6 +354,23 @@ class DocumentAssetService(private val context: Context) {
         return bitmap
     }
 
+    /** Small isolated preview: hidden layers remain identifiable without changing document state. */
+    fun renderLayerThumbnail(page: InkPage, layerId: String, size: Int = 96): Bitmap {
+        require(size in 16..256)
+        val layer = requireNotNull(page.layers.firstOrNull { it.id == layerId })
+        val visibleWidth = PageCropTransform.visibleWidth(page).coerceAtLeast(1f)
+        val visibleHeight = PageCropTransform.visibleHeight(page).coerceAtLeast(1f)
+        val scale = size / maxOf(visibleWidth, visibleHeight)
+        val width = (visibleWidth * scale).toInt().coerceAtLeast(1)
+        val height = (visibleHeight * scale).toInt().coerceAtLeast(1)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val isolated = page.copy(layers = listOf(layer.copy(visible = true, parentId = null,
+            opacity = 1f, blendMode = LayerBlendMode.NORMAL, clippedToBelow = false)))
+        drawPage(Canvas(bitmap), isolated, width, height, includeBackground = false,
+            includedLayerIds = setOf(layerId), includeDraftLayers = true)
+        return bitmap
+    }
+
     fun renderElementLayerBitmap(page: InkPage, layerId: String, width: Int, contentIds: Set<String>? = null): Bitmap {
         require(width in 1..4096) { "Layer render width must be between 1 and 4096 pixels" }
         val height = (width * PageCropTransform.visibleHeight(page) / PageCropTransform.visibleWidth(page).coerceAtLeast(1f)).toInt().coerceAtLeast(1)

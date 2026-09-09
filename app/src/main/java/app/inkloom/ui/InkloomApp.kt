@@ -7396,6 +7396,19 @@ private fun LayerPanel(
 }
 
 @Composable
+private fun LayerContentPreview(page: InkPage, layer: InkLayer, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val assets = remember(context) { DocumentAssetService(context.applicationContext) }
+    val thumbnail by produceState<android.graphics.Bitmap?>(null, page.id, page.crop, layer,
+        page.elements.filter { it.layerId == layer.id }) {
+        value = withContext(Dispatchers.IO) { runCatching { assets.renderLayerThumbnail(page, layer.id) }.getOrNull() }
+    }
+    Box(modifier.background(Color(0xFFF4F5F4)), contentAlignment = Alignment.Center) {
+        thumbnail?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize().padding(3.dp), contentScale = ContentScale.Fit) }
+    }
+}
+
+@Composable
 private fun PaintingLayerPanel(
     page: InkPage,
     activeLayerId: String,
@@ -7542,8 +7555,9 @@ private fun PaintingLayerPanel(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Surface(Modifier.size(42.dp).clickable { if (layer.role == LayerRole.FOLDER) onToggleFolderCollapsed(layer.id) else menu = true }, shape = RoundedCornerShape(5.dp), color = Color(0xFFF4F4F4)) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(when (layer.role) { LayerRole.BACKGROUND -> Icons.Outlined.Image; LayerRole.HIGHLIGHT -> Icons.Outlined.BorderColor; LayerRole.OBJECTS -> Icons.Outlined.Widgets; LayerRole.FOLDER -> Icons.Outlined.Folder; else -> Icons.Outlined.Layers }, null, Modifier.size(22.dp), tint = Ink)
+                            if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) LayerContentPreview(page, layer, Modifier.fillMaxSize())
+                            else Box(contentAlignment = Alignment.Center) {
+                                Icon(if (layer.role == LayerRole.FOLDER) { if (layer.collapsed) Icons.Outlined.Folder else Icons.Outlined.FolderOpen } else Icons.Outlined.Image, null, Modifier.size(22.dp), tint = Ink)
                             }
                         }
                         Spacer(Modifier.width(9.dp))
