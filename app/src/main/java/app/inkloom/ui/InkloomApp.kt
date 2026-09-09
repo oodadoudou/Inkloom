@@ -4642,6 +4642,7 @@ private fun PageRail(
     }
     val pageDensity = LocalDensity.current.density
     val measuredPageBounds = remember(document.id) { mutableMapOf<String, Rect>() }
+    val pagePointerCoordinates = remember(document.id) { mutableMapOf<String, androidx.compose.ui.layout.LayoutCoordinates>() }
     val transferTargets = documents.filter { it.id != document.id && it.trashedAt == null }
     val dragDescription = tr("Drag pages panel", "拖动页面面板")
     val currentPanelDrag by rememberUpdatedState(onPanelDrag)
@@ -4737,10 +4738,11 @@ private fun PageRail(
             var customNumber by remember(page.customNumber) { mutableStateOf(page.customNumber.orEmpty()) }
             var tags by remember(page.tags) { mutableStateOf(page.tags.joinToString(", ")) }
             var pageDragDistance by remember(page.id) { mutableFloatStateOf(0f) }
+            var pageDragTravel by remember(page.id) { mutableFloatStateOf(0f) }
             var pageDragging by remember(page.id) { mutableStateOf(false) }
-            DisposableEffect(page.id) { onDispose { measuredPageBounds.remove(page.id) } }
+            DisposableEffect(page.id) { onDispose { measuredPageBounds.remove(page.id); pagePointerCoordinates.remove(page.id); pagePointerCoordinates.remove(page.id + ":handle") } }
             var pageDragStartY by remember(page.id) { mutableFloatStateOf(0f) }
-            Column(Modifier.fillMaxWidth().onGloballyPositioned { measuredPageBounds[page.id] = it.boundsInRoot() }.padding(horizontal = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 val pageBatchSelected = page.id in selectedPageIds
                 val pageDescription = if (pageBatchSelected) {
                     tr("Page ${pageIndex + 1}. Selected for management.", "第 ${pageIndex + 1} 页，已选择管理")
@@ -4756,7 +4758,7 @@ private fun PageRail(
                     selectedPageIds = currentSelectedPageIds + page.id
                 }
                 fun finishPageDrag() {
-                    val moved = kotlin.math.abs(pageDragDistance) >= 18.dp.value
+                    val moved = pageDragTravel >= 18f
                     if (moved) {
                         val selected = if (managingPages && selectedPageIds.isNotEmpty()) selectedPageIds + page.id else setOf(page.id)
                         val order = document.pages.map(InkPage::id)
@@ -4774,22 +4776,24 @@ private fun PageRail(
                 }
                 fun Modifier.pageReorderDrag(): Modifier = pointerInput(page.id, managingPages, document.pages.map(InkPage::id)) {
                     detectDragGesturesAfterLongPress(
-                        onDragStart = { pageDragDistance = 0f; pageDragStartY = measuredPageBounds[page.id]?.center?.y ?: 0f; pageDragging = true },
+                        onDragStart = { pageDragTravel = 0f; pageDragDistance = 0f; pageDragStartY = pagePointerCoordinates[page.id]?.localToRoot(it)?.y ?: 0f; pageDragging = true },
                         onDragEnd = ::finishPageDrag,
                         onDragCancel = { pageDragDistance = 0f; pageDragging = false },
                     ) { change, amount ->
                         change.consume()
-                        pageDragDistance += amount.y / density
+                        pageDragTravel += kotlin.math.abs(amount.y) / pageDensity
+                        pagePointerCoordinates[page.id]?.localToRoot(change.position)?.let { pageDragDistance = (it.y - pageDragStartY) / pageDensity }
                     }
                 }
                 fun Modifier.pageHandleDrag(): Modifier = pointerInput(page.id, managingPages, document.pages.map(InkPage::id)) {
                     detectDragGestures(
-                        onDragStart = { pageDragDistance = 0f; pageDragStartY = measuredPageBounds[page.id]?.center?.y ?: 0f; pageDragging = true },
+                        onDragStart = { pageDragTravel = 0f; pageDragDistance = 0f; pageDragStartY = pagePointerCoordinates[page.id + ":handle"]?.localToRoot(it)?.y ?: 0f; pageDragging = true },
                         onDragEnd = ::finishPageDrag,
                         onDragCancel = { pageDragDistance = 0f; pageDragging = false },
                     ) { change, amount ->
                         change.consume()
-                        pageDragDistance += amount.y / density
+                        pageDragTravel += kotlin.math.abs(amount.y) / pageDensity
+                        pagePointerCoordinates[page.id + ":handle"]?.localToRoot(change.position)?.let { pageDragDistance = (it.y - pageDragStartY) / pageDensity }
                     }
                 }
                 Box(
@@ -4799,6 +4803,7 @@ private fun PageRail(
                             (PageCropTransform.visibleWidth(page) / PageCropTransform.visibleHeight(page).coerceAtLeast(1f))
                                 .coerceIn(.5f, 1.8f),
                         )
+                        .onGloballyPositioned { measuredPageBounds[page.id] = it.boundsInRoot() }
                         .zIndex(if (pageDragging) 4f else 0f)
                         .graphicsLayer {
                             translationY = pageDragDistance * density
@@ -4819,7 +4824,7 @@ private fun PageRail(
                     ) {
                         Icon(Icons.Outlined.Layers, tr("Open layers for this page", "打开此页面的图层"), Modifier.size(15.dp))
                     }
-                    Box(Modifier.matchParentSize().pointerInput(page.id, managingPages) {
+                    Box(Modifier.matchParentSize().onGloballyPositioned { pagePointerCoordinates[page.id] = it }.pointerInput(page.id, managingPages) {
                         val layerHotspot = 24.dp.toPx()
                         detectTapGestures(onTap = { position ->
                             if (position.x >= size.width - layerHotspot && position.y >= size.height - layerHotspot) onOpenLayers(page.id)
@@ -4835,7 +4840,7 @@ private fun PageRail(
                     Icon(
                         Icons.Outlined.DragIndicator,
                         tr("Drag to reorder page", "拖动调整页面顺序"),
-                        Modifier.size(36.dp).padding(6.dp).pageHandleDrag(),
+                        Modifier.size(36.dp).padding(6.dp).onGloballyPositioned { pagePointerCoordinates[page.id + ":handle"] = it }.pageHandleDrag(),
                         tint = MutedInk,
                     )
                     Text(page.customNumber ?: (document.pages.indexOf(page) + 1).toString(), color = if (page.id == selectedPageId) Sage else MutedInk, modifier = Modifier.weight(1f).clip(RoundedCornerShape(5.dp)).clickable { onSelect(page.id) }.padding(vertical = 6.dp), maxLines = 1)

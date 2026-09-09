@@ -621,10 +621,15 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Page 1. Long press to manage.").performClick()
         composeRule.onNodeWithText("1/2").assertIsDisplayed()
 
+        val firstPageBounds = composeRule.onNodeWithContentDescription("Page 1. Long press to manage.").fetchSemanticsNode().boundsInRoot
+        val secondPageBounds = composeRule.onNodeWithContentDescription("Page 2. Long press to manage.").fetchSemanticsNode().boundsInRoot
+        val dropDistance = secondPageBounds.center.y - firstPageBounds.center.y + 24f
         composeRule.onNodeWithContentDescription("Page 1. Long press to manage.").performTouchInput {
             down(center)
             advanceEventTime(700)
-            moveBy(Offset(0f, 180f))
+            moveBy(Offset(0f, dropDistance / 2))
+            advanceEventTime(50)
+            moveBy(Offset(0f, dropDistance / 2))
             advanceEventTime(50)
             up()
         }
@@ -640,9 +645,11 @@ class InkloomLaunchTest {
         composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasContentDescription("Drag to reorder page")).fetchSemanticsNodes().size == 2 }
         composeRule.onNodeWithContentDescription("Page 1. Long press to manage.").performClick()
 
+        val handles = composeRule.onAllNodes(hasContentDescription("Drag to reorder page")).fetchSemanticsNodes()
+        val dropDistance = handles.last().boundsInRoot.center.y - handles.first().boundsInRoot.center.y + 24f
         composeRule.onAllNodes(hasContentDescription("Drag to reorder page")).onFirst().performTouchInput {
             down(center)
-            moveBy(Offset(0f, 180f))
+            moveBy(Offset(0f, dropDistance))
             advanceEventTime(50)
             up()
         }
