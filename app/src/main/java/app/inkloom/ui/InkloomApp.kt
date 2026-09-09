@@ -1366,6 +1366,7 @@ private fun EditorScreen(
         ))
     }
     var selectionFeather by remember { mutableFloatStateOf(0f) }
+    SideEffect { canvasView?.onSelectionThresholdChanged = { value -> onSettingsChange(settings.copy(selectionThreshold = value)) } }
     var savedSelectionsOpen by remember(selectedPage.id) { mutableStateOf(false) }
     val trSelectionName = tr("Selection", "选区")
     val selectionSaveError = tr("Could not save the selection", "无法保存选区")

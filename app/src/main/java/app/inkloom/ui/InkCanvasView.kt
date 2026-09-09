@@ -1346,6 +1346,14 @@ class InkCanvasView(context: Context) : View(context) {
         drawGradientPreview(canvas)
         drawGradientHandles(canvas)
         drawBrushSizePreview(canvas)
+        automaticSelectionDraft?.let { draft ->
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.DKGRAY; textSize = 16f * resources.displayMetrics.density / viewportScale
+                textAlign = android.graphics.Paint.Align.CENTER
+            }
+            val label = if (resources.configuration.locales[0].language == "zh") "选区阈值" else "Selection threshold"
+            canvas.drawText("$label ${(draft.threshold * 100).toInt()}%", width / 2f, 40f * resources.displayMetrics.density / viewportScale, paint)
+        }
         if (imageCanvasTransform == null) drawStylusHoverCursor(canvas)
         imageCanvasTransform?.draw(canvas, width, height, viewportScale)
     }
@@ -1387,6 +1395,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onDetachedFromWindow() {
+        finishAutomaticSelection(false)
         finishSelectionFeather(apply = false)
         finishSelectionTransform(apply = false)
         resetDrawAndHold()
@@ -2110,6 +2119,10 @@ class InkCanvasView(context: Context) : View(context) {
                     return true
                 }
                 if (activeTool == EditorTool.SELECT) {
+                    if (selectionShape == SelectionShape.MAGIC_WAND || selectionShape == SelectionShape.SMART_BORDER) {
+                        beginAutomaticSelection(normalizedX, normalizedY, inputPoint.first * viewportScale)
+                        return true
+                    }
                     if (selectionShape == SelectionShape.FREEFORM) {
                         if (isSelectionOriginHit(normalizedX, normalizedY)) {
                             commitSelectionContour()
@@ -2239,6 +2252,10 @@ class InkCanvasView(context: Context) : View(context) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
                 }
                 else if (activeTool == EditorTool.SELECT) {
+                    if (automaticSelectionDraft != null) {
+                        updateAutomaticSelection(inputPoint.first * viewportScale)
+                        return true
+                    }
                     if (selectionShape == SelectionShape.FREEFORM || selectionShape == SelectionShape.BRUSH) {
                         for (i in 0 until event.historySize) historicalCanvasPoint(event, pointerIndex, i).let { point ->
                             appendSelectionPoint(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1))
@@ -2334,7 +2351,8 @@ class InkCanvasView(context: Context) : View(context) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
                 } else if (activeTool == EditorTool.SELECT) {
                     if (selectionShape == SelectionShape.SMART_BORDER || selectionShape == SelectionShape.MAGIC_WAND) {
-                        selectAutomaticRegion(normalizedX, normalizedY, selectionShape == SelectionShape.SMART_BORDER)
+                        updateAutomaticSelection(inputPoint.first * viewportScale)
+                        finishAutomaticSelection(true)
                     } else if (selectionShape == SelectionShape.FREEFORM) {
                         appendSelectionPoint(normalizedX, normalizedY)
                         v5LassoSession?.endContact()
@@ -2739,6 +2757,7 @@ class InkCanvasView(context: Context) : View(context) {
         finishActiveStrokePreview()
         pendingMaterialBarrierSequence = null
         laserTrail.cancelActive()
+        finishAutomaticSelection(false)
         cancelFillGesture()
         cancelSmudgeGesture()
         cancelLiquifyGesture()
@@ -3583,32 +3602,60 @@ class InkCanvasView(context: Context) : View(context) {
         SelectionShape.BRUSH -> LassoGeometry.brushCorridor(lassoPoints, selectionBrushSize, pageModelWidth, pageModelHeight)
     }
 
-    private fun selectAutomaticRegion(normalizedX: Float, normalizedY: Float, smartBorder: Boolean) {
-        val selectionState = documentSelectionState
-        val beforeAlpha = selectionState?.snapshot()
-        val sampleWidth = width.coerceIn(1, 512)
-        val sampleHeight = (height.coerceAtLeast(1) * (sampleWidth / width.coerceAtLeast(1).toFloat())).toInt().coerceIn(1, 768)
-        val page = renderDocumentPageBitmap(sampleWidth, sampleHeight)
-        val tolerance = if (smartBorder) (8f + (1f - selectionThreshold) * 56f).toInt() else (selectionThreshold * 255f).toInt()
-        val region = FloodFill.fill(
-            page,
-            (normalizedX * (sampleWidth - 1)).toInt().coerceIn(0, sampleWidth - 1),
-            (normalizedY * (sampleHeight - 1)).toInt().coerceIn(0, sampleHeight - 1),
-            tolerance,
-        )
+    private data class AutomaticSelectionDraft(
+        val page: Bitmap, val seedX: Float, val seedY: Float, val startScreenX: Float,
+        val before: MaskTileSurfaceSnapshot?, val radius: Float, val base: MaskTileSurfaceSnapshot?,
+        val mode: SelectionMode, val initialThreshold: Float,
+        var threshold: Float, var lastTolerance: Int = -1,
+    )
+    private var automaticSelectionDraft: AutomaticSelectionDraft? = null
+    var onSelectionThresholdChanged: (Float) -> Unit = {}
+
+    private fun beginAutomaticSelection(x: Float, y: Float, screenX: Float) {
+        finishAutomaticSelection(false)
+        val sampleWidth = width.coerceIn(1, 1024)
+        val sampleHeight = (height.coerceAtLeast(1) * (sampleWidth / width.coerceAtLeast(1).toFloat())).toInt().coerceIn(1, 1536)
+        val source = renderDocumentPageBitmap(sampleWidth, sampleHeight)
+        automaticSelectionDraft = AutomaticSelectionDraft(source, x, y, screenX,
+            documentSelectionState?.snapshot(), selectionFeatherPixels, selectionFeatherBase,
+            if (selectionMode == SelectionMode.REPLACE) SelectionMode.ADD else selectionMode,
+            selectionThreshold, selectionThreshold)
+        updateAutomaticSelection(screenX)
+    }
+
+    private fun updateAutomaticSelection(screenX: Float) {
+        val draft = automaticSelectionDraft ?: return
+        draft.threshold = (draft.initialThreshold + (screenX - draft.startScreenX) / (320f * resources.displayMetrics.density)).coerceIn(0f, 1f)
+        val smartBorder = selectionShape == SelectionShape.SMART_BORDER
+        val tolerance = if (smartBorder) (8f + (1f - draft.threshold) * 56f).toInt() else (draft.threshold * 255f).toInt()
+        if (tolerance == draft.lastTolerance) return
+        draft.lastTolerance = tolerance
+        val page = draft.page
+        val region = FloodFill.fill(page,
+            (draft.seedX * (page.width - 1)).toInt().coerceIn(0, page.width - 1),
+            (draft.seedY * (page.height - 1)).toInt().coerceIn(0, page.height - 1), tolerance)
         val exactMask = if (region.isEmpty) null else SparseAlphaMask.fromFloodFill(
-            region.mask,
-            region.left,
-            region.top,
-            sampleWidth,
-            sampleHeight,
-            pageModelWidth,
-            pageModelHeight,
-        )
-        composeSelectionAlpha(exactMask, selectionMode)
+            region.mask, region.left, region.top, page.width, page.height, pageModelWidth, pageModelHeight)
+        documentSelectionState?.replaceFrom(draft.before)
+        composeSelectionAlpha(exactMask, draft.mode)
         region.mask.recycle()
-        page.recycle()
-        recordSelectionHistory(selectionState, beforeAlpha)
+        invalidate()
+    }
+
+    private fun finishAutomaticSelection(apply: Boolean) {
+        val draft = automaticSelectionDraft ?: return
+        automaticSelectionDraft = null
+        if (apply) {
+            selectionThreshold = draft.threshold
+            recordSelectionHistory(documentSelectionState, draft.before, draft.radius, draft.base)
+            onSelectionThresholdChanged(draft.threshold)
+        } else {
+            documentSelectionState?.replaceFrom(draft.before)
+            selectionFeatherPixels = draft.radius
+            selectionFeatherBase = draft.base
+            rebuildSelectionDerivedState()
+        }
+        draft.page.recycle()
         invalidate()
     }
 
