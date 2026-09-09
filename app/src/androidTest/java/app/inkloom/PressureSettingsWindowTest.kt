@@ -41,7 +41,7 @@ class PressureSettingsWindowTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
-    @Test fun curveDragPersistsContinuouslyAndScratchpadUsesProductionPressure() {
+    @Test fun curveDragCommitsOnceAndScratchpadUsesProductionPressure() {
         tap("Settings")
         compose.onNode(hasScrollAction() and hasAnyAncestor(isDialog())).performScrollToNode(hasContentDescription("Editable pressure curve"))
         val graph = center("Editable pressure curve")
@@ -49,10 +49,12 @@ class PressureSettingsWindowTest {
         var writes = 0
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key -> if (key == "pressureResponseCurve") writes++ }
         preferences.registerOnSharedPreferenceChangeListener(listener)
-        try { stroke(graph, graph + Offset(0f, -100f)) } finally { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
-        assertTrue("A continuous drag must keep updating after recomposition", writes > 2)
+        try { stroke(graph, graph + Offset(80f, -100f)) } finally { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
+        assertTrue("A drag must commit once after release", writes == 1)
         val settings = app.inkloom.settings.AppSettingsStore(instrumentation.targetContext).load()
         assertNotEquals(app.inkloom.document.PressureResponseCurve.LINEAR, settings.pressureResponseCurve)
+        assertEquals(6, settings.pressureResponseCurve.size)
+        assertTrue("Input coordinate must move horizontally", settings.pressureResponseCurve[2] > .5f)
         compose.onNode(hasScrollAction() and hasAnyAncestor(isDialog())).performScrollToNode(hasText("Reset pressure settings"))
         val view = canvas()
         assertEquals(settings.pressureResponseCurve, view.pressureResponseCurve)

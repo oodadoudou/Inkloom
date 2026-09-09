@@ -9927,64 +9927,106 @@ private fun shortcutActionDisplayLabel(action: ShortcutAction, settings: AppSett
 @Composable
 private fun PressureCurveEditor(values: List<Float>, onChange: (List<Float>) -> Unit) {
     val curve = PressureResponseCurve.normalize(values)
-    val currentOnChange by rememberUpdatedState(onChange)
+    var draft by remember { mutableStateOf<List<Float>?>(null) }
+    var selected by remember { mutableIntStateOf(-1) }
+    val shown = draft ?: curve
     val currentCurve by rememberUpdatedState(curve)
+    val currentOnChange by rememberUpdatedState(onChange)
+    val graphDescription = tr("Editable pressure curve", "可编辑压感曲线")
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(tr("Pressure response curve", "压感响应曲线"), color = MutedInk, fontSize = 11.sp, modifier = Modifier.weight(1f))
-            TextButton(onClick = { currentOnChange(PressureResponseCurve.SOFT) }) { Text(tr("Soft", "柔和"), fontSize = 10.sp) }
-            TextButton(onClick = { currentOnChange(PressureResponseCurve.LINEAR) }) { Text(tr("Linear", "线性"), fontSize = 10.sp) }
-            TextButton(onClick = { currentOnChange(PressureResponseCurve.FIRM) }) { Text(tr("Firm", "硬朗"), fontSize = 10.sp) }
+            Text(tr("Pressure response curve", "压感响应曲线"), color = MutedInk, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            TextButton(onClick = { currentOnChange(PressureResponseCurve.SOFT) }) { Text(tr("Soft", "柔和"), fontSize = 11.sp) }
+            TextButton(onClick = { currentOnChange(PressureResponseCurve.LINEAR) }) { Text(tr("Linear", "线性"), fontSize = 11.sp) }
+            TextButton(onClick = { currentOnChange(PressureResponseCurve.FIRM) }) { Text(tr("Firm", "硬朗"), fontSize = 11.sp) }
         }
         Canvas(
-            Modifier.fillMaxWidth().height(210.dp).clip(RoundedCornerShape(8.dp)).background(Workspace).padding(16.dp)
-                .semantics { contentDescription = "Editable pressure curve" }
+            Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(10.dp)).background(Workspace).padding(22.dp)
+                .semantics { contentDescription = graphDescription }
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        val index = (1..3).minBy { candidate ->
-                            val dx = down.position.x - size.width * candidate / 4f
-                            val dy = down.position.y - size.height * (1f - currentCurve[candidate])
+                        var working = currentCurve
+                        val pointCount = working.size / 2
+                        var index = (0 until pointCount).minBy { i ->
+                            val dx = down.position.x - size.width * working[i * 2]
+                            val dy = down.position.y - size.height * (1f - working[i * 2 + 1])
                             dx * dx + dy * dy
                         }
-                        fun update(position: Offset) {
-                            val changed = currentCurve.toMutableList()
-                            changed[index] = (1f - position.y / size.height.coerceAtLeast(1)).coerceIn(changed[index - 1], changed[index + 1])
-                            currentOnChange(changed)
+                        val nearest = Offset(size.width * working[index * 2], size.height * (1f - working[index * 2 + 1]))
+                        if ((down.position - nearest).getDistance() > 24.dp.toPx()) {
+                            if (pointCount >= 8) return@awaitEachGesture
+                            val x = (down.position.x / size.width.coerceAtLeast(1)).coerceIn(.015f, .985f)
+                            index = (1 until pointCount).first { working[it * 2] >= x }
+                            if (x - working[(index - 1) * 2] < .015f || working[index * 2] - x < .015f) return@awaitEachGesture
+                            val y = (1f - down.position.y / size.height.coerceAtLeast(1))
+                                .coerceIn(working[index * 2 - 1], working[index * 2 + 1])
+                            working = working.toMutableList().apply { addAll(index * 2, listOf(x, y)) }
                         }
+                        if (index == 0 || index == working.size / 2 - 1) return@awaitEachGesture
+                        selected = index
                         down.consume()
+                        val graphWidth = size.width.coerceAtLeast(1)
+                        val graphHeight = size.height.coerceAtLeast(1)
+                        fun update(position: Offset) {
+                            working = working.toMutableList().apply {
+                                val lowerX = this[(index - 1) * 2] + .015f
+                                val upperX = maxOf(lowerX, this[(index + 1) * 2] - .015f)
+                                this[index * 2] = (position.x / graphWidth).coerceIn(lowerX, upperX)
+                                this[index * 2 + 1] = (1f - position.y / graphHeight)
+                                    .coerceIn(this[index * 2 - 1], this[index * 2 + 3])
+                            }
+                            draft = working
+                        }
                         update(down.position)
-                        do {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            change.consume()
-                            update(change.position)
-                        } while (change.pressed)
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                change.consume()
+                                update(change.position)
+                                if (!change.pressed) {
+                                    val margin = 20.dp.toPx()
+                                    val p = change.position
+                                    if (p.x < -margin || p.y < -margin || p.x > size.width + margin || p.y > size.height + margin) {
+                                        working = working.toMutableList().apply { removeAt(index * 2); removeAt(index * 2) }
+                                    }
+                                    currentOnChange(working)
+                                    break
+                                }
+                            }
+                        } finally { draft = null; selected = -1 }
                     }
                 },
         ) {
-            drawLine(OutlineSoft, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 1f)
-            drawLine(OutlineSoft, Offset(0f, 0f), Offset(0f, size.height), strokeWidth = 1f)
-            for (index in 1..3) {
-                val x = size.width * index / 4f
-                val y = size.height * index / 4f
-                drawLine(OutlineSoft.copy(alpha = .45f), Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
-                drawLine(OutlineSoft.copy(alpha = .45f), Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
+            for (i in 0..4) {
+                val x = size.width * i / 4f; val y = size.height * i / 4f
+                drawLine(OutlineSoft.copy(alpha = .6f), Offset(x, 0f), Offset(x, size.height), 1f)
+                drawLine(OutlineSoft.copy(alpha = .6f), Offset(0f, y), Offset(size.width, y), 1f)
             }
+            drawLine(OutlineSoft, Offset(0f, size.height), Offset(size.width, 0f), 1f)
             val path = androidx.compose.ui.graphics.Path()
-            for (sample in 0..160) {
-                val input = sample / 160f
-                val x = input * size.width
-                val y = size.height * (1f - PressureResponseCurve.apply(input, curve))
-                if (sample == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            for (i in 0..240) {
+                val x = i / 240f
+                val y = size.height * (1f - PressureResponseCurve.apply(x, shown))
+                if (i == 0) path.moveTo(0f, y) else path.lineTo(x * size.width, y)
             }
-            drawPath(path, Sage, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f))
-            curve.forEachIndexed { index, output ->
-                drawCircle(Color.White, 16.dp.toPx(), Offset(index.toFloat() / curve.lastIndex * size.width, size.height - output * size.height))
-                drawCircle(Sage, 9.dp.toPx(), Offset(index.toFloat() / curve.lastIndex * size.width, size.height - output * size.height))
+            drawPath(path, Sage, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()))
+            for (i in 0 until shown.size / 2) {
+                val point = Offset(shown[i * 2] * size.width, (1f - shown[i * 2 + 1]) * size.height)
+                drawCircle(Color.White, if (i == selected) 10.dp.toPx() else 7.dp.toPx(), point)
+                drawCircle(Sage, if (i == selected) 7.dp.toPx() else 4.5.dp.toPx(), point)
             }
         }
-        Text(tr("Drag the three inner points. The curve applies to every pen and pressure-sensitive eraser.", "拖动中间三个控制点；曲线会应用于所有画笔及支持压感的橡皮。"), color = MutedInk, fontSize = 10.sp)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(tr("Input pressure →", "输入压力 →"), fontSize = 10.sp, color = MutedInk)
+            if (selected >= 0 && selected * 2 + 1 < shown.size) Text(
+                "${(shown[selected * 2] * 100).toInt()}% → ${(shown[selected * 2 + 1] * 100).toInt()}%",
+                fontSize = 11.sp, color = Sage,
+            ) else Text(tr("Output ↑", "输出 ↑"), fontSize = 10.sp, color = MutedInk)
+        }
+        Text(tr("Tap to add a point. Drag in both directions; drag outside to remove. Test below after releasing.",
+            "点击加点，横向或纵向拖动调节；拖出图框删除。松手后可在下方试画。"), color = MutedInk, fontSize = 11.sp)
     }
 }
 

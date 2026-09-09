@@ -52,46 +52,55 @@ object PressureCalibration {
 }
 
 object PressureResponseCurve {
-    val LINEAR = listOf(0f, .25f, .5f, .75f, 1f)
-    val SOFT = listOf(0f, .42f, .68f, .86f, 1f)
-    val FIRM = listOf(0f, .08f, .25f, .55f, 1f)
+    // Alternating input/output coordinates. Endpoints are anchored at (0,0) and (1,1).
+    val LINEAR = listOf(0f, 0f, 1f, 1f)
+    val SOFT = listOf(0f, 0f, .25f, .42f, .5f, .68f, .75f, .86f, 1f, 1f)
+    val FIRM = listOf(0f, 0f, .25f, .08f, .5f, .25f, .75f, .55f, 1f, 1f)
 
     fun normalize(values: List<Float>): List<Float> {
-        if (values.size != LINEAR.size) return LINEAR
-        val result = values.mapIndexed { index, value ->
-            when (index) {
-                0 -> 0f
-                LINEAR.lastIndex -> 1f
-                else -> value.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: LINEAR[index]
+        // Preserve the user's existing five fixed-axis handles when opening the new editor.
+        if (values.size == 5) {
+            var previous = 0f
+            return values.flatMapIndexed { i, value ->
+                val y = when (i) { 0 -> 0f; 4 -> 1f; else -> (value.takeIf(Float::isFinite) ?: i / 4f).coerceIn(previous, 1f) }
+                previous = y
+                listOf(i / 4f, y)
             }
-        }.toMutableList()
-        for (index in 1 until result.size) result[index] = result[index].coerceAtLeast(result[index - 1])
-        return result
+        }
+        if (values.size !in 4..16 || values.size % 2 != 0 || values.any { !it.isFinite() }) return LINEAR
+        if (values[0] != 0f || values[1] != 0f || values[values.size - 2] != 1f || values.last() != 1f) return LINEAR
+        for (i in 2 until values.size step 2) {
+            if (values[i] - values[i - 2] < .001f || values[i] > 1f ||
+                values[i + 1] < values[i - 1] || values[i + 1] > 1f) return LINEAR
+        }
+        return values
     }
 
     fun apply(input: Float, values: List<Float>): Float {
         val curve = normalize(values)
-        val position = (input.takeIf(Float::isFinite) ?: 0f).coerceIn(0f, 1f) * curve.lastIndex
-        val left = position.toInt().coerceIn(0, curve.lastIndex - 1)
-        val t = position - left
-        // Monotone cubic Hermite: shared tangents are continuous at each control point.
-        // The harmonic mean prevents overshoot across a flat or steep pressure segment.
-        fun tangent(index: Int): Float {
-            if (index == 0) return curve[1] - curve[0]
-            if (index == curve.lastIndex) return curve[index] - curve[index - 1]
-            val before = curve[index] - curve[index - 1]
-            val after = curve[index + 1] - curve[index]
-            return if (before <= 0f || after <= 0f) 0f else 2f * before * after / (before + after)
+        val x = (input.takeIf(Float::isFinite) ?: 0f).coerceIn(0f, 1f)
+        val count = curve.size / 2
+        var left = 0
+        while (left < count - 2 && x > curve[(left + 1) * 2]) left++
+        fun width(i: Int) = curve[(i + 1) * 2] - curve[i * 2]
+        fun slope(i: Int) = (curve[(i + 1) * 2 + 1] - curve[i * 2 + 1]) / width(i)
+        fun tangent(i: Int): Float {
+            if (i == 0) return slope(0)
+            if (i == count - 1) return slope(count - 2)
+            val before = slope(i - 1); val after = slope(i)
+            if (before <= 0f || after <= 0f) return 0f
+            val a = 2f * width(i) + width(i - 1)
+            val b = width(i) + 2f * width(i - 1)
+            return (a + b) / (a / before + b / after)
         }
-        val t2 = t * t
-        val t3 = t2 * t
-        return ((2f * t3 - 3f * t2 + 1f) * curve[left] +
-            (t3 - 2f * t2 + t) * tangent(left) +
-            (-2f * t3 + 3f * t2) * curve[left + 1] +
-            (t3 - t2) * tangent(left + 1)).coerceIn(curve[left], curve[left + 1])
+        val h = width(left)
+        val t = (x - curve[left * 2]) / h
+        val t2 = t * t; val t3 = t2 * t
+        val y0 = curve[left * 2 + 1]; val y1 = curve[(left + 1) * 2 + 1]
+        return ((2f * t3 - 3f * t2 + 1f) * y0 + (t3 - 2f * t2 + t) * h * tangent(left) +
+            (-2f * t3 + 3f * t2) * y1 + (t3 - t2) * h * tangent(left + 1)).coerceIn(y0, y1)
     }
 
-    fun encode(values: List<Float>): String = normalize(values).joinToString(",") { it.toString() }
-
+    fun encode(values: List<Float>): String = normalize(values).joinToString(",")
     fun decode(raw: String?): List<Float> = normalize(raw.orEmpty().split(',').mapNotNull(String::toFloatOrNull))
 }

@@ -27,7 +27,16 @@ class PressureCalibrationTest {
         assertTrue(soft > .5f)
         assertTrue(firm < .5f)
         val normalized = PressureResponseCurve.normalize(listOf(1f, .9f, .1f, .8f, 0f))
-        assertEquals(listOf(0f, .9f, .9f, .9f, 1f), normalized)
+        assertEquals(listOf(0f, 0f, .25f, .9f, .5f, .9f, .75f, .9f, 1f, 1f), normalized)
+    }
+
+    @Test fun freelyPositionedKnotsAreInterpolatedAndRemainMonotone() {
+        val curve = listOf(0f, 0f, .13f, .34f, .68f, .82f, 1f, 1f)
+        assertEquals(curve, PressureResponseCurve.decode(PressureResponseCurve.encode(curve)))
+        assertEquals(.34f, PressureResponseCurve.apply(.13f, curve), .00001f)
+        assertEquals(.82f, PressureResponseCurve.apply(.68f, curve), .00001f)
+        val samples = (0..1000).map { PressureResponseCurve.apply(it / 1000f, curve) }
+        assertTrue(samples.zipWithNext().all { (a, b) -> b >= a - .000001f })
     }
 
     @Test fun responseCurveRoundTripsThroughCompactSettingsEncoding() {
