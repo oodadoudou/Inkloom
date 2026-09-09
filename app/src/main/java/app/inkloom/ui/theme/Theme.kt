@@ -6,11 +6,12 @@ import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-val Sage = Color(0xFF111111)
-val SageContainer = Color(0xFFE7E7E7)
+val Sage = Color(0xFF1674D8)
+val SageContainer = Color(0xFFE5EFFB)
 val Paper = Color(0xFFFFFFFF)
 val Workspace = Color.White
 val Ink = Color(0xFF111111)
@@ -30,9 +31,9 @@ private val InkloomColors = lightColorScheme(
     onTertiary = Color.White,
     tertiaryContainer = Color(0xFFEAEAEA),
     onTertiaryContainer = Ink,
-    error = Ink,
+    error = Color(0xFFC93636),
     onError = Color.White,
-    errorContainer = Color(0xFFE2E2E2),
+    errorContainer = Color(0xFFFFE8E5),
     onErrorContainer = Ink,
     background = Color.White,
     onBackground = Ink,
@@ -70,5 +71,11 @@ private val InkloomTypography = Typography(
 
 @Composable
 fun InkloomTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = InkloomColors, typography = InkloomTypography, content = content)
+    MaterialTheme(colorScheme = InkloomColors, typography = InkloomTypography, shapes = androidx.compose.material3.Shapes(
+        extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+        small = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+        medium = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        large = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+        extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+    ), content = content)
 }

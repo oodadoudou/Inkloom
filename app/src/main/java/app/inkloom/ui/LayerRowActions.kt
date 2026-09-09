@@ -23,22 +23,26 @@ import kotlin.math.roundToInt
 
 /** Reveal only; deletion requires a separate tap. Vertical scroll is never consumed here. */
 @Composable
-internal fun LayerRowActions(actions: List<Pair<String, () -> Unit>>, content: @Composable () -> Unit) {
+internal fun LayerRowActions(actions: List<Pair<String, () -> Unit>>, onSelectSecondary: () -> Unit = {}, destructiveLabel: String? = null, content: @Composable () -> Unit) {
     var offset by remember { mutableFloatStateOf(0f) }
     BoxWithConstraints(Modifier.fillMaxWidth().clipToBounds().semantics {
         customActions = actions.map { (label, action) -> CustomAccessibilityAction(label) { action(); true } }
     }) {
         val revealWidth = minOf(maxWidth, (actions.size * 68).dp)
         val widthPx = with(LocalDensity.current) { revealWidth.toPx() }
+        val selectThreshold = with(LocalDensity.current) { 40.dp.toPx() }
         Box(Modifier.fillMaxWidth().offset { IntOffset(offset.roundToInt(), 0) }
-            .draggable(rememberDraggableState { offset = (offset + it).coerceIn(-widthPx, 0f) }, Orientation.Horizontal,
-                onDragStopped = { velocity -> offset = if (velocity < -400 || (velocity < 400 && offset < -widthPx / 3)) -widthPx else 0f })) { content() }
+            .draggable(rememberDraggableState { offset = (offset + it).coerceIn(-widthPx, selectThreshold * 1.5f) }, Orientation.Horizontal,
+                onDragStopped = { velocity ->
+                    if (offset >= selectThreshold) { onSelectSecondary(); offset = 0f }
+                    else offset = if (velocity < -400 || (velocity < 400 && offset < -widthPx / 3)) -widthPx else 0f
+                })) { content() }
         if (offset < 0) Box(Modifier.matchParentSize()) {
             Box(Modifier.align(Alignment.CenterEnd).width(with(LocalDensity.current) { (-offset).toDp() })
                 .fillMaxHeight().clipToBounds().background(Color(0xFFEDF0EE))) {
                 Row(Modifier.align(Alignment.CenterEnd).requiredWidth(revealWidth).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
-                    actions.forEach { (label, action) -> TextButton({ offset = 0f; action() }, Modifier.weight(1f).fillMaxHeight()) {
-                        Text(label, fontSize = 12.sp, maxLines = 1)
+                    actions.forEach { (label, action) -> TextButton({ offset = 0f; action() }, Modifier.weight(1f).fillMaxHeight().background(if (label == destructiveLabel) Color(0xFFC93636) else Color.Transparent)) {
+                        Text(label, color = if (label == destructiveLabel) Color.White else Color(0xFF242424), fontSize = 12.sp, maxLines = 1)
                     } }
                 }
             }

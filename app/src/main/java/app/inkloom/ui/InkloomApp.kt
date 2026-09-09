@@ -7453,12 +7453,10 @@ private fun PaintingLayerPanel(
     val currentMove by rememberUpdatedState(onMove)
     var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
     var renameValue by remember { mutableStateOf("") }
-    var blendMenu by remember { mutableStateOf(false) }
     var propertiesLayerId by remember { mutableStateOf<String?>(null) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var layerSearch by rememberSaveable { mutableStateOf("") }
     var selectedLayerIds by remember { mutableStateOf(emptySet<String>()) }
-    val propertiesLayer = page.layers.firstOrNull { it.id == propertiesLayerId }
     val filteredLayers = LayerHierarchy.panelOrder(page.layers).filter { layerSearch.isBlank() || it.name.contains(layerSearch.trim(), ignoreCase = true) }
     LaunchedEffect(page.layers.map(InkLayer::id)) {
         selectedLayerIds = selectedLayerIds.intersect(page.layers.mapTo(mutableSetOf(), InkLayer::id))
@@ -7524,24 +7522,6 @@ private fun PaintingLayerPanel(
                     IconButton({ selectedLayerIds = emptySet() }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Close, tr("Exit layer selection", "退出图层多选"), Modifier.size(17.dp)) }
                 }
             }
-            propertiesLayer?.takeIf { it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) }?.let { layer ->
-                Row(Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(tr("Opacity", "不透明度"), Modifier.width(58.dp), color = MutedInk, fontSize = 10.sp)
-                    BrushParameterSlider(layer.opacity, { onOpacity(layer.id, it) }, Modifier.weight(1f), valueRange = 0f..1f)
-                    Text("${(layer.opacity * 100).toInt()}%", Modifier.width(38.dp), color = MutedInk, fontSize = 11.sp, textAlign = TextAlign.End)
-                }
-                Box {
-                    Row(Modifier.fillMaxWidth().height(34.dp).clickable { blendMenu = true }.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(tr("Blend mode", "混合模式"), Modifier.weight(1f), color = MutedInk, fontSize = 10.sp)
-                        Text(layerBlendModeLabel(layer.blendMode), fontSize = 10.sp)
-                        Icon(Icons.Outlined.ExpandMore, null, Modifier.size(18.dp), tint = Ink)
-                    }
-                    DropdownMenu(blendMenu, { blendMenu = false }) {
-                        LayerBlendMode.entries.forEach { mode -> DropdownMenuItem(text = { Text(layerBlendModeLabel(mode)) }, onClick = { blendMenu = false; onBlendMode(layer.id, mode) }) }
-                    }
-                }
-                HorizontalDivider(color = OutlineSoft)
-            }
             LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(filteredLayers, key = { it.id }) { layer ->
                     var menu by remember { mutableStateOf(false) }
@@ -7556,13 +7536,17 @@ private fun PaintingLayerPanel(
                         if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) add(tr("Duplicate", "复制") to { onDuplicate(layer.id) })
                         if (layer.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER)) add(tr("Delete", "删除") to { onDelete(layer.id) })
                     }
-                    LayerRowActions(swipeActions) {
+                    val rowInk = if (layer.id == activeLayerId) Color.White else Ink
+                    LayerRowActions(swipeActions, destructiveLabel = tr("Delete", "删除"), onSelectSecondary = {
+                        if (layer.id != activeLayerId && layer.role != LayerRole.BACKGROUND) {
+                            selectedLayerIds = if (layer.id in selectedLayerIds) selectedLayerIds - layer.id else selectedLayerIds + layer.id
+                        }
+                    }) {
                     Row(
-                        Modifier.fillMaxWidth().onGloballyPositioned { rowBounds[layer.id] = it.boundsInRoot() }.padding(start = (8 + depth * 14).dp, end = 8.dp).height(64.dp).clip(RoundedCornerShape(7.dp)).background(if (dropLayerId == layer.id) Color(0xFFCEDFD4) else if (selected) Color(0xFFE5EEE8) else Color.White).combinedClickable(
+                        Modifier.fillMaxWidth().onGloballyPositioned { rowBounds[layer.id] = it.boundsInRoot() }.padding(start = (8 + depth * 14).dp, end = 8.dp).height(64.dp).clip(RoundedCornerShape(7.dp)).background(if (dropLayerId == layer.id) SageContainer else if (layer.id == activeLayerId) Sage else if (selected) SageContainer else Color.White).combinedClickable(
                             onClick = {
-                                if (selectedLayerIds.isNotEmpty()) selectedLayerIds = if (layer.id in selectedLayerIds) selectedLayerIds - layer.id else selectedLayerIds + layer.id
-                                else if (layer.id == activeLayerId || layer.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) menu = true
-                                else if (canSelect) onSelect(layer.id)
+                                if (layer.id == activeLayerId || layer.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) menu = true
+                                else if (canSelect) { selectedLayerIds = emptySet(); onSelect(layer.id) }
                             },
                         ).padding(horizontal = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -7599,12 +7583,12 @@ private fun PaintingLayerPanel(
                                     val from = currentLayers.indexOfFirst { it.id == layer.id }
                                     val to = currentLayers.indexOfFirst { it.id == dropLayerId }
                                     if (moved && from >= 0 && to >= 0 && layer.role != LayerRole.BACKGROUND) currentMove(layer.id, to - from)
-                                    else if (!moved) selectedLayerIds = if (layer.id in selectedLayerIds) selectedLayerIds - layer.id else selectedLayerIds + layer.id
+                                    
                                     draggingLayerId = null; dropLayerId = null
                                 },
                             )
                         }) {
-                            Text(if (draggingLayerId == layer.id) "↕ ${layer.name}" else layer.name, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, fontSize = 13.sp, color = Ink)
+                            Text(if (draggingLayerId == layer.id) "↕ ${layer.name}" else layer.name, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, fontSize = 13.sp, color = rowInk)
 
                         }
                         if (layer.locked) Icon(Icons.Outlined.Lock, tr("Locked", "已锁定"), Modifier.size(15.dp), tint = MutedInk)
@@ -7616,11 +7600,11 @@ private fun PaintingLayerPanel(
                             onClick = { propertiesLayerId = if (propertiesLayerId == layer.id) null else layer.id },
                             modifier = Modifier.width(44.dp).height(48.dp).semantics { contentDescription = blendingDescription },
                             contentPadding = PaddingValues(0.dp),
-                        ) { Text(if (layer.blendMode == LayerBlendMode.NORMAL) "N" else layer.blendMode.name.take(2), fontSize = 12.sp, color = Ink) }
-                        IconButton(onClick = { onVisibility(layer.id) }, modifier = Modifier.size(40.dp)) { Icon(if (layer.visible) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, tr("Toggle layer visibility", "切换图层可见性"), Modifier.size(19.dp), tint = Ink) }
+                        ) { Text(if (layer.blendMode == LayerBlendMode.NORMAL) "N" else layer.blendMode.name.take(2), fontSize = 12.sp, color = rowInk) }
+                        IconButton(onClick = { onVisibility(layer.id) }, modifier = Modifier.size(40.dp)) { Icon(if (layer.visible) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, tr("Toggle layer visibility", "切换图层可见性"), Modifier.size(19.dp), tint = rowInk) }
                         val layerActionsDescription = "${tr("Layer actions", "图层操作")} ${layer.name}"
                         Box(Modifier.semantics { contentDescription = layerActionsDescription }) {
-                            IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), tint = Ink) }
+                            IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), tint = rowInk) }
                             DropdownMenu(maskMenu, { maskMenu = false }) {
                                 LayerMaskMenuItems(layer) { command -> maskMenu = false; onMaskCommand(layer.id, command) }
                             }
@@ -7644,6 +7628,9 @@ private fun PaintingLayerPanel(
                             }
                         }
                     }
+                    }
+                    if (propertiesLayerId == layer.id && layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) {
+                        LayerBlendControls(layer, LocalUiLanguage.current, { onOpacity(layer.id, it) }, { onBlendMode(layer.id, it) })
                     }
                 }
             }
