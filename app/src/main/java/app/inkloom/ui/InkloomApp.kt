@@ -10421,7 +10421,7 @@ private fun SelectionStudioPanel(
         confirmButton = { TextButton(onClick = { optionsOpen = false }) { Text(tr("Done", "完成")) } },
     )
     val studioDescription = tr("Selection studio", "选区面板")
-    Surface(modifier.fillMaxWidth().semantics { contentDescription = studioDescription }, color = Color.White, shadowElevation = 3.dp) {
+    Surface(modifier.widthIn(max = 640.dp).semantics { contentDescription = studioDescription }, shape = RoundedCornerShape(14.dp), color = Color.White, shadowElevation = 3.dp) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 listOf(SelectionShape.MAGIC_WAND, SelectionShape.FREEFORM, SelectionShape.RECTANGLE, SelectionShape.ELLIPSE).forEach { option ->
@@ -10433,7 +10433,7 @@ private fun SelectionStudioPanel(
                     }
                     val selectionDescription = tr("$label selection", "${label}选区")
                     TextButton(onClick = { onShape(option) },
-                        modifier = Modifier.widthIn(min = 88.dp).height(36.dp).semantics { contentDescription = selectionDescription },
+                        modifier = Modifier.widthIn(min = 72.dp).height(48.dp).semantics { contentDescription = selectionDescription },
                         colors = ButtonDefaults.textButtonColors(contentColor = if (shape == option) Color(0xff1688f8) else Ink)) {
                         Text(label, fontSize = 13.sp)
                     }
@@ -10474,7 +10474,7 @@ private fun SelectionStudioPanel(
 @Composable
 private fun SelectionStudioAction(icon: ImageVector, label: String, selected: Boolean = false,
     enabled: Boolean = true, onClick: () -> Unit) {
-    Column(Modifier.widthIn(min = 70.dp).height(58.dp).clickable(enabled = enabled, onClick = onClick)
+    Column(Modifier.widthIn(min = 58.dp).height(48.dp).clickable(enabled = enabled, onClick = onClick)
         .semantics { contentDescription = label }.padding(horizontal = 8.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         val tint = if (!enabled) MutedInk.copy(alpha = .4f) else if (selected) Color(0xff1688f8) else Ink

@@ -7,10 +7,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.window.Dialog
@@ -41,20 +45,20 @@ internal fun SelectionTransformToolbar(
 ) {
     fun t(en: String, zh: String) = language.text(en, zh)
     var dimensionsOpen by remember { mutableStateOf(false) }
-    Surface(modifier.fillMaxWidth(), color = Color.White, shadowElevation = 3.dp) {
+    Surface(modifier.widthIn(max = 640.dp), shape = RoundedCornerShape(14.dp), color = Color.White, shadowElevation = 3.dp) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 SelectionTransformMode.entries.forEach { mode ->
-                    TextButton(onClick = { onMode(mode) }, modifier = Modifier.widthIn(min = 100.dp).height(36.dp),
+                    TextButton(onClick = { onMode(mode) }, modifier = Modifier.widthIn(min = 72.dp).height(48.dp),
                         colors = ButtonDefaults.textButtonColors(contentColor = if (state.mode == mode) Color(0xff1688f8) else Color(0xff303030))) {
-                        Text(when (mode) { SelectionTransformMode.FREEFORM -> t("Freeform", "自由变换"); SelectionTransformMode.UNIFORM -> t("Uniform", "等比变换"); SelectionTransformMode.DISTORT -> t("Distort", "扭曲"); SelectionTransformMode.WARP -> t("Warp", "网格变形") })
+                        Text(when (mode) { SelectionTransformMode.FREEFORM -> t("Freeform", "自由变换"); SelectionTransformMode.UNIFORM -> t("Uniform", "等比变换"); SelectionTransformMode.DISTORT -> t("Distort", "扭曲"); SelectionTransformMode.WARP -> t("Warp", "网格变形") }, fontSize = 12.sp)
                     }
                 }
-                TextButton(onClick = { onFinish(false) }) { Text(t("Cancel transform", "取消变换")) }
-                TextButton(onClick = { onFinish(true) }) { Text(t("Apply transform", "应用变换")) }
+                IconButton(onClick = { onFinish(false) }) { Icon(Icons.Outlined.Close, t("Cancel transform", "取消变换")) }
+                IconButton(onClick = { onFinish(true) }) { Icon(Icons.Outlined.Check, t("Apply transform", "应用变换")) }
             }
             if(state.mixed) Text(t("Apply converts this layer’s images and objects to editable pixels. Undo restores the originals.", "应用后，本图层的图片和对象转为可绘制像素；撤销可恢复原对象。"),fontSize=11.sp,color=Color.DarkGray)
-            HorizontalDivider(Modifier.widthIn(max = 880.dp))
+            HorizontalDivider(Modifier.widthIn(max = 620.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
             Box {
                 var snapOpen by remember { mutableStateOf(false) }
@@ -67,7 +71,7 @@ internal fun SelectionTransformToolbar(
                 }
             }
             listOf(Triple("←",-1f,0f),Triple("↑",0f,-1f),Triple("↓",0f,1f),Triple("→",1f,0f)).forEach { (label,x,y) ->
-                TextButton(onClick={onNudge(x,y)},modifier=Modifier.semantics { contentDescription=t("Nudge $label 1 px", "微移 $label 1 像素") }) { Text(label) }
+                TextButton(onClick={onNudge(x,y)},contentPadding=PaddingValues(0.dp),modifier=Modifier.width(48.dp).semantics { contentDescription=t("Nudge $label 1 px", "微移 $label 1 像素") }) { Text(label) }
             }
             Box {
                 var samplingOpen by remember { mutableStateOf(false) }
@@ -84,11 +88,11 @@ internal fun SelectionTransformToolbar(
                 }
             }
             TextButton(onClick = { dimensionsOpen = true }, modifier = Modifier.semantics { contentDescription = t("Transform dimensions", "变换尺寸") }) {
-                Text(t("Dimensions", "尺寸") + " · ${state.pose.width.toInt()} × ${state.pose.height.toInt()} · ${state.pose.angle.toInt()}°", fontSize = 12.sp)
+                Text(t("Dimensions", "尺寸"), fontSize = 12.sp)
             }
-            TextButton(onClick = { onFlip(true) }) { Text(t("Flip horizontal", "水平翻转")) }
-            TextButton(onClick = { onFlip(false) }) { Text(t("Flip vertical", "垂直翻转")) }
-            TextButton(onClick = onReset) { Text(t("Reset transform", "重置变换")) }
+            IconButton(onClick = { onFlip(true) }) { Icon(Icons.Outlined.Flip, t("Flip horizontal", "水平翻转"), Modifier.size(20.dp)) }
+            IconButton(onClick = { onFlip(false) }) { Icon(Icons.Outlined.Flip, t("Flip vertical", "垂直翻转"), Modifier.size(20.dp).then(Modifier.graphicsLayer { rotationZ = 90f })) }
+            IconButton(onClick = onReset) { Icon(Icons.Outlined.RestartAlt, t("Reset transform", "重置变换"), Modifier.size(20.dp)) }
             }
         }
     }
