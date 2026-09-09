@@ -41,6 +41,7 @@ data class WetPaintDefinition(
     val grainRotationRadians: Float = 0f,
     val grainPhaseX: Float = 0f,
     val grainPhaseY: Float = 0f,
+    val grainOffsetJitter: Boolean = false,
     val spacingRatio: Float = .16f,
     val roundness: Float = 1f,
     val rotationRadians: Float = 0f,
@@ -134,6 +135,8 @@ class WetPaintOp(
         override val presentationKind: PaintPresentationKind =
             if (definition.blend == DryBlend.SOURCE_ATOP) PaintPresentationKind.SOURCE_ATOP_DELTA
             else PaintPresentationKind.SOURCE_DELTA
+        private val grainPhaseX = definition.grainPhaseX + if (definition.grainOffsetJitter) strokeGrainPhase(context.transactionId, definition.renderSeed, 101) else 0f
+        private val grainPhaseY = definition.grainPhaseY + if (definition.grainOffsetJitter) strokeGrainPhase(context.transactionId, definition.renderSeed, 102) else 0f
         private var state = State.ACTIVE
         private var lastOrdinal = -1L
         private val tracks = sampleTransforms.map { WetTrack() }
@@ -347,8 +350,8 @@ class WetPaintOp(
                             grainSine = grainSine,
                             grainWavelength = grainWavelength,
                             grainMovement = definition.grainMovement,
-                            grainPhaseX = definition.grainPhaseX,
-                            grainPhaseY = definition.grainPhaseY,
+                            grainPhaseX = grainPhaseX,
+                            grainPhaseY = grainPhaseY,
                             baseDeposition = baseDeposition,
                             transferMode = definition.transferMode.ordinal,
                             reservoirAlpha = track.reservoir.a,
@@ -389,8 +392,8 @@ class WetPaintOp(
                             val rotatedY = -grainSine * grainX + grainCosine * grainY
                             fun repeat(value: Float): Float = value - floor(value)
                             val sampled = grain.coverageAt(
-                                repeat(rotatedX / grainWavelength + definition.grainPhaseX),
-                                repeat(rotatedY / grainWavelength + definition.grainPhaseY),
+                                repeat(rotatedX / grainWavelength + grainPhaseX),
+                                repeat(rotatedY / grainWavelength + grainPhaseY),
                             )
                             coverage *= 1f - definition.grainDensity +
                                 sampled * definition.grainDensity

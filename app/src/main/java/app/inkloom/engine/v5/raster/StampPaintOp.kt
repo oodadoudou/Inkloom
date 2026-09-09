@@ -59,6 +59,7 @@ data class StampBrushDefinition(
     val grainRotationRadians: Float = 0f,
     val grainPhaseX: Float = 0f,
     val grainPhaseY: Float = 0f,
+    val grainOffsetJitter: Boolean = false,
     val sizePressure: PressureResponse = PressureResponse.CONSTANT,
     val sizeTilt: TiltResponse = TiltResponse.CONSTANT,
     val opacityPressure: PressureResponse = PressureResponse.CONSTANT,
@@ -124,7 +125,7 @@ class StampPaintOp(
     private val sampleTransforms: List<PaintSampleTransform> = listOf(PaintSampleTransform.Identity),
     dualComposite: DualBrushCompositeDefinition? = null,
 ) : PaintOp {
-    private val streams = (listOf(definition) + secondaryDefinitions).map(::StreamRuntime)
+    private val streamDefinitions = listOf(definition) + secondaryDefinitions
     private val dualComposite = dualComposite ?: secondaryDefinitions.singleOrNull()?.let {
         DualBrushCompositeDefinition()
     }
@@ -172,6 +173,7 @@ class StampPaintOp(
             }
         private var state = State.ACTIVE
         private var lastOrdinal = -1L
+        private val streams = streamDefinitions.map { StreamRuntime(it, context.transactionId) }
         private val streamStates = sampleTransforms.map { streams.map { StreamState() } }
         private val dualCoverage = if (dualComposite != null) {
             List(2) { linkedMapOf<PixelTileKey, ByteArray>() }
@@ -420,7 +422,7 @@ class StampPaintOp(
                                 grain?.coverage, grain?.width ?: 0, grain?.height ?: 0,
                                 definition.grainDensity, stream.grainCosine, stream.grainSine,
                                 stream.grainWavelength, definition.grainMovement,
-                                definition.grainPhaseX, definition.grainPhaseY, definition.colorArgb,
+                                stream.grainPhaseX, stream.grainPhaseY, definition.colorArgb,
                             )) continue
                         }
                         for (y in overlap.top until overlap.bottom) for (x in overlap.left until overlap.right) {
@@ -511,7 +513,7 @@ class StampPaintOp(
                             grain?.coverage, grain?.width ?: 0, grain?.height ?: 0,
                             definition.grainDensity, stream.grainCosine, stream.grainSine,
                             stream.grainWavelength, definition.grainMovement,
-                            definition.grainPhaseX, definition.grainPhaseY,
+                            stream.grainPhaseX, stream.grainPhaseY,
                         )) return@dabLoop
                     }
                     for (y in overlap.top until overlap.bottom) for (x in overlap.left until overlap.right) {
@@ -598,8 +600,8 @@ class StampPaintOp(
                 val rotatedY = -stream.grainSine * grainX + stream.grainCosine * grainY
                 fun repeat(value: Float): Float = value - kotlin.math.floor(value)
                 val sampled = grain.coverageAt(
-                    repeat(rotatedX / stream.grainWavelength + definition.grainPhaseX),
-                    repeat(rotatedY / stream.grainWavelength + definition.grainPhaseY),
+                    repeat(rotatedX / stream.grainWavelength + stream.grainPhaseX),
+                    repeat(rotatedY / stream.grainWavelength + stream.grainPhaseY),
                 )
                 coverage *= 1f - definition.grainDensity + sampled * definition.grainDensity
             }
@@ -616,7 +618,9 @@ class StampPaintOp(
         var strokeRotationRadians: Float? = null
     }
 
-    private data class StreamRuntime(val definition: StampBrushDefinition) {
+    private data class StreamRuntime(val definition: StampBrushDefinition, val transactionId: Long) {
+        val grainPhaseX = definition.grainPhaseX + if (definition.grainOffsetJitter) strokeGrainPhase(transactionId, definition.renderSeed, 101) else 0f
+        val grainPhaseY = definition.grainPhaseY + if (definition.grainOffsetJitter) strokeGrainPhase(transactionId, definition.renderSeed, 102) else 0f
         val nativeGrain = definition.grain?.nativeLevel(0)
         val grainCosine = cos(definition.grainRotationRadians)
         val grainSine = sin(definition.grainRotationRadians)
