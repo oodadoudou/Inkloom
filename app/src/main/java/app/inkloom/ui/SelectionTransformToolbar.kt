@@ -39,15 +39,20 @@ internal fun SelectionTransformToolbar(
 ) {
     fun t(en: String, zh: String) = language.text(en, zh)
     var dimensionsOpen by remember { mutableStateOf(false) }
-    Surface(modifier.widthIn(max = 1100.dp).fillMaxWidth(), color = Color.White, shadowElevation = 4.dp, shape = MaterialTheme.shapes.medium) {
-        Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { onFinish(false) }) { Text(t("Cancel transform", "取消变换")) }
-            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-            SelectionTransformMode.entries.forEach { mode ->
-                FilterChip(selected = state.mode == mode, onClick = { onMode(mode) },
-                    label = { Text(when (mode) { SelectionTransformMode.FREEFORM -> t("Freeform", "自由变换"); SelectionTransformMode.UNIFORM -> t("Uniform", "等比变换"); SelectionTransformMode.DISTORT -> t("Distort", "扭曲") }) })
-                Spacer(Modifier.width(4.dp))
+    Surface(modifier.fillMaxWidth(), color = Color.White, shadowElevation = 3.dp) {
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                SelectionTransformMode.entries.forEach { mode ->
+                    TextButton(onClick = { onMode(mode) }, modifier = Modifier.widthIn(min = 100.dp).height(36.dp),
+                        colors = ButtonDefaults.textButtonColors(contentColor = if (state.mode == mode) Color(0xff1688f8) else Color(0xff303030))) {
+                        Text(when (mode) { SelectionTransformMode.FREEFORM -> t("Freeform", "自由变换"); SelectionTransformMode.UNIFORM -> t("Uniform", "等比变换"); SelectionTransformMode.DISTORT -> t("Distort", "扭曲") })
+                    }
+                }
+                TextButton(onClick = { onFinish(false) }) { Text(t("Cancel transform", "取消变换")) }
+                TextButton(onClick = { onFinish(true) }) { Text(t("Apply transform", "应用变换")) }
             }
+            HorizontalDivider(Modifier.widthIn(max = 880.dp))
+            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
             Box {
                 var samplingOpen by remember { mutableStateOf(false) }
                 TextButton(onClick = { samplingOpen = true }) { Text(t("Interpolation", "插值")) }
@@ -69,7 +74,6 @@ internal fun SelectionTransformToolbar(
             TextButton(onClick = { onFlip(false) }) { Text(t("Flip vertical", "垂直翻转")) }
             TextButton(onClick = onReset) { Text(t("Reset transform", "重置变换")) }
             }
-            TextButton(onClick = { onFinish(true) }) { Text(t("Apply transform", "应用变换")) }
         }
     }
     if (dimensionsOpen) {
