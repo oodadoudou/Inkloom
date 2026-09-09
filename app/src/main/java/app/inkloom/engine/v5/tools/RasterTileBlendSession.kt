@@ -144,7 +144,7 @@ class RasterTileBlendSession private constructor(
             halo = RasterHalo.uniform(1),
             abyssPolicy = RasterAbyssPolicy.TRANSPARENT,
         )
-        val changed = edits.editWithRoi(roi) roiEdit@{ sample, sampleGlobal, output ->
+        val changed = edits.editWithReusableRoi(roi) roiEdit@{ sample, sampleGlobal, output ->
             val canvases = ensureSurfaces(destination.width, destination.height) ?: return@roiEdit
             val transport = canvases.first
             val coverage = canvases.second
