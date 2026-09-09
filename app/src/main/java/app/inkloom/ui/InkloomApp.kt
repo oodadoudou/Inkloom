@@ -10380,13 +10380,13 @@ private fun SelectionStudioPanel(
 @Composable
 private fun SelectionStudioAction(icon: ImageVector, label: String, selected: Boolean = false,
     enabled: Boolean = true, onClick: () -> Unit) {
-    Column(Modifier.widthIn(min = 58.dp).height(48.dp).clickable(enabled = enabled, onClick = onClick)
-        .semantics { contentDescription = label }.padding(horizontal = 8.dp, vertical = 6.dp),
+    Column(Modifier.widthIn(min = 58.dp).heightIn(min = 48.dp).clickable(enabled = enabled, onClick = onClick)
+        .semantics { contentDescription = label }.padding(horizontal = 8.dp, vertical = 3.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         val tint = if (!enabled) MutedInk.copy(alpha = .4f) else if (selected) Color(0xff1688f8) else Ink
         Icon(icon, null, Modifier.size(22.dp), tint = tint)
         Spacer(Modifier.height(4.dp))
-        Text(label, fontSize = 10.sp, color = tint, maxLines = 1)
+        Text(label, fontSize = 10.sp, lineHeight = 13.sp, color = tint, maxLines = 1)
     }
 }
 
