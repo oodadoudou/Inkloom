@@ -131,7 +131,7 @@ fun BrushEditorV1Dialog(
                                                 fontSize = 12.sp, color = Color.Gray)
                                         }
                                     }
-                                    if (activePanel.first == BrushOptionGroup.TIP || activePanel.first == BrushOptionGroup.PAPER) {
+                                    if (activePanel.first in setOf(BrushOptionGroup.TIP, BrushOptionGroup.PAPER, BrushOptionGroup.DUAL_SHAPE, BrushOptionGroup.DUAL_GRAIN)) {
                                         item { BrushSourcePreviews(session.current, activePanel.first, language) }
                                     }
                                     items(orderedOptions, key = { it.id }) { option ->
@@ -176,6 +176,20 @@ private fun BrushOptionRow(
 ) {
     val current = option.get(value)
     val label = option.localizedLabel(language)
+    if (option.id == "dualComposite") {
+        var expanded by remember { mutableStateOf(false) }
+        val names=listOf("正常","正片叠底","添加发光","减去","变暗","变亮","滤色","叠加","颜色减淡","颜色加深","线性加深","实色混合","线性高度")
+        Text(label, fontSize=13.sp)
+        Box {
+            TextButton(onClick={expanded=true}) { Text(language.text(DualCompositeMode.entries[current.toInt()].name,names[current.toInt()])) }
+            DropdownMenu(expanded,{expanded=false}) {
+                DualCompositeMode.entries.forEach { mode ->
+                    DropdownMenuItem(text={Text(language.text(mode.name,names[mode.ordinal]))},onClick={onValue(option.apply(value,mode.ordinal.toFloat()));expanded=false})
+                }
+            }
+        }
+        return
+    }
     if (option.id.endsWith("CurveShape")) {
         Column(Modifier.fillMaxWidth()) {
             Text(label, fontSize = 13.sp)
@@ -201,7 +215,7 @@ private fun BrushOptionRow(
     }
     var numericOpen by remember { mutableStateOf(false) }
     var numeric by remember { mutableStateOf("") }
-    val displayScale = if (option.id == "smoothing") 100f else 1f
+    val displayScale = if (option.id in setOf("smoothing", "motionFiltering", "motionExpression")) 100f else 1f
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(label, Modifier.weight(1f), fontSize = 13.sp)

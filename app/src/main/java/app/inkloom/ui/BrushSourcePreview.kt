@@ -59,6 +59,8 @@ internal sealed interface BrushSourcePreview {
 internal data class BrushSourceCard(val title: String, val source: BrushSourcePreview)
 
 internal fun brushSourceCards(preset: BrushPresetV5, group: BrushOptionGroup, language: UiLanguage): List<BrushSourceCard> {
+    if (group == BrushOptionGroup.DUAL_SHAPE) return brushSourceCards(preset, BrushOptionGroup.TIP, language).filter { it.title.startsWith(language.text("Secondary", "第二")) }
+    if (group == BrushOptionGroup.DUAL_GRAIN) return brushSourceCards(preset, BrushOptionGroup.PAPER, language).filter { it.title.startsWith(language.text("Secondary", "第二")) }
     fun tr(en: String, zh: String) = language.text(en, zh)
     val program = CompiledBrushProgramV5.compile(preset)
     fun grainSource(grain: TextureGrainSettings) = BrushSourcePreview.Grain(GrainMaskRequest(

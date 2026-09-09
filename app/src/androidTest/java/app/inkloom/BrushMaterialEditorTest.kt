@@ -48,6 +48,26 @@ class BrushMaterialEditorTest {
         assertEquals(1f, source.wetMix!!.attack, 0f)
     }
 
+    @Test fun secondaryBrushOptionsChangeRasterAndRoundTripWithoutChangingPrimary() {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val file=File(context.cacheDir,"dual-editor-tip.png")
+        val bitmap=Bitmap.createBitmap(16,16,Bitmap.Config.ARGB_8888)
+        for(y in 0..15) for(x in 0..15) bitmap.setPixel(x,y,if(x<8) 0xff000000.toInt() else 0)
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) };bitmap.recycle()
+        try {
+            val source=preset(BrushFamily.DECORATION).copy(tipTexture=TipTextureSettings(procedural=false,assetPath=file.path),
+                stamp=StampSettings(), spacing=SpacingSettings(value=.2f),
+                dual=DualBrushSettings(listOf(file.path),compositeMode=DualCompositeMode.MULTIPLY,textureGrain=TextureGrainSettings(file.path,1f)))
+            val options=BrushOptionDescriptors.productionPanels(source).flatMap { it.second }
+            val normal=render(source)
+            for((id,value) in listOf("dualSize" to .25f,"dualFlow" to .15f,"dualTextureDepth" to 0f)) {
+                val edited=options.single { it.id==id }.apply(source,value)
+                assertFalse("$id must change secondary raster",normal.contentEquals(render(edited)))
+                assertEquals(source.tip,edited.tip);assertEquals(source.textureGrain,edited.textureGrain)
+                assertEquals(edited,BrushPresetV5Codec.decodeOrNull(BrushPresetV5Codec.encode(edited)))
+            }
+        } finally { file.delete() }
+    }
     private fun preset(family: BrushFamily) = BrushPresetV5(
         identity = PresetIdentity("material", "Material", family = family, renderBrushId = "material"),
         renderSeed = 73, tip = TipSettings(150f), deposition = DepositionSettings(),

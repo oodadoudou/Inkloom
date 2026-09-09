@@ -7,7 +7,19 @@ import app.inkloom.brushpresetv5.PressureCurveShape
 import app.inkloom.settings.UiLanguage
 import app.inkloom.settings.text
 
-internal fun BrushOptionDescriptor.localizedLabel(language: UiLanguage): String = language.text(label, when (id) {
+internal fun BrushOptionDescriptor.localizedLabel(language: UiLanguage): String {
+    if (id.startsWith("dualTexture")) return language.text(label, "第二颗粒 · " + copy(id=id.removePrefix("dual").replaceFirstChar(Char::lowercaseChar)).localizedLabel(language))
+    return language.text(label, when (id) {
+    "dualSize" -> "第二笔尖大小比例"
+    "dualHardness" -> "第二笔尖硬度"
+    "dualAspect" -> "第二笔尖宽高比"
+    "dualRotation" -> "第二笔尖旋转"
+    "dualRandomRotation" -> "第二笔尖旋转抖动"
+    "dualFollowDirectionEnabled" -> "跟随笔画方向"
+    "dualFollowStylusEnabled" -> "跟随笔倾方向"
+    "dualSpacing" -> "第二笔刷间距"
+    "dualFlow" -> "第二笔刷流量"
+    "dualComposite" -> "双笔刷混合模式"
     "size" -> "大小"
     "opacity" -> "不透明度"
     "flow" -> "流量"
@@ -54,6 +66,7 @@ internal fun BrushOptionDescriptor.localizedLabel(language: UiLanguage): String 
     "wetPull" -> "拖色"
     else -> error("Missing brush editor translation: $id")
 })
+}
 
 internal fun BrushOptionGroup.localizedLabel(language: UiLanguage): String = when (this) {
     BrushOptionGroup.BASIC -> language.text("Properties", "属性")
@@ -63,6 +76,9 @@ internal fun BrushOptionGroup.localizedLabel(language: UiLanguage): String = whe
     BrushOptionGroup.TILT -> language.text("Tilt", "倾斜")
     BrushOptionGroup.PAPER -> language.text("Grain", "颗粒")
     BrushOptionGroup.STROKE -> language.text("Stabilization", "防抖修正")
+    BrushOptionGroup.DUAL_SHAPE -> language.text("2 · Shape", "第二笔尖")
+    BrushOptionGroup.DUAL_STROKE -> language.text("2 · Stroke", "第二描边")
+    BrushOptionGroup.DUAL_GRAIN -> language.text("2 · Grain", "第二颗粒")
     BrushOptionGroup.WET_MIX -> language.text("Wet mix", "湿混")
 }
 

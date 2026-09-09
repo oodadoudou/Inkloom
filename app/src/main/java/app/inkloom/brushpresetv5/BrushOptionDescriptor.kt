@@ -33,7 +33,7 @@ data class BrushOptionDescriptor(
         if (isAvailableFor(preset.identity.family)) set(preset, value) else preset
 }
 
-enum class BrushOptionGroup { BASIC, TIP, SPACING, PRESSURE, TILT, PAPER, STROKE, WET_MIX }
+enum class BrushOptionGroup { BASIC, TIP, SPACING, PRESSURE, TILT, PAPER, STROKE, WET_MIX, DUAL_SHAPE, DUAL_STROKE, DUAL_GRAIN }
 
 /**
  * The static option catalog. Editor panels are derived from
@@ -292,7 +292,7 @@ object BrushOptionDescriptors {
      * corresponding PaintOp exists.
      */
     fun productionPanels(preset: BrushPresetV5): List<Pair<BrushOptionGroup, List<BrushOptionDescriptor>>> =
-        (forFamily(preset.identity.family) + BrushMaterialOptions.forPreset(preset))
+        (forFamily(preset.identity.family) + BrushMaterialOptions.forPreset(preset) + DualBrushEditorOptions.forPreset(preset))
             .groupBy { it.group }.mapNotNull { (group, options) ->
             val executable = options.filter { option -> option.hasExecutableEdit(preset) }
             if (executable.isEmpty()) null else group to executable
@@ -312,7 +312,7 @@ object BrushOptionDescriptors {
             BrushExecutionCapabilityResolution.Supported
     }
 
-    fun byId(id: String): BrushOptionDescriptor? = ALL[id] ?: BrushMaterialOptions.all.firstOrNull { it.id == id }
+    fun byId(id: String): BrushOptionDescriptor? = ALL[id] ?: (BrushMaterialOptions.all + DualBrushEditorOptions.all).firstOrNull { it.id == id }
 
     fun option(id: String): BrushOptionDescriptor = requireNotNull(byId(id)) { "Unknown option: $id" }
 }
