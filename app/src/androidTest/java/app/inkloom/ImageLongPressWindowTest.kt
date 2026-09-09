@@ -104,18 +104,26 @@ class ImageLongPressWindowTest {
         // Locate the actual blue image on the composed Android screenshot; do not use
         // the input mapper as its own coordinate oracle after Compose graphicsLayer zoom.
         var start = Offset.Zero
+        var previousCorner: Offset? = null
+        var stableFrames = 0
         compose.waitUntil(5_000) {
             val screenshot = instrumentation.uiAutomation.takeScreenshot()
             var right = -1; var bottom = -1
+            val pixels = IntArray(screenshot.width * screenshot.height)
+            screenshot.getPixels(pixels, 0, screenshot.width, 0, 0, screenshot.width, screenshot.height)
             for (y in 0 until screenshot.height) for (x in 0 until screenshot.width) {
-                val color = screenshot.getPixel(x, y)
+                val color = pixels[y * screenshot.width + x]
                 if (android.graphics.Color.blue(color) > 245 && android.graphics.Color.red(color) < 8 && android.graphics.Color.green(color) < 8) {
                     right = maxOf(right, x); bottom = maxOf(bottom, y)
                 }
             }
             screenshot.recycle()
             start = Offset(right + 1f, bottom + 1f)
-            right > 0 && bottom > 0
+            // viewportScale is published before Compose's graphicsLayer is presented.
+            // Use a settled visible corner, not the first (possibly pre-zoom) screenshot.
+            stableFrames = if (previousCorner == start) stableFrames + 1 else 0
+            previousCorner = start
+            right > 0 && bottom > 0 && stableFrames >= 2
         }
         stroke(start, start + Offset(110f, 60f), pointerType)
         assertTrue("Rendered corner $start must resize the image at zoom ${view.viewportScale}: ${session.current}", session.current.width > original.width + 20f)
