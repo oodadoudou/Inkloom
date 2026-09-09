@@ -41,6 +41,34 @@ class BrushWindowReturnTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    @Test fun lastPagePlusCreatesBlankMatchingTemplateAndNormalNextStillNavigates() {
+        tap("New Note")
+        tap("New note template Grid · Medium")
+        tap("New note paper color Warm ivory")
+        tap("Create")
+        val view = canvas()
+        stroke(pagePoint(view, .3f, .5f), pagePoint(view, .7f, .5f))
+        compose.waitUntil(10_000) { view.lastBrushExecutionFingerprint != null }
+        tap("Add page using current template")
+        center("2/2")
+        val store = app.inkloom.document.FileDocumentStore(compose.activity.filesDir)
+        val note = store.list().first { it.title == "Untitled Note" }
+        assertEquals(2, note.pages.size)
+        assertEquals(note.pages[0].background, note.pages[1].background)
+        assertEquals(note.pages[0].width, note.pages[1].width)
+        assertEquals(note.pages[0].height, note.pages[1].height)
+        assertTrue(note.pages[1].elements.isEmpty())
+        assertEquals(app.inkloom.document.InkPage().layers, note.pages[1].layers)
+        tap("Previous page")
+        center("1/2")
+        tap("Next page")
+        center("2/2")
+        assertEquals(2, store.list().first { it.id == note.id }.pages.size)
+        tap("Add page using current template")
+        center("3/3")
+        assertEquals(3, store.list().first { it.id == note.id }.pages.size)
+    }
+
     @Test fun realWindowPinchShrinksBelowFitThenPaintRemainsUnderThePen() {
         tap("New Note"); tap("Create")
         val view = canvas()

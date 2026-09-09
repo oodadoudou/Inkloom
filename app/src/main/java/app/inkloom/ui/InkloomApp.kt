@@ -752,6 +752,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onDismissError = { importError = null },
             onSelectPage = viewModel::selectPage,
             pageTemplates = pageTemplates,
+            onAppendCurrentPage = { pageId -> libraryState.selectedDocumentId?.let { viewModel.appendPageUsingTemplate(it, pageId) } },
             onAddPage = { templateId, paperColor -> libraryState.selectedDocumentId?.let { viewModel.addPage(it, templateId, paperColor) } },
             onDuplicatePage = { documentId, pageId -> viewModel.duplicatePage(documentId, pageId) },
             onDeletePage = { documentId, pageId -> viewModel.deletePage(documentId, pageId) },
@@ -1256,6 +1257,7 @@ private fun EditorScreen(
     onDismissError: () -> Unit,
     onSelectPage: (String) -> Unit,
     pageTemplates: PageTemplateLibrary,
+    onAppendCurrentPage: (String) -> Unit,
     onAddPage: (String, Long?) -> Unit,
     onDuplicatePage: (String, String) -> Unit,
     onDeletePage: (String, String) -> Unit,
@@ -3058,10 +3060,20 @@ private fun EditorScreen(
                         ) { Icon(Icons.Outlined.KeyboardArrowUp, tr("Previous page", "上一页"), Modifier.size(20.dp)) }
                         Text("${currentPageIndex + 1}/${document.pages.size}", fontSize = 10.sp, color = MutedInk)
                         IconButton(
-                            onClick = { document.pages.getOrNull(currentPageIndex + 1)?.let { selectPageWithViewport(it.id) } },
-                            enabled = currentPageIndex < document.pages.lastIndex,
+                            onClick = {
+                                val next = document.pages.getOrNull(currentPageIndex + 1)
+                                if (next != null) selectPageWithViewport(next.id)
+                                else onAppendCurrentPage(selectedPage.id)
+                            },
                             modifier = Modifier.size(38.dp),
-                        ) { Icon(Icons.Outlined.KeyboardArrowDown, tr("Next page", "下一页"), Modifier.size(20.dp)) }
+                        ) {
+                            val atLastPage = currentPageIndex == document.pages.lastIndex
+                            Icon(
+                                if (atLastPage) Icons.Outlined.Add else Icons.Outlined.KeyboardArrowDown,
+                                if (atLastPage) tr("Add page using current template", "按当前模板新增页") else tr("Next page", "下一页"),
+                                Modifier.size(20.dp),
+                            )
+                        }
                     }
                 }
                 val dockVertical = settings.toolbarDock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT) || (settings.toolbarDock == ToolbarDock.FREE && settings.verticalToolbar)
