@@ -267,6 +267,7 @@ class BrushBatchManagementTest {
     private fun windowBounds(label: String): android.graphics.Rect {
         var result: android.graphics.Rect? = null
         composeRule.waitUntil(5_000) {
+            if (android.os.Build.VERSION.SDK_INT >= 33) InstrumentationRegistry.getInstrumentation().uiAutomation.clearCache()
             fun visit(node: android.view.accessibility.AccessibilityNodeInfo?) {
                 if (node == null) return
                 if (node.contentDescription?.toString() == label) result = android.graphics.Rect().also { node.getBoundsInScreen(it) }
