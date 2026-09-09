@@ -26,7 +26,8 @@ data class BrushUsageState(
     }
 
     fun orderInCategory(category: String, ids: List<String>): List<String> {
-        val pins = categoryPins[category].orEmpty().filter { it in ids }
+        val available = ids.toHashSet()
+        val pins = categoryPins[category].orEmpty().filter { it in available }
         val pinned = pins.toHashSet()
         return pins + ids.filterNot { it in pinned }
     }
