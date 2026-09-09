@@ -430,7 +430,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var selectionCanvasTransform: SelectionCanvasTransform? = null
     internal var onSelectionTransformChanged: (SelectionTransformUiState?) -> Unit = {}
     internal val selectionTransformUiState: SelectionTransformUiState?
-        get() = selectionCanvasTransform?.let { SelectionTransformUiState(it.pose, it.mode) }
+        get() = selectionCanvasTransform?.let { SelectionTransformUiState(it.pose, it.mode, it.snapping, it.magnetics, it.snapDistance) }
 
     private var selectionTransformCenterX = 0f
     private var selectionTransformCenterY = 0f
@@ -934,6 +934,17 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (selectionCanvasTransform != null) {
+            val step=if(event.isShiftPressed) 10f else 1f
+            when(keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> { nudgeSelection(-step,0f); return true }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> { nudgeSelection(step,0f); return true }
+                KeyEvent.KEYCODE_DPAD_UP -> { nudgeSelection(0f,-step); return true }
+                KeyEvent.KEYCODE_DPAD_DOWN -> { nudgeSelection(0f,step); return true }
+                KeyEvent.KEYCODE_ENTER -> { finishSelectionTransform(true); return true }
+                KeyEvent.KEYCODE_ESCAPE -> { finishSelectionTransform(false); return true }
+            }
+        }
         if (updateModifierState(keyCode, pressed = true)) {
             onKeyInputDiagnostic(event.toDiagnostic(ShortcutPhase.PRESS, null))
             return true
@@ -4487,7 +4498,7 @@ class InkCanvasView(context: Context) : View(context) {
         val result = session.update(transform, selectionInterpolation)
         if (documentSelectionState != null) {
             documentSelectionState?.replaceFrom(result.selection)
-            selectionBoundaryPreviewMatrix = android.graphics.Matrix().apply {
+            selectionBoundaryPreviewMatrix = if (transform is app.inkloom.engine.v5.tools.SelectionMeshMapping) null else android.graphics.Matrix().apply {
                 if (transform is SelectionAffineTransform) {
                     setScale(transform.scaleX, transform.scaleY, transform.centerX, transform.centerY)
                     postRotate(transform.rotationDegrees, transform.centerX, transform.centerY)
@@ -6001,6 +6012,16 @@ class InkCanvasView(context: Context) : View(context) {
             }
             onSelectionTransformChanged(selectionTransformUiState)
         }, rejected = { onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "请勿交叉或重合变换角点" else "Keep the four transform corners convex and apart") })
+        selectionCanvasTransform?.contentTargets = rasterLayerTileSurfaces.filterKeys { it != activeLayerId && it in layerOrder }.values.flatMap { target ->
+            val keys=target.snapshot().tileKeys
+            if(keys.isEmpty()) emptyList() else {
+                val l=keys.minOf { it.column }*target.tileSize.toFloat()/target.logicalWidth*surface.logicalWidth
+                val r=((keys.maxOf { it.column }+1)*target.tileSize).coerceAtMost(target.logicalWidth).toFloat()/target.logicalWidth*surface.logicalWidth
+                val t=keys.minOf { it.row }*target.tileSize.toFloat()/target.logicalHeight*surface.logicalHeight
+                val b=((keys.maxOf { it.row }+1)*target.tileSize).coerceAtMost(target.logicalHeight).toFloat()/target.logicalHeight*surface.logicalHeight
+                listOf(l to t,(l+r)/2 to (t+b)/2,r to b)
+            }
+        }
         tool = EditorTool.SELECT
         onSelectionTransformChanged(selectionTransformUiState)
         invalidate()
@@ -6018,6 +6039,12 @@ class InkCanvasView(context: Context) : View(context) {
         val draft = selectionCanvasTransform ?: return
         draft.replace(draft.pose.withPose(draft.pose.copy(width = width, height = height, angle = angle.mod(360f))))
     }
+
+    internal fun configureSelectionSnapping(snapping: Boolean, magnetics: Boolean, distance: Float) {
+        selectionCanvasTransform?.let { it.snapping=snapping; it.magnetics=magnetics; it.snapDistance=distance.coerceIn(1f,50f) }
+        onSelectionTransformChanged(selectionTransformUiState); invalidate()
+    }
+    internal fun nudgeSelection(dx: Float, dy: Float) { selectionCanvasTransform?.nudge(dx,dy) }
 
     internal fun resetSelectionTransform() { selectionCanvasTransform?.reset() }
 

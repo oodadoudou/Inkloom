@@ -122,7 +122,7 @@ class RasterSelectionTransformSession(
                     tileBounds.right - tileLeft,
                     tileBounds.bottom - tileTop,
                 )
-                val nativeSource = if (identity) null else nativeSource(tileBounds, inverse, halo)
+                val nativeSource = if (identity || transform is SelectionMeshMapping) null else nativeSource(tileBounds, inverse, halo)
                 val retainedAlpha = nativeSource?.let { rasterAlpha(tileBounds) }
                 when (surface.pixelFormat) {
                     PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> transaction.editTile(key, localDirty) { pixels, stride ->
@@ -303,7 +303,7 @@ class RasterSelectionTransformSession(
                     minOf(tileTop + source.tileSize, source.logicalHeight),
                 )
                 val alpha = ByteArray(tileBounds.width * tileBounds.height)
-                val nativeCount = affineMaskTile(source, tileBounds, alpha, inverse, interpolation)
+                val nativeCount = if (transform is SelectionMeshMapping) -1 else affineMaskTile(source, tileBounds, alpha, inverse, interpolation)
                 var nonZero = nativeCount > 0
                 if (nativeCount < 0) for (y in tileBounds.top until tileBounds.bottom) for (x in tileBounds.left until tileBounds.right) {
                     // The transform is in raster pixels; mask storage has independent dimensions.
@@ -470,10 +470,15 @@ class RasterSelectionTransformSession(
     }
 
     private class InverseSelectionMapping(transform: SelectionRasterTransform) {
-        val coefficients = transform.inverseCoefficients()
+        private val mesh = transform as? SelectionMeshMapping
+        val coefficients = if (mesh == null) transform.inverseCoefficients() else floatArrayOf(1f,0f,0f,1f,0f,0f)
+        private var lastX=Float.NaN; private var lastY=Float.NaN; private var mapped=0f to 0f
+        private fun meshPoint(x: Float,y: Float): Pair<Float,Float> {
+            if(x!=lastX || y!=lastY) { mapped=requireNotNull(mesh).inverse(x,y); lastX=x; lastY=y }; return mapped
+        }
         fun denominator(x: Float, y: Float) = if (coefficients.size == 9) coefficients[6]*x+coefficients[7]*y+coefficients[8] else 1f
-        fun x(x: Float, y: Float) = (coefficients[0]*x+coefficients[1]*y+coefficients[4])/denominator(x,y)
-        fun y(x: Float, y: Float) = (coefficients[2]*x+coefficients[3]*y+coefficients[5])/denominator(x,y)
+        fun x(x: Float, y: Float) = if(mesh != null) meshPoint(x,y).first else (coefficients[0]*x+coefficients[1]*y+coefficients[4])/denominator(x,y)
+        fun y(x: Float, y: Float) = if(mesh != null) meshPoint(x,y).second else (coefficients[2]*x+coefficients[3]*y+coefficients[5])/denominator(x,y)
         fun crossesHorizon(points: List<Pair<Int, Int>>): Boolean {
             if (coefficients.size == 6) return false
             val w = points.map { denominator(it.first.toFloat(), it.second.toFloat()) }
@@ -483,6 +488,7 @@ class RasterSelectionTransformSession(
 
     companion object {
         internal fun transformedBounds(bounds: PixelRect, transform: SelectionRasterTransform, width: Int, height: Int): PixelRect {
+            if (transform is SelectionMeshMapping) return PixelRect(floor(transform.minX-2).toInt().coerceIn(0,width), floor(transform.minY-2).toInt().coerceIn(0,height), ceil(transform.maxX+2).toInt().coerceIn(0,width), ceil(transform.maxY+2).toInt().coerceIn(0,height))
             if (transform is SelectionProjectiveMapping && transform.crossesHorizon(bounds.left,bounds.top,bounds.right,bounds.bottom))
                 return PixelRect(0,0,width,height)
             val corners = arrayOf(

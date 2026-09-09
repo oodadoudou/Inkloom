@@ -34,6 +34,8 @@ internal fun SelectionTransformToolbar(
     onDimensions: (Float, Float, Float) -> Unit,
     onFlip: (Boolean) -> Unit,
     onReset: () -> Unit,
+    onSnapping: (Boolean, Boolean, Float) -> Unit,
+    onNudge: (Float, Float) -> Unit,
     onFinish: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -45,7 +47,7 @@ internal fun SelectionTransformToolbar(
                 SelectionTransformMode.entries.forEach { mode ->
                     TextButton(onClick = { onMode(mode) }, modifier = Modifier.widthIn(min = 100.dp).height(36.dp),
                         colors = ButtonDefaults.textButtonColors(contentColor = if (state.mode == mode) Color(0xff1688f8) else Color(0xff303030))) {
-                        Text(when (mode) { SelectionTransformMode.FREEFORM -> t("Freeform", "自由变换"); SelectionTransformMode.UNIFORM -> t("Uniform", "等比变换"); SelectionTransformMode.DISTORT -> t("Distort", "扭曲") })
+                        Text(when (mode) { SelectionTransformMode.FREEFORM -> t("Freeform", "自由变换"); SelectionTransformMode.UNIFORM -> t("Uniform", "等比变换"); SelectionTransformMode.DISTORT -> t("Distort", "扭曲"); SelectionTransformMode.WARP -> t("Warp", "网格变形") })
                     }
                 }
                 TextButton(onClick = { onFinish(false) }) { Text(t("Cancel transform", "取消变换")) }
@@ -53,6 +55,19 @@ internal fun SelectionTransformToolbar(
             }
             HorizontalDivider(Modifier.widthIn(max = 880.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+            Box {
+                var snapOpen by remember { mutableStateOf(false) }
+                TextButton(onClick={ snapOpen=true }) { Text(t("Snapping", "吸附")) }
+                DropdownMenu(snapOpen,{snapOpen=false}) {
+                    DropdownMenuItem(text={Text(t("Snapping", "吸附"))},leadingIcon={Checkbox(state.snapping,null)},onClick={onSnapping(!state.snapping,state.magnetics,state.snapDistance)})
+                    DropdownMenuItem(text={Text(t("Magnetics", "磁力方向"))},leadingIcon={Checkbox(state.magnetics,null)},onClick={onSnapping(state.snapping,!state.magnetics,state.snapDistance)})
+                    Text(t("Distance", "距离")+" ${state.snapDistance.toInt()} px",Modifier.padding(horizontal=16.dp))
+                    Slider(state.snapDistance,{onSnapping(state.snapping,state.magnetics,it)},valueRange=1f..50f,modifier=Modifier.width(240.dp).padding(horizontal=16.dp))
+                }
+            }
+            listOf(Triple("←",-1f,0f),Triple("↑",0f,-1f),Triple("↓",0f,1f),Triple("→",1f,0f)).forEach { (label,x,y) ->
+                TextButton(onClick={onNudge(x,y)},modifier=Modifier.semantics { contentDescription=t("Nudge $label 1 px", "微移 $label 1 像素") }) { Text(label) }
+            }
             Box {
                 var samplingOpen by remember { mutableStateOf(false) }
                 TextButton(onClick = { samplingOpen = true }) { Text(t("Interpolation", "插值")) }

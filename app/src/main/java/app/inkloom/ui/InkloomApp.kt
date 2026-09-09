@@ -3267,6 +3267,8 @@ private fun EditorScreen(
                         onDimensions = { w, h, a -> canvasView?.setSelectionTransformDimensions(w, h, a) },
                         onFlip = { canvasView?.flipSelection(it) },
                         onReset = { canvasView?.resetSelectionTransform() },
+                        onSnapping = { snap, magnetic, distance -> canvasView?.configureSelectionSnapping(snap, magnetic, distance) },
+                        onNudge = { x,y -> canvasView?.nudgeSelection(x,y) },
                         onFinish = { canvasView?.finishSelectionTransform(apply = it) },
                         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 54.dp).zIndex(4f),
                     )

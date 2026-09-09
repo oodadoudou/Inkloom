@@ -2,7 +2,7 @@ package app.inkloom.engine.v5.tools
 
 import kotlin.math.*
 
-enum class SelectionTransformMode { FREEFORM, UNIFORM, DISTORT }
+enum class SelectionTransformMode { FREEFORM, UNIFORM, DISTORT, WARP }
 
 enum class SelectionTransformNode(val x: Float, val y: Float) {
     TOP_LEFT(0f, 0f), TOP(.5f, 0f), TOP_RIGHT(1f, 0f), RIGHT(1f, .5f),
@@ -15,6 +15,7 @@ data class SelectionTransformPose(
     val centerX: Float, val centerY: Float, val width: Float, val height: Float,
     val angle: Float = 0f, val flippedX: Boolean = false, val flippedY: Boolean = false,
     val corners: List<Pair<Float, Float>>? = null,
+    val mesh: List<Pair<Float, Float>>? = null,
 ) {
     init {
         require(listOf(centerX, centerY, width, height, angle).all(Float::isFinite))
@@ -38,18 +39,31 @@ data class SelectionTransformPose(
     }
 
     fun rasterMappingFrom(original: SelectionTransformPose): SelectionRasterTransform =
-        corners?.let { SelectionProjectiveMapping(original.centerX-original.width/2, original.centerY-original.height/2,
+        mesh?.let { SelectionMeshMapping(original.centerX-original.width/2, original.centerY-original.height/2, original.width, original.height, it) } ?: corners?.let { SelectionProjectiveMapping(original.centerX-original.width/2, original.centerY-original.height/2,
             original.width, original.height, it) } ?: affineFrom(original)
 
     /** Affine controls after Distort operate on the retained original quad, never its raster preview. */
     fun withPose(next: SelectionTransformPose): SelectionTransformPose {
-        val quad = corners ?: return next
-        return next.copy(corners = quad.map { (x,y) ->
+        val quad = mesh ?: corners ?: return next
+        val mappedPoints = quad.map { (x,y) ->
             val local = rotate(x-centerX, y-centerY, -angle)
             val mapped = rotate(local.first*next.width/width * if (next.flippedX != flippedX) -1f else 1f,
                 local.second*next.height/height * if (next.flippedY != flippedY) -1f else 1f, next.angle)
             next.centerX+mapped.first to next.centerY+mapped.second
-        })
+        }
+        return if (mesh != null) next.copy(mesh = mappedPoints, corners = null) else next.copy(corners = mappedPoints)
+    }
+
+    fun lattice(): List<Pair<Float, Float>> = mesh ?: (0..3).flatMap { y -> (0..3).map { x ->
+        val q = sourceCorners(); val u=x/3f; val v=y/3f
+        ((1-u)*(1-v)*q[0].first+u*(1-v)*q[1].first+u*v*q[2].first+(1-u)*v*q[3].first) to
+            ((1-u)*(1-v)*q[0].second+u*(1-v)*q[1].second+u*v*q[2].second+(1-u)*v*q[3].second)
+    } }
+
+    fun warp(index: Int, dx: Float, dy: Float): SelectionTransformPose {
+        val points=lattice().mapIndexed { i,p -> if(i==index) p.first+dx to p.second+dy else p }
+        val l=points.minOf { it.first }; val r=points.maxOf { it.first }; val t=points.minOf { it.second }; val b=points.maxOf { it.second }
+        return copy(centerX=(l+r)/2,centerY=(t+b)/2,width=(r-l).coerceAtLeast(1f),height=(b-t).coerceAtLeast(1f),angle=0f,corners=null,mesh=points)
     }
 
     fun distort(node: SelectionTransformNode, dx: Float, dy: Float): SelectionTransformPose? {
