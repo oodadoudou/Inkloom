@@ -5090,7 +5090,7 @@ private fun PageTemplatePreview(template: PageTemplate, selected: Boolean) {
                 drawIntoCanvas { canvas -> PaperPatternRenderer.draw(canvas.nativeCanvas, background.pattern, background.density, size.width, size.height) }
             }
             is PageBackground.Image -> Icon(Icons.Outlined.Image, null, tint = MutedInk)
-            is PageBackground.Pdf -> Text("PDF", color = Ink, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            is PageBackground.Pdf -> Text("PDF", color = Color(0xFF111111), fontSize = 9.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -5886,7 +5886,7 @@ private fun ObjectElementView(
                     modifier = Modifier.fillMaxSize().padding(5.dp),
                 )
             }
-            is PageElement.Sticky -> Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Color(element.colorArgb))) {
+            is PageElement.Sticky -> Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Color(element.colorArgb), contentColor = Color.DarkGray)) {
                 Box(Modifier.fillMaxSize()) {
                     Text(
                         if (element.collapsed) element.text.lineSequence().firstOrNull().orEmpty() else element.text,
@@ -5982,13 +5982,13 @@ private fun ObjectElementView(
                     }
                 }
             }
-            is PageElement.Link -> Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Paper)) {
+            is PageElement.Link -> Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Color(0xFFE7E7E7), contentColor = Color(0xFF111111))) {
                 Row(Modifier.fillMaxSize().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Surface(shape = CircleShape, color = Color.White) { Icon(Icons.Outlined.Link, null, Modifier.padding(10.dp), tint = Color(0xFF111111)) }
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(element.title, maxLines = 1, fontWeight = FontWeight.SemiBold)
-                        Text(internalLinkLabel ?: LinkTarget.displayDestination(element.url), color = MutedInk, fontSize = 11.sp, maxLines = 1)
+                        Text(internalLinkLabel ?: LinkTarget.displayDestination(element.url), color = Color(0xFF626262), fontSize = 11.sp, maxLines = 1)
                     }
                     IconButton(onClick = {
                         val documentId = element.targetDocumentId
