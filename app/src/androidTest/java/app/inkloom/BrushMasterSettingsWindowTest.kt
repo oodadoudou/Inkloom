@@ -170,7 +170,8 @@ class BrushMasterSettingsWindowTest {
         assertTrue("The selected eraser must remove actual paint", pixels().sumOf { (it ushr 24).toLong() } < beforeErase)
         tap("Brushes")
         tap("Brush category Pencil")
-        tap("Brush preset HB Pencil")
+        // Returning to Paint restores its previous brush; tapping it again now opens Studio.
+        assertEquals("system-hb-pencil", canvas().brushId)
         tap("Close brushes panel")
         assertEquals(33f, canvas().baseWidth, .001f)
         assertEquals(.62f, canvas().inkOpacity, .001f)

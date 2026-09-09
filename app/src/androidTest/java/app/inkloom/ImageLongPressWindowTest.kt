@@ -133,14 +133,10 @@ class ImageLongPressWindowTest {
         val resized = session.current
         compose.waitForIdle()
         val screenshot = instrumentation.uiAutomation.takeScreenshot()
-        val resolver = instrumentation.targetContext.contentResolver
-        val screenshotUri = requireNotNull(resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            android.content.ContentValues().apply {
-                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "inkloom-image-handles.png")
-                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
-                put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/InkloomQA")
-            }))
-        resolver.openOutputStream(screenshotUri)!!.use { screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        // Keep one app-owned diagnostic; repeated runs must not exhaust MediaStore's
+        // same-name suffix limit or leave hundreds of images in the public photo library.
+        val screenshotFile = java.io.File(instrumentation.targetContext.getExternalFilesDir("regression"), "inkloom-image-handles.png")
+        screenshotFile.outputStream().use { screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
         screenshot.recycle()
         tap("Apply transform")
         compose.waitUntil(5_000) { saved().width == resized.width }
