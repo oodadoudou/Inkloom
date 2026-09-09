@@ -33,7 +33,7 @@ data class BrushOptionDescriptor(
         if (isAvailableFor(preset.identity.family)) set(preset, value) else preset
 }
 
-enum class BrushOptionGroup { BASIC, TIP, SPACING, PRESSURE, TILT, PAPER, STROKE, WET_MIX, DUAL_SHAPE, DUAL_STROKE, DUAL_GRAIN }
+enum class BrushOptionGroup { BASIC, TIP, SPACING, PRESSURE, TILT, PAPER, STROKE, WET_MIX, DUAL_SHAPE, DUAL_STROKE, DUAL_GRAIN, SOURCES }
 
 /**
  * The static option catalog. Editor panels are derived from
@@ -296,7 +296,7 @@ object BrushOptionDescriptors {
             .groupBy { it.group }.mapNotNull { (group, options) ->
             val executable = options.filter { option -> option.hasExecutableEdit(preset) }
             if (executable.isEmpty()) null else group to executable
-        }
+        } + listOf(BrushOptionGroup.SOURCES to emptyList())
 
     private fun BrushOptionDescriptor.hasExecutableEdit(preset: BrushPresetV5): Boolean {
         val current = get(preset)

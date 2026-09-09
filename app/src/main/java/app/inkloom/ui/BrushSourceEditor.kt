@@ -44,6 +44,7 @@ internal fun BrushSourceEditor(preset:BrushPresetV5,role:BrushSourceRole,workspa
                     }
                     result
                 }
+                require(draft.identity.family != BrushFamily.AIRBRUSH) { "Airbrush image sources are not supported / 喷枪暂不支持图片来源" }
                 val candidate=BrushSourceWorkspace.replace(draft,role,path,index)
                 val resolution=BrushExecutionCapabilityResolver.resolve(CompiledBrushProgramV5.compile(candidate))
                 require(resolution==BrushExecutionCapabilityResolution.Supported) { "${tr("Unsupported combination", "不支持此组合")}: $resolution" }
@@ -71,7 +72,7 @@ internal fun BrushSourceEditor(preset:BrushPresetV5,role:BrushSourceRole,workspa
                 TextButton(enabled=!busy && paths().getOrNull(index)!=null,onClick={val path=paths()[index];edit{workspace.transform(path,SourceImageOperation.INVERT)}}) { Text(tr("Invert","反转")) }
             }
             if(grain) TextButton(enabled=!busy && paths().getOrNull(index)!=null,onClick={val path=paths()[index];edit{workspace.transform(path,SourceImageOperation.REPEAT)}}) { Text(tr("Blend repeating edges","平铺边缘融合")) }
-            if(role==BrushSourceRole.SHAPE) {
+            if(role==BrushSourceRole.SHAPE && paths().isNotEmpty()) {
                 Row { Text(tr("Alpha threshold","透明度阈值"),Modifier.weight(1f));Switch(draft.tipTexture?.alphaThreshold!=null,{enabled -> draft=draft.copy(tipTexture=(draft.tipTexture ?: TipTextureSettings()).copy(alphaThreshold=if(enabled).5f else null))},enabled=!busy) }
                 draft.tipTexture?.alphaThreshold?.let { value -> Slider(value,{draft=draft.copy(tipTexture=draft.tipTexture!!.copy(alphaThreshold=it))},enabled=!busy) }
             }

@@ -140,8 +140,8 @@ fun BrushEditorV1Dialog(
                                     if (activePanel.first in setOf(BrushOptionGroup.TIP, BrushOptionGroup.PAPER, BrushOptionGroup.DUAL_SHAPE, BrushOptionGroup.DUAL_GRAIN)) {
                                         item { BrushSourcePreviews(session.current, activePanel.first, language) }
                                     }
-                                    if(activePanel.first == BrushOptionGroup.TIP) item {
-                                        Column {
+                                    if(activePanel.first == BrushOptionGroup.SOURCES) item {
+                                        if(session.current.identity.family == BrushFamily.AIRBRUSH) Text(tr("Airbrush image sources are not supported.","喷枪暂不支持图片来源。")) else Column {
                                             TextButton(onClick={sourceRole=BrushSourceRole.SHAPE}) { Text(tr("Edit shape source","编辑笔尖来源")) }
                                             TextButton(onClick={sourceRole=BrushSourceRole.GRAIN}) { Text(tr("Edit grain source","编辑颗粒来源")) }
                                             TextButton(onClick={sourceRole=BrushSourceRole.SECONDARY_SHAPE}) { Text(tr("Edit secondary shape","编辑第二笔尖")) }

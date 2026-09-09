@@ -76,6 +76,7 @@ internal fun BrushOptionGroup.localizedLabel(language: UiLanguage): String = whe
     BrushOptionGroup.TILT -> language.text("Tilt", "倾斜")
     BrushOptionGroup.PAPER -> language.text("Grain", "颗粒")
     BrushOptionGroup.STROKE -> language.text("Stabilization", "防抖修正")
+    BrushOptionGroup.SOURCES -> language.text("Sources", "图案来源")
     BrushOptionGroup.DUAL_SHAPE -> language.text("2 · Shape", "第二笔尖")
     BrushOptionGroup.DUAL_STROKE -> language.text("2 · Stroke", "第二描边")
     BrushOptionGroup.DUAL_GRAIN -> language.text("2 · Grain", "第二颗粒")

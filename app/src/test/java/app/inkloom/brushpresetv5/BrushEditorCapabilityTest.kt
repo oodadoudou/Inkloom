@@ -31,6 +31,12 @@ class BrushEditorCapabilityTest {
         }
     }
 
+    @Test fun sourcesRemainDiscoverableWithoutAFamilyShapeParameterPanel() {
+        for(family in listOf(BrushFamily.INK,BrushFamily.WET_PAINT)) {
+            val source=inkPreset().let { it.copy(identity=it.identity.copy(family=family),wetMix=if(family==BrushFamily.WET_PAINT)WetMixSettings() else null) }
+            assertTrue(BrushOptionDescriptors.productionPanels(source).any {it.first==BrushOptionGroup.SOURCES})
+        }
+    }
     private fun inkPreset() = BrushPresetV5(
         identity = PresetIdentity("editor-capability", "Editor capability", family = BrushFamily.INK, renderBrushId = "editor-capability"),
         renderSeed = 42,

@@ -283,6 +283,11 @@ class BrushMasterSettingsWindowTest {
         compose.onNodeWithText("Stabilization").performClick()
         compose.onNodeWithContentDescription("Motion filtering slider").performSemanticsAction(SemanticsActions.SetProgress) { it(.7f) }
         compose.onNodeWithContentDescription("Expression slider").performSemanticsAction(SemanticsActions.SetProgress) { it(.4f) }
+        compose.onNodeWithText("Sources").performClick()
+        compose.onNodeWithText("Edit shape source").performClick()
+        compose.onNodeWithText("Source editor").fetchSemanticsNode()
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
         compose.onNodeWithText("Done").performClick()
         compose.onNodeWithText("Save").performClick()
         compose.waitForIdle()
