@@ -1382,27 +1382,28 @@ class InkCanvasView(context: Context) : View(context) {
     private fun drawSelectionProtection(canvas: Canvas) {
         if (!hasSelection() || selectionMaskVisibility <= 0f || selectionCanvasTransform != null) return
         val mask = selectionMaskForRasterTools() ?: return
-        val key = listOf(selectionBoundaryMask, mask.revision, width, height, viewportScale)
+        val area = RectF(0f, 0f, width.toFloat(), height.toFloat())
+        // Cache only alpha. Pinch/rotation changes the lightweight shader matrix, never the mask raster.
+        val key = listOf(selectionBoundaryMask, mask.revision, width, height)
         if (key != protectionCacheKey) {
             val bitmap = protectionBitmap?.takeIf { it.width == width && it.height == height }
                 ?: Bitmap.createBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), Bitmap.Config.ARGB_8888).also {
                     protectionBitmap?.recycle(); protectionBitmap = it
                 }
             bitmap.eraseColor(Color.TRANSPARENT)
-            val cached = Canvas(bitmap)
-            val area = RectF(0f, 0f, width.toFloat(), height.toFloat())
-            protectionPaint.alpha = 255
-            protectionShader.setLocalMatrix(Matrix().apply { setScale(1f / viewportScale, 1f / viewportScale) })
-            cached.drawRect(area, protectionPaint)
-            MaskTileCanvasRenderer.draw(mask, cached, area, protectionCutoutPaint)
+            MaskTileCanvasRenderer.draw(mask, Canvas(bitmap), area)
             protectionCacheKey = key
         }
-        protectionBitmap?.let {
-            protectionCompositePaint.alpha = (selectionMaskVisibility * 255).toInt()
-            canvas.drawBitmap(it, 0f, 0f, protectionCompositePaint)
-        }
+        val checkpoint = canvas.saveLayer(area, null)
+        protectionPaint.alpha = (selectionMaskVisibility * 255).toInt()
+        protectionShader.setLocalMatrix(Matrix().apply {
+            setScale(1f / viewportScale, 1f / viewportScale)
+            postTranslate(selectionAntPhase() / viewportScale, 0f)
+        })
+        canvas.drawRect(area, protectionPaint)
+        protectionBitmap?.let { canvas.drawBitmap(it, 0f, 0f, protectionCutoutPaint) }
+        canvas.restoreToCount(checkpoint)
     }
-    private val protectionCompositePaint = Paint(Paint.FILTER_BITMAP_FLAG)
 
     private fun drawCommittedSelectionBoundary(canvas: Canvas) {
         val boundary = selectionBoundaryMask ?: return
