@@ -1218,7 +1218,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (pointerIndex < 0) return super.onHoverEvent(event)
         val toolType = event.getToolType(pointerIndex)
         val stylus = toolType == MotionEvent.TOOL_TYPE_STYLUS || toolType == MotionEvent.TOOL_TYPE_ERASER
-        if (stylus) dispatchStylusButtonTransitions(updateStylusButtonState(event.buttonState))
+        if (stylus) dispatchOrDeferStylusButtonTransitions(updateStylusButtonState(event.buttonState))
         val cursorTool = if (toolType == MotionEvent.TOOL_TYPE_ERASER) EditorTool.ERASER else resolveTool(event, toolType)
         val drawableTool = cursorTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)
         when (event.actionMasked) {
@@ -3195,7 +3195,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (isStylus) {
             lastStylusSeenAt = event.eventTime
             val transitions = updateStylusButtonState(event.buttonState)
-            dispatchStylusButtonTransitions(transitions)
+            dispatchOrDeferStylusButtonTransitions(transitions)
             val pressedCommands = transitions.filter { it.phase == ShortcutPhase.PRESS }.map(StylusButtonTransition::action).filter(StylusButtonAction::isCommand).distinct()
             if (pressedCommands.isNotEmpty() || resolveStylusButtonAction(event.buttonState).isCommand) return true
         }
@@ -3297,7 +3297,7 @@ class InkCanvasView(context: Context) : View(context) {
      */
     private fun dispatchOrDeferStylusButtonTransitions(transitions: List<StylusButtonTransition>) {
         transitions.forEach { transition ->
-            if (transition.phase == ShortcutPhase.RELEASE && activeTool != null) {
+            if (transition.phase == ShortcutPhase.RELEASE && (activeTool != null || deferredEraserReleaseStrokeId != null)) {
                 deferredStylusButtonReleases += transition
                 if (activeTool == EditorTool.ERASER) {
                     EraserLifecycleTrace.record(
@@ -5175,9 +5175,9 @@ class InkCanvasView(context: Context) : View(context) {
             }
         }
         if (finishingEraser && accepted) {
-            if (deferredStylusButtonReleases.isNotEmpty()) {
-                deferredEraserReleaseStrokeId = finishingStrokeId
-            }
+            // Some drivers deliver BUTTON_RELEASE separately, after UP has queued publication.
+            // Keep that release behind the same presentation boundary as a release carried by UP.
+            deferredEraserReleaseStrokeId = finishingStrokeId
             EraserLifecycleTrace.record(
                 EraserLifecycleTrace.Event(
                     strokeId = currentStrokeId,

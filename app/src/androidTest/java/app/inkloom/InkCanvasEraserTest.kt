@@ -66,6 +66,43 @@ class InkCanvasEraserTest {
         }
     }
 
+    @Test fun independentButtonAndHoverReleasesCannotCancelHeldEraserContact() {
+        for (releaseRoute in listOf(1, 2)) for (afterUp in listOf(false, true)) {
+            val surface = opaqueSurface(400, 400)
+            var releases = 0
+            var commits = 0
+            val view = configuredView(mapOf("paint" to surface)).apply {
+                switchInputConfiguration(EditorTool.PEN, null)
+                onRasterLayerCommitted = { commits++ }
+                onShortcutAction = { activation ->
+                    if (activation.action == ShortcutAction.TOGGLE_ERASER) {
+                        if (activation.phase == ShortcutPhase.PRESS) switchInputConfiguration(EditorTool.ERASER, null)
+                        else { releases++; switchInputConfiguration(EditorTool.PEN, null) }
+                    }
+                }
+            }
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                view.dispatchStylus(MotionEvent.ACTION_DOWN, 80f, 200f, 10L, MotionEvent.BUTTON_STYLUS_PRIMARY)
+                view.dispatchStylus(MotionEvent.ACTION_MOVE, 200f, 200f, 20L, MotionEvent.BUTTON_STYLUS_PRIMARY)
+                if (afterUp) {
+                    view.dispatchStylus(MotionEvent.ACTION_MOVE, 320f, 200f, 20L, MotionEvent.BUTTON_STYLUS_PRIMARY)
+                    view.dispatchStylus(MotionEvent.ACTION_UP, 320f, 200f, 21L, MotionEvent.BUTTON_STYLUS_PRIMARY)
+                }
+                view.dispatchStylus(if (releaseRoute == 1) MotionEvent.ACTION_BUTTON_RELEASE else MotionEvent.ACTION_HOVER_MOVE,
+                    200f, 200f, 21L, 0, releaseRoute)
+                assertEquals("Hardware release must wait for erase commit, route=$releaseRoute", 0, releases)
+                if (!afterUp) {
+                    view.dispatchStylus(MotionEvent.ACTION_MOVE, 320f, 200f, 25L, 0)
+                    view.dispatchStylus(MotionEvent.ACTION_UP, 320f, 200f, 30L, 0)
+                }
+            }
+            settlePublishedStroke(view)
+            assertEquals("One erase commit for route=$releaseRoute", 1, commits)
+            assertEquals(1, releases)
+            for (x in listOf(120, 200, 280)) assertEquals("Erase survives route=$releaseRoute at x=$x", 0, Color.alpha(surface.pixelAt(x, 200)))
+        }
+    }
+
     @Test fun canceledV5EraserContactRollsBackWithoutPublishing() {
         val surface = opaqueSurface(400, 400)
         val initialRevision = surface.revision
@@ -234,7 +271,7 @@ class InkCanvasEraserTest {
         }
     }
 
-    private fun InkCanvasView.dispatchStylus(action: Int, x: Float, y: Float, time: Long, buttonState: Int = 0) {
+    private fun InkCanvasView.dispatchStylus(action: Int, x: Float, y: Float, time: Long, buttonState: Int = 0, route: Int = 0) {
         val properties = MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS }
         val coordinates = MotionEvent.PointerCoords().apply {
             this.x = x
@@ -258,6 +295,6 @@ class InkCanvasEraserTest {
             0,
             InputDevice.SOURCE_STYLUS,
             0,
-        ).also { event -> try { onTouchEvent(event) } finally { event.recycle() } }
+        ).also { event -> try { when (route) { 1 -> onGenericMotionEvent(event); 2 -> onHoverEvent(event); else -> onTouchEvent(event) } } finally { event.recycle() } }
     }
 }
