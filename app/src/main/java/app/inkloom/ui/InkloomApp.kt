@@ -2682,7 +2682,7 @@ private fun EditorScreen(
                             searchFocus = null
                             pdfLinkFocus = target.id to PdfGotoLinkNavigation.destinationBounds(link)
                             selectPageWithViewport(target.id)
-                            if (link.destinationZoom > 0f) zoom = link.destinationZoom.coerceIn(1f, ViewportTransform.MAXIMUM_SCALE)
+                            if (link.destinationZoom > 0f) zoom = link.destinationZoom.coerceIn(ViewportTransform.MINIMUM_SCALE, ViewportTransform.MAXIMUM_SCALE)
                         }
                     },
                     documents = documents,

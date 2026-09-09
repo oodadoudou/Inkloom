@@ -254,7 +254,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
             event = event,
             pointerIndex = pointerIndex,
             snapshot = snapshot,
-            scale = canvas.viewportScale.coerceAtLeast(1f),
+            scale = canvas.viewportScale.coerceAtLeast(app.inkloom.document.ViewportTransform.MINIMUM_SCALE),
             resetDirection = event.actionMasked == MotionEvent.ACTION_HOVER_ENTER || !hoverVisible,
         )
         hoverVisible = true
@@ -274,7 +274,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
             event = event,
             pointerIndex = pointerIndex,
             snapshot = snapshot,
-            scale = canvas.viewportScale.coerceAtLeast(1f),
+            scale = canvas.viewportScale.coerceAtLeast(app.inkloom.document.ViewportTransform.MINIMUM_SCALE),
             resetDirection = event.actionMasked in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN) || !hoverVisible,
         )
         hoverVisible = true
@@ -293,8 +293,8 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
     private fun refreshCursorStyle() {
         val canvas = target ?: return
         val snapshot = canvas.hoverCursorSnapshot()
-        hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
-        hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(1f)
+        hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(app.inkloom.document.ViewportTransform.MINIMUM_SCALE)
+        hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(app.inkloom.document.ViewportTransform.MINIMUM_SCALE)
         hoverRotationDegrees = BrushCursorGeometry.normalizeDegrees(snapshot.getOrElse(5) { 0f }, hoverDynamicRotationDegrees)
         if (hoverVisible) cursorSurface.renderFrontBufferedLayer()
     }

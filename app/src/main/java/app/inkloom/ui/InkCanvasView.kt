@@ -597,7 +597,7 @@ class InkCanvasView(context: Context) : View(context) {
     var rotateNavigation: Boolean = false
     var externalViewportGestures: Boolean = false
     var viewportScale: Float = 1f
-        set(value) { field = value.takeIf(Float::isFinite)?.coerceIn(1f, ViewportTransform.MAXIMUM_SCALE) ?: 1f; invalidate() }
+        set(value) { field = value.takeIf(Float::isFinite)?.coerceIn(ViewportTransform.MINIMUM_SCALE, ViewportTransform.MAXIMUM_SCALE) ?: 1f; invalidate() }
     var viewportPanX: Float = 0f
         set(value) { field = value.takeIf(Float::isFinite) ?: 0f; invalidate() }
     var viewportPanY: Float = 0f

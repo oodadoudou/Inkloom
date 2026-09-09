@@ -180,9 +180,10 @@ class InkCanvasNavigationTest {
 
         assertTrue(state.scale.isFinite() && state.panX.isFinite() && state.panY.isFinite())
         state = ViewportTransform.zoomAroundScreen(state, .01f, -320f, 180f, geometry = geometry)
-        assertEquals(1f, state.scale, .001f)
-        assertEquals(0f, state.panX, .001f)
-        assertEquals(0f, state.panY, .001f)
+        assertEquals(ViewportTransform.MINIMUM_SCALE, state.scale, .001f)
+        assertTrue(state.panX.isFinite() && state.panY.isFinite())
+        view.viewportScale = state.scale
+        assertEquals(state.scale, view.viewportScale, .001f)
         assertEquals("Navigation sequence must never commit ink", 0L, paintSurface(view).revision)
     }
 

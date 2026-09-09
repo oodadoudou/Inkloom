@@ -18,9 +18,22 @@ class ViewportTransformTest {
         val high = ViewportTransform.zoomAround(ViewportState(3f, 0f, 0f), 6f, 0f, 0f)
         val low = ViewportTransform.zoomAround(ViewportState(1.6f, 340f, -220f), .1f, 200f, -100f)
         assertEquals(ViewportTransform.MAXIMUM_SCALE, high.scale, .001f)
-        assertEquals(1f, low.scale, .001f)
-        assertEquals(0f, low.panX, .001f)
-        assertEquals(0f, low.panY, .001f)
+        assertEquals(.16f, low.scale, .001f)
+        assertEquals(628f, low.panX, .001f)
+        assertEquals(-364f, low.panY, .001f)
+    }
+
+    @Test fun shrinkingThroughFitKeepsFocusAndAllowsPanning() {
+        val start = ViewportState(1f, 40f, -20f)
+        val small = ViewportTransform.pinchByScreen(start, .25f, 120f, 80f, 120f, 80f)
+        assertEquals(.25f, small.scale, .001f)
+        assertEquals(120f, small.panX + (120f - start.panX) / start.scale * small.scale, .001f)
+        assertEquals(80f, small.panY + (80f - start.panY) / start.scale * small.scale, .001f)
+        val panned = ViewportTransform.panByScreen(small, 25f, -30f)
+        assertEquals(small.panX + 25f, panned.panX, .001f)
+        assertEquals(small.panY - 30f, panned.panY, .001f)
+        val store = PageViewportStore().apply { save("page", panned) }
+        assertEquals(panned, store.restore("page"))
     }
 
     @Test fun localPanTracksTheFingerAtEveryZoomLevel() {
@@ -90,7 +103,7 @@ class ViewportTransformTest {
     }
 
     @Test fun viewLocalForwardAndInverseTransformsAreExactAtAnyViewport() {
-        val viewport = ViewportState(scale = 3.4f, panX = -137f, panY = 82f, rotationDegrees = -27f)
+        val viewport = ViewportState(scale = .25f, panX = -137f, panY = 82f, rotationDegrees = -27f)
         val pagePoint = 733f to 214f
 
         val visiblePoint = ViewportTransform.pageToView(pagePoint.first, pagePoint.second, 1_120f, 760f, viewport)
@@ -114,11 +127,11 @@ class ViewportTransformTest {
         assertEquals(-1198f, after.panY, .001f)
     }
 
-    @Test fun minimumZoomRecentersEvenAfterExtremePan() {
+    @Test fun minimumZoomKeepsAnOffCenterPageRecoverable() {
         val geometry = ViewportGeometry(viewportWidth = 1200f, viewportHeight = 800f, pageWidth = 600f, pageHeight = 760f)
         val after = ViewportTransform.zoomAround(ViewportState(2f, 900f, -700f), .01f, 200f, 100f, geometry = geometry)
 
-        assertEquals(ViewportState(1f, 0f, 0f), after)
+        assertEquals(ViewportState(.05f, 567f, -371f), after)
     }
 
     @Test fun panningUsesTheRotatedCanvasAxes() {
@@ -188,13 +201,14 @@ class ViewportTransformTest {
         assertEquals(24f, after.panY, .001f)
     }
 
-    @Test fun repeatedExtremePinchesAlwaysReturnToCenteredFit() {
+    @Test fun repeatedExtremePinchesStayBoundedWithoutForcingFit() {
         val geometry = ViewportGeometry(viewportWidth = 1200f, viewportHeight = 800f, pageWidth = 600f, pageHeight = 760f)
         var state = ViewportState(1f, 0f, 0f)
         repeat(20) { state = ViewportTransform.zoomAround(state, 1.7f, 480f, -260f, geometry = geometry) }
         state = ViewportTransform.panBy(state, 100_000f, -100_000f, geometry = geometry)
         repeat(20) { state = ViewportTransform.zoomAround(state, .4f, -520f, 310f, geometry = geometry) }
 
-        assertEquals(ViewportState(1f, 0f, 0f), state)
+        assertEquals(.05f, state.scale, .001f)
+        org.junit.Assert.assertTrue(kotlin.math.abs(state.panX) <= 567f && kotlin.math.abs(state.panY) <= 371f)
     }
 }
