@@ -38,14 +38,33 @@ class SelectionMeshMapping(val left: Float, val top: Float, val width: Float, va
     private val triangles = (0 until steps).flatMap { y -> (0 until steps).flatMap { x ->
         val a=y*(steps+1)+x; listOf(Triangle(a,a+1,a+steps+2),Triangle(a,a+steps+2,a+steps+1))
     } }
-    private val bins=Array(32*32) { mutableListOf<Triangle>() }
+    private class InverseTriangle(val triangle: Triangle, nodes: List<Pair<Float,Float>>, steps: Int,
+        left: Float, top: Float, width: Float, height: Float) {
+        private val a=nodes[triangle.a]; private val b=nodes[triangle.b]; private val c=nodes[triangle.c]
+        private val determinant=(b.second-c.second).toDouble()*(a.first-c.first)+(c.first-b.first).toDouble()*(a.second-c.second)
+        val valid=abs(determinant)>=1e-8f
+        val ax=(b.second-c.second)/determinant; val ay=(c.first-b.first)/determinant
+        val ac=-(ax*c.first+ay*c.second)
+        val bx=(c.second-a.second)/determinant; val by=(a.first-c.first)/determinant
+        val bc=-(bx*c.first+by*c.second)
+        private val cx=(triangle.c%(steps+1)).toFloat(); private val cy=(triangle.c/(steps+1)).toFloat()
+        private val ux=triangle.a%(steps+1)-cx; private val vx=triangle.b%(steps+1)-cx
+        private val uy=triangle.a/(steps+1)-cy; private val vy=triangle.b/(steps+1)-cy
+        val sx=width/steps*(ax*ux+bx*vx); val sy=width/steps*(ay*ux+by*vx)
+        val sc=left+width/steps*(ac*ux+bc*vx+cx)
+        val tx=height/steps*(ax*uy+bx*vy); val ty=height/steps*(ay*uy+by*vy)
+        val tc=top+height/steps*(ac*uy+bc*vy+cy)
+    }
+    private val bins=Array(32*32) { mutableListOf<InverseTriangle>() }
     private fun bx(x: Float)=floor((x-minX)/max(1f,maxX-minX)*32).toInt().coerceIn(0,31)
     private fun by(y: Float)=floor((y-minY)/max(1f,maxY-minY)*32).toInt().coerceIn(0,31)
     init {
         triangles.forEach { t ->
+            val inverse=InverseTriangle(t,vertices,steps,left,top,width,height)
+            if(!inverse.valid) return@forEach
             val p=listOf(vertices[t.a],vertices[t.b],vertices[t.c])
             for(y in by(p.minOf { it.second })..by(p.maxOf { it.second }))
-                for(x in bx(p.minOf { it.first })..bx(p.maxOf { it.first })) bins[y*32+x].add(t)
+                for(x in bx(p.minOf { it.first })..bx(p.maxOf { it.first })) bins[y*32+x].add(inverse)
         }
     }
     /** Fixed source order gives deterministic frontmost triangles when the lattice folds. */
@@ -53,15 +72,11 @@ class SelectionMeshMapping(val left: Float, val top: Float, val width: Float, va
         if(x<minX || x>maxX || y<minY || y>maxY) return -1e10f to -1e10f
         val candidates=bins[by(y)*32+bx(x)]
         for(i in candidates.indices.reversed()) {
-            val t=candidates[i]; val a=vertices[t.a]; val b=vertices[t.b]; val c=vertices[t.c]
-            val det=(b.second-c.second)*(a.first-c.first)+(c.first-b.first)*(a.second-c.second)
-            if(abs(det)<1e-8f) continue
-            val wa=((b.second-c.second)*(x-c.first)+(c.first-b.first)*(y-c.second))/det
-            val wb=((c.second-a.second)*(x-c.first)+(a.first-c.first)*(y-c.second))/det
-            val wc=1-wa-wb
-            if(wa >= -1e-5f && wb >= -1e-5f && wc >= -1e-5f) {
-                return left+width*(wa*(t.a%(steps+1))+wb*(t.b%(steps+1))+wc*(t.c%(steps+1)))/steps to
-                    top+height*(wa*(t.a/(steps+1))+wb*(t.b/(steps+1))+wc*(t.c/(steps+1)))/steps
+            val t=candidates[i]
+            val wa=t.ax*x+t.ay*y+t.ac
+            val wb=t.bx*x+t.by*y+t.bc
+            if(wa >= -1e-5f && wb >= -1e-5f && wa+wb <= 1.00001f) {
+                return (t.sx*x+t.sy*y+t.sc).toFloat() to (t.tx*x+t.ty*y+t.tc).toFloat()
             }
         }
         return -1e10f to -1e10f

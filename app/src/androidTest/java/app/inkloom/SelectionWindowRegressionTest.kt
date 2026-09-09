@@ -478,6 +478,10 @@ class SelectionWindowRegressionTest {
         compose.activityRule.scenario.recreate(); compose.waitForIdle()
         val reopened=canvas()
         compose.waitUntil(20_000) { reopened.activeRasterSnapshotForTest()?.copyPremultipliedPixels(bounds)?.contentEquals(applied)==true }
+        if(reopened.hasActiveSelection()) tap("Deselect and exit")
+        val beforeDraw=reopened.activeRasterSnapshotForTest()!!.revision
+        stroke(pagePoint(reopened,.65f,.75f),pagePoint(reopened,.8f,.8f))
+        compose.waitUntil(10_000) { reopened.activeRasterSnapshotForTest()!!.revision!=beforeDraw }
         png.delete()
     }
 
