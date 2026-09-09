@@ -45,6 +45,12 @@ fun BrushEditorV1Dialog(
     onResetToFactory: (() -> Unit)?,
     onDelete: () -> Unit,
 ) {
+    val context=androidx.compose.ui.platform.LocalContext.current
+    val sources=remember(source.id) { BrushSourceWorkspace(context) }
+    DisposableEffect(sources) { onDispose { sources.close() } }
+    var sourceRole by remember { mutableStateOf<BrushSourceRole?>(null) }
+    fun saveInPlace(value:BrushPresetV5) { onSaveInPlace(value);sources.retain(value) }
+    fun saveAs(value:BrushPresetV5) { onSaveAs(value);sources.retain(value) }
     var session by remember(source.id) { mutableStateOf(EditorWorkingCopy.start(source)) }
     val language = settings.language
     fun tr(en: String, zh: String) = language.text(en, zh)
@@ -62,7 +68,7 @@ fun BrushEditorV1Dialog(
         }
     } else activePanel.second
     val commit = {
-        if (source.isFactory) saveAsOpen = true else onSaveInPlace(session.current)
+        if (source.isFactory) saveAsOpen = true else saveInPlace(session.current)
     }
 
     Dialog(onDismissRequest = onDismiss,
@@ -86,7 +92,7 @@ fun BrushEditorV1Dialog(
                                 if (!source.isFactory) {
                                     DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = {
                                         moreOpen = false
-                                        onSaveAs(session.commitAsNew(session.current.identity.name + tr(" - Copy", " - 副本")).preset)
+                                        saveAs(session.commitAsNew(session.current.identity.name + tr(" - Copy", " - 副本")).preset)
                                     })
                                     onResetToFactory?.let { reset ->
                                         DropdownMenuItem(text = { Text(tr("Reset", "重置")) }, onClick = { moreOpen = false; reset() })
@@ -134,6 +140,14 @@ fun BrushEditorV1Dialog(
                                     if (activePanel.first in setOf(BrushOptionGroup.TIP, BrushOptionGroup.PAPER, BrushOptionGroup.DUAL_SHAPE, BrushOptionGroup.DUAL_GRAIN)) {
                                         item { BrushSourcePreviews(session.current, activePanel.first, language) }
                                     }
+                                    if(activePanel.first == BrushOptionGroup.TIP) item {
+                                        Column {
+                                            TextButton(onClick={sourceRole=BrushSourceRole.SHAPE}) { Text(tr("Edit shape source","编辑笔尖来源")) }
+                                            TextButton(onClick={sourceRole=BrushSourceRole.GRAIN}) { Text(tr("Edit grain source","编辑颗粒来源")) }
+                                            TextButton(onClick={sourceRole=BrushSourceRole.SECONDARY_SHAPE}) { Text(tr("Edit secondary shape","编辑第二笔尖")) }
+                                            if(session.current.dual!=null) TextButton(onClick={sourceRole=BrushSourceRole.SECONDARY_GRAIN}) { Text(tr("Edit secondary grain","编辑第二颗粒")) }
+                                        }
+                                    }
                                     items(orderedOptions, key = { it.id }) { option ->
                                         BrushOptionRow(option, session.current, language) { session = session.withValue(it) }
                                     }
@@ -153,6 +167,8 @@ fun BrushEditorV1Dialog(
             }
         }
     }
+    sourceRole?.let { role -> BrushSourceEditor(session.current,role,sources,language,
+        onDismiss={sourceRole=null},onApply={session=session.withValue(it);sourceRole=null}) }
     if (saveAsOpen) AlertDialog(
         onDismissRequest = { saveAsOpen = false },
         title = { Text(tr("Save brush as", "笔刷另存为")) },
@@ -160,7 +176,7 @@ fun BrushEditorV1Dialog(
             label = { Text(tr("Brush name", "笔刷名称")) }, singleLine = true) },
         confirmButton = { TextButton(enabled = saveAsName.isNotBlank(), onClick = {
             val result = if (source.isFactory) session.commit(saveAsName.trim()) else session.commitAsNew(saveAsName.trim())
-            onSaveAs(result.preset)
+            saveAs(result.preset)
         }) { Text(tr("Save", "保存")) } },
         dismissButton = { TextButton(onClick = { saveAsOpen = false }) { Text(tr("Cancel", "取消")) } },
     )
