@@ -8572,7 +8572,7 @@ private fun ProcreateBrushLibrary(
             val target = position?.let { point -> groupDropBounds.entries.firstOrNull { (_, bounds) -> bounds.contains(point) }?.key }
             val targetBrushId = position?.let { point -> brushDragBounds.entries.firstOrNull { (id, bounds) -> id != brush.id && bounds.contains(point) }?.key }
             if (target != null) {
-                applyBrushGroupOperation(setOf(brush.id), target, copy = false)
+                applyBrushGroupOperation(setOf(brush.id), target, copy = true)
             } else if (brush.format != BrushFormat.SYSTEM && targetBrushId != null) {
                 val peers = BrushGroupOperations.orderForDisplay(brushes.filter { candidate ->
                     BrushGroupOperations.normalize(candidate.groupName).equals(BrushGroupOperations.normalize(brush.groupName), true)
@@ -8590,7 +8590,7 @@ private fun ProcreateBrushLibrary(
         })
         TooltipBox(
             positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-            tooltip = { PlainTooltip { Text(tr("Hold and drag to move; tap for destinations", "按住拖动以移动；轻点选择目标分组")) } },
+            tooltip = { PlainTooltip { Text(tr("Drag onto a set to copy; drag within the list to reorder", "拖到分类以复制，列表内拖动排序")) } },
             state = tooltipState,
             enableUserInput = false,
         ) {

@@ -202,20 +202,22 @@ class BrushBatchManagementTest {
         assertTrue("The fixture must expose only part of the handle", visible.height > 0f && visible.height < original.height)
         handleDrag("Brush group Target")
         val store = BrushMetadataStore(composeRule.activity)
-        composeRule.waitUntil(5_000) { store.load().single { it.id == "batch-a" }.groupName == "Target" }
+        composeRule.waitUntil(5_000) { store.load().any { it.name == "Batch A copy" && it.groupName == "Target" && it.id != "batch-a" } }
+        assertEquals("Source", store.load().single { it.id == "batch-a" }.groupName)
         assertEquals("Source", store.load().single { it.id == "batch-b" }.groupName)
     }
 
-    @Test fun handleLongPressDragMovesTheBrushToItsGroupTarget() = checkHandleGroupDrop(grid = false)
+    @Test fun handleLongPressDragCopiesTheBrushToItsGroupTarget() = checkHandleGroupDrop(grid = false)
 
-    @Test fun gridHandleLongPressDragMovesTheBrushToItsGroupTarget() = checkHandleGroupDrop(grid = true)
+    @Test fun gridHandleLongPressDragCopiesTheBrushToItsGroupTarget() = checkHandleGroupDrop(grid = true)
 
     private fun checkHandleGroupDrop(grid: Boolean) {
         openBrushes()
         if (grid) composeRule.onNodeWithContentDescription("Grid view").performClick()
         handleDrag("Brush group Target")
         val store = BrushMetadataStore(composeRule.activity)
-        composeRule.waitUntil(5_000) { store.load().single { it.id == "batch-a" }.groupName == "Target" }
+        composeRule.waitUntil(5_000) { store.load().any { it.name == "Batch A copy" && it.groupName == "Target" && it.id != "batch-a" } }
+        assertEquals("Source", store.load().single { it.id == "batch-a" }.groupName)
         assertEquals("Source", store.load().single { it.id == "batch-b" }.groupName)
         assertEquals(0, composeRule.onAllNodesWithContentDescription("Exit brush management").fetchSemanticsNodes().size)
     }
