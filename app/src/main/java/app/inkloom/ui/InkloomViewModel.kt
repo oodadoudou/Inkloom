@@ -350,6 +350,16 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         document.copy(pages = PdfGotoLinkNavigation.rotateDestinationCoordinates(rotated, pageId), updatedAt = System.currentTimeMillis())
     }
 
+    fun applySelectionLayerTransfer(documentId: String, pageId: String, sourceId: String,
+        sourceReference: RasterTileSurfaceRef?, targetId: String, target: InkLayer?) =
+        updatePage(documentId, pageId) { page ->
+            val layers = page.layers.filterNot { it.id == targetId }.map {
+                if (it.id == sourceId && sourceReference != null) it.copy(rasterTileSurface = sourceReference) else it
+            }.toMutableList()
+            if (target != null) layers.add((layers.indexOfFirst { it.id == sourceId } + 1).coerceIn(0, layers.size), target)
+            page.copy(layers = layers)
+        }
+
     fun setSavedSelections(documentId: String, pageId: String, selections: List<SavedSelection>) =
         updatePage(documentId, pageId) { it.copy(savedSelections = selections) }
 

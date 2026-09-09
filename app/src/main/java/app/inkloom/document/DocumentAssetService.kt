@@ -503,6 +503,9 @@ class DocumentAssetService(private val context: Context) {
                 PixelTileSurface(
                     logicalWidth = if (turns % 2 == 0) rotatedWidth else rotatedHeight,
                     logicalHeight = if (turns % 2 == 0) rotatedHeight else rotatedWidth,
+                    pixelFormat = if (patch.config == Bitmap.Config.RGBA_F16)
+                        app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16
+                    else app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_SRGB_8888,
                 )
         }
         val rotatedWidth = if (turns % 2 == 0) surface.logicalWidth else surface.logicalHeight

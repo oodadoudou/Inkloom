@@ -25,6 +25,7 @@ internal class RasterLayerSurfaceRuntime(
         require(renderWidth > 0) { "renderWidth must be positive" }
     }
 
+    private val historyLayers = mutableSetOf<String>()
     private val surfaces = linkedMapOf<String, PixelTileSurface>()
     private val sourceKeys = mutableMapOf<String, RasterSurfaceSourceKey>()
     private val locallyPublishedKeys = mutableMapOf<String, LinkedHashSet<RasterSurfaceSourceKey>>()
@@ -34,7 +35,7 @@ internal class RasterLayerSurfaceRuntime(
     fun reconcile(page: InkPage): Map<String, PixelTileSurface> {
         val paintLayers = page.layers.filter(InkLayer::isPaintSurfaceLayer)
         val retainedIds = paintLayers.mapTo(mutableSetOf(), InkLayer::id)
-        (surfaces.keys - retainedIds).forEach { layerId ->
+        (surfaces.keys - retainedIds - historyLayers).forEach { layerId ->
             surfaces.remove(layerId)
             sourceKeys.remove(layerId)
             locallyPublishedKeys.remove(layerId)
@@ -70,6 +71,16 @@ internal class RasterLayerSurfaceRuntime(
         val visibleIds = paintLayers.filter { LayerHierarchy.effectiveVisible(page.layers, it) }.mapTo(mutableSetOf(), InkLayer::id)
         return surfaces.filterKeys { it in visibleIds }
     }
+
+    @Synchronized
+    fun retainHistoryLayer(page: InkPage, layer: InkLayer, surface: PixelTileSurface) {
+        historyLayers += layer.id
+        surfaces[layer.id] = surface
+        sourceKeys[layer.id] = RasterSurfaceSourceKey.from(page, layer, renderWidth)
+    }
+
+    @Synchronized
+    fun releaseHistoryLayer(layerId: String) { historyLayers -= layerId }
 
     /** Marks a successfully saved checkpoint without replacing the newer live tile generations. */
     @Synchronized
