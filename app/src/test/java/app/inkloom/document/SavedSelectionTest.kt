@@ -25,6 +25,18 @@ class SavedSelectionTest {
         } finally { root.deleteRecursively() }
     }
 
+    @Test fun savedSelectionRetainsItsPagePositionAcrossCropAndRotation() {
+        val mask = MaskTileSurface(100, 80, 64)
+        mask.beginWrite("fixture").use { it.setAlpha(40, 30, 128); it.commit().close() }
+        val cropped = SavedSelectionGeometry.projected(mask.snapshot(), 0, PageCrop(), PageCrop(.2f, .25f, .8f, .75f), 60, 40)
+        assertEquals(128, cropped.alphaAt(20, 10))
+        val restored = SavedSelectionGeometry.projected(cropped, 0, PageCrop(.2f, .25f, .8f, .75f), PageCrop(), 100, 80)
+        assertEquals(128, restored.alphaAt(40, 30))
+        assertEquals(0, restored.alphaAt(0, 0))
+        val turned = SavedSelectionGeometry.projected(cropped, 1, PageCrop(.2f, .25f, .8f, .75f), PageCrop(), 80, 100)
+        assertEquals(128, turned.alphaAt(49, 40))
+    }
+
     @Test fun rotationPreservesSoftAlphaAndInvertedDefault() {
         val mask = MaskTileSurface(40, 30, 64)
         mask.beginWrite("fixture").use { it.fill(255); it.setAlpha(3, 8, 37); it.commit().close() }

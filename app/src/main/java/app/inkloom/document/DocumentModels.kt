@@ -70,6 +70,7 @@ data class SavedSelection(
     val name: String,
     val surface: MaskTileSurfaceRef,
     val rotationQuarterTurns: Int = 0,
+    val crop: PageCrop = PageCrop(),
 )
 
 @Serializable
