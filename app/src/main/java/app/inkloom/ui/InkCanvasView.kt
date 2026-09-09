@@ -2512,7 +2512,7 @@ class InkCanvasView(context: Context) : View(context) {
         colorSampleBitmap.eraseColor(Color.TRANSPARENT)
         val sampleCanvas = Canvas(colorSampleBitmap)
         sampleCanvas.translate(-x.coerceIn(0f, (width - 1).coerceAtLeast(0).toFloat()), -y.coerceIn(0f, (height - 1).coerceAtLeast(0).toFloat()))
-        drawPageContent(sampleCanvas)
+        drawPageContent(sampleCanvas, includeInteractionOverlays = false)
         return RenderedColorSampling.opaqueOverWhite(colorSampleBitmap.getPixel(0, 0))
     }
 
