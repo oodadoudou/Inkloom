@@ -472,7 +472,7 @@ class BrushMetadataStore(
                 )
             }
         }
-    }.getOrDefault(emptyList()).map(BrushSemanticMapper::apply)
+    }.getOrDefault(emptyList()).map(app.inkloom.brushpresetv5.BrushPresetV5Import::repairImportedMotionSettings).map(BrushSemanticMapper::apply)
 
     /** Read old explicit semantics once; never infer executable roles from editable labels. */
     private fun readToolBinding(item: JSONObject): BrushToolBinding {

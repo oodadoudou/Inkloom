@@ -81,7 +81,7 @@ object BrushPresetV5Import {
         }
         audited.v5PresetJson?.let { encoded ->
             require(BrushPresetV5Codec.decodeOrNull(encoded) != null) { "Invalid Brush Preset Format V5 payload" }
-            return audited
+            return repairImportedMotionSettings(audited)
         }
         val auditedSource = audited.copy(
             report = (audited.report + BrushSemanticMapper.compatibilityReport(audited)).distinct(),
@@ -99,6 +99,20 @@ object BrushPresetV5Import {
     fun createUserRecord(source: ImportedBrush): ImportedBrush {
         require(source.format == BrushFormat.INKLOOM)
         return writePreset(source, fromDecodedSource(source), BrushFormat.INKLOOM)
+    }
+
+    /** Repair the old importer that flattened motion filtering into the ordinary smoothing value.
+     * New JSON always writes motionFiltering, including an explicit user-authored zero. */
+    fun repairImportedMotionSettings(source: ImportedBrush): ImportedBrush {
+        if (source.format != BrushFormat.PROCREATE || source.motionFiltering <= 0f ||
+            source.v5PresetJson?.contains("\"motionFiltering\"") != false) return source
+        val preset = BrushPresetV5Codec.decodeOrNull(source.v5PresetJson) ?: return source
+        val stroke = preset.stroke ?: StrokeSettings()
+        val old = maxOf(source.stabilization, source.streamLine, source.procreateStabilization, source.motionFiltering).coerceIn(0f,1f)
+        val smoothing = if (kotlin.math.abs(stroke.smoothing - old) < .000001f)
+            maxOf(source.stabilization, source.streamLine, source.procreateStabilization).coerceIn(0f,1f) else stroke.smoothing
+        return source.copy(v5PresetJson = BrushPresetV5Codec.encode(preset.copy(stroke=stroke.copy(
+            smoothing=smoothing, motionFiltering=MotionFilteringSettings(source.motionFiltering.coerceIn(0f,1f),source.motionFilteringExpression.coerceIn(0f,1f))))))
     }
 
     fun requirePreset(record: ImportedBrush): BrushPresetV5 =
@@ -237,11 +251,11 @@ object BrushPresetV5Import {
                 else -> null
             },
             stroke = StrokeSettings(
+                motionFiltering = MotionFilteringSettings(source.motionFiltering.coerceIn(0f,1f), source.motionFilteringExpression.coerceIn(0f,1f)),
                 smoothing = maxOf(
                     source.stabilization,
                     source.streamLine,
                     source.procreateStabilization,
-                    source.motionFiltering,
                 ).coerceIn(0f, 1f),
                 // Imported geometric taper is retained in ImportedBrush and reported source-only.
                 // It must not enter the executable program until an append-only realtime taper

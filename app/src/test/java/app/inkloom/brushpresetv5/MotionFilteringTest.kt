@@ -17,6 +17,19 @@ class MotionFilteringTest {
         result.zip(points).forEach { (a,b) -> assertTrue(hypot(a.x-b.x,a.y-b.y)<=5.051f) }
         assertEquals(points.last(),StrokeCoordinateStabilizer(0f,0f,MotionFilteringSettings(.8f)).apply(points.last()))
     }
+    @Test fun repairsFlattenedImportsButPreservesAnExplicitUserZero() {
+        val record=BrushPresetV5Import.createUserRecord(app.inkloom.model.ImportedBrush(name="test",format=app.inkloom.model.BrushFormat.INKLOOM,compatibility=app.inkloom.model.Compatibility.COMPLETE,sizeBytes=0,report=emptyList()))
+        val preset=BrushPresetV5Import.requirePreset(record).copy(stroke=StrokeSettings(smoothing=.8f))
+        val oldJson=BrushPresetV5Codec.encode(preset).replace("\"motionFiltering\":{\"amount\":0.0,\"expression\":0.0},", "")
+        assertFalse(oldJson.contains("\"motionFiltering\""))
+        val source=record.copy(format=app.inkloom.model.BrushFormat.PROCREATE,motionFiltering=.8f,motionFilteringExpression=.6f,streamLine=.2f,v5PresetJson=oldJson)
+        val repaired=BrushPresetV5Import.repairImportedMotionSettings(source)
+        val corrected=BrushPresetV5Import.requirePreset(repaired)
+        assertEquals(.2f,corrected.stroke!!.smoothing,0f)
+        assertEquals(MotionFilteringSettings(.8f,.6f),corrected.stroke!!.motionFiltering)
+        val disabled=repaired.copy(v5PresetJson=BrushPresetV5Codec.encode(corrected.copy(stroke=corrected.stroke!!.copy(motionFiltering=MotionFilteringSettings()))))
+        assertEquals(disabled,BrushPresetV5Import.repairImportedMotionSettings(disabled))
+    }
     @Test fun globalStagePrecedesCompleteBrushStage() {
         val global=StrokeCoordinateStabilizer(.3f,0f,MotionFilteringSettings(.7f,.2f))
         val brush=StrokeCoordinateStabilizer(0f,.6f,brushMotion=MotionFilteringSettings(.4f,.8f))

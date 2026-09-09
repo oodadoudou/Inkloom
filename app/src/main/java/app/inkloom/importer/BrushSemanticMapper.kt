@@ -166,9 +166,10 @@ object BrushSemanticMapper {
         }
         if (hasColorDynamics(brush)) preserved("$prefix.colorDynamics", "Stamp, stroke, pressure, tilt and secondary-color dynamics are retained but not executed by V5.")
         if (hasAdvancedMainDynamics(brush)) preserved("$prefix.advancedDynamics", "Spacing, thickness, velocity, random and non-graphite tilt dynamics are retained but not executed by V5.")
-        if (brush.streamLinePressure != 0f || brush.motionFilteringExpression != 0f || brush.tiltGradation != 0f ||
+        if (brush.motionFiltering > 0f) executed("$prefix.motionFiltering", "StrokeSettings.motionFiltering", SemanticFidelity.APPROXIMATE, "Independent causal motion filtering with expression; not the proprietary FFT algorithm.")
+        if (brush.streamLinePressure != 0f || brush.tiltGradation != 0f ||
             brush.tiltBleed != 0f || brush.tiltSizeCompression || brush.stabilizationBySpeed
-        ) preserved("$prefix.inputDynamics", "Pressure smoothing, expression, tilt gradation/bleed and speed-dependent stabilization are retained but not executed by V5.")
+        ) preserved("$prefix.inputDynamics", "Pressure smoothing, tilt gradation/bleed and speed-dependent stabilization are retained but not executed by V5.")
         if (brush.postCorrectionEnabled && brush.postCorrection > 0f) preserved("$prefix.postCorrection", "V5 never rewrites a completed stroke; post-correction remains source-only.")
         if (brush.blur > 0f || brush.blurPressureEnabled || secondary(brush.blurSecondaryDynamics)) {
             preserved("$prefix.blur", "Brush-tip blur and its dynamics are retained but not executed by V5.")
