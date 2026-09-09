@@ -60,6 +60,7 @@
 
 - Deliver only the latest tested Debug APK to the user. Do not build or deliver a Profile APK unless the user explicitly requests it again. This preference supersedes older milestone instructions requiring both APK variants.
 - Place the deliverable in `dist/` with the version, source commit, and `debug` in its filename, and provide a direct clickable file link in the final response. Keep the APK and its source/hash evidence consistent.
+- After validating every new APK and its source/hash evidence, remove superseded APKs, their obsolete delivery sidecars, unused Profile outputs, and known disposable intermediate files. Keep only the current Debug delivery in `dist/`; preserve real brush fixtures, source files, active build caches, and useful regression evidence. Use `scripts/clean_generated_artifacts.py --keep <current-debug-apk> --apply` after reviewing its dry run. Never delete the current deliverable before its replacement has been validated.
 
 ## Dual-notebook workspace requirement — deferred by user
 
