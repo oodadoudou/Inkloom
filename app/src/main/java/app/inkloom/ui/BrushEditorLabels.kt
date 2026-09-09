@@ -64,7 +64,7 @@ internal fun BrushOptionDescriptor.localizedLabel(language: UiLanguage): String 
     "wetCharge" -> "蓄色"
     "wetAttack" -> "着色"
     "wetPull" -> "拖色"
-    else -> error("Missing brush editor translation: $id")
+    else -> app.inkloom.brushpresetv5.BrushAdvancedOptions.chinese[id] ?: error("Missing brush editor translation: $id")
 })
 }
 

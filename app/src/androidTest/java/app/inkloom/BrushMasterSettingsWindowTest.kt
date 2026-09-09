@@ -11,6 +11,10 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
@@ -271,6 +275,25 @@ class BrushMasterSettingsWindowTest {
         val rightAfter=bounds("Resize brushes panel · right edge").right
         val density=context.resources.displayMetrics.density
         assertEquals(saved,(rightAfter-leftAfter)/density,1f)
+    }
+
+    @Test fun advancedMotionControlsSaveThroughTheActualStudioWindow() {
+        openPencil()
+        compose.onNodeWithContentDescription("Brush preset HB Pencil").performTouchInput { longClick() }
+        compose.onNodeWithText("Stabilization").performClick()
+        compose.onNodeWithContentDescription("Motion filtering slider").performSemanticsAction(SemanticsActions.SetProgress) { it(.7f) }
+        compose.onNodeWithContentDescription("Expression slider").performSemanticsAction(SemanticsActions.SetProgress) { it(.4f) }
+        compose.onNodeWithText("Done").performClick()
+        compose.onNodeWithText("Save").performClick()
+        compose.waitForIdle()
+        val saved=savedBrushes().single { it.name.contains("HB Pencil") }
+        val preset=app.inkloom.brushpresetv5.BrushPresetV5Import.requirePreset(saved)
+        assertEquals(.7f,preset.stroke!!.motionFiltering.amount,.001f)
+        assertEquals(.4f,preset.stroke!!.motionFiltering.expression,.001f)
+        tap("Close brushes panel")
+        drawAt(.4f)
+        compose.activityRule.scenario.recreate();compose.waitForIdle()
+        assertEquals(preset.stroke!!.motionFiltering,app.inkloom.brushpresetv5.BrushPresetV5Import.requirePreset(savedBrushes().single {it.id==saved.id}).stroke!!.motionFiltering)
     }
 
     private fun openPencil() {

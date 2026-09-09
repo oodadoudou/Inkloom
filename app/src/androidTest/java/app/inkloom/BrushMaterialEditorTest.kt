@@ -68,6 +68,14 @@ class BrushMaterialEditorTest {
             }
         } finally { file.delete() }
     }
+    @Test fun exposedStampJitterAndRenderingModeAffectRealPaint() {
+        val source=preset(BrushFamily.PENCIL).copy(tipTexture=TipTextureSettings(),stamp=StampSettings(),spacing=SpacingSettings(value=.1f))
+        val options=BrushOptionDescriptors.productionPanels(source).flatMap {it.second}
+        val normal=render(source)
+        for((id,value) in listOf("stampLateralJitter" to .7f,"stampTransfer" to 0f,"stampCount" to 4f)) {
+            assertFalse("$id must alter production paint",normal.contentEquals(render(options.single {it.id==id}.apply(source,value))))
+        }
+    }
     private fun preset(family: BrushFamily) = BrushPresetV5(
         identity = PresetIdentity("material", "Material", family = family, renderBrushId = "material"),
         renderSeed = 73, tip = TipSettings(150f), deposition = DepositionSettings(),
