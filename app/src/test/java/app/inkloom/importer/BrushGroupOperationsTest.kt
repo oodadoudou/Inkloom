@@ -97,10 +97,16 @@ class BrushGroupOperationsTest {
         val c = brush("C", "PENS").copy(sortOrder = 0, lastUsedAt = 30L)
         val other = brush("Other", "Pencils")
         val source = listOf(a, other, c, b)
-        assertEquals(listOf("B", "Other", "C", "A"), BrushGroupOperations.orderForDisplay(source).map { it.id })
+        assertEquals(listOf("C", "Other", "B", "A"), BrushGroupOperations.orderForDisplay(source).map { it.id })
         val moved = BrushGroupOperations.move(source, "A", -2)
-        assertEquals(listOf("A", "Other", "B", "C"), BrushGroupOperations.orderForDisplay(moved).map { it.id })
+        assertEquals(listOf("A", "Other", "C", "B"), BrushGroupOperations.orderForDisplay(moved).map { it.id })
         assertEquals(other, moved[1])
+    }
+
+    @Test fun selectingOrPinningAPeerDoesNotChangeItsPosition() {
+        val original=listOf(brush("Z","Pens"),brush("A","Pens"),brush("B","Pens"))
+        val changed=original.map { if(it.id=="B") it.copy(lastUsedAt=999L,favorite=true) else it }
+        assertEquals(original.map { it.id },BrushGroupOperations.orderForDisplay(changed).map { it.id })
     }
 
     @Test fun moveReordersOnlyTheSelectedBrushGroup() {

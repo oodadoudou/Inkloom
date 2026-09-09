@@ -193,10 +193,8 @@ object BrushGroupOperations {
         return normalizedGroups.map { path -> if (siblings.any { sibling -> isWithin(path, sibling) }) reordered.next() else path }
     }
 
+    // Selection and pinning belong to Recent; equal ranks retain their stored list order.
     private val savedPeerOrder = compareBy<ImportedBrush> { it.sortOrder }
-        .thenByDescending { it.favorite }
-        .thenByDescending { it.lastUsedAt }
-        .thenBy { it.name.lowercase() }
 
     /** Orders each peer group in its existing slots; unrelated group positions stay unchanged. */
     fun orderForDisplay(brushes: List<ImportedBrush>): List<ImportedBrush> {
