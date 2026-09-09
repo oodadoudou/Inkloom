@@ -43,7 +43,7 @@ class SelectionWindowRegressionTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
-    @Test fun stylusHoverThenLauncherXActuallyDeselects() = checkDeselect("Deselect")
+    @Test fun stylusHoverThenLauncherXActuallyDeselects() = checkDeselect("Selection")
 
     @Test fun stylusHoverThenBottomXActuallyDeselects() = checkDeselect("Deselect and exit")
 
@@ -75,7 +75,7 @@ class SelectionWindowRegressionTest {
         }
         val original = alpha()
         fun preview() {
-            tap("Selection settings"); tap("Feather selection")
+            tap("Feather")
             val slider = center("Selection feather radius")
             tapAt(slider + Offset(40f, 0f)); compose.waitForIdle()
             assertTrue(view.selectionFeatherPixels > 0f)
@@ -90,7 +90,7 @@ class SelectionWindowRegressionTest {
         org.junit.Assert.assertArrayEquals(original, alpha())
         hoverThenTap(toolbarCenter("Redo")); compose.waitForIdle()
         org.junit.Assert.assertArrayEquals(feathered, alpha())
-        tap("Deselect")
+        tap("Deselect and exit")
         org.junit.Assert.assertFalse(view.hasActiveSelection())
         hoverThenTap(toolbarCenter("Undo")); compose.waitForIdle()
         org.junit.Assert.assertArrayEquals(feathered, alpha())
@@ -103,6 +103,7 @@ class SelectionWindowRegressionTest {
         stroke(pagePoint(view, .2f, .3f), pagePoint(view, .6f, .6f))
         compose.waitForIdle()
         assertEquals(app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR, view.selectionInterpolation)
+        tap("More")
         tap("Selection settings")
         tap("Bicubic")
         compose.waitUntil(5_000) { view.selectionInterpolation == app.inkloom.engine.v5.tools.SelectionInterpolation.BICUBIC }
@@ -121,7 +122,7 @@ class SelectionWindowRegressionTest {
         stroke(pagePoint(view, .2f, .3f), pagePoint(view, .6f, .5f))
         compose.waitForIdle()
         val before = requireNotNull(view.selectionMaskSurfaceSnapshot()).nonZeroBounds()!!
-        hoverThenTap(center("Free transform"))
+        hoverThenTap(center("Transform selection"))
         val dragStarted = SystemClock.uptimeMillis()
         stroke(pagePoint(view, .4f, .4f), pagePoint(view, .4f, .6f))
         val dragMillis = SystemClock.uptimeMillis() - dragStarted
@@ -163,7 +164,7 @@ class SelectionWindowRegressionTest {
         val originalPixels = initial.copyPremultipliedPixels(all)
         tap("Selection"); tap("Rectangle selection")
         stroke(pagePoint(view, .2f, .3f), pagePoint(view, .6f, .5f)); compose.waitForIdle()
-        tap("Free transform"); tap("Uniform")
+        tap("Transform selection"); tap("Uniform")
         val start = requireNotNull(view.selectionTransformUiState).pose
         val corner = start.point(0f, 0f)
         val resizedAt = SystemClock.uptimeMillis()
@@ -179,7 +180,7 @@ class SelectionWindowRegressionTest {
         assertTrue(resized.width > start.width + 20f)
         tap("Cancel transform")
         org.junit.Assert.assertArrayEquals(originalPixels, requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all))
-        tap("Free transform")
+        tap("Transform selection")
         // Outside the bounds still moves this selection; it cannot replace it with a new lasso.
         stroke(pagePoint(view, .75f, .4f), pagePoint(view, .8f, .4f))
         stroke(pagePoint(view, .8f, .6f), pagePoint(view, .8f, .7f))
@@ -205,7 +206,7 @@ class SelectionWindowRegressionTest {
         org.junit.Assert.assertArrayEquals(originalPixels, requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all))
         hoverThenTap(toolbarCenter("Redo")); compose.waitForIdle()
         org.junit.Assert.assertArrayEquals(applied, requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all))
-        tap("Deselect")
+        tap("Deselect and exit")
         org.junit.Assert.assertFalse(view.hasActiveSelection())
     }
 
@@ -272,7 +273,7 @@ class SelectionWindowRegressionTest {
         val before = initial.copyPremultipliedPixels(all)
         tap("Selection"); tap("Rectangle selection")
         stroke(pagePoint(view, .2f, .3f), pagePoint(view, .6f, .5f)); compose.waitForIdle()
-        tap("Free transform")
+        tap("Transform selection")
         stroke(pagePoint(view, .4f, .4f), pagePoint(view, .4f, .5f))
         val draft = requireNotNull(view.selectionTransformUiState).pose
         val time = SystemClock.uptimeMillis()
@@ -297,7 +298,7 @@ class SelectionWindowRegressionTest {
         instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK); compose.waitForIdle()
         org.junit.Assert.assertNull(view.selectionTransformUiState)
         org.junit.Assert.assertArrayEquals(before, requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all))
-        tap("Deselect")
+        tap("Deselect and exit")
         val revision = requireNotNull(view.activeRasterSnapshotForTest()).revision
         stroke(pagePoint(view, .3f, .7f), pagePoint(view, .5f, .7f))
         compose.waitUntil(10_000) { view.activeRasterSnapshotForTest()?.revision != revision }
@@ -316,6 +317,96 @@ class SelectionWindowRegressionTest {
         visit(instrumentation.uiAutomation.rootInActiveWindow)
         val rect = bounds.minBy { it.top }
         return Offset(rect.exactCenterX(), rect.exactCenterY())
+    }
+
+    @Test fun mixedFreehandSegmentsCloseOnlyOnOriginOrAdd() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        tap("Selection"); tap("Freehand selection")
+        tapAt(pagePoint(view, .2f, .3f)); tapAt(pagePoint(view, .6f, .3f))
+        stroke(pagePoint(view, .6f, .3f), pagePoint(view, .6f, .6f))
+        compose.waitForIdle()
+        org.junit.Assert.assertFalse(view.hasActiveSelection())
+        tapAt(pagePoint(view, .2f, .6f)); tapAt(pagePoint(view, .2f, .3f))
+        compose.waitForIdle()
+        assertTrue(view.hasActiveSelection())
+        tap("Clear")
+        org.junit.Assert.assertFalse(view.hasActiveSelection())
+        tapAt(pagePoint(view, .3f, .3f)); tapAt(pagePoint(view, .7f, .3f)); tapAt(pagePoint(view, .5f, .5f))
+        tap("Add")
+        assertTrue(view.hasActiveSelection())
+        tap("Exit selection tool")
+        assertNotEquals(EditorTool.SELECT, view.tool)
+        assertTrue(view.hasActiveSelection())
+        tap("Selection")
+        org.junit.Assert.assertFalse(view.hasActiveSelection())
+    }
+
+    @Test fun savedSelectionReloadsAfterActivityRecreationAndClearIsUndoable() {
+        tap("New Note"); tap("Create")
+        var view = canvas()
+        tap("Selection"); tap("Rectangle selection")
+        stroke(pagePoint(view, .2f, .3f), pagePoint(view, .6f, .6f))
+        val original = view.selectionMaskSurfaceSnapshot()!!.nonZeroBounds()
+        tap("Save & Load"); tap("Save current selection"); tap("Done")
+        tap("Clear")
+        org.junit.Assert.assertFalse(view.hasActiveSelection())
+        tapAt(toolbarCenter("Undo")); compose.waitForIdle()
+        assertEquals(original, view.selectionMaskSurfaceSnapshot()!!.nonZeroBounds())
+        tap("Clear")
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        view = canvas()
+        if (view.tool != EditorTool.SELECT) tap("Selection")
+        tap("Save & Load"); tap("Selection 1")
+        compose.waitForIdle()
+        assertEquals(original, view.selectionMaskSurfaceSnapshot()!!.nonZeroBounds())
+    }
+
+    @Test fun layerMenuSelectsPaintedContentAndTopButtonClearsIt() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        stroke(pagePoint(view, .3f, .4f), pagePoint(view, .5f, .4f))
+        compose.waitUntil(10_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 }
+        tap("Layers")
+        tap("Layer actions Notes")
+        tap("Select contents")
+        compose.waitUntil(5_000) { view.hasActiveSelection() }
+        val mask = view.selectionMaskSurfaceSnapshot()!!
+        assertTrue(mask.nonZeroBounds()!!.width < mask.logicalWidth * .3f)
+        tap("Selection")
+        org.junit.Assert.assertFalse(view.hasActiveSelection())
+    }
+
+    @Test fun copyAndCutPasteCreateNewLayersAtTheOriginalPositionAndUndoTogether() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        stroke(pagePoint(view, .3f, .4f), pagePoint(view, .5f, .4f))
+        compose.waitUntil(10_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 }
+        val sourceId = view.activeLayerId
+        tap("Selection"); tap("Rectangle selection")
+        stroke(pagePoint(view, .2f, .3f), pagePoint(view, .6f, .5f))
+        val source = view.activeRasterSnapshotForTest()!!
+        fun pixels() = view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(
+            app.inkloom.engine.v5.surface.PixelRect(0, 0, source.logicalWidth, source.logicalHeight))
+        val original = pixels()
+        tap("Copy & Paste")
+        compose.waitUntil(15_000) { !view.selectionLayerTransferPending && view.activeLayerId != sourceId }
+        val targetId = view.activeLayerId
+        org.junit.Assert.assertArrayEquals(original, pixels())
+        tapAt(toolbarCenter("Undo")); compose.waitForIdle()
+        assertEquals(sourceId, view.activeLayerId)
+        org.junit.Assert.assertArrayEquals(original, pixels())
+        tapAt(toolbarCenter("Redo")); compose.waitForIdle()
+        assertEquals(targetId, view.activeLayerId)
+        org.junit.Assert.assertArrayEquals(original, pixels())
+        tapAt(toolbarCenter("Undo")); compose.waitForIdle()
+        tap("More"); tap("Cut & Paste")
+        compose.waitUntil(15_000) { !view.selectionLayerTransferPending && view.activeLayerId != sourceId }
+        assertNotEquals(targetId, view.activeLayerId)
+        org.junit.Assert.assertArrayEquals(original, pixels())
+        tapAt(toolbarCenter("Undo")); compose.waitForIdle()
+        assertEquals(sourceId, view.activeLayerId)
+        org.junit.Assert.assertArrayEquals(original, pixels())
     }
 
     private fun pagePoint(view: InkCanvasView, x: Float, y: Float): Offset {
@@ -341,6 +432,7 @@ class SelectionWindowRegressionTest {
     }
 
     private fun center(label: String): Offset {
+        compose.waitForIdle()
         var result: Offset? = null
         compose.waitUntil(5_000) {
             fun visit(node: android.view.accessibility.AccessibilityNodeInfo?) {

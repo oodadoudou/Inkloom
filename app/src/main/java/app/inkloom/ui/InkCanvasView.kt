@@ -294,7 +294,7 @@ class InkCanvasView(context: Context) : View(context) {
             rebuildSelectionDerivedState()
             invalidate()
         }
-        if (!apply) restore(draft.alpha, draft.radius, draft.base)
+        if (!apply) { restore(draft.alpha, draft.radius, draft.base); updateSelectionColorFill() }
         else if (afterRadius != draft.radius) recordExternalEdit(
             undo = { restore(draft.alpha, draft.radius, draft.base) },
             redo = { restore(after, afterRadius, afterBase) },
@@ -1337,6 +1337,7 @@ class InkCanvasView(context: Context) : View(context) {
             canvas.drawCircle(originX, originY, 1.5f / overlayScale, liveSelectionOriginPaint)
             postInvalidateDelayed(SELECTION_ANTS_FRAME_MS)
         }
+        drawSelectionProtection(canvas)
         drawCommittedSelectionBoundary(canvas)
         drawSelectionHandles(canvas)
         drawSymmetryGuides(canvas)
@@ -1355,7 +1356,7 @@ class InkCanvasView(context: Context) : View(context) {
                 color = Color.DKGRAY; textSize = 16f * resources.displayMetrics.density / viewportScale
                 textAlign = android.graphics.Paint.Align.CENTER
             }
-            val label = if (resources.configuration.locales[0].language == "zh") "选区阈值" else "Selection threshold"
+            val label = if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "选区阈值" else "Selection threshold"
             canvas.drawText("$label ${(draft.threshold * 100).toInt()}%", width / 2f, 40f * resources.displayMetrics.density / viewportScale, paint)
         }
         if (imageCanvasTransform == null) drawStylusHoverCursor(canvas)
@@ -1364,6 +1365,44 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun selectionAntPhase(): Float =
         ((SystemClock.uptimeMillis() / SELECTION_ANTS_FRAME_MS) % selectionAntPattern.width).toFloat()
+
+    var selectionMaskVisibility: Float = .25f
+        set(value) { field = value.coerceIn(0f, 1f); invalidate() }
+    private val protectionPattern by lazy {
+        Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888).apply {
+            for (y in 0 until 16) for (x in 0 until 16) setPixel(x, y,
+                if ((x + y) % 8 < 2) Color.DKGRAY else Color.TRANSPARENT)
+        }
+    }
+    private val protectionShader by lazy { BitmapShader(protectionPattern, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT) }
+    private val protectionPaint by lazy { Paint().apply { shader = protectionShader } }
+    private val protectionCutoutPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { blendMode = BlendMode.DST_OUT }
+    private var protectionBitmap: Bitmap? = null
+    private var protectionCacheKey: List<Any?>? = null
+    private fun drawSelectionProtection(canvas: Canvas) {
+        if (!hasSelection() || selectionMaskVisibility <= 0f || selectionCanvasTransform != null) return
+        val mask = selectionMaskForRasterTools() ?: return
+        val key = listOf(selectionBoundaryMask, mask.revision, width, height, viewportScale)
+        if (key != protectionCacheKey) {
+            val bitmap = protectionBitmap?.takeIf { it.width == width && it.height == height }
+                ?: Bitmap.createBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), Bitmap.Config.ARGB_8888).also {
+                    protectionBitmap?.recycle(); protectionBitmap = it
+                }
+            bitmap.eraseColor(Color.TRANSPARENT)
+            val cached = Canvas(bitmap)
+            val area = RectF(0f, 0f, width.toFloat(), height.toFloat())
+            protectionPaint.alpha = 255
+            protectionShader.setLocalMatrix(Matrix().apply { setScale(1f / viewportScale, 1f / viewportScale) })
+            cached.drawRect(area, protectionPaint)
+            MaskTileCanvasRenderer.draw(mask, cached, area, protectionCutoutPaint)
+            protectionCacheKey = key
+        }
+        protectionBitmap?.let {
+            protectionCompositePaint.alpha = (selectionMaskVisibility * 255).toInt()
+            canvas.drawBitmap(it, 0f, 0f, protectionCompositePaint)
+        }
+    }
+    private val protectionCompositePaint = Paint(Paint.FILTER_BITMAP_FLAG)
 
     private fun drawCommittedSelectionBoundary(canvas: Canvas) {
         val boundary = selectionBoundaryMask ?: return
@@ -1415,6 +1454,7 @@ class InkCanvasView(context: Context) : View(context) {
         v5BrushTipMasks.clear()
         releaseRasterLayerProjection()
         rasterTileRenderer.close()
+        protectionBitmap?.recycle(); protectionBitmap = null; protectionCacheKey = null
         super.onDetachedFromWindow()
     }
 
@@ -1772,6 +1812,7 @@ class InkCanvasView(context: Context) : View(context) {
     internal var imageCanvasTransform: ImageCanvasTransform? = null
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (selectionLayerTransferPending) return true
         if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE)) return false
         val pointerIndex = event.stylusPointerIndex(activeStylusPointerId).takeIf { it >= 0 }
             ?: event.actionIndex.coerceIn(0, event.pointerCount - 1)
@@ -2125,7 +2166,7 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 if (activeTool == EditorTool.SELECT) {
                     if (selectionShape == SelectionShape.MAGIC_WAND || selectionShape == SelectionShape.SMART_BORDER) {
-                        beginAutomaticSelection(normalizedX, normalizedY, inputPoint.first * viewportScale)
+                        beginAutomaticSelection(normalizedX, normalizedY, event.getX(pointerIndex))
                         return true
                     }
                     if (selectionShape == SelectionShape.FREEFORM) {
@@ -2258,7 +2299,7 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 else if (activeTool == EditorTool.SELECT) {
                     if (automaticSelectionDraft != null) {
-                        updateAutomaticSelection(inputPoint.first * viewportScale)
+                        updateAutomaticSelection(event.getX(pointerIndex))
                         return true
                     }
                     if (selectionShape == SelectionShape.FREEFORM || selectionShape == SelectionShape.BRUSH) {
@@ -2320,7 +2361,11 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
                     cancelRasterSelectionTransform()
-                    clearLassoInput()
+                    finishAutomaticSelection(false)
+                    if (selectionShape == SelectionShape.FREEFORM && v5LassoSession != null) {
+                        v5LassoSession?.cancelContact()
+                        v5LassoSession?.let { syncLassoPreview(it.preview()) }
+                    } else clearLassoInput()
                 } else if (finishV5PaintGesture(event, pointerIndex, normalizedX, normalizedY)) {
                     // Publishing already invalidated the exact document-space damage. A second
                     // full-view invalidation here made every immutable backdrop tile participate
@@ -2356,7 +2401,7 @@ class InkCanvasView(context: Context) : View(context) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
                 } else if (activeTool == EditorTool.SELECT) {
                     if (selectionShape == SelectionShape.SMART_BORDER || selectionShape == SelectionShape.MAGIC_WAND) {
-                        updateAutomaticSelection(inputPoint.first * viewportScale)
+                        updateAutomaticSelection(event.getX(pointerIndex))
                         finishAutomaticSelection(true)
                     } else if (selectionShape == SelectionShape.FREEFORM) {
                         appendSelectionPoint(normalizedX, normalizedY)
@@ -5554,6 +5599,39 @@ class InkCanvasView(context: Context) : View(context) {
         return finishRasterSelectionTransform()
     }
 
+    var onSelectionLayerTransferRequested: (Boolean) -> Unit = {}
+    var selectionLayerTransferPending: Boolean = false
+    private fun rejectRetainedObjectPixelEdit(): Boolean {
+        val objects = layerElementBitmaps[activeLayerId] ?: return false
+        if (objects.base == null && objects.additions == null) return false
+        onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+            "此图层包含独立图片或对象，暂不支持与像素选区一起变换或转移；请使用对象的变换工具"
+        else "This layer contains separate images or objects. Combined pixel-selection transforms and transfers are not supported; use the object's transform tool.")
+        return true
+    }
+
+    fun requestSelectionLayerTransfer(cut: Boolean) {
+        if (rejectRetainedObjectPixelEdit()) return
+        commitSelectionContour()
+        finishSelectionColorFill(true)
+        finishSelectionTransform(true)
+        if (selectionLayerTransferPending) return
+        if (!hasSelection() || rasterTileSurfaceFor(activeLayerId) == null || (cut && activeLayerId in protectedLayerIds)) {
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "请先选取可编辑绘画图层上的内容" else "Select content on an editable paint layer first")
+            return
+        }
+        onSelectionLayerTransferRequested(cut)
+    }
+    internal fun prepareSelectionLayerTransfer(cut: Boolean): app.inkloom.engine.v5.tools.SelectionLayerTransfer? {
+        v5StrokeController.awaitIdle()
+        val source = rasterTileSurfaceFor(activeLayerId) ?: return null
+        val mask = selectionMaskForRasterTools() ?: return null
+        return app.inkloom.engine.v5.tools.SelectionLayerTransfer.create(source, mask, cut)
+    }
+    internal fun isBoundToSelectionPage(documentId: String, pageId: String): Boolean =
+        documentSelectionState?.key == app.inkloom.engine.v5.selection.DocumentPageKey(documentId, pageId)
+    internal fun refreshSelectionTransferPixels() { invalidateLayerComposition(); invalidate() }
+
     fun copySelection() {
         if (copySelectionToClipboard()) pasteSelectionFromClipboard()
     }
@@ -5685,6 +5763,34 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun selectionMaskSurfaceSnapshot(): MaskTileSurfaceSnapshot? = selectionMaskForRasterTools()
 
+    fun selectLayerContents(layerId: String): Boolean {
+        val state = documentSelectionState ?: return false
+        if (width <= 0 || height <= 0) return false
+        v5StrokeController.awaitIdle()
+        val bitmap = Bitmap.createBitmap(state.logicalWidth, state.logicalHeight, Bitmap.Config.ARGB_8888)
+        val mask = MaskTileSurface(state.logicalWidth, state.logicalHeight)
+        try {
+            val canvas = Canvas(bitmap)
+            canvas.scale(state.logicalWidth.toFloat() / width, state.logicalHeight.toFloat() / height)
+            drawV5RawLayerContent(canvas, layerId, includeElements = true)
+            val row = IntArray(state.logicalWidth)
+            val alpha = ByteArray(state.logicalWidth)
+            mask.beginWrite("select layer contents").use { write ->
+                for (y in 0 until state.logicalHeight) {
+                    bitmap.getPixels(row, 0, row.size, 0, y, row.size, 1)
+                    row.indices.forEach { alpha[it] = (row[it] ushr 24).toByte() }
+                    write.replaceAlpha(PixelRect(0, y, row.size, y + 1), alpha)
+                }
+                write.commit().close()
+            }
+        } finally { bitmap.recycle() }
+        if (mask.snapshot().isEmpty) {
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "此图层没有可选取的内容" else "This layer has no selectable content")
+            return false
+        }
+        return loadSavedSelection(mask.snapshot())
+    }
+
     fun loadSavedSelection(snapshot: MaskTileSurfaceSnapshot): Boolean {
         val state = documentSelectionState ?: return false
         if (snapshot.logicalWidth != state.logicalWidth || snapshot.logicalHeight != state.logicalHeight) return false
@@ -5753,7 +5859,8 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun updateSelectionColorFill() {
         if (!selectionColorFillEnabled || tool != EditorTool.SELECT) return
-        val mask = selectionMaskForRasterTools()?.takeUnless { it.isEmpty } ?: return
+        val mask = selectionMaskForRasterTools()?.takeUnless { it.isEmpty }
+        if (mask == null) { finishSelectionColorFill(false); return }
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return
         if (activeLayerId in protectedLayerIds || editingLayerMaskId != null) return
         v5StrokeController.awaitIdle()
@@ -5840,6 +5947,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun validateRasterSelectionTransform(): Boolean {
+        if (rejectRetainedObjectPixelEdit()) return false
         val surface = rasterTileSurfaceFor(activeLayerId)
         val rejection = when {
             activeLayerId in protectedLayerIds -> "Unlock the active layer before transforming its selection"
@@ -5997,6 +6105,7 @@ class InkCanvasView(context: Context) : View(context) {
         } finally { base.close() }
         replaceSelectionAlphaMask(replacement, resetFeather = false)
         selectionFeatherPixels = requested
+        updateSelectionColorFill()
         invalidate()
         return true
     }

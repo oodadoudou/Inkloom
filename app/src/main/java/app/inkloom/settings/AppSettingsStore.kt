@@ -124,6 +124,7 @@ data class AppSettings(
     val selectionShape: SelectionShape = SelectionShape.FREEFORM,
     val selectionBrushSize: Float = 42f,
     val selectionThreshold: Float = .25f,
+    val selectionMaskVisibility: Float = .25f,
     val selectionInterpolation: app.inkloom.engine.v5.tools.SelectionInterpolation = app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR,
     val selectionMode: SelectionMode = SelectionMode.REPLACE,
     val selectionFilter: SelectionFilter = SelectionFilter.ALL,
@@ -307,6 +308,7 @@ class AppSettingsStore(context: Context) {
             eraserPreset = enumValue(preferences.getString("eraserPreset", null), EraserPreset.NORMAL_FREE),
             selectionShape = enumValue(preferences.getString("selectionShape", null), SelectionShape.FREEFORM),
             selectionBrushSize = preferences.getFloat("selectionBrushSize", 42f).coerceIn(4f, 300f),
+            selectionMaskVisibility = preferences.getFloat("selectionMaskVisibility", .25f).coerceIn(0f, 1f),
             selectionThreshold = preferences.getFloat("selectionThreshold", .25f).coerceIn(0f, 1f),
             selectionInterpolation = enumValue(preferences.getString("selectionInterpolation", null), app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR),
             selectionMode = enumValue(preferences.getString("selectionMode", null), SelectionMode.REPLACE),
@@ -459,6 +461,7 @@ class AppSettingsStore(context: Context) {
             .putString("eraserPreset", persisted.eraserPreset.name)
             .putString("selectionShape", persisted.selectionShape.name)
             .putFloat("selectionBrushSize", persisted.selectionBrushSize.coerceIn(4f, 300f))
+            .putFloat("selectionMaskVisibility", persisted.selectionMaskVisibility.coerceIn(0f, 1f))
             .putFloat("selectionThreshold", persisted.selectionThreshold.coerceIn(0f, 1f))
             .putString("selectionInterpolation", persisted.selectionInterpolation.name)
             .putString("selectionMode", persisted.selectionMode.name)

@@ -130,7 +130,7 @@ class LassoSelectionModesTest {
         }
     }
 
-    @Test fun freeLassoLivePreviewClosesToItsVisibleOrigin() {
+    @Test fun freeLassoLivePreviewKeepsOpenSegmentsUntilExplicitClosure() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
             val view = configuredView().apply { selectionShape = SelectionShape.FREEFORM }
@@ -141,7 +141,7 @@ class LassoSelectionModesTest {
             try {
                 view.draw(Canvas(bitmap))
 
-                assertTrue("Free lasso did not preview its closing edge", pixelsNear(bitmap, 500, 500, 6).any(::opaque))
+                assertTrue("An unfinished freehand contour must not invent a closing edge", pixelsNear(bitmap, 500, 500, 6).none(::opaque))
                 val originPixels = pixelsNear(bitmap, 200, 200, 6).count(::opaque)
                 assertTrue("Free lasso origin was not marked", originPixels >= 8)
                 assertTrue("Free lasso origin must stay subtle: $originPixels pixels", originPixels <= 72)
@@ -216,12 +216,14 @@ class LassoSelectionModesTest {
     @Test fun committedSelectionOverlayStaysWithinInteractiveFrameBudget() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
-            val view = configuredView().apply { selectionShape = SelectionShape.FREEFORM }
+            val view = configuredView().apply { selectionShape = SelectionShape.FREEFORM; selectionMaskVisibility = .25f }
             view.lasso(.2f, .2f, .8f, .8f)
             val bitmap = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
             try {
                 repeat(4) { bitmap.eraseColor(Color.TRANSPARENT); view.draw(canvas) }
+                assertTrue("The protected exterior must show the configured hatch", pixelsNear(bitmap, 100, 100, 8).any(::opaque))
+                assertEquals("The selected interior must remain clear", 0, Color.alpha(bitmap.getPixel(500, 500)))
                 val elapsed = ArrayList<Long>(40)
                 repeat(40) {
                     bitmap.eraseColor(Color.TRANSPARENT)
@@ -318,6 +320,7 @@ class LassoSelectionModesTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         return InkCanvasView(context).apply {
             layout(0, 0, 1_000, 1_000)
+            selectionMaskVisibility = 0f // Boundary-specific assertions isolate the contour from the optional exterior overlay.
             tool = EditorTool.SELECT
         }
     }

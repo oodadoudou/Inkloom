@@ -771,38 +771,29 @@ class InkloomLaunchTest {
     }
 
     @Test fun selectionControlsExposeLassoRectangleEllipseAndBrushModes() {
-        val preferences = composeRule.activity.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
-        val original = preferences.getString("selectionShape", "FREEFORM")
-        try {
-            createNotebookAndOpenEditor()
-            composeRule.onNodeWithContentDescription("Selection").performClick()
-            composeRule.onNodeWithContentDescription("CSP selection subtools").assertIsDisplayed()
-
-            composeRule.onNodeWithText("Freehand lasso").assertIsDisplayed()
-            composeRule.onNodeWithText("Rectangle selection").assertIsDisplayed()
-            composeRule.onNodeWithText("Ellipse selection").assertIsDisplayed()
-            composeRule.onNodeWithText("Selection brush").performClick()
-            composeRule.waitForIdle()
-
-            assertTrue(preferences.getString("selectionShape", null) == "BRUSH")
-            composeRule.onNodeWithContentDescription("Selection").performClick()
-            composeRule.onNodeWithContentDescription("CSP selection subtools").assertIsDisplayed()
-            assertTrue(composeRule.onAllNodesWithText("Brush size").fetchSemanticsNodes().isNotEmpty())
-            assertTrue(composeRule.onAllNodesWithText("42 px").fetchSemanticsNodes().isNotEmpty())
-            assertTrue(composeRule.onAllNodesWithText("Magic wand").fetchSemanticsNodes().isNotEmpty())
-            assertTrue(composeRule.onAllNodesWithText("Smart border").fetchSemanticsNodes().isNotEmpty())
-            composeRule.onNodeWithContentDescription("Finish selection tool").performClick()
-            composeRule.waitUntil(5_000) { findInkCanvasView()?.tool == app.inkloom.model.EditorTool.PEN }
-        } finally {
-            preferences.edit().putString("selectionShape", original).commit()
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Selection").performClick()
+        composeRule.onNodeWithContentDescription("Selection studio").assertIsDisplayed()
+        listOf("Freehand", "Rectangle", "Ellipse", "Automatic").forEach {
+            composeRule.onNodeWithText(it).assertIsDisplayed()
         }
+        composeRule.onNodeWithText("More").performClick()
+        composeRule.onNodeWithText("Brush selection").performClick()
+        composeRule.waitForIdle()
+        assertEquals(app.inkloom.settings.SelectionShape.BRUSH, findInkCanvasView()!!.selectionShape)
+        composeRule.onNodeWithText("More").performClick()
+        composeRule.onNodeWithText("Selection settings").performClick()
+        composeRule.onNodeWithText("Brush size  42 px").assertIsDisplayed()
+        composeRule.onNodeWithText("Done").performClick()
+        composeRule.onNodeWithContentDescription("Exit selection tool").performClick()
+        composeRule.waitUntil(5_000) { findInkCanvasView()?.tool == app.inkloom.model.EditorTool.PEN }
     }
 
-    @Test fun activeSelectionLauncherAppearsOnlyAfterARealSelectionAndDeselectRemovesIt() {
+    @Test fun selectionStudioCommitsRealSelectionAndDeselectRemovesIt() {
         createNotebookAndOpenEditor()
-        assertTrue(composeRule.onAllNodesWithContentDescription("Active selection launcher").fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodesWithContentDescription("Selection studio").fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithContentDescription("Selection").performClick()
-        composeRule.onNodeWithText("Freehand lasso").performClick()
+        composeRule.onNodeWithText("Freehand").performClick()
         composeRule.waitForIdle()
 
         val view = requireNotNull(findInkCanvasView())
@@ -834,10 +825,8 @@ class InkloomLaunchTest {
             ).forEach { motion -> try { view.dispatchTouchEvent(motion) } finally { motion.recycle() } }
         }
 
-        composeRule.onNodeWithContentDescription("Active selection launcher").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Flip horizontal").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Flip vertical").assertIsDisplayed()
-        val transformCenter = composeRule.onNodeWithContentDescription("Free transform")
+        composeRule.onNodeWithContentDescription("Selection studio").assertIsDisplayed()
+        val transformCenter = composeRule.onNodeWithContentDescription("Transform selection")
             .fetchSemanticsNode().boundsInRoot.center
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val now = SystemClock.uptimeMillis()
@@ -859,10 +848,10 @@ class InkloomLaunchTest {
             }
         }
         composeRule.waitUntil(3_000) {
-            composeRule.onAllNodesWithText("Free transform").fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithContentDescription("Transform selection").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithContentDescription("Deselect").performClick()
-        assertTrue(composeRule.onAllNodesWithContentDescription("Active selection launcher").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithContentDescription("Deselect and exit").performClick()
+        assertTrue(composeRule.onAllNodesWithContentDescription("Selection studio").fetchSemanticsNodes().isEmpty())
         composeRule.waitUntil(5_000) {
             findInkCanvasView()?.let { it.tool == app.inkloom.model.EditorTool.PEN && !it.hasActiveSelection() } == true
         }

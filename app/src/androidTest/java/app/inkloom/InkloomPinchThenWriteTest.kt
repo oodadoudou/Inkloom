@@ -156,9 +156,9 @@ class InkloomPinchThenWriteTest {
     @Test fun selectionModeUsesStableViewportPlaneAcrossRepeatedPinchPanThenWrites() {
         openEditor()
         composeRule.onNodeWithContentDescription("Selection").performClick()
-        composeRule.onNodeWithText("Freehand lasso").performClick()
+        composeRule.onNodeWithText("Freehand").performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Selection input toolbar").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Selection studio").assertIsDisplayed()
 
         composeRule.onRoot().performTouchInput {
             down(0, center + Offset(-130f, -70f))
