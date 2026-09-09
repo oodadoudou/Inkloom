@@ -787,6 +787,7 @@ fun InkloomApp(initialIntent: Intent?) {
             },
             onImportBrushFolder = { brushFolderPicker.launch(null) },
             onBrushGridLayout = { updateSettings(settings.copy(brushGridLayout = it)) },
+            onBrushCategoryWidth = { updateSettings(settings.copy(brushCategoryWidthDp = it)) },
             onExportBrush = { brush ->
                 pendingBrushExport = brush
                 val safeName = brush.name.replace(Regex("[^A-Za-z0-9._-]"), "_").trim('_').ifBlank { "Inkloom-Brush" }
@@ -1310,6 +1311,7 @@ private fun EditorScreen(
     onImportBrushes: (String?) -> Unit,
     onImportBrushFolder: () -> Unit,
     onBrushGridLayout: (Boolean) -> Unit,
+    onBrushCategoryWidth: (Float) -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
     onReplaceBrushes: (List<ImportedBrush>) -> Unit,
@@ -1753,7 +1755,6 @@ private fun EditorScreen(
         selectedBrushId = usedBrush.id
         activeBrush = usedBrush
         val chosenTool = BrushRoleClassifier.editorTool(usedBrush)
-        val changedTool = tool != chosenTool
         brushSize = savedBrushSize(usedBrush, usedBrush.defaultSize, chosenTool)
         brushOpacity = savedBrushOpacity(usedBrush, usedBrush.defaultOpacity, chosenTool)
         tool = chosenTool
@@ -1762,10 +1763,7 @@ private fun EditorScreen(
                 EditorTool.PEN, EditorTool.HIGHLIGHTER -> false
                 EditorTool.ERASER -> true
                 else -> null
-            }).let { usage ->
-                if (changedTool && usage.category != BrushUsageState.RECENT_CATEGORY) usage.copy(category = usedBrush.groupName)
-                else usage
-            })
+            }))
             rememberDrawingSelection()
             onSettingsChange(
                 settings.copy(
@@ -1968,10 +1966,7 @@ private fun EditorScreen(
                 brushSize = savedBrushSize(remembered, remembered?.defaultSize ?: settings.penSize, EditorTool.PEN)
                 brushOpacity = savedBrushOpacity(remembered, remembered?.defaultOpacity ?: settings.penOpacity, EditorTool.PEN)
                 remembered?.let { selected ->
-                    changeBrushUsage(brushUsage.used(selected.id, eraser = false).let { usage ->
-                        if (usage.category == BrushUsageState.RECENT_CATEGORY) usage
-                        else usage.copy(category = selected.groupName)
-                    })
+                    changeBrushUsage(brushUsage.used(selected.id, eraser = false))
                     onSettingsChange(settings.copy(persistentDrawingTool = EditorTool.PEN, persistentBrushPresetId = selected.id))
                 }
                 syncCanvasInput(prepareAssets = remembered != null)
@@ -3686,6 +3681,7 @@ private fun EditorScreen(
                 onImportBrushes = onImportBrushes,
                 onImportBrushFolder = onImportBrushFolder,
             onBrushGridLayout = onBrushGridLayout,
+            onBrushCategoryWidth = onBrushCategoryWidth,
                 onExportBrush = onExportBrush,
                 onQuickBrushCommit = { updated ->
                     val committed = updated.copy(lastUsedAt = System.currentTimeMillis())
@@ -7813,6 +7809,7 @@ private fun BrushPanel(
     onImportBrushes: (String?) -> Unit,
     onImportBrushFolder: () -> Unit,
     onBrushGridLayout: (Boolean) -> Unit,
+    onBrushCategoryWidth: (Float) -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
     onQuickBrushCommit: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
@@ -7864,6 +7861,7 @@ private fun BrushPanel(
             onImportBrushes = onImportBrushes,
             onImportBrushFolder = onImportBrushFolder,
             onBrushGridLayout = onBrushGridLayout,
+            onBrushCategoryWidth = onBrushCategoryWidth,
             onExportBrush = onExportBrush,
             onQuickBrushCommit = onQuickBrushCommit,
             onUpdateBrush = onUpdateBrush,
@@ -8559,6 +8557,7 @@ private fun ProcreateBrushLibrary(
     onImportBrushes: (String?) -> Unit,
     onImportBrushFolder: () -> Unit,
     onBrushGridLayout: (Boolean) -> Unit,
+    onBrushCategoryWidth: (Float) -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
     onQuickBrushCommit: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
@@ -8601,14 +8600,12 @@ private fun ProcreateBrushLibrary(
     val allCategories = listOf(recentCategory, tr("All", "全部")) + categoriesInsideSystemRoots + standaloneImportedCategories + ungroupedLabel
     val activeInventoryBrush = (systemBrushes + usableImportedBrushes).firstOrNull { it.id == selectedBrushId }
     val activeGroup = activeInventoryBrush?.groupName?.ifBlank { ungroupedLabel } ?: requestedGroup
-    // Tool return owns the durable category. A restored Compose category must not overwrite
-    // a newer Paint/Eraser selection when this window is recreated or reopened.
-    var selectedCategory by remember(usage.category) {
+    // Browsing location belongs to the library, independently of the current drawing tool.
+    var selectedCategory by remember {
         mutableStateOf(usage.category?.takeIf { it in allCategories } ?: activeGroup?.takeIf { it in allCategories } ?: systemCategories.first())
     }
-    var lastObservedSelection by remember { mutableStateOf(selectedBrushId) }
     var pendingCategoryReveal by remember { mutableStateOf<String?>(null) }
-    val categoryListState = rememberLazyListState()
+    val categoryListState = rememberLazyListState(usage.categoryScroll.index.coerceAtLeast(0), usage.categoryScroll.offset.coerceAtLeast(0))
     var addMenu by remember { mutableStateOf(false) }
     var manageGroups by remember { mutableStateOf(false) }
     var editBrush by remember { mutableStateOf<ImportedBrush?>(null) }
@@ -8777,17 +8774,12 @@ private fun ProcreateBrushLibrary(
         collapsedGroupPaths = collapsedGroupPaths - generateSequence(BrushGroupOperations.parent(created), BrushGroupOperations::parent).toSet()
         pendingCategoryReveal = null
     }
+    var revealedCategory by remember { mutableStateOf(selectedCategory) }
     LaunchedEffect(selectedCategory, allCategories) {
-        allCategories.distinct().indexOf(selectedCategory).takeIf { it >= 0 }?.let { categoryListState.animateScrollToItem(it) }
-    }
-    LaunchedEffect(activeGroup, selectedBrushId) {
-        if (lastObservedSelection != selectedBrushId && selectedCategory != recentCategory) {
-            activeGroup?.let { requested -> allCategories.firstOrNull { it.equals(requested, true) }?.let { selectedCategory = it } }
+        if (revealedCategory != selectedCategory) {
+            allCategories.distinct().indexOf(selectedCategory).takeIf { it >= 0 }?.let { categoryListState.animateScrollToItem(it) }
+            revealedCategory = selectedCategory
         }
-        lastObservedSelection = selectedBrushId
-    }
-    LaunchedEffect(selectedCategory) {
-        if (usage.category != selectedCategory) onUsage(usage.copy(category = selectedCategory))
     }
     val usableLibraryBrushes = remember(systemBrushes, usableImportedBrushes) {
         BrushLibraryInventory.selectable(systemBrushes, usableImportedBrushes)
@@ -8810,16 +8802,28 @@ private fun ProcreateBrushLibrary(
         if (managingBrushes && selectedBrushIds.isEmpty()) managingBrushes = false
     }
     var quickPropertiesOpen by remember { mutableStateOf(false) }
-    val presetListState = rememberLazyListState()
-    val presetGridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
-    LaunchedEffect(selectedBrushId, selectedCategory, gridLayout) {
-        val selectedIndex = displayed.indexOfFirst { it.id == selectedBrushId }
-        if (selectedIndex >= 0) {
-            if (gridLayout) {
-                if (presetGridState.layoutInfo.visibleItemsInfo.none { it.index == selectedIndex }) presetGridState.scrollToItem(selectedIndex)
-            } else if (presetListState.layoutInfo.visibleItemsInfo.none { it.index == selectedIndex }) {
-                presetListState.scrollToItem(selectedIndex)
-            }
+    val listKey = "list:$selectedCategory"
+    val gridKey = "grid:$selectedCategory"
+    val presetListState = remember(selectedCategory) {
+        val saved = usage.scrollPositions[listKey]
+        androidx.compose.foundation.lazy.LazyListState(saved?.index?.coerceAtLeast(0) ?: 0, saved?.offset?.coerceAtLeast(0) ?: 0)
+    }
+    val presetGridState = remember(selectedCategory) {
+        val saved = usage.scrollPositions[gridKey]
+        androidx.compose.foundation.lazy.grid.LazyGridState(saved?.index?.coerceAtLeast(0) ?: 0, saved?.offset?.coerceAtLeast(0) ?: 0)
+    }
+    val currentUsage by rememberUpdatedState(usage)
+    val currentOnUsage by rememberUpdatedState(onUsage)
+    DisposableEffect(selectedCategory, presetListState, presetGridState) {
+        onDispose {
+            currentOnUsage(currentUsage.copy(
+                category = selectedCategory,
+                scrollPositions = currentUsage.scrollPositions + mapOf(
+                    listKey to app.inkloom.settings.BrushLibraryScrollPosition(presetListState.firstVisibleItemIndex, presetListState.firstVisibleItemScrollOffset),
+                    gridKey to app.inkloom.settings.BrushLibraryScrollPosition(presetGridState.firstVisibleItemIndex, presetGridState.firstVisibleItemScrollOffset),
+                ),
+                categoryScroll = app.inkloom.settings.BrushLibraryScrollPosition(categoryListState.firstVisibleItemIndex, categoryListState.firstVisibleItemScrollOffset),
+            ))
         }
     }
 
@@ -8941,9 +8945,10 @@ private fun ProcreateBrushLibrary(
                 }
                 HorizontalDivider(color = OutlineSoft)
             }
-            Row(Modifier.weight(1f)) {
+            BrushLibrarySplitLayout(settings.brushCategoryWidthDp,onBrushCategoryWidth,
+                tr("Resize brush categories", "调整笔刷分类栏宽度"),Modifier.weight(1f)) { categoryWidth, divider ->
                 LazyColumn(
-                    Modifier.width(120.dp).fillMaxHeight().background(Color.White).border(1.dp, OutlineSoft),
+                    Modifier.width(categoryWidth).fillMaxHeight().background(Color.White).border(1.dp, OutlineSoft),
                     state = categoryListState,
                     contentPadding = PaddingValues(vertical = 7.dp),
                 ) {
@@ -9059,6 +9064,7 @@ private fun ProcreateBrushLibrary(
                         }
                     }
                 }
+                divider()
                 if (selectedCategory == recentCategory && displayed.isEmpty()) Box(
                     Modifier.weight(1f).fillMaxHeight().padding(20.dp), contentAlignment = Alignment.Center,
                 ) {

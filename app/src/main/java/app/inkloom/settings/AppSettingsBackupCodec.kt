@@ -68,7 +68,7 @@ object AppSettingsBackupCodec {
         put("panelTabOrder", WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(panelTabOrder)))
         put("pagePanelXDp", pagePanelXDp); put("pagePanelYDp", pagePanelYDp); put("pagePanelWidthDp", pagePanelWidthDp); put("pagePanelHeightDp", pagePanelHeightDp)
         put("brushGridLayout", brushGridLayout)
-        put("brushPanelXDp", brushPanelXDp); put("brushPanelYDp", brushPanelYDp); put("brushPanelWidthDp", brushPanelWidthDp); put("brushPanelHeightDp", brushPanelHeightDp)
+        put("brushPanelXDp", brushPanelXDp); put("brushPanelYDp", brushPanelYDp); put("brushPanelWidthDp", brushPanelWidthDp); put("brushCategoryWidthDp",brushCategoryWidthDp); put("brushPanelHeightDp", brushPanelHeightDp)
         put("layerPanelXDp", layerPanelXDp); put("layerPanelYDp", layerPanelYDp); put("layerPanelWidthDp", layerPanelWidthDp); put("layerPanelHeightDp", layerPanelHeightDp)
         put("toolbarOffsetXDp", toolbarOffsetXDp); put("toolbarOffsetYDp", toolbarOffsetYDp); put("verticalToolbar", verticalToolbar); put("toolbarDock", toolbarDock.name)
         put("singleFingerDoubleTapUndo", singleFingerDoubleTapUndo); put("twoFingerDoubleTapUndo", twoFingerDoubleTapUndo); put("threeFingerTapRedo", threeFingerTapRedo); put("twoFingerRotation", twoFingerRotation)
@@ -115,6 +115,7 @@ object AppSettingsBackupCodec {
             pagePanelWidthDp = float("pagePanelWidthDp", defaults.pagePanelWidthDp).coerceIn(80f, 1200f), pagePanelHeightDp = float("pagePanelHeightDp", defaults.pagePanelHeightDp).coerceIn(120f, 1600f),
             brushPanelXDp = float("brushPanelXDp", defaults.brushPanelXDp).coerceIn(-2400f, 2400f), brushPanelYDp = float("brushPanelYDp", defaults.brushPanelYDp).coerceIn(-2400f, 2400f),
             brushGridLayout = boolean("brushGridLayout", defaults.brushGridLayout),
+            brushCategoryWidthDp = float("brushCategoryWidthDp",defaults.brushCategoryWidthDp).coerceIn(80f,360f),
             brushPanelWidthDp = float("brushPanelWidthDp", defaults.brushPanelWidthDp).coerceIn(80f, 1200f), brushPanelHeightDp = float("brushPanelHeightDp", defaults.brushPanelHeightDp).coerceIn(120f, 1600f),
             layerPanelXDp = float("layerPanelXDp", defaults.layerPanelXDp).coerceIn(-2400f, 2400f), layerPanelYDp = float("layerPanelYDp", defaults.layerPanelYDp).coerceIn(-2400f, 2400f),
             layerPanelWidthDp = float("layerPanelWidthDp", defaults.layerPanelWidthDp).coerceIn(80f, 1200f), layerPanelHeightDp = float("layerPanelHeightDp", defaults.layerPanelHeightDp).coerceIn(120f, 1600f),

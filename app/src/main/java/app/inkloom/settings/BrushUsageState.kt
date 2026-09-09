@@ -2,6 +2,9 @@ package app.inkloom.settings
 
 import kotlinx.serialization.Serializable
 
+@Serializable
+data class BrushLibraryScrollPosition(val index: Int = 0, val offset: Int = 0)
+
 /** Library references only: using, pinning or clearing a brush never changes its preset. */
 @Serializable
 data class BrushUsageState(
@@ -10,6 +13,8 @@ data class BrushUsageState(
     val category: String? = null,
     val lastPaintBrushId: String? = null,
     val lastEraserBrushId: String? = null,
+    val scrollPositions: Map<String, BrushLibraryScrollPosition> = emptyMap(),
+    val categoryScroll: BrushLibraryScrollPosition = BrushLibraryScrollPosition(),
 ) {
     fun used(id: String, eraser: Boolean? = null): BrushUsageState {
         if (id.isBlank()) return this

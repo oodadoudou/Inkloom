@@ -13,6 +13,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.semantics.SemanticsActions
@@ -39,6 +41,7 @@ class BrushMasterSettingsWindowTest {
                 .putString("language", "ENGLISH").putInt("studioWorkspaceVersion", 2)
                 .putBoolean("showBrushPanel", false).putBoolean("showLayerPanel", false)
                 .putBoolean("showPageRail", false).commit()
+            app.inkloom.settings.BrushUsageStore(context).save(app.inkloom.settings.BrushUsageState())
             context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE).edit().clear().commit()
             context.getSharedPreferences("brush_preset_sizes", Context.MODE_PRIVATE).edit().clear().commit()
             context.filesDir.resolve("library.json").delete()
@@ -275,6 +278,68 @@ class BrushMasterSettingsWindowTest {
         val rightAfter=bounds("Resize brushes panel · right edge").right
         val density=context.resources.displayMetrics.density
         assertEquals(saved,(rightAfter-leftAfter)/density,1f)
+    }
+
+    @Test fun categorySplitterDragsAndPersistsIndependentlyOfWindowWidth() {
+        openPencil()
+        val prefs=context.getSharedPreferences("inkloom_settings",Context.MODE_PRIVATE)
+        val outer=prefs.getFloat("brushPanelWidthDp",400f)
+        val divider=center("Resize brush categories")
+        stroke(divider,divider+Offset(120f,0f))
+        compose.waitForIdle()
+        val width=prefs.getFloat("brushCategoryWidthDp",120f)
+        assertTrue("Category drag must widen the column: $width",width>145f)
+        assertEquals(outer,prefs.getFloat("brushPanelWidthDp",400f),.01f)
+        tap("Close brushes panel");tap("Brushes")
+        assertEquals(width,prefs.getFloat("brushCategoryWidthDp",0f),.01f)
+        compose.activityRule.scenario.recreate();compose.waitForIdle()
+        val category=bounds("Brush category Pencil")
+        assertEquals(width,category.width()/context.resources.displayMetrics.density,1f)
+        val handle=center("Resize brush categories")
+        stroke(handle,handle-Offset(70f,0f))
+        assertTrue(prefs.getFloat("brushCategoryWidthDp",120f)<width-15f)
+    }
+
+    @Test fun selectingAnImportedBrushLeavesAllRowsInPlace() {
+        openPencil()
+        val records=listOf("A","B","C").map { name ->
+            app.inkloom.brushpresetv5.BrushPresetV5Import.createUserRecord(app.inkloom.model.ImportedBrush(
+                id="stable-$name",name="Stable $name",format=app.inkloom.model.BrushFormat.INKLOOM,
+                compatibility=app.inkloom.model.Compatibility.COMPLETE,sizeBytes=0,report=emptyList(),groupName="Stable"))
+        }
+        BrushMetadataStore(context).save(records)
+        compose.activityRule.scenario.recreate();compose.waitForIdle()
+        tap("Brush category Imported")
+        val before=records.map { bounds("Brush preset ${it.name}") }
+        tap("Brush preset Stable C")
+        val after=records.map { bounds("Brush preset ${it.name}") }
+        assertEquals(before,after)
+        tap("Close brushes panel");tap("Brushes")
+        assertEquals(before,records.map { bounds("Brush preset ${it.name}") })
+    }
+
+    @Test fun reopeningBrushesRestoresBrowsedCategoryAndScrollInsteadOfSelectedBrush() {
+        openPencil()
+        val records = (0..39).map { i ->
+            app.inkloom.brushpresetv5.BrushPresetV5Import.createUserRecord(app.inkloom.model.ImportedBrush(
+                id = "browse-$i", name = "Browse $i", format = app.inkloom.model.BrushFormat.INKLOOM,
+                compatibility = app.inkloom.model.Compatibility.COMPLETE, sizeBytes = 0,
+                report = emptyList(), groupName = "Browsing"))
+        }
+        BrushMetadataStore(context).save(records)
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        tap("Brush category Imported")
+        // Browse far from the active factory pencil without selecting another preset.
+        compose.onNodeWithContentDescription("Brush presets").performScrollToIndex(25)
+        compose.waitForIdle()
+        val before = bounds("Brush preset Browse 25")
+        tap("Close brushes panel"); tap("Brushes")
+        assertEquals(before, bounds("Brush preset Browse 25"))
+        val usage = app.inkloom.settings.BrushUsageStore(context).load()
+        assertEquals("Imported", usage.category)
+        assertTrue(usage.scrollPositions.getValue("list:Imported").index > 0)
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        assertEquals(before, bounds("Brush preset Browse 25"))
     }
 
     @Test fun advancedMotionControlsSaveThroughTheActualStudioWindow() {

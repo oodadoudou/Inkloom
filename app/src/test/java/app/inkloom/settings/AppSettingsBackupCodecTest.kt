@@ -42,6 +42,7 @@ class AppSettingsBackupCodecTest {
             brushPanelXDp = 333f,
             brushGridLayout = true,
             brushPanelWidthDp = 527f,
+            brushCategoryWidthDp = 218f,
             toolbarDock = ToolbarDock.LEFT,
             singleFingerDoubleTapUndo = true,
             twoFingerRotation = true,

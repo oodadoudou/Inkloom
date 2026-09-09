@@ -58,6 +58,7 @@ class BrushBatchManagementTest {
                     .putString("language", "ENGLISH")
                     .putInt("studioWorkspaceVersion", 2)
                     .putBoolean("showBrushPanel", false)
+                    .putBoolean("brushGridLayout", false)
                     .putBoolean("showLayerPanel", false)
                     .putBoolean("showPageRail", false)
                     .putString("brushPanelDock", "RIGHT")
@@ -66,6 +67,7 @@ class BrushBatchManagementTest {
                 val scrollingFixtures = if (description.methodName in setOf("ordinaryListAndGridSwipesOnlyScrollBrushes", "partlyClippedHandleUsesTheActualPointerDropPosition", "partlyClippedGridHandleUsesTheActualPointerDropPosition")) List(30) {
                     brush("scroll-$it", "Scroll %02d".format(it), "Source", it + 2)
                 }.map(BrushPresetV5Import::convertDecodedSource) else emptyList()
+                app.inkloom.settings.BrushUsageStore(context).save(app.inkloom.settings.BrushUsageState())
                 BrushMetadataStore(context).save(sourceBrushes + scrollingFixtures)
                 BrushGroupStore(context).save(emptyList())
                 try {
