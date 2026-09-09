@@ -9502,7 +9502,7 @@ private fun SettingsDialog(
                 }
                 HorizontalDivider(color = OutlineSoft)
                 key(settingsTab) {
-                LazyColumn(Modifier.heightIn(max = 560.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(top = 12.dp)) {
+                LazyColumn(Modifier.heightIn(max = 560.dp).semantics { contentDescription = "Settings content" }, verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(top = 12.dp)) {
                 if (settingsTab == 0) {
                 item { Text(tr("LANGUAGE", "语言"), color = Sage, fontSize = 12.sp) }
                 item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

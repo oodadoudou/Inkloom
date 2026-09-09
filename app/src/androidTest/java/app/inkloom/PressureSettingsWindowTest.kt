@@ -43,7 +43,8 @@ class PressureSettingsWindowTest {
 
     @Test fun curveDragCommitsOnceAndScratchpadUsesProductionPressure() {
         tap("Settings")
-        compose.onNode(hasScrollAction() and hasAnyAncestor(isDialog())).performScrollToNode(hasContentDescription("Editable pressure curve"))
+        tap("Pressure")
+        compose.onNodeWithContentDescription("Settings content").performScrollToNode(hasContentDescription("Editable pressure curve"))
         val graph = center("Editable pressure curve")
         val preferences = instrumentation.targetContext.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
         var writes = 0
@@ -55,7 +56,7 @@ class PressureSettingsWindowTest {
         assertNotEquals(app.inkloom.document.PressureResponseCurve.LINEAR, settings.pressureResponseCurve)
         assertEquals(6, settings.pressureResponseCurve.size)
         assertTrue("Input coordinate must move horizontally", settings.pressureResponseCurve[2] > .5f)
-        compose.onNode(hasScrollAction() and hasAnyAncestor(isDialog())).performScrollToNode(hasText("Reset pressure settings"))
+        compose.onNodeWithContentDescription("Settings content").performScrollToNode(hasText("Reset pressure settings"))
         val view = canvas()
         assertEquals(settings.pressureResponseCurve, view.pressureResponseCurve)
         stroke(pagePoint(view, .2f, .4f), pagePoint(view, .8f, .4f))
@@ -70,7 +71,8 @@ class PressureSettingsWindowTest {
 
     @Test fun pressurePointCanBeAddedAndRemovedWithoutLeavingTheGraph() {
         tap("Settings")
-        compose.onNode(hasScrollAction() and hasAnyAncestor(isDialog())).performScrollToNode(hasContentDescription("Editable pressure curve"))
+        tap("Pressure")
+        compose.onNodeWithContentDescription("Settings content").performScrollToNode(hasContentDescription("Editable pressure curve"))
         compose.onNodeWithContentDescription("Editable pressure curve").performTouchInput { click(center) }
         compose.waitForIdle()
         assertEquals(6, app.inkloom.settings.AppSettingsStore(instrumentation.targetContext).load().pressureResponseCurve.size)
@@ -86,12 +88,13 @@ class PressureSettingsWindowTest {
 
     @Test fun globalStabilizationSliderPersistsAndReachesTheTestCanvas() {
         tap("Settings")
+        tap("Pressure")
         val label = "Global stabilization (%) slider"
-        compose.onNode(hasScrollAction() and hasAnyAncestor(isDialog())).performScrollToNode(hasContentDescription(label))
+        compose.onNodeWithContentDescription("Settings content").performScrollToNode(hasContentDescription(label))
         tap(label)
         val settings = app.inkloom.settings.AppSettingsStore(instrumentation.targetContext).load()
         assertTrue(settings.globalStrokeStabilization > 0f)
-        compose.onNode(hasScrollAction() and hasAnyAncestor(isDialog())).performScrollToNode(hasText("Reset pressure settings"))
+        compose.onNodeWithContentDescription("Settings content").performScrollToNode(hasText("Reset pressure settings"))
         assertEquals(settings.globalStrokeStabilization, canvas().globalStrokeStabilization, 0f)
         val view = canvas()
         stroke(pagePoint(view, .2f, .4f), pagePoint(view, .8f, .4f))
