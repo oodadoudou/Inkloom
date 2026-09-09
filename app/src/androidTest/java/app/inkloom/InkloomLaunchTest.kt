@@ -431,17 +431,14 @@ class InkloomLaunchTest {
     @Test fun settingsExposeConflictSafeFullLibraryBackup() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
         composeRule.waitForIdle()
-        // The backup actions are the final two rows in the current V5-only settings schema.
-        // Scroll to the last semantics item before resolving the lazily composed labels.
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger")))
-            .performScrollToIndex(39)
+        composeRule.onNodeWithText("Backup").performClick()
         composeRule.onNodeWithText("Export full library backup").assertIsDisplayed()
         composeRule.onNodeWithText("Restore library backup").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun shortcutEditorExposesPortableToolboxProfiles() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(37)
+        composeRule.onNodeWithText("Buttons").performClick()
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNodeWithText("Search actions or keys").assertIsDisplayed()
         composeRule.onNodeWithText("Brush groups").assertIsDisplayed()
@@ -454,7 +451,7 @@ class InkloomLaunchTest {
 
     @Test fun shortcutEditorMapsCspRolesToRealBrushGroups() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(37)
+        composeRule.onNodeWithText("Buttons").performClick()
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(14)
         composeRule.onNodeWithText("BRUSH GROUP TARGETS").assertIsDisplayed()
@@ -466,7 +463,7 @@ class InkloomLaunchTest {
 
     @Test fun shortcutEditorConfiguresAnArbitraryGroupQuickSlot() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(37)
+        composeRule.onNodeWithText("Buttons").performClick()
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(14)
         composeRule.onNodeWithText("Configure 8 quick slots").performClick()
@@ -483,7 +480,7 @@ class InkloomLaunchTest {
 
     @Test fun shortcutEditorConfiguresRotaryBrushSizeControl() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(37)
+        composeRule.onNodeWithText("Buttons").performClick()
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(5)
         composeRule.onNodeWithContentDescription("Rotary / touch ring quick slot value").performClick()
@@ -862,7 +859,7 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Layers").performClick()
         composeRule.onNodeWithContentDescription("Add layer").performClick()
         composeRule.onAllNodes(hasContentDescription("Layer actions")).onFirst().performClick()
-        composeRule.onNodeWithText("Duplicate layer").performClick()
+        composeRule.onNodeWithText("Duplicate").performClick()
 
         composeRule.onNodeWithText("Layer 1 copy").assertIsDisplayed()
         composeRule.onAllNodes(hasContentDescription("Layer actions")).onFirst().performClick()
@@ -1057,14 +1054,16 @@ class InkloomLaunchTest {
     @Test fun layerPanelCreatesFoldersMovesLayersAndCollapsesChildren() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Layers").performClick()
-        composeRule.onNodeWithContentDescription("Add layer folder").performClick()
+        composeRule.onNodeWithContentDescription("Add layer group").performClick()
         composeRule.onNodeWithContentDescription("Add layer").performClick()
 
         composeRule.onNodeWithText("Folder 1").assertIsDisplayed()
         composeRule.onNodeWithText("Layer 1").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Move layer to folder Layer 1").performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onNodeWithText("Layer 1").performClick()
+        composeRule.onNodeWithText("Move into Folder 1").performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Collapse folder").performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onNodeWithText("Folder 1").performClick()
+        composeRule.onNodeWithText("Collapse folder").performClick()
         composeRule.waitForIdle()
 
         assertTrue(composeRule.onAllNodes(hasText("Layer 1")).fetchSemanticsNodes().isEmpty())
@@ -1077,7 +1076,44 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Add layer").performClick()
 
         composeRule.onNodeWithText("Layer 1").assertIsDisplayed()
-        composeRule.onAllNodesWithText("Paint layer").onLast().assertIsDisplayed()
+        val view = requireNotNull(findInkCanvasView())
+        composeRule.runOnIdle {
+            val store = FileDocumentStore(composeRule.activity.filesDir)
+            val layer = store.list().flatMap { it.pages }.flatMap { it.layers }.single { it.id == view.activeLayerId }
+            assertEquals(app.inkloom.document.LayerRole.CUSTOM, layer.role)
+            assertEquals("Layer 1", layer.name)
+        }
+    }
+
+    @Test fun layerPanelDisclosesSettingsAndSupportsSwipeAndLongPressReorder() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Layers").performClick()
+        assertTrue(composeRule.onAllNodesWithText("Opacity").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithContentDescription("Add layer").performClick()
+        composeRule.onNodeWithContentDescription("Layer blending Layer 1").performClick()
+        composeRule.onNodeWithText("Opacity").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Layer blending Layer 1").performClick()
+        composeRule.onNodeWithContentDescription("Add layer").performClick()
+        val source = composeRule.onNodeWithContentDescription("Reorder layer Layer 2")
+        val target = composeRule.onNodeWithContentDescription("Reorder layer Layer 1")
+        val delta = target.fetchSemanticsNode().boundsInRoot.center.y - source.fetchSemanticsNode().boundsInRoot.center.y
+        source.performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveBy(Offset(0f, delta / 2))
+            advanceEventTime(50)
+            moveBy(Offset(0f, delta / 2))
+            up()
+        }
+        composeRule.waitForIdle()
+        assertTrue(composeRule.onNodeWithText("Layer 2").fetchSemanticsNode().boundsInRoot.top >
+            composeRule.onNodeWithText("Layer 1").fetchSemanticsNode().boundsInRoot.top)
+        composeRule.onNodeWithContentDescription("Reorder layer Layer 2").performTouchInput {
+            swipe(centerRight, centerLeft, 250)
+        }
+        composeRule.onNodeWithText("Duplicate").assertIsDisplayed()
+        composeRule.onNodeWithText("Duplicate").performClick()
+        composeRule.onNodeWithText("Layer 2 copy").assertIsDisplayed()
     }
 
     private fun findInkCanvasView(): InkCanvasView? {
