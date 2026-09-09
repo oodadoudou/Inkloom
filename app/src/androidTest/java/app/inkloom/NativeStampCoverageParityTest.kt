@@ -59,8 +59,18 @@ class NativeStampCoverageParityTest {
                 val dy = y + .5f - cy
                 val localX = cosine * dx + sine * dy
                 val localY = -sine * dx + cosine * dy
-                var coverage = tip.coverageAtLevel((localX / rx + 1f) * .5f,
-                    (localY / ry + 1f) * .5f, level) * alpha
+                val uTip = (localX / rx + 1f) * .5f
+                val vTip = (localY / ry + 1f) * .5f
+                var coverage = if (rx >= 1f && ry >= 1f) {
+                    tip.coverageAtLevel(uTip, vTip, level)
+                } else {
+                    val footprint = kotlin.math.abs(cosine) + kotlin.math.abs(sine)
+                    fun overlap(position: Float, radius: Float) =
+                        (minOf(position + footprint * .5f, radius) - maxOf(position - footprint * .5f, -radius))
+                            .coerceAtLeast(0f) / footprint
+                    tip.coverageAtLevel(uTip.coerceIn(0f, 1f), vTip.coerceIn(0f, 1f), level) *
+                        (overlap(localX, rx) * overlap(localY, ry))
+                } * alpha
                 if (coverage <= 0f) continue
                 if (hasGrain) {
                     val gx = x + .5f - cx * (1f - movement)

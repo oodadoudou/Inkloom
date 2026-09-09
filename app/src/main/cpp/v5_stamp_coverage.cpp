@@ -20,6 +20,21 @@ float sample(const jbyte* alpha, int width, int height, float u, float v) {
     const float top = a + (b - a) * tx, bottom = c + (d - c) * tx;
     return (top + (bottom - top) * ty) * (1.0f / 255.0f);
 }
+float stamp_sample(const jbyte* alpha, int width, int height, float local_x, float local_y,
+                   float radius_x, float radius_y, float cosine, float sine) {
+    const float u = (local_x / radius_x + 1.0f) * 0.5f;
+    const float v = (local_y / radius_y + 1.0f) * 0.5f;
+    if (radius_x >= 1.0f && radius_y >= 1.0f) return sample(alpha, width, height, u, v);
+    const float footprint = std::abs(cosine) + std::abs(sine);
+    if (!(footprint > 0.0f)) return 0.0f;
+    auto overlap = [footprint](float position, float radius) {
+        return std::max(0.0f, std::min(position + footprint * 0.5f, radius) -
+            std::max(position - footprint * 0.5f, -radius)) / footprint;
+    };
+    const float area = overlap(local_x, radius_x) * overlap(local_y, radius_y);
+    if (area <= 0.0f) return 0.0f;
+    return sample(alpha, width, height, std::clamp(u, 0.0f, 1.0f), std::clamp(v, 0.0f, 1.0f)) * area;
+}
 bool valid_mask(JNIEnv* env, jbyteArray array, int width, int height) {
     return array != nullptr && width > 0 && height > 0 &&
         static_cast<std::int64_t>(width) * height <= env->GetArrayLength(array);
@@ -70,9 +85,8 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeAccumulateStampCoverage(
         const float dx = px - center_x, dy = py - center_y;
         const float local_x = cosine * dx + sine * dy;
         const float local_y = -sine * dx + cosine * dy;
-        float coverage = sample(tip, tip_width, tip_height,
-            (local_x / radius_x + 1.0f) * 0.5f,
-            (local_y / radius_y + 1.0f) * 0.5f) * deposited_alpha;
+        float coverage = stamp_sample(tip, tip_width, tip_height, local_x, local_y,
+            radius_x, radius_y, cosine, sine) * deposited_alpha;
         if (coverage <= 0.0f) continue;
         if (grain != nullptr) {
             const float gx = px - center_x * (1.0f - grain_movement);
@@ -207,9 +221,8 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeDepositUniformStamp(
         const float dx = px - center_x, dy = py - center_y;
         const float local_x = cosine * dx + sine * dy;
         const float local_y = -sine * dx + cosine * dy;
-        float coverage = sample(tip, tip_width, tip_height,
-            (local_x / radius_x + 1.0f) * 0.5f,
-            (local_y / radius_y + 1.0f) * 0.5f) * deposited_alpha;
+        float coverage = stamp_sample(tip, tip_width, tip_height, local_x, local_y,
+            radius_x, radius_y, cosine, sine) * deposited_alpha;
         if (coverage <= 0.0f) continue;
         if (grain != nullptr) {
             const float gx = px - center_x * (1.0f - grain_movement);
