@@ -2038,7 +2038,7 @@ private fun EditorScreen(
                             text = {
                                 Column(Modifier.width(230.dp)) {
                                     Text(tr("Selection brush size · ${settings.selectionBrushSize.toInt()}", "选区画笔大小 · ${settings.selectionBrushSize.toInt()}"), fontSize = 11.sp)
-                                    Slider(settings.selectionBrushSize, { onSettingsChange(settings.copy(selectionBrushSize = it)) }, valueRange = 4f..300f)
+                                    BrushParameterSlider(settings.selectionBrushSize, { onSettingsChange(settings.copy(selectionBrushSize = it)) }, valueRange = 4f..300f)
                                 }
                             },
                             onClick = {},
@@ -2047,7 +2047,7 @@ private fun EditorScreen(
                             text = {
                                 Column(Modifier.width(230.dp)) {
                                     Text(tr("Recognition threshold · ${(settings.selectionThreshold * 100).toInt()}%", "识别阈值 · ${(settings.selectionThreshold * 100).toInt()}%"), fontSize = 11.sp)
-                                    Slider(settings.selectionThreshold, { onSettingsChange(settings.copy(selectionThreshold = it)) }, valueRange = 0f..1f)
+                                    BrushParameterSlider(settings.selectionThreshold, { onSettingsChange(settings.copy(selectionThreshold = it)) }, valueRange = 0f..1f)
                                 }
                             },
                             onClick = {},
@@ -2192,7 +2192,7 @@ private fun EditorScreen(
                             text = {
                                 Column(Modifier.width(230.dp)) {
                                     Text(tr("Guide spacing · ${settings.specialRulerSpacing.toInt()}", "辅助线间距 · ${settings.specialRulerSpacing.toInt()}"), fontSize = 11.sp)
-                                    Slider(settings.specialRulerSpacing, { onSettingsChange(settings.copy(specialRulerSpacing = it)) }, valueRange = 16f..240f)
+                                    BrushParameterSlider(settings.specialRulerSpacing, { onSettingsChange(settings.copy(specialRulerSpacing = it)) }, valueRange = 16f..240f)
                                 }
                             },
                             onClick = {},
@@ -6247,14 +6247,14 @@ private fun GradientToolControls(settings: AppSettings, brushColor: Int, onBrush
     }
     if (settings.gradientKind == GradientKind.ELLIPSE) {
         Text("${tr("Ellipse thickness", "椭圆厚度")} · ${(settings.gradientEllipseRatio * 100).toInt()}%", color = MutedInk, fontSize = 11.sp)
-        Slider(settings.gradientEllipseRatio, { onSettingsChange(settings.copy(gradientEllipseRatio = it)) }, valueRange = .1f..1f)
+        BrushParameterSlider(settings.gradientEllipseRatio, { onSettingsChange(settings.copy(gradientEllipseRatio = it)) }, valueRange = .1f..1f)
     }
     HorizontalDivider()
     Text(tr("Color stops", "颜色节点"), color = MutedInk, fontSize = 11.sp)
     stops.forEachIndexed { index, stop ->
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("${(stop.position * 100).toInt()}%", Modifier.width(34.dp), fontSize = 9.sp, color = MutedInk)
-            Slider(
+            BrushParameterSlider(
                 value = stop.position,
                 onValueChange = { position ->
                     if (index in 1 until stops.lastIndex) updateStops(stops.toMutableList().also { it[index] = stop.copy(position = position) })
@@ -6622,7 +6622,7 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
                     }
                     if (tool !in setOf(EditorTool.ERASER, EditorTool.LIQUIFY)) {
                         Text("${tr("Opacity", "不透明度")}  ${(brushOpacity * 100).toInt()}%", color = MutedInk, fontSize = 12.sp)
-                        Slider(value = brushOpacity, onValueChange = onOpacity, valueRange = .05f..1f)
+                        BrushParameterSlider(value = brushOpacity, onValueChange = onOpacity, valueRange = .05f..1f)
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(tr("Color", "颜色"), Modifier.weight(1f), color = MutedInk); BrushColorPicker(brushColor, onColor) }
                     }
                 }
@@ -6740,7 +6740,7 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
                     }
                     Text("${tr("Correction strength", "修正强度")}  ${(correctLineAmount * 100).toInt()}%", color = MutedInk, fontSize = 12.sp)
                     val correctionStrengthDescription = tr("Line correction strength", "线条修正强度")
-                    Slider(
+                    BrushParameterSlider(
                         value = correctLineAmount,
                         onValueChange = onCorrectLineAmount,
                         valueRange = 0f..1f,
@@ -6828,9 +6828,9 @@ private fun BrushColorPicker(color: Int, onColor: (Int) -> Unit, square: Boolean
         text = {
             LazyColumn(Modifier.widthIn(min = 340.dp, max = 520.dp).heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(54.dp).clip(CircleShape).background(Color(customColor)).border(1.dp, OutlineSoft, CircleShape)); Spacer(Modifier.width(12.dp)); Text("#${customColor.toUInt().toString(16).padStart(8, '0').uppercase()}") } }
-                item { Text("${tr("Hue", "色相")}  ${hue.toInt()}°"); Slider(hue, { hue = it }, valueRange = 0f..360f) }
-                item { Text("${tr("Saturation", "饱和度")}  ${(saturation * 100).toInt()}%"); Slider(saturation, { saturation = it }, valueRange = 0f..1f) }
-                item { Text("${tr("Brightness", "明度")}  ${(brightness * 100).toInt()}%"); Slider(brightness, { brightness = it }, valueRange = 0f..1f) }
+                item { Text("${tr("Hue", "色相")}  ${hue.toInt()}°"); BrushParameterSlider(hue, { hue = it }, valueRange = 0f..360f) }
+                item { Text("${tr("Saturation", "饱和度")}  ${(saturation * 100).toInt()}%"); BrushParameterSlider(saturation, { saturation = it }, valueRange = 0f..1f) }
+                item { Text("${tr("Brightness", "明度")}  ${(brightness * 100).toInt()}%"); BrushParameterSlider(brightness, { brightness = it }, valueRange = 0f..1f) }
                 item { OutlinedButton(onClick = { customPalette = paletteStore.add(customColor) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text(tr("Add current color to palette", "将当前颜色加入色板")) } }
                 if (customPalette.isNotEmpty()) item {
                     Text(tr("Saved palette", "已保存色板"), color = MutedInk, fontSize = 11.sp)
@@ -7127,7 +7127,7 @@ private fun CspColorPanel(
 private fun CspFloatColorChannel(label: String, value: Float, range: ClosedFloatingPointRange<Float>, display: String, onValue: (Float) -> Unit, onFinished: () -> Unit) {
     Row(Modifier.fillMaxWidth().height(20.dp).padding(horizontal = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.width(18.dp), color = MutedInk, fontSize = 9.sp)
-        Slider(value.coerceIn(range.start, range.endInclusive), onValue, Modifier.weight(1f).height(19.dp), onValueChangeFinished = onFinished, valueRange = range)
+        BrushParameterSlider(value.coerceIn(range.start, range.endInclusive), onValue, Modifier.weight(1f).height(19.dp), onValueChangeFinished = onFinished, valueRange = range)
         Text(display, Modifier.width(34.dp), color = MutedInk, fontSize = 9.sp, textAlign = TextAlign.End)
     }
 }
@@ -7136,7 +7136,7 @@ private fun CspFloatColorChannel(label: String, value: Float, range: ClosedFloat
 private fun CspColorChannel(label: String, value: Int, onValue: (Int) -> Unit, onFinished: () -> Unit) {
     Row(Modifier.fillMaxWidth().height(20.dp).padding(horizontal = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.width(18.dp), color = MutedInk, fontSize = 9.sp)
-        Slider(value.toFloat(), { onValue(it.toInt().coerceIn(0, 255)) }, Modifier.weight(1f).height(19.dp), onValueChangeFinished = onFinished, valueRange = 0f..255f)
+        BrushParameterSlider(value.toFloat(), { onValue(it.toInt().coerceIn(0, 255)) }, Modifier.weight(1f).height(19.dp), onValueChangeFinished = onFinished, valueRange = 0f..255f)
         Text(value.toString(), Modifier.width(28.dp), color = MutedInk, fontSize = 9.sp, textAlign = TextAlign.End)
     }
 }
@@ -9518,7 +9518,7 @@ private fun SettingsDialog(
                 item { SettingSwitch(tr("Draw and hold", "停笔规整"), tr("Hold the pen down to regularize a line or curve. Keep holding to adjust its endpoint.", "画完线条后停住笔尖，规整成直线或曲线；继续按住可调整端点。"), settings.drawAndHoldEnabled) { onChange(settings.copy(drawAndHoldEnabled = it)) } }
                 if (settings.drawAndHoldEnabled) item {
                     Text(tr("Hold delay · ${settings.drawAndHoldDelayMillis} ms", "停笔时间 · ${settings.drawAndHoldDelayMillis} 毫秒"), fontSize = 12.sp)
-                    Slider(settings.drawAndHoldDelayMillis.toFloat(), { onChange(settings.copy(drawAndHoldDelayMillis = it.toLong())) },
+                    BrushParameterSlider(settings.drawAndHoldDelayMillis.toFloat(), { onChange(settings.copy(drawAndHoldDelayMillis = it.toLong())) },
                         valueRange = 300f..1500f, steps = 23, modifier = Modifier.semantics { contentDescription = "Draw and hold delay" })
                 }
                 item { SettingSwitch(tr("Single-finger double tap to undo", "单指双击撤销"), tr("Enabled by default. Only blank-canvas taps trigger it; drawing, dragging and links are excluded.", "默认开启；仅空白画布短触生效，书写、拖动和链接均不会触发。"), settings.singleFingerDoubleTapUndo) { onChange(settings.copy(singleFingerDoubleTapUndo = it)) } }
@@ -10224,11 +10224,11 @@ private fun FillOptionsLauncher(
                         }
                         HorizontalDivider()
                         Text("${tr("Tolerance", "容差")} ${(sensitivity * 100).toInt()}%", fontSize = 11.sp)
-                        Slider(sensitivity, onSensitivity, valueRange = 0f..1f)
+                        BrushParameterSlider(sensitivity, onSensitivity, valueRange = 0f..1f)
                         Text("${tr("Close gap", "闭合缝隙")} ${closeGapPixels.toInt()} px", fontSize = 11.sp)
-                        Slider(closeGapPixels, onCloseGap, valueRange = 0f..64f)
+                        BrushParameterSlider(closeGapPixels, onCloseGap, valueRange = 0f..64f)
                         Text("${tr("Area scaling", "区域缩放")} ${areaScalingPixels.toInt()} px", fontSize = 11.sp)
-                        Slider(areaScalingPixels, onAreaScaling, valueRange = -64f..64f)
+                        BrushParameterSlider(areaScalingPixels, onAreaScaling, valueRange = -64f..64f)
                     }
                 }
             }
@@ -10267,7 +10267,7 @@ private fun SelectionStudioPanel(
             title = { Text(tr("Feather selection", "羽化选区")) },
             text = { Column {
                 Text("${featherPixels.toInt()} px")
-                Slider(featherPixels.coerceIn(0f, 128f), onFeather, valueRange = 0f..128f,
+                BrushParameterSlider(featherPixels.coerceIn(0f, 128f), onFeather, valueRange = 0f..128f,
                     modifier = Modifier.semantics { contentDescription = "Selection feather radius" })
                 Text(tr("Preview soft edges on the canvas.", "在画布上预览柔化边缘。"))
             } },
@@ -10281,11 +10281,11 @@ private fun SelectionStudioPanel(
         text = { Column(Modifier.width(320.dp).heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
                             if (shape == SelectionShape.BRUSH) {
                                 Text("${tr("Brush size", "画笔大小")}  ${brushSize.toInt()} px")
-                                Slider(brushSize, onBrushSize, valueRange = 4f..300f)
+                                BrushParameterSlider(brushSize, onBrushSize, valueRange = 4f..300f)
                             }
                             if (shape in setOf(SelectionShape.MAGIC_WAND, SelectionShape.SMART_BORDER)) {
                                 Text("${tr("Threshold", "阈值")}  ${(threshold * 100).toInt()}%")
-                                Slider(threshold, onThreshold, valueRange = 0f..1f)
+                                BrushParameterSlider(threshold, onThreshold, valueRange = 0f..1f)
                                 Text(tr("Reference", "参照"))
                                 ReferenceTarget.entries.forEach { target ->
                                     TextButton(onClick = { onReferenceTarget(target) }, colors = ButtonDefaults.textButtonColors(contentColor = if (referenceTarget == target) Color(0xff1688f8) else Ink)) {
@@ -10298,10 +10298,10 @@ private fun SelectionStudioPanel(
                                 }
                             }
                             Text("${tr("Mask visibility", "蒙版可见度")}  ${(maskVisibility * 100).toInt()}%", fontSize = 12.sp)
-                            Slider(maskVisibility, onMaskVisibility, valueRange = 0f..1f,
+                            BrushParameterSlider(maskVisibility, onMaskVisibility, valueRange = 0f..1f,
                                 modifier = Modifier.semantics { contentDescription = "Selection mask visibility" })
                             Text("${tr("Amount", "调整量")}  ${amount.toInt()} px", fontSize = 12.sp)
-                            Slider(amount, { amount = it }, valueRange = 1f..128f)
+                            BrushParameterSlider(amount, { amount = it }, valueRange = 1f..128f)
                             Row {
                                 TextButton(onClick = { onExpand(amount) }, enabled = hasSelection) { Text(tr("Expand", "扩大")) }
                                 TextButton(onClick = { onShrink(amount) }, enabled = hasSelection) { Text(tr("Shrink", "缩小")) }
@@ -10420,9 +10420,16 @@ private fun SelectionLauncherButton(icon: ImageVector, description: String, onCl
 
 @Composable
 private fun SettingSwitch(title: String, subtitle: String?, checked: Boolean, onChecked: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) { Text(localizedBrushLabel(title)); if (subtitle != null) Text(localizedBrushLabel(subtitle), color = MutedInk, fontSize = 11.sp) }
-        Switch(checked = checked, onCheckedChange = onChecked)
+    var showHelp by remember(title) { mutableStateOf(false) }
+    Column {
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(localizedBrushLabel(title), Modifier.weight(1f), fontSize = 13.sp)
+            if (subtitle != null) IconButton({ showHelp = !showHelp }, Modifier.size(40.dp)) {
+                Icon(Icons.Outlined.Info, tr("About $title", "关于$title"), Modifier.size(17.dp), tint = MutedInk)
+            }
+            Switch(checked = checked, onCheckedChange = onChecked, modifier = Modifier.height(40.dp))
+        }
+        if (showHelp && subtitle != null) Text(localizedBrushLabel(subtitle), Modifier.padding(bottom = 8.dp), color = MutedInk, fontSize = 12.sp)
     }
 }
 

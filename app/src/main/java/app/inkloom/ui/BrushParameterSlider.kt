@@ -26,11 +26,13 @@ internal fun BrushParameterSlider(
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
     valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    steps: Int = 0,
+    enabled: Boolean = true,
     onValueChangeFinished: (() -> Unit)? = null,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
 ) {
     Slider(value = value, onValueChange = onValueChange,
-        modifier = modifier.fillMaxWidth().height(48.dp), valueRange = valueRange,
+        modifier = modifier.fillMaxWidth().height(48.dp), valueRange = valueRange, steps = steps, enabled = enabled,
         onValueChangeFinished = onValueChangeFinished, interactionSource = interactionSource,
         thumb = {
             Box(Modifier.size(18.dp).shadow(1.dp, CircleShape)
@@ -38,8 +40,8 @@ internal fun BrushParameterSlider(
         },
         track = { state ->
             SliderDefaults.Track(state, Modifier.height(3.dp),
-                colors = SliderDefaults.colors(activeTrackColor = Color(0xFF427658),
-                    inactiveTrackColor = Color(0xFFE1E5E2)),
+                colors = SliderDefaults.colors(activeTrackColor = app.inkloom.ui.theme.Sage,
+                    inactiveTrackColor = Color(0xFFE3E6EB)),
                 thumbTrackGapSize = 0.dp, trackInsideCornerSize = 1.5.dp,
                 drawStopIndicator = null)
         })
