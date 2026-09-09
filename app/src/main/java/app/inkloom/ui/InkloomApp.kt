@@ -1897,6 +1897,8 @@ private fun EditorScreen(
             ProcreateTopButton(Icons.Outlined.Layers, tr("Layers", "图层"), selected = layersOpen, onClick = {
                 setLayersPanelOpen(!layersOpen)
             })
+            ProcreateTopButton(Icons.Outlined.SwapHoriz, tr("Quick swap foreground and background colors", "快捷交换前景色和背景色"),
+                onClick = ::swapDrawingColors)
             Box {
                 Box(Modifier.size(44.dp).semantics { contentDescription = colorsDescription }, contentAlignment = Alignment.Center) {
                     Box(Modifier.size(32.dp)) {

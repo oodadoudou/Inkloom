@@ -39,6 +39,23 @@ class ColorWindowInputContractTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    @Test fun toolbarSwapWorksWithoutOpeningColorPanelAndKeepsBrushSelection() {
+        tap("New Note")
+        tap("Create")
+        val view = canvas()
+        val foreground = view.inkColor
+        val background = view.secondaryInkColor
+        val brush = view.brushId
+        tap("Quick swap foreground and background colors")
+        assertEquals(background, view.inkColor)
+        assertEquals(foreground, view.secondaryInkColor)
+        assertEquals(brush, view.brushId)
+        assertTrue("Shortcut must not open the color editor", !hasText("Primary color"))
+        tap("Quick swap foreground and background colors")
+        assertEquals(foreground, view.inkColor)
+        assertEquals(background, view.secondaryInkColor)
+    }
+
     @Test fun firstHueDownFromDefaultGraySurvivesSaturationAndKeepsPencil() {
         tap("New Note")
         tap("Create")
