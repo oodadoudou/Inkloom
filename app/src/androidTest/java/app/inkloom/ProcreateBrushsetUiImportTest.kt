@@ -75,6 +75,7 @@ class ProcreateBrushsetUiImportTest {
             assertTrue(waitForAccessibilityNode(5_000) { it.text?.toString()?.equals("Use this folder",true)==true && clickNodeOrAncestor(it) } != null)
             waitForAccessibilityNode(5_000) { it.text?.toString()?.equals("Allow",true)==true }?.let(::clickNodeOrAncestor)
             composeRule.waitUntil(120_000) { composeRule.onAllNodesWithText("Folder import result").fetchSemanticsNodes().isNotEmpty() }
+            assertTrue(composeRule.onAllNodesWithText("Broken.sut", substring = true).fetchSemanticsNodes().isNotEmpty())
             composeRule.onNodeWithText("Done").performClick()
             composeRule.onNodeWithContentDescription("Close brushes panel").performClick()
         }
@@ -192,6 +193,9 @@ class ProcreateBrushsetUiImportTest {
         expectedId: String,
         row: Float,
     ): BrushExecutionFingerprint {
+        // Drawing auto-closes the library. Reopen it through the same user-facing control.
+        if (composeRule.onAllNodesWithContentDescription("Close brushes panel").fetchSemanticsNodes().isEmpty())
+            composeRule.onNodeWithContentDescription("Brushes").performClick()
         composeRule.onNodeWithContentDescription("Brush presets")
             .performScrollToNode(hasContentDescription("Brush preset $name"))
         composeRule.onNodeWithContentDescription("Brush preset $name").performClick()
