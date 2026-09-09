@@ -9,6 +9,27 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class NativePremultipliedTileCompositeTest {
+    @Test fun fusedBitmapWriteMatchesAndroidSetPixelsForEveryAlphaAndChannel() {
+        val input = IntArray(65536) { index ->
+            val a = index / 256; val value = index % 256
+            (a shl 24) or (value shl 16) or ((255 - value) shl 8) or ((value * 73) % 256)
+        }
+        val preserved = input.copyOf()
+        val straight = input.copyOf()
+        assertTrue(NativeRasterOps.unpremultiplyInPlace(straight))
+        val expected = android.graphics.Bitmap.createBitmap(256, 256, android.graphics.Bitmap.Config.ARGB_8888)
+        val actual = android.graphics.Bitmap.createBitmap(256, 256, android.graphics.Bitmap.Config.ARGB_8888)
+        try {
+            expected.setPixels(straight, 0, 256, 0, 0, 256, 256)
+            assertTrue(NativeRasterOps.writePremultipliedBitmap(actual, input))
+            val expectedPixels = IntArray(input.size); val actualPixels = IntArray(input.size)
+            expected.getPixels(expectedPixels, 0, 256, 0, 0, 256, 256)
+            actual.getPixels(actualPixels, 0, 256, 0, 0, 256, 256)
+            assertArrayEquals(expectedPixels, actualPixels)
+            assertArrayEquals(preserved, input)
+        } finally { expected.recycle(); actual.recycle() }
+    }
+
     @Test fun nativePigmentPickupMatchesExactFloatReference() {
         for ((width, height) in listOf(1 to 1, 3 to 5, 26 to 26, 37 to 29, 256 to 64)) {
             val pixels = IntArray(width * height) { i -> i * 1664525 + 1013904223 }

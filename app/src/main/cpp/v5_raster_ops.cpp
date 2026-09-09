@@ -1245,3 +1245,32 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeSamplePigmentBuckets(
     env->ReleaseFloatArrayElements(output_array, output, 0);
     return JNI_TRUE;
 }
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeWritePremultipliedBitmap(
+    JNIEnv* env, jobject, jobject bitmap, jintArray pixels_array) {
+    if (!bitmap || !pixels_array) return JNI_FALSE;
+    const auto count = env->GetArrayLength(pixels_array);
+    LockedBitmap target(env, bitmap);
+    if (!target.pixels || target.info.format != ANDROID_BITMAP_FORMAT_RGBA_8888 ||
+        static_cast<std::uint64_t>(target.info.width) * target.info.height > static_cast<std::uint64_t>(count)) return JNI_FALSE;
+    const auto* source = static_cast<const jint*>(env->GetPrimitiveArrayCritical(pixels_array, nullptr));
+    if (!source) return JNI_FALSE;
+    for (std::uint32_t y = 0; y < target.info.height; ++y) {
+        auto* row = reinterpret_cast<std::uint32_t*>(target.pixels + y * target.info.stride);
+        for (std::uint32_t x = 0; x < target.info.width; ++x) {
+            const auto color = static_cast<std::uint32_t>(source[y * target.info.width + x]);
+            const auto a = color >> 24;
+            auto channel = [a](std::uint32_t value) {
+                if (a == 0) return 0u;
+                if (a == 255) return value;
+                const auto straight = std::min(255u, (value * 255 + a / 2) / a);
+                return (straight * a + 127) / 255;
+            };
+            row[x] = (a << 24) | (channel(color & 255) << 16) |
+                (channel((color >> 8) & 255) << 8) | channel((color >> 16) & 255);
+        }
+    }
+    env->ReleasePrimitiveArrayCritical(pixels_array, const_cast<jint*>(source), JNI_ABORT);
+    return JNI_TRUE;
+}

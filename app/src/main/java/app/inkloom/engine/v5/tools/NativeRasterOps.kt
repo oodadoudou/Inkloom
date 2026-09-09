@@ -233,6 +233,12 @@ internal object NativeRasterOps {
         left: Int, top: Int, right: Int, bottom: Int, mode: Int, color: Int, erase: Boolean,
     ): Boolean
 
+    /** Same quantization as unpremultiply + Bitmap.setPixels, in one bounded native write. */
+    fun writePremultipliedBitmap(bitmap: Bitmap, pixels: IntArray): Boolean =
+        nativeLibraryLoaded && bitmap.isMutable && nativeWritePremultipliedBitmap(bitmap, pixels)
+
+    private external fun nativeWritePremultipliedBitmap(bitmap: Bitmap, pixels: IntArray): Boolean
+
     fun unpremultiplyInPlace(pixels: IntArray): Boolean =
         nativeLibraryLoaded && nativeUnpremultiplyInPlace(pixels)
 

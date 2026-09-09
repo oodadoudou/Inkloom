@@ -232,15 +232,11 @@ internal object PixelTileBitmapAdapter {
     /** Materializes current unpublished gesture pixels from a write transaction. */
     fun render(transaction: PixelTileWriteTransaction, source: PixelRect): Bitmap {
         val output = transaction.copyPremultipliedPixels(source)
-        if (!NativeRasterOps.unpremultiplyInPlace(output)) {
-            var index = 0
-            while (index < output.size) {
-                output[index] = unpremultiply(output[index])
-                index++
-            }
-        }
         return Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888).also { bitmap ->
-            bitmap.setPixels(output, 0, source.width, 0, 0, source.width, source.height)
+            if (!NativeRasterOps.writePremultipliedBitmap(bitmap, output)) {
+                unpremultiplyPixels(output)
+                bitmap.setPixels(output, 0, source.width, 0, 0, source.width, source.height)
+            }
         }
     }
 
@@ -253,8 +249,10 @@ internal object PixelTileBitmapAdapter {
         require(bitmap.width == source.width && bitmap.height == source.height)
         require(pixels.size == source.width * source.height)
         snapshot.copyPremultipliedPixels(source, pixels)
-        unpremultiplyPixels(pixels)
-        bitmap.setPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+        if (!NativeRasterOps.writePremultipliedBitmap(bitmap, pixels)) {
+            unpremultiplyPixels(pixels)
+            bitmap.setPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+        }
     }
 
     fun renderInto(
@@ -266,8 +264,10 @@ internal object PixelTileBitmapAdapter {
         require(bitmap.width == source.width && bitmap.height == source.height)
         require(pixels.size == source.width * source.height)
         transaction.copyPremultipliedPixels(source, pixels)
-        unpremultiplyPixels(pixels)
-        bitmap.setPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+        if (!NativeRasterOps.writePremultipliedBitmap(bitmap, pixels)) {
+            unpremultiplyPixels(pixels)
+            bitmap.setPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+        }
     }
 
     /** Writes an Android bitmap into an active tile transaction without per-pixel JNI calls. */
