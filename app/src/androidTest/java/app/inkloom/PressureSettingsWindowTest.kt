@@ -68,6 +68,22 @@ class PressureSettingsWindowTest {
             app.inkloom.settings.AppSettingsStore(instrumentation.targetContext).load().pressureResponseCurve)
     }
 
+    @Test fun pressurePointCanBeAddedAndRemovedWithoutLeavingTheGraph() {
+        tap("Settings")
+        compose.onNode(hasScrollAction() and hasAnyAncestor(isDialog())).performScrollToNode(hasContentDescription("Editable pressure curve"))
+        compose.onNodeWithContentDescription("Editable pressure curve").performTouchInput { click(center) }
+        compose.waitForIdle()
+        assertEquals(6, app.inkloom.settings.AppSettingsStore(instrumentation.targetContext).load().pressureResponseCurve.size)
+        compose.onNodeWithContentDescription("Editable pressure curve").performTouchInput {
+            down(center)
+            moveTo(Offset(center.x, -80f))
+            up()
+        }
+        compose.waitForIdle()
+        assertEquals(app.inkloom.document.PressureResponseCurve.LINEAR,
+            app.inkloom.settings.AppSettingsStore(instrumentation.targetContext).load().pressureResponseCurve)
+    }
+
     @Test fun globalStabilizationSliderPersistsAndReachesTheTestCanvas() {
         tap("Settings")
         val label = "Global stabilization (%) slider"
