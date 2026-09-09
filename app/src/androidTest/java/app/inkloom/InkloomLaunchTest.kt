@@ -354,7 +354,7 @@ class InkloomLaunchTest {
         assertEquals(false, AppSettingsStore(composeRule.activity).load().bottomDockStacked)
 
         composeRule.onNodeWithContentDescription("Brushes").performClick()
-        composeRule.onNodeWithText("Studio Pen").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Close brushes panel").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Drag brushes panel").assertIsDisplayed()
         assertEquals(WorkspacePanelDock.FREE, AppSettingsStore(composeRule.activity).load().brushPanelDock)
     }
@@ -369,7 +369,7 @@ class InkloomLaunchTest {
         assertEquals(false, restored.showBrushPanel)
         assertEquals(false, restored.showLayerPanel)
         composeRule.onNodeWithContentDescription("Brushes").performClick()
-        composeRule.onNodeWithText("Studio Pen").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Close brushes panel").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Layers").performClick()
         composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
 
