@@ -40,7 +40,7 @@ private object BrushStrokePreviewCache {
 @Composable
 internal fun BrushStrokePreview(brush: ImportedBrush, language: UiLanguage, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val key = brush.v5PresetJson.orEmpty() + ":" + brush.toolBinding.toString()
+    val key = remember(brush.v5PresetJson, brush.toolBinding) { brush.v5PresetJson.orEmpty() + ":" + brush.toolBinding.toString() }
     var failure by remember(key, language) { mutableStateOf<String?>(null) }
     val bitmap by produceState(BrushStrokePreviewCache.images.get(key), key, language) {
         if (value != null) return@produceState
@@ -52,7 +52,7 @@ internal fun BrushStrokePreview(brush: ImportedBrush, language: UiLanguage, modi
             BrushStrokePreviewCache.workers.withPermit {
                 val cached = BrushStrokePreviewCache.images.get(key)
                 if (cached != null) { value = cached; return@withPermit }
-                val preset = BrushPresetV5Import.requirePreset(brush)
+                val preset = withContext(Dispatchers.Default) { BrushPresetV5Import.requirePreset(brush) }
                 val view = withContext(Dispatchers.Main.immediate) {
                     InkCanvasView(context).apply {
                         layout(0, 0, 512, 112)

@@ -8616,8 +8616,8 @@ private fun ProcreateBrushLibrary(
     var renameGroup by remember { mutableStateOf<String?>(null) }
     var renameGroupValue by remember { mutableStateOf("") }
     var deleteGroup by remember { mutableStateOf<String?>(null) }
-    var groupDropBounds by remember { mutableStateOf(emptyMap<String, Rect>()) }
-    var brushDragBounds by remember { mutableStateOf(emptyMap<String, Rect>()) }
+    val groupDropBounds = remember { mutableMapOf<String, Rect>() }
+    val brushDragBounds = remember { mutableMapOf<String, Rect>() }
     var draggingBrush by remember { mutableStateOf<ImportedBrush?>(null) }
     var brushDragPosition by remember { mutableStateOf<Offset?>(null) }
     var draggingGroup by remember { mutableStateOf<String?>(null) }
@@ -8679,11 +8679,11 @@ private fun ProcreateBrushLibrary(
     @Composable
     fun Modifier.brushDropTarget(brush: ImportedBrush): Modifier {
         DisposableEffect(brush.id) {
-            onDispose { brushDragBounds = brushDragBounds - brush.id }
+            onDispose { brushDragBounds.remove(brush.id) }
         }
         return this.onGloballyPositioned { coordinates ->
             val bounds = coordinates.boundsInWindow()
-            if (brushDragBounds[brush.id] != bounds) brushDragBounds = brushDragBounds + (brush.id to bounds)
+            brushDragBounds[brush.id] = bounds
         }
     }
 
@@ -8698,15 +8698,15 @@ private fun ProcreateBrushLibrary(
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun BrushMoveHandle(brush: ImportedBrush) {
-        var origin by remember { mutableStateOf(Offset.Zero) }
+        val origin = remember { arrayOf(Offset.Zero) }
         val description = tr("Move brush ${brush.name}", "移动笔刷 ${brush.name}")
         val tooltipState = rememberTooltipState()
         val tooltipScope = rememberCoroutineScope()
         val start by rememberUpdatedState<(Offset) -> Unit>({ local ->
             draggingBrush = brush
-            brushDragPosition = origin + local
+            brushDragPosition = origin[0] + local
         })
-        val move by rememberUpdatedState<(Offset) -> Unit>({ local -> brushDragPosition = origin + local })
+        val move by rememberUpdatedState<(Offset) -> Unit>({ local -> brushDragPosition = origin[0] + local })
         val finish by rememberUpdatedState<() -> Unit>({
             val position = brushDragPosition
             val target = position?.let { point -> groupDropBounds.entries.firstOrNull { (_, bounds) -> bounds.contains(point) }?.key }
@@ -8736,7 +8736,7 @@ private fun ProcreateBrushLibrary(
         ) {
             Icon(Icons.Outlined.DragIndicator, description, tint = MutedInk,
                 modifier = Modifier.size(48.dp)
-                    .onGloballyPositioned { origin = it.localToWindow(Offset.Zero) }
+                    .onGloballyPositioned { origin[0] = it.localToWindow(Offset.Zero) }
                     .clickable(role = androidx.compose.ui.semantics.Role.Button) { moveBrush = brush }
                     .pointerInput(brush.id) {
                         detectDragGesturesAfterLongPress(
@@ -8958,7 +8958,7 @@ private fun ProcreateBrushLibrary(
                         val customGroup = category in importedCategories && !systemGroup
                         val dropGroup = systemGroup || customGroup
                         DisposableEffect(category) {
-                            onDispose { groupDropBounds = groupDropBounds - category }
+                            onDispose { groupDropBounds.remove(category) }
                         }
                         val hasChildren = importedCategories.any { BrushGroupOperations.parent(it)?.equals(category, true) == true }
                         val visibleCategoryLabel = categoryLabel(category)
@@ -9000,7 +9000,7 @@ private fun ProcreateBrushLibrary(
                                     .onGloballyPositioned { coordinates ->
                                         if (dropGroup) {
                                             val bounds = coordinates.boundsInWindow()
-                                            if (groupDropBounds[category] != bounds) groupDropBounds = groupDropBounds + (category to bounds)
+                                            groupDropBounds[category] = bounds
                                         }
                                     }
                                     .background(if (draggingGroup == category) Color(0xFFDDE8F7) else if (draggingBrush != null && dropGroup && brushDragPosition?.let { groupDropBounds[category]?.contains(it) } == true) Color(0xFFDDE8F7) else if (draggingBrush != null && dropGroup) Color(0xFFF0F4FA) else if (selected) Color(0xFFE1E1E1) else Color.Transparent)
