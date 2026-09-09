@@ -1761,7 +1761,8 @@ private fun EditorScreen(
     val selectBeforeCopyMessage = tr("Select ink before copying.", "请先选择墨迹再复制。")
     val noInkClipboardMessage = tr("The clipboard does not contain Inkloom ink.", "剪贴板中没有 Inkloom 墨迹。")
     val colorsDescription = tr("Colors", "颜色")
-    val searchNoteDescription = tr("Search this note", "搜索此笔记")
+    var notebookSwitcherOpen by remember { mutableStateOf(false) }
+    val switchNoteDescription = tr("Switch notebook", "切换笔记")
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(
             Modifier.height(52.dp).fillMaxWidth().background(Color(0xFFF8F8F8)).padding(horizontal = 10.dp),
@@ -1770,13 +1771,29 @@ private fun EditorScreen(
             TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 8.dp)) {
                 Text(tr("Gallery", "图库"), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
-            Text(
-                document.title,
-                Modifier.widthIn(max = 180.dp).clip(RoundedCornerShape(6.dp)).clickable { searchOpen = true }.semantics { contentDescription = searchNoteDescription }.padding(horizontal = 6.dp, vertical = 4.dp),
-                maxLines = 1,
-                fontSize = 12.sp,
-                color = MutedInk,
-            )
+            Box {
+                Text(
+                    document.title,
+                    Modifier.widthIn(max = 180.dp).clip(RoundedCornerShape(6.dp))
+                        .clickable { notebookSwitcherOpen = true }
+                        .semantics { contentDescription = switchNoteDescription }.padding(horizontal = 8.dp, vertical = 10.dp),
+                    maxLines = 1, fontSize = 12.sp, color = MutedInk,
+                )
+                DropdownMenu(expanded = notebookSwitcherOpen, onDismissRequest = { notebookSwitcherOpen = false },
+                    modifier = Modifier.width(320.dp).heightIn(max = 440.dp)) {
+                    Text(tr("Switch notebook", "切换笔记"), Modifier.padding(16.dp), color = Sage)
+                    documents.filter { it.trashedAt == null }.sortedByDescending { it.updatedAt }.forEach { note ->
+                        DropdownMenuItem(
+                            text = { Column { Text(note.title, maxLines = 2); Text(tr("${note.pages.size} pages", "${note.pages.size} 页"), fontSize = 11.sp, color = MutedInk) } },
+                            leadingIcon = { if (note.id == document.id) Icon(Icons.Outlined.Check, null) },
+                            onClick = {
+                                notebookSwitcherOpen = false
+                                if (note.id != document.id) note.pages.firstOrNull()?.let { onOpenInternalLink(note.id, it.id) }
+                            },
+                        )
+                    }
+                }
+            }
             ProcreateTopButton(Icons.Outlined.Undo, tr("Undo", "撤销"), onClick = { canvasView?.undo() })
             ProcreateTopButton(Icons.Outlined.Redo, tr("Redo", "重做"), onClick = { canvasView?.redo() })
             Box {
@@ -9390,13 +9407,6 @@ private fun SettingsDialog(
                         Text(tr("Reset pressure settings", "重置压感设置"))
                     }
                 }
-                item { Text(tr("DEFAULT TOOL PRESETS", "默认工具预设"), color = Sage, fontSize = 12.sp) }
-                item { BrushSettingSlider(tr("Pen size", "钢笔大小"), settings.penSize, .5f..400f) { onChange(settings.copy(penSize = it)) } }
-                item { BrushSettingSlider(tr("Pen opacity", "钢笔不透明度"), settings.penOpacity, .05f..1f) { onChange(settings.copy(penOpacity = it)) } }
-                item { BrushSettingSlider(tr("Marker size", "标记笔大小"), settings.highlighterSize, .5f..400f) { onChange(settings.copy(highlighterSize = it)) } }
-                item { BrushSettingSlider(tr("Marker opacity", "标记笔不透明度"), settings.highlighterOpacity, .05f..1f) { onChange(settings.copy(highlighterOpacity = it)) } }
-                item { BrushSettingSlider(tr("Eraser size", "橡皮大小"), settings.eraserSize, .5f..400f) { onChange(settings.copy(eraserSize = it)) } }
-                item { OutlinedButton(onClick = { onChange(settings.copy(penSize = 5f, penOpacity = 1f, highlighterSize = 28f, highlighterOpacity = .35f, eraserSize = 24f, eraserPreset = EraserPreset.NORMAL_FREE)) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text(tr("Reset tool presets", "重置工具预设")) } }
                 item { Text(tr("PEN BUTTONS", "笔按键"), color = Sage, fontSize = 12.sp) }
                 item { Text(tr("Hold temporarily switches tools and restores the previous brush, size, opacity and color on release. Tap keeps the selected tool active. The pen-tail eraser always erases only while touching the screen.", "“按住”会临时切换工具，松开后恢复原笔刷、大小、不透明度和颜色；“单击”会保持切换后的工具。笔尾橡皮只在接触屏幕时擦除。"), color = MutedInk, fontSize = 11.sp) }
                 item { StylusActionRow(tr("Primary button", "主按键"), settings.stylusPrimaryButton, settings.stylusPrimaryTrigger, { onChange(settings.copy(stylusPrimaryButton = it)) }, { onChange(settings.copy(stylusPrimaryTrigger = it)) }) }
