@@ -45,10 +45,14 @@ class RasterLayerMergeWindowTest {
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
     @Test fun actualLayerMenuMergesJustFinishedStrokesAndUndoRedoSurvivesFurtherDrawing() {
-        tap("New Note"); tap("Create"); val view = canvas()
+        val title = "Merge recovery ${SystemClock.uptimeMillis()}"
+        tap("New Note")
+        compose.onNodeWithText("Title").performTextReplacement(title)
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
+        tap("Create"); val view = canvas()
         lateinit var model: app.inkloom.ui.InkloomViewModel
         instrumentation.runOnMainSync { model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java] }
-        val title = requireNotNull(model.currentDocument()).title
         tap("Layers"); tap("Add layer"); tap("Close layers panel")
         val lowerId = view.activeLayerId
         val lowerName = requireNotNull(model.currentPage()).layers.first { it.id == lowerId }.name
