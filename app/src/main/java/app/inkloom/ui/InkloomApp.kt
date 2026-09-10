@@ -2691,7 +2691,7 @@ private fun EditorScreen(
                 PaperCanvas(
                     onApplySelectionLayerTransfer = onApplySelectionLayerTransfer,
                     onSelectionTransferLayerChosen = { activeLayerId = it; canvasView?.activeLayerId = it },
-                    modifier = Modifier.fillMaxHeight(.88f).aspectRatio((PageCropTransform.visibleWidth(selectedPage) / PageCropTransform.visibleHeight(selectedPage).coerceAtLeast(1f)).coerceIn(.35f, 2.8f)),
+                    modifier = Modifier.sizeIn(maxWidth = toolbarAreaWidth * .88f, maxHeight = toolbarAreaHeight * .88f).aspectRatio(PageCropTransform.visibleWidth(selectedPage) / PageCropTransform.visibleHeight(selectedPage).coerceAtLeast(1f)),
                     tool = tool,
                     onView = { view ->
                         canvasView = view

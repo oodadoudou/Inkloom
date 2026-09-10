@@ -554,7 +554,7 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Custom size").performClick()
         composeRule.onNodeWithText("Template name").performTextInput("Landscape test")
         composeRule.onNodeWithText("Width (px)").performTextClearance()
-        composeRule.onNodeWithText("Width (px)").performTextInput("2400")
+        composeRule.onNodeWithText("Width (px)").performTextInput("6400")
         composeRule.onNodeWithText("Height (px)").performTextClearance()
         composeRule.onNodeWithText("Height (px)").performTextInput("1600")
         composeRule.onNodeWithContentDescription("Swap width and height").performClick()
@@ -565,9 +565,11 @@ class InkloomLaunchTest {
         composeRule.waitForIdle()
         val document = FileDocumentStore(composeRule.activity.filesDir).list().maxBy { it.createdAt }
         assertEquals(2, document.pages.size)
-        document.pages.forEach { assertEquals(2400f, it.width); assertEquals(1600f, it.height) }
+        document.pages.forEach { assertEquals(6400f, it.width); assertEquals(1600f, it.height) }
+        val canvas = requireNotNull(findInkCanvasView())
+        assertEquals("Wide custom page keeps its aspect ratio", 4f, canvas.width.toFloat() / canvas.height, .02f)
         val library = PageTemplateStore(composeRule.activity.filesDir).load()
-        assertEquals(2400f, library.defaultFor(document.id).width)
+        assertEquals(6400f, library.defaultFor(document.id).width)
     }
 
     @Test fun newPageChooserSupportsFavoritesAndNotebookDefaults() {
