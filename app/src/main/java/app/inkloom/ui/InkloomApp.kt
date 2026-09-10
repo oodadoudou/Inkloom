@@ -10373,7 +10373,7 @@ private fun SelectionStudioPanel(
                                 BrushParameterSlider(threshold, onThreshold, valueRange = 0f..1f)
                                 Text(tr("Reference", "参照"))
                                 ReferenceTarget.entries.forEach { target ->
-                                    TextButton(onClick = { onReferenceTarget(target) }, colors = ButtonDefaults.textButtonColors(contentColor = if (referenceTarget == target) Color(0xff1688f8) else Ink)) {
+                                    TextButton(onClick = { onReferenceTarget(target) }, colors = ButtonDefaults.textButtonColors(containerColor = if (referenceTarget == target) SageContainer else Color.Transparent, contentColor = if (referenceTarget == target) Ink else MutedInk)) {
                                         Text(when (target) {
                                             ReferenceTarget.ACTIVE_LAYER -> tr("Current layer", "当前图层")
                                             ReferenceTarget.ALL_VISIBLE -> tr("All visible layers", "全部可见图层")
@@ -10420,7 +10420,7 @@ private fun SelectionStudioPanel(
                     val selectionDescription = tr("$label selection", "${label}选区")
                     TextButton(onClick = { onShape(option) },
                         modifier = Modifier.widthIn(min = 72.dp).height(48.dp).semantics { contentDescription = selectionDescription },
-                        colors = ButtonDefaults.textButtonColors(contentColor = if (shape == option) Color(0xff1688f8) else Ink)) {
+                        colors = ButtonDefaults.textButtonColors(containerColor = if (shape == option) SageContainer else Color.Transparent, contentColor = if (shape == option) Ink else MutedInk)) {
                         Text(label, fontSize = 13.sp)
                     }
                 }
@@ -10460,10 +10460,10 @@ private fun SelectionStudioPanel(
 @Composable
 private fun SelectionStudioAction(icon: ImageVector, label: String, selected: Boolean = false,
     enabled: Boolean = true, onClick: () -> Unit) {
-    Column(Modifier.widthIn(min = 58.dp).heightIn(min = 48.dp).clickable(enabled = enabled, onClick = onClick)
+    Column(Modifier.widthIn(min = 58.dp).heightIn(min = 48.dp).background(if (selected) SageContainer else Color.Transparent, RoundedCornerShape(6.dp)).clickable(enabled = enabled, onClick = onClick)
         .semantics { contentDescription = label }.padding(horizontal = 8.dp, vertical = 3.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        val tint = if (!enabled) MutedInk.copy(alpha = .4f) else if (selected) Color(0xff1688f8) else Ink
+        val tint = if (!enabled) MutedInk.copy(alpha = .4f) else if (selected) Ink else MutedInk
         Icon(icon, null, Modifier.size(22.dp), tint = tint)
         Spacer(Modifier.height(4.dp))
         Text(label, fontSize = 10.sp, lineHeight = 13.sp, color = tint, maxLines = 1)
