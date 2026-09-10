@@ -24,9 +24,10 @@ float stamp_sample(const jbyte* alpha, int width, int height, float local_x, flo
                    float radius_x, float radius_y, float cosine, float sine) {
     const float u = (local_x / radius_x + 1.0f) * 0.5f;
     const float v = (local_y / radius_y + 1.0f) * 0.5f;
-    if (radius_x >= 1.0f && radius_y >= 1.0f) return sample(alpha, width, height, u, v);
     const float footprint = std::abs(cosine) + std::abs(sine);
     if (!(footprint > 0.0f)) return 0.0f;
+    if (std::abs(local_x) <= radius_x - footprint * 0.5f &&
+        std::abs(local_y) <= radius_y - footprint * 0.5f) return sample(alpha, width, height, u, v);
     auto overlap = [footprint](float position, float radius) {
         return std::max(0.0f, std::min(position + footprint * 0.5f, radius) -
             std::max(position - footprint * 0.5f, -radius)) / footprint;

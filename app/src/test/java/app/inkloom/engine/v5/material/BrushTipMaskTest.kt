@@ -5,6 +5,28 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BrushTipMaskTest {
+    @Test fun rotatedSquareEdgesHaveFractionalCoverageAtEveryAngle() {
+        val mask = BrushTipMask(16, 16, ByteArray(256) { -1 })
+        for (degrees in listOf(0, 5, 15, 30, 45, 60, 75, 85, 90)) {
+            val angle = Math.toRadians(degrees.toDouble()).toFloat()
+            val c = kotlin.math.cos(angle); val s = kotlin.math.sin(angle)
+            val edge = mask.coverageAtPixel(8f, 0f, 8f, 8f, c, s, 0)
+            assertEquals("edge at $degrees", .5f, edge, .00001f)
+            assertEquals(1f, mask.coverageAtPixel(0f, 0f, 8f, 8f, c, s, 0), 0f)
+            assertEquals(0f, mask.coverageAtPixel(10f, 0f, 8f, 8f, c, s, 0), 0f)
+            var area = 0f
+            var fractional = 0
+            for (y in -14..14) for (x in -14..14) {
+                val dx = x + .37f; val dy = y + .21f
+                val alpha = mask.coverageAtPixel(c * dx + s * dy, -s * dx + c * dy, 8f, 8f, c, s, 0)
+                area += alpha
+                if (alpha > .001f && alpha < .999f) fractional++
+            }
+            assertTrue("antialiased perimeter at $degrees", fractional > 20)
+            assertEquals("area at $degrees", 256f, area, 2f)
+        }
+    }
+
     @Test fun allMipLevelsRejectNonFiniteCoordinatesAndPreserveClosedEdges() {
         val mask = BrushTipMask(8, 8, ByteArray(64) { 0xff.toByte() })
         val outside = listOf(Float.NaN, Float.fromBits(0x7f800001), Float.POSITIVE_INFINITY,

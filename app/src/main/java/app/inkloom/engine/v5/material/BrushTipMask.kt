@@ -53,8 +53,11 @@ class BrushTipMask(
                                  cosine: Float, sine: Float, level: Int): Float {
         val u = (localX / radiusX + 1f) * .5f
         val v = (localY / radiusY + 1f) * .5f
-        if (radiusX >= 1f && radiusY >= 1f) return coverageAtLevel(u, v, level)
         val footprint = kotlin.math.abs(cosine) + kotlin.math.abs(sine)
+        // Interior samples retain the authored texture. Only the source rectangle's edge
+        // needs pixel footprint coverage, even when the stamp is larger than two pixels.
+        if (kotlin.math.abs(localX) <= radiusX - footprint * .5f &&
+            kotlin.math.abs(localY) <= radiusY - footprint * .5f) return coverageAtLevel(u, v, level)
         fun overlap(position: Float, radius: Float): Float =
             (minOf(position + footprint * .5f, radius) - maxOf(position - footprint * .5f, -radius))
                 .coerceAtLeast(0f) / footprint
