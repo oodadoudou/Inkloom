@@ -5,11 +5,11 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import app.inkloom.ui.theme.Ink
+import app.inkloom.ui.theme.OutlineSoft
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.Dp
@@ -45,9 +45,7 @@ internal fun BrushLibrarySplitLayout(
                 }.draggable(drag,Orientation.Horizontal,
                     onDragStarted={width=visibleWidth;dragging=true},
                     onDragStopped={dragging=false;save(width)}),contentAlignment=Alignment.Center) {
-                    Box(Modifier.width(1.dp).fillMaxHeight().background(Color(0xffe1e1e1)))
-                    Box(Modifier.width(if(dragging) 6.dp else 4.dp).height(40.dp)
-                        .background(if(dragging) Color(0xff1688f8) else Color(0xff9a9a9a),RoundedCornerShape(3.dp)))
+                    Box(Modifier.width(1.dp).fillMaxHeight().background(if (dragging) Ink else OutlineSoft))
                 }
             }
         }
