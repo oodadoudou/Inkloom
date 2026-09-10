@@ -11,12 +11,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 val Sage = Color(0xFF686868)
-val SageContainer = Color(0xFF444444)
-val Paper = Color(0xFF242424)
-val Workspace = Color(0xFF191919)
-val Ink = Color(0xFFF2F2F2)
-val MutedInk = Color(0xFFB4B4B4)
-val OutlineSoft = Color(0xFF494949)
+val SageContainer = Color(0xFF555555)
+val Paper = Color(0xFF414141)
+val Workspace = Color(0xFF363636)
+val Ink = Color(0xFFECECEC)
+val MutedInk = Color(0xFFC4C4C4)
+val OutlineSoft = Color(0xFF626262)
 
 private val InkloomColors = darkColorScheme(
     primary = Color(0xFFDEDEDE), onPrimary = Color(0xFF171717),
@@ -29,14 +29,14 @@ private val InkloomColors = darkColorScheme(
     errorContainer = Color(0xFF484848), onErrorContainer = Ink,
     background = Workspace, onBackground = Ink,
     surface = Paper, onSurface = Ink,
-    surfaceVariant = Color(0xFF303030), onSurfaceVariant = MutedInk,
+    surfaceVariant = Color(0xFF494949), onSurfaceVariant = MutedInk,
     outline = Color(0xFF888888), outlineVariant = OutlineSoft,
     inverseSurface = Ink, inverseOnSurface = Workspace, inversePrimary = Color(0xFF444444),
     surfaceTint = Color.Transparent, scrim = Color.Black,
-    surfaceBright = Color(0xFF383838), surfaceDim = Color(0xFF1D1D1D),
-    surfaceContainer = Paper, surfaceContainerHigh = Color(0xFF2B2B2B),
-    surfaceContainerHighest = Color(0xFF333333), surfaceContainerLow = Color(0xFF202020),
-    surfaceContainerLowest = Color(0xFF171717),
+    surfaceBright = Color(0xFF555555), surfaceDim = Workspace,
+    surfaceContainer = Paper, surfaceContainerHigh = Color(0xFF494949),
+    surfaceContainerHighest = Color(0xFF525252), surfaceContainerLow = Color(0xFF3B3B3B),
+    surfaceContainerLowest = Workspace,
 )
 
 private val InkloomTypography = Typography(
