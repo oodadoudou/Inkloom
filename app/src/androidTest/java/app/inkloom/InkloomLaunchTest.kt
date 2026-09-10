@@ -536,6 +536,27 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Demote level").assertIsDisplayed()
     }
 
+    @Test fun customPageSizeCreatesPersistentNotebookAndInheritedPage() {
+        composeRule.onNodeWithText("New Note").performClick()
+        composeRule.onNodeWithText("Custom size").performClick()
+        composeRule.onNodeWithText("Template name").performTextInput("Landscape test")
+        composeRule.onNodeWithText("Width (px)").performTextClearance()
+        composeRule.onNodeWithText("Width (px)").performTextInput("2400")
+        composeRule.onNodeWithText("Height (px)").performTextClearance()
+        composeRule.onNodeWithText("Height (px)").performTextInput("1600")
+        composeRule.onNodeWithContentDescription("Swap width and height").performClick()
+        composeRule.onNodeWithContentDescription("Swap width and height").performClick()
+        composeRule.onNodeWithText("Save template").performClick()
+        composeRule.onNodeWithText("Create").performClick()
+        composeRule.onNodeWithContentDescription("Add page using current template").performClick()
+        composeRule.waitForIdle()
+        val document = FileDocumentStore(composeRule.activity.filesDir).list().maxBy { it.createdAt }
+        assertEquals(2, document.pages.size)
+        document.pages.forEach { assertEquals(2400f, it.width); assertEquals(1600f, it.height) }
+        val library = PageTemplateStore(composeRule.activity.filesDir).load()
+        assertEquals(2400f, library.defaultFor(document.id).width)
+    }
+
     @Test fun newPageChooserSupportsFavoritesAndNotebookDefaults() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Add page").performClick()

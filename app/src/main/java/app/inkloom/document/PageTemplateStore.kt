@@ -72,6 +72,11 @@ object PageTemplateCatalog {
 }
 
 object PageTemplateOperations {
+    fun customPaper(name: String, width: Int, height: Int, background: PageBackground.Paper): PageTemplate? {
+        if (width !in 32..20_000 || height !in 32..20_000 || name.isBlank()) return null
+        return PageTemplate(name = name.trim().take(MAX_TEMPLATE_NAME_LENGTH), width = width.toFloat(), height = height.toFloat(), background = background)
+    }
+
     fun withPaperColor(template: PageTemplate, colorArgb: Long?): PageTemplate {
         val color = PaperColorCatalog.normalize(colorArgb) ?: return template
         val paper = template.background as? PageBackground.Paper ?: return template

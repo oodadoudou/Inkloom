@@ -300,6 +300,13 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         mutablePageTemplates.value = pageTemplateStore.add(imported)
     }
 
+    fun createCustomPageTemplate(name: String, width: Int, height: Int, paper: PageBackground.Paper): PageTemplate? {
+        val template = PageTemplateOperations.customPaper(name, width, height, paper) ?: return null
+        val saved = pageTemplateStore.add(listOf(template))
+        mutablePageTemplates.value = saved
+        return saved.template(template.id)
+    }
+
     fun savePageAsTemplate(documentId: String, pageId: String, name: String): PageTemplate? {
         val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return null
         val template = PageTemplateOperations.fromPage(page, name)

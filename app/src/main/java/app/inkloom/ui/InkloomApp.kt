@@ -750,6 +750,7 @@ fun InkloomApp(initialIntent: Intent?) {
             layout = settings.libraryLayout,
             onLayout = { updateSettings(settings.copy(libraryLayout = it)) },
             onOpen = { viewModel.select(it.id); destination = AppDestination.EDITOR },
+            onCreateCustomTemplate = viewModel::createCustomPageTemplate,
             onNewNote = { title, style, templateId, paperColor -> viewModel.createNote(title, style, templateId, paperColor); destination = AppDestination.EDITOR },
             onImportCover = { title, templateId, paperColor ->
                 pendingCoverTitle = title
@@ -828,6 +829,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onSetNotebookDefaultTemplate = viewModel::setNotebookDefaultTemplate,
             onSavePageAsTemplate = { documentId, pageId, name -> viewModel.savePageAsTemplate(documentId, pageId, name) },
             onDeletePageTemplate = viewModel::deletePageTemplate,
+            onCreateCustomTemplate = viewModel::createCustomPageTemplate,
             onToggleBookmark = viewModel::toggleBookmark,
             onChangePageOutlineLevel = viewModel::changePageOutlineLevel,
             onTogglePageOutlineCollapsed = viewModel::togglePageOutlineCollapsed,
@@ -908,7 +910,7 @@ fun InkloomApp(initialIntent: Intent?) {
 }
 
 @Composable
-private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long) -> Unit, onImportCover: (String, String, Long) -> Unit, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
+private fun LibraryScreen(onCreateCustomTemplate: (String, Int, Int, PageBackground.Paper) -> PageTemplate?, documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long) -> Unit, onImportCover: (String, String, Long) -> Unit, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
     var filter by remember { mutableStateOf(LibraryFilter.ALL) }
     var search by remember { mutableStateOf("") }
     var folderId by remember { mutableStateOf<String?>(null) }
@@ -921,6 +923,7 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
     val untitledNoteLabel = tr("Untitled Note", "未命名笔记")
     var newNoteTitle by remember { mutableStateOf(untitledNoteLabel) }
     var newNoteCover by remember { mutableStateOf(CoverStyle.MINIMAL) }
+    var customNoteTemplateOpen by remember { mutableStateOf(false) }
     var newNoteTemplateId by remember { mutableStateOf(PageTemplateCatalog.blank.id) }
     var newNotePaperColor by remember { mutableLongStateOf(PaperColorCatalog.WHITE) }
     val visible = remember(documents, filter, folderId, search) {
@@ -1052,11 +1055,18 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
         }
         }
     }
+    if (customNoteTemplateOpen) CustomPageTemplateDialog(
+        language = LocalUiLanguage.current,
+        base = pageTemplates.template(newNoteTemplateId) ?: PageTemplateCatalog.blank,
+        onDismiss = { customNoteTemplateOpen = false },
+        onCreate = onCreateCustomTemplate,
+        onCreated = { newNoteTemplateId = it.id; customNoteTemplateOpen = false },
+    )
     if (newNoteOpen) AlertDialog(
         onDismissRequest = { newNoteOpen = false },
         title = { Text(tr("Create notebook", "新建笔记本")) },
         text = {
-            Column(Modifier.widthIn(min = 380.dp, max = 560.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(Modifier.widthIn(min = 380.dp, max = 560.dp).heightIn(max = 570.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 OutlinedTextField(newNoteTitle, { newNoteTitle = it.take(120) }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Text(tr("Cover template", "封面模板"), color = MutedInk, fontSize = 12.sp)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1071,7 +1081,10 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
                         }
                     }
                 }
-                Text(tr("Page template", "页面模板"), color = MutedInk, fontSize = 12.sp)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(tr("Page template", "页面模板"), Modifier.weight(1f), color = MutedInk, fontSize = 12.sp)
+                    TextButton(onClick = { customNoteTemplateOpen = true }) { Text(tr("Custom size", "自定义尺寸")) }
+                }
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(pageTemplates.allTemplates(), key = { it.id }) { template ->
                         val selected = template.id == newNoteTemplateId
@@ -1338,6 +1351,7 @@ private fun EditorScreen(
     onSetNotebookDefaultTemplate: (String, String?, Long?) -> Unit,
     onSavePageAsTemplate: (String, String, String) -> PageTemplate?,
     onDeletePageTemplate: (String) -> Unit,
+    onCreateCustomTemplate: (String, Int, Int, PageBackground.Paper) -> PageTemplate?,
     onToggleBookmark: (String, String) -> Unit,
     onChangePageOutlineLevel: (String, String, Int) -> Unit,
     onTogglePageOutlineCollapsed: (String, String) -> Unit,
@@ -2598,7 +2612,7 @@ private fun EditorScreen(
                 pageTemplates = pageTemplates,
                 onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage,
                 onApplyTemplate = onApplyPageTemplate, onApplyTemplates = onApplyPageTemplates, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
-                onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
+                onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate, onCreateCustomTemplate = onCreateCustomTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
                 onClearPageInk, onSetPageCrop, onRotatePage,
                 panelMode = settings.pagePanelMode,
@@ -3381,7 +3395,7 @@ private fun EditorScreen(
                 pageTemplates = pageTemplates,
                 onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage,
                 onApplyTemplate = onApplyPageTemplate, onApplyTemplates = onApplyPageTemplates, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
-                onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
+                onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate, onCreateCustomTemplate = onCreateCustomTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
                 onClearPageInk, onSetPageCrop, onRotatePage,
                 panelMode = settings.pagePanelMode,
@@ -3464,7 +3478,7 @@ private fun EditorScreen(
                     pageTemplates = pageTemplates,
                     onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage,
                     onApplyTemplate = onApplyPageTemplate, onApplyTemplates = onApplyPageTemplates, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
-                    onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
+                    onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate, onCreateCustomTemplate = onCreateCustomTemplate,
                     onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
                     onClearPageInk, onSetPageCrop, onRotatePage,
                     panelMode = settings.pagePanelMode,
@@ -3566,7 +3580,7 @@ private fun EditorScreen(
                 pageTemplates = pageTemplates,
                 onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage,
                 onApplyTemplate = onApplyPageTemplate, onApplyTemplates = onApplyPageTemplates, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
-                onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
+                onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate, onCreateCustomTemplate = onCreateCustomTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
                 onClearPageInk, onSetPageCrop, onRotatePage,
                 panelMode = settings.pagePanelMode,
@@ -4611,6 +4625,7 @@ private fun PageRail(
     onSetDefaultTemplate: (String, String?, Long?) -> Unit,
     onSaveAsTemplate: (String, String, String) -> PageTemplate?,
     onDeleteTemplate: (String) -> Unit,
+    onCreateCustomTemplate: (String, Int, Int, PageBackground.Paper) -> PageTemplate?,
     onToggleBookmark: (String, String) -> Unit,
     onOutlineLevel: (String, String, Int) -> Unit,
     onOutlineCollapsed: (String, String) -> Unit,
@@ -4702,7 +4717,7 @@ private fun PageRail(
                 onImport = onImportTemplates,
                 onToggleFavorite = onToggleTemplateFavorite,
                 onSetDefault = { templateId, paperColor -> onSetDefaultTemplate(document.id, templateId, paperColor) },
-                onDelete = onDeleteTemplate,
+                onDelete = onDeleteTemplate, onCreateCustomTemplate = onCreateCustomTemplate,
             )
         }
         if (managingPages) stickyHeader(key = "page-management") {
@@ -4892,7 +4907,7 @@ private fun PageRail(
                 onToggleFavorite = onToggleTemplateFavorite,
                 onSetDefault = { templateId, paperColor -> onSetDefaultTemplate(document.id, templateId, paperColor) },
                 onSaveCurrent = { templateName = page.title; templateOpen = false; saveTemplateNameOpen = true },
-                onDelete = onDeleteTemplate,
+                onDelete = onDeleteTemplate, onCreateCustomTemplate = onCreateCustomTemplate,
             )
             if (saveTemplateNameOpen) AlertDialog(
                 onDismissRequest = { saveTemplateNameOpen = false },
@@ -4951,7 +4966,7 @@ private fun PageRail(
         onImport = onImportTemplates,
         onToggleFavorite = onToggleTemplateFavorite,
         onSetDefault = { templateId, paperColor -> onSetDefaultTemplate(document.id, templateId, paperColor) },
-        onDelete = onDeleteTemplate,
+        onDelete = onDeleteTemplate, onCreateCustomTemplate = onCreateCustomTemplate,
     )
 }
 
@@ -4988,8 +5003,17 @@ private fun PageTemplatePickerDialog(
     onToggleFavorite: (String) -> Unit,
     onSetDefault: (String?, Long?) -> Unit,
     onDelete: (String) -> Unit,
+    onCreateCustomTemplate: (String, Int, Int, PageBackground.Paper) -> PageTemplate?,
     onSaveCurrent: (() -> Unit)? = null,
 ) {
+    var customSizeOpen by remember { mutableStateOf(false) }
+    if (customSizeOpen) CustomPageTemplateDialog(
+        language = LocalUiLanguage.current,
+        base = library.defaultFor(documentId),
+        onDismiss = { customSizeOpen = false },
+        onCreate = onCreateCustomTemplate,
+        onCreated = { customSizeOpen = false },
+    )
     val all = library.allTemplates()
     val ordered = all.filter { it.id in library.favoriteIds } + all.filterNot { it.id in library.favoriteIds }
     val defaultId = library.notebookDefaults[documentId] ?: PageTemplateCatalog.blank.id
@@ -5017,6 +5041,7 @@ private fun PageTemplatePickerDialog(
                     OutlinedButton(onClick = onImport) { Icon(Icons.Outlined.FileOpen, null); Spacer(Modifier.width(6.dp)); Text(tr("Import image/PDF", "导入图片/PDF")) }
                     if (onSaveCurrent != null) OutlinedButton(onClick = onSaveCurrent) { Icon(Icons.Outlined.BookmarkAdd, null); Spacer(Modifier.width(6.dp)); Text(tr("Save current", "保存当前页")) }
                 }
+                TextButton(onClick = { customSizeOpen = true }) { Icon(Icons.Outlined.Add, null); Text(tr("Custom size", "自定义尺寸")) }
                 Text(tr("Paper color", "纸张颜色"), color = MutedInk, fontSize = 12.sp)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     PaperColorCatalog.options.forEach { option ->

@@ -8,6 +8,23 @@ import org.junit.Test
 import java.nio.file.Files
 
 class PageTemplateStoreTest {
+    @Test fun customSizeValidatesAndPersistsThroughNotebookDefault() {
+        val paper = PageBackground.Paper(pattern = PaperPattern.GRID, density = PaperDensity.SPACIOUS)
+        assertNull(PageTemplateOperations.customPaper("bad", 0, 2048, paper))
+        assertNull(PageTemplateOperations.customPaper("bad", 2048, 20001, paper))
+        assertNull(PageTemplateOperations.customPaper(" ", 2048, 2048, paper))
+        val root = Files.createTempDirectory("inkloom-custom-size").toFile()
+        try {
+            val custom = requireNotNull(PageTemplateOperations.customPaper("Landscape", 2400, 1600, paper))
+            PageTemplateStore(root).add(listOf(custom))
+            PageTemplateStore(root).setNotebookDefault("book", custom.id)
+            val page = PageTemplateOperations.newPage(PageTemplateStore(root).load().defaultFor("book"), "Page 2")
+            assertEquals(2400f, page.width)
+            assertEquals(1600f, page.height)
+            assertEquals(paper, page.background)
+        } finally { root.deleteRecursively() }
+    }
+
     @Test fun threePatternDensitiesSurviveCustomTemplateRoundTrip() {
         val root = Files.createTempDirectory("inkloom-densities").toFile()
         try {
