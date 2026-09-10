@@ -113,6 +113,10 @@ private fun NearbyColorPalette(draft: ColorPickerDraft, language: UiLanguage, on
     var saturationRange by remember { mutableFloatStateOf(.4f) }
     var valueRange by remember { mutableFloatStateOf(.4f) }
     val hsv = remember(reference) { floatArrayOf(reference.hue, reference.saturation, reference.value) }
+    val selectedCell = remember(reference, color, saturationRange, valueRange) {
+        (0 until 49).filter { nearbyColor(hsv, it % 7, it / 7, saturationRange, valueRange) == color }
+            .minByOrNull { kotlin.math.abs(it % 7 - 3) + kotlin.math.abs(it / 7 - 3) }
+    }
     fun tr(en: String, zh: String) = language.text(en, zh)
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -123,10 +127,11 @@ private fun NearbyColorPalette(draft: ColorPickerDraft, language: UiLanguage, on
             Row(Modifier.fillMaxWidth().height(32.dp)) {
                 repeat(7) { column ->
                     val swatch = nearbyColor(hsv, column, row, saturationRange, valueRange)
+                    val chosen = selectedCell == row * 7 + column
                     val label = tr("Nearby color ${row + 1}, ${column + 1}", "近似色 ${row + 1}，${column + 1}")
                     Box(Modifier.weight(1f).fillMaxHeight().padding(.5.dp).background(Color(swatch))
-                        .border(if (swatch == color) 2.dp else 0.dp, if (swatch == color) Ink else Color.Transparent)
-                        .semantics { contentDescription = label }
+                        .border(if (chosen) 2.dp else 0.dp, if (chosen) Ink else Color.Transparent)
+                        .semantics { contentDescription = label; selected = chosen }
                         .clickable { onPick(swatch) })
                 }
             }

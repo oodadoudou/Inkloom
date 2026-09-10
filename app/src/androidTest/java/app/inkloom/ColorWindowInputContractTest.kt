@@ -8,6 +8,9 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
@@ -270,6 +273,8 @@ class ColorWindowInputContractTest {
     @Test fun nearbyColorsKeepReferenceAndRememberTheOpenTab() {
         tap("New Note"); tap("Create"); val view = canvas()
         tap("Colors"); tap("Nearby")
+        compose.onNodeWithContentDescription("Nearby color 4, 4").assertIsSelected()
+        compose.onNodeWithContentDescription("Nearby color 4, 1").assertIsNotSelected()
         val original = view.inkColor
         tap("Nearby color 1, 7")
         val selected = view.inkColor
