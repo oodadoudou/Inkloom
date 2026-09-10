@@ -907,7 +907,7 @@ class InkloomLaunchTest {
         composeRule.onAllNodes(hasContentDescription("Layer actions")).onFirst().performClick()
         composeRule.onNodeWithText("Merge down").performClick()
 
-        assertTrue(composeRule.onAllNodes(hasText("Layer 1 copy")).fetchSemanticsNodes().isEmpty())
+        composeRule.waitUntil(15_000) { composeRule.onAllNodes(hasText("Layer 1 copy")).fetchSemanticsNodes().isEmpty() }
         composeRule.onNodeWithText("Layer 1").assertIsDisplayed()
     }
 

@@ -1091,7 +1091,8 @@ class InkCanvasView(context: Context) : View(context) {
                     // A fill/transform can commit before the pen-up frame is presented.
                     // Keep the presentation barrier, but never cover newer document pixels
                     // with the older landed preview while waiting for that frame.
-                    landed.revision >= (rasterTileSurfaceFor(layerId)?.revision ?: 0L)
+                    val current = rasterTileSurfaceFor(layerId)
+                    landed.surfaceId == current?.surfaceId && landed.revision >= current.revision
                 }
                 ?: rasterTileBlendSession?.previewSnapshot()
                 ?: rasterTileLiquifySession?.previewSnapshot()
@@ -5470,6 +5471,7 @@ class InkCanvasView(context: Context) : View(context) {
                 )
             }
         }
+        if (accepted) pendingPaintPublicationsForMerge++
         if (finishingEraser && accepted) {
             // Some drivers deliver BUTTON_RELEASE separately, after UP has queued publication.
             // Keep that release behind the same presentation boundary as a release carried by UP.
@@ -5545,6 +5547,8 @@ class InkCanvasView(context: Context) : View(context) {
         } catch (failure: Throwable) {
             published.record.close()
             throw failure
+        } finally {
+            pendingPaintPublicationsForMerge = (pendingPaintPublicationsForMerge - 1).coerceAtLeast(0)
         }
     }
 
@@ -5657,6 +5661,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun undo() {
+        if (selectionLayerTransferPending) return
         finishSelectionColorFill(true)
         v5LassoSession?.let { if (it.undoContact()) { syncLassoPreview(it.preview()); invalidate(); return } }
         finishSelectionTransform(apply = true)
@@ -5665,6 +5670,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun redo() {
+        if (selectionLayerTransferPending) return
         v5LassoSession?.let { if (it.redoContact()) { syncLassoPreview(it.preview()); invalidate(); return } }
         finishSelectionTransform(apply = true)
         val edit = editHistory.takeRedo() ?: return
@@ -5697,6 +5703,20 @@ class InkCanvasView(context: Context) : View(context) {
             translateY = 0f,
         )
         return finishRasterSelectionTransform()
+    }
+
+    var onLayerMergeRequested: (String) -> Unit = {}
+    private var pendingPaintPublicationsForMerge = 0
+    internal fun hasPendingPaintPublicationForMerge() = pendingPaintPublicationsForMerge > 0 || v5StrokeController.isActive
+    fun requestLayerMerge(layerId: String) {
+        if (selectionLayerTransferPending) return
+        if (v5StrokeController.isActive) {
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "请先抬笔，再合并图层" else "Lift the pen before merging layers")
+            return
+        }
+        finishSelectionColorFill(true)
+        finishSelectionTransform(true)
+        onLayerMergeRequested(layerId)
     }
 
     var onSelectionLayerTransferRequested: (Boolean) -> Unit = {}

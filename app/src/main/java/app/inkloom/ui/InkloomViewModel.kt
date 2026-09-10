@@ -542,11 +542,12 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         return result.activeLayerId
     }
 
-    fun mergeLayerDown(documentId: String, pageId: String, layerId: String): String? {
-        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return null
-        val result = LayerOperations.mergeDown(page, layerId) ?: return null
-        updatePage(documentId, pageId) { result.page }
-        return result.activeLayerId
+    fun applyRasterLayerMerge(documentId: String, pageId: String, edit: RasterLayerMergeEdit, undo: Boolean, expected: InkPage?): Boolean {
+        val current = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return false
+        if (expected != null && current != expected) return false
+        if (current.layers.none { it.id == edit.target.id }) return false
+        updatePage(documentId, pageId) { edit.apply(it, undo) }
+        return true
     }
 
     fun deleteLayer(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->

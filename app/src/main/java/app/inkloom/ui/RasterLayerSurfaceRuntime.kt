@@ -99,6 +99,9 @@ internal class RasterLayerSurfaceRuntime(
     }
 
     @Synchronized
+    internal fun retainedSurface(layerId: String): PixelTileSurface? = surfaces[layerId]
+
+    @Synchronized
     internal fun surfaceForTests(layerId: String): PixelTileSurface? = surfaces[layerId]
 }
 

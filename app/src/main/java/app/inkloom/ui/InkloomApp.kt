@@ -857,7 +857,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onToggleLayerFolderCollapsed = viewModel::toggleLayerFolderCollapsed,
             onMoveLayer = viewModel::moveLayer,
             onDuplicateLayer = viewModel::duplicateLayer,
-            onMergeLayerDown = viewModel::mergeLayerDown,
+            onApplyRasterLayerMerge = viewModel::applyRasterLayerMerge,
             onDeleteLayer = viewModel::deleteLayer,
             onElement = viewModel::addElement,
             onRemoveElement = viewModel::removeElement,
@@ -1379,7 +1379,7 @@ private fun EditorScreen(
     onToggleLayerFolderCollapsed: (String, String, String) -> Unit,
     onMoveLayer: (String, String, String, Int) -> Unit,
     onDuplicateLayer: (String, String, String) -> String?,
-    onMergeLayerDown: (String, String, String) -> String?,
+    onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean,
     onDeleteLayer: (String, String, String) -> Unit,
     onElement: (String, String, PageElement) -> Unit,
     onRemoveElement: (String, String, String) -> Unit,
@@ -2658,7 +2658,7 @@ private fun EditorScreen(
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
                 onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
-                onMergeDown = { layerId -> onMergeLayerDown(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
+                onMergeDown = { layerId -> canvasView?.requestLayerMerge(layerId) },
                 onDelete = { onDeleteLayer(document.id, selectedPage.id, it) },
                 panelMode = settings.layerPanelMode,
                 panelLocked = settings.layerPanelLocked,
@@ -2690,6 +2690,7 @@ private fun EditorScreen(
                 val toolbarAreaWidth = maxWidth
                 val toolbarAreaHeight = maxHeight
                 PaperCanvas(
+                    onApplyRasterLayerMerge = onApplyRasterLayerMerge,
                     onApplySelectionLayerTransfer = onApplySelectionLayerTransfer,
                     onSelectionTransferLayerChosen = { activeLayerId = it; canvasView?.activeLayerId = it },
                     modifier = Modifier.sizeIn(maxWidth = toolbarAreaWidth * .88f, maxHeight = toolbarAreaHeight * .88f).aspectRatio(PageCropTransform.visibleWidth(selectedPage) / PageCropTransform.visibleHeight(selectedPage).coerceAtLeast(1f)),
@@ -2969,7 +2970,7 @@ private fun EditorScreen(
                             ShortcutAction.UNDO -> canvasView?.undo()
                             ShortcutAction.REDO -> canvasView?.redo()
                             ShortcutAction.NEW_LAYER -> { activeLayerId = onAddLayer(document.id, selectedPage.id, "Layer") }
-                            ShortcutAction.MERGE_LAYER_DOWN -> onMergeLayerDown(document.id, selectedPage.id, activeLayerId)?.let { activeLayerId = it }
+                            ShortcutAction.MERGE_LAYER_DOWN -> canvasView?.requestLayerMerge(activeLayerId)
                             ShortcutAction.SELECT_LAYER_ABOVE -> LayerShortcutSelection.adjacentEditable(selectedPage.layers, activeLayerId, 1)?.let { activeLayerId = it }
                             ShortcutAction.SELECT_LAYER_BELOW -> LayerShortcutSelection.adjacentEditable(selectedPage.layers, activeLayerId, -1)?.let { activeLayerId = it }
                             ShortcutAction.ZOOM_OUT -> { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY, viewRotation), .9f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }
@@ -3462,7 +3463,7 @@ private fun EditorScreen(
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
                 onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
-                onMergeDown = { layerId -> onMergeLayerDown(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
+                onMergeDown = { layerId -> canvasView?.requestLayerMerge(layerId) },
                 onDelete = { onDeleteLayer(document.id, selectedPage.id, it) },
                 panelMode = settings.layerPanelMode,
                 panelLocked = settings.layerPanelLocked,
@@ -3540,7 +3541,7 @@ private fun EditorScreen(
                     onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                     onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
                     onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
-                    onMergeDown = { layerId -> onMergeLayerDown(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
+                    onMergeDown = { layerId -> canvasView?.requestLayerMerge(layerId) },
                     onDelete = { onDeleteLayer(document.id, selectedPage.id, it) },
                     panelMode = settings.layerPanelMode,
                     panelLocked = settings.layerPanelLocked,
@@ -3668,7 +3669,7 @@ private fun EditorScreen(
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
                 onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
-                onMergeDown = { layerId -> onMergeLayerDown(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
+                onMergeDown = { layerId -> canvasView?.requestLayerMerge(layerId) },
                 onDelete = { onDeleteLayer(document.id, selectedPage.id, it) },
                 panelMode = settings.layerPanelMode,
                 panelLocked = settings.layerPanelLocked,
@@ -5180,7 +5181,7 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
+private fun PaperCanvas(onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val selectionMaskSize = remember(renderedPage.width, renderedPage.height) {
         requireNotNull(SelectionMaskCompositor.maskSize(renderedPage.width, renderedPage.height))
@@ -5199,6 +5200,8 @@ private fun PaperCanvas(onApplySelectionLayerTransfer: (String, String, String, 
     val gradientCommitScope = rememberCoroutineScope()
     val gradientCommitMutex = remember(documentId, page.id) { Mutex() }
     val rasterCommitMutex = remember(documentId, page.id) { Mutex() }
+    val pendingRasterSaves = remember(documentId, page.id) { java.util.concurrent.atomic.AtomicInteger() }
+    val currentMergePage by rememberUpdatedState(page)
     val rasterSurfaceRuntime = remember(documentId, page.id) {
         RasterLayerSurfaceRuntime(renderWidth = 1200, loader = assets::renderRasterLayerSurface)
     }
@@ -5358,6 +5361,12 @@ private fun PaperCanvas(onApplySelectionLayerTransfer: (String, String, String, 
         }
 
         installSelectionTransfer(view)
+        view.onLayerMergeRequested = { sourceId ->
+            LayerMergeController(context, documentId, assets, rasterSurfaceRuntime, rasterCommitMutex,
+                latestRasterAssets, pendingRasterSaves, gradientCommitScope, { currentMergePage },
+                { edit, undo, expected -> onApplyRasterLayerMerge(documentId, page.id, edit, undo, expected) },
+                onSelectionTransferLayerChosen, settings.language).merge(view, sourceId)
+        }
 
         view.onRasterLayerCommitted = commit@{ commit ->
             val layerId = commit.layerId
@@ -5366,6 +5375,7 @@ private fun PaperCanvas(onApplySelectionLayerTransfer: (String, String, String, 
             if (layer == null || gradientCommitScope.coroutineContext[Job]?.isActive != true) {
                 return@commit
             }
+            pendingRasterSaves.incrementAndGet()
             gradientCommitScope.launch(NonCancellable) {
                 var newReference: RasterTileSurfaceRef? = null
                 var patch: RasterLayerPatch? = null
@@ -5412,6 +5422,7 @@ private fun PaperCanvas(onApplySelectionLayerTransfer: (String, String, String, 
                 } finally {
                     assets.releaseRasterTileReservation(newReference)
                     patch?.close()
+                    pendingRasterSaves.decrementAndGet()
                 }
             }
         }
@@ -7705,7 +7716,7 @@ private fun PaintingLayerPanel(
                                 DropdownMenuItem(text = { Text(tr("Move up", "上移")) }, onClick = { menu = false; onMove(layer.id, 1) })
                                 DropdownMenuItem(text = { Text(tr("Move down", "下移")) }, onClick = { menu = false; onMove(layer.id, -1) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(layer.id) })
-                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Merge down", "向下合并")) }, enabled = LayerOperations.canMergeDown(page, layer.id), onClick = { menu = false; onMergeDown(layer.id) })
+                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Merge down", "向下合并")) }, onClick = { menu = false; onMergeDown(layer.id) })
                                 if (layer.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Delete", "删除")) }, onClick = { menu = false; onDelete(layer.id) })
                             }
                         }
