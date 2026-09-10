@@ -6974,13 +6974,16 @@ internal fun CspColorPanel(
     initiallyExpanded: Boolean = true,
     onResizeWidth: ((Float) -> Unit)? = null,
     showHeader: Boolean = true,
+    initialDraft: ColorPickerDraft? = null,
+    onDraftChange: (ColorPickerDraft) -> Unit = {},
 ) {
     SideEffect { ColorPickerInteractionTrace.panelComposition() }
     var expanded by rememberSaveable(initiallyExpanded) { mutableStateOf(initiallyExpanded) }
     var channelMode by rememberSaveable { mutableStateOf("HSV") }
     var pickerHeight by rememberSaveable { mutableFloatStateOf(148f) }
-    var draft by remember { mutableStateOf(ColorPickerDraft.fromColor(color)) }
+    var draft by remember { mutableStateOf(initialDraft ?: ColorPickerDraft.fromColor(color)) }
     val draftColor = draft.color
+    val latestOnDraftChange by rememberUpdatedState(onDraftChange)
     val latestOnColorPreview by rememberUpdatedState(onColorPreview)
     val latestOnColorCommit by rememberUpdatedState(onColorCommit)
     LaunchedEffect(color) { draft = draft.withColor(color) }
@@ -7002,6 +7005,7 @@ internal fun CspColorPanel(
     fun updateDraft(next: ColorPickerDraft) {
         val colorChanged = draft.color != next.color
         draft = next
+        latestOnDraftChange(next)
         if (colorChanged) {
             ColorPickerInteractionTrace.previewWrite()
             latestOnColorPreview(next.color)

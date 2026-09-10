@@ -41,6 +41,9 @@ internal fun ColorStudioPanel(
 ) {
     val context = LocalContext.current
     val preferences = remember { context.getSharedPreferences("inkloom_color_palette", Context.MODE_PRIVATE) }
+    var draft by remember { mutableStateOf(ColorPickerDraft.fromColor(color)) }
+    LaunchedEffect(color) { draft = draft.withColor(color) }
+    fun pick(value: Int) { draft = draft.withColor(value); onColorCommit(value) }
     var tab by remember { mutableIntStateOf(preferences.getInt("studioTab", 0).coerceIn(0, 3)) }
     fun tr(en: String, zh: String) = language.text(en, zh)
     Column(Modifier.fillMaxWidth()) {
@@ -55,10 +58,10 @@ internal fun ColorStudioPanel(
             }
         }
         when (tab) {
-            0 -> CspColorPanel(color, onColorPreview, onColorCommit, onResizeWidth = onResizeWidth, showHeader = false)
-            1 -> SavedColorSwatches(color, language, onColorCommit)
-            2 -> MixingPalette(color, language, onColorCommit)
-            3 -> NearbyColorPalette(color, language, onColorCommit)
+            0 -> CspColorPanel(color, onColorPreview, ::pick, onResizeWidth = onResizeWidth, showHeader = false, initialDraft = draft, onDraftChange = { draft = it })
+            1 -> SavedColorSwatches(color, language, ::pick)
+            2 -> MixingPalette(color, language, ::pick)
+            3 -> NearbyColorPalette(draft, language, ::pick)
         }
     }
 }
@@ -104,16 +107,17 @@ private fun SavedColorSwatches(color: Int, language: UiLanguage, onPick: (Int) -
 
 /** Fixed reference prevents selecting a tile from shifting every following tile under the pen. */
 @Composable
-private fun NearbyColorPalette(color: Int, language: UiLanguage, onPick: (Int) -> Unit) {
-    var reference by remember { mutableIntStateOf(color) }
+private fun NearbyColorPalette(draft: ColorPickerDraft, language: UiLanguage, onPick: (Int) -> Unit) {
+    val color = draft.color
+    var reference by remember { mutableStateOf(draft) }
     var saturationRange by remember { mutableFloatStateOf(.4f) }
     var valueRange by remember { mutableFloatStateOf(.4f) }
-    val hsv = remember(reference) { FloatArray(3).also { AndroidColor.colorToHSV(reference, it) } }
+    val hsv = remember(reference) { floatArrayOf(reference.hue, reference.saturation, reference.value) }
     fun tr(en: String, zh: String) = language.text(en, zh)
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(tr("Saturation × brightness (HSV)", "饱和度 × 明度（HSV）"), Modifier.weight(1f), color = MutedInk, fontSize = 11.sp)
-            StudioIcon(Icons.Outlined.MyLocation, tr("Use current color as reference", "以当前颜色为基准")) { reference = color }
+            StudioIcon(Icons.Outlined.MyLocation, tr("Use current color as reference", "以当前颜色为基准")) { reference = draft }
         }
         repeat(7) { row ->
             Row(Modifier.fillMaxWidth().height(32.dp)) {

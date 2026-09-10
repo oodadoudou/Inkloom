@@ -254,6 +254,19 @@ class ColorWindowInputContractTest {
         }
     }
 
+    @Test fun neutralHueSurvivesSwitchingToNearbyColors() {
+        tap("New Note"); tap("Create"); val view = canvas()
+        tap("Colors")
+        val ring = bounds("Hue ring")
+        tapAt(Offset(ring.exactCenterX(), ring.top + ring.height() * .07f))
+        compose.waitForIdle()
+        tap("Nearby"); tap("Nearby color 1, 7")
+        val hsv = FloatArray(3).also { android.graphics.Color.colorToHSV(view.inkColor, it) }
+        assertEquals("Hidden neutral hue must be shared across tabs", 270f, hsv[0], 1f)
+        tap("Wheel")
+        assertTrue(hasText("270°"))
+    }
+
     @Test fun nearbyColorsKeepReferenceAndRememberTheOpenTab() {
         tap("New Note"); tap("Create"); val view = canvas()
         tap("Colors"); tap("Nearby")
