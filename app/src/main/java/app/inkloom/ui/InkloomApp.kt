@@ -1547,6 +1547,7 @@ private fun EditorScreen(
     fun exitCanvasNavigation() { handToolEnabled = false; handToolHeld = false; rotateToolEnabled = false; rotateToolHeld = false }
     var exportMenu by remember { mutableStateOf(false) }
     var viewMenu by remember { mutableStateOf(false) }
+    var quickZoomMenu by remember { mutableStateOf(false) }
     var workspaceMenu by remember { mutableStateOf(false) }
     var colorPanelOpen by remember { mutableStateOf(false) }
     var editSecondaryColor by remember { mutableStateOf(false) }
@@ -3158,6 +3159,27 @@ private fun EditorScreen(
                     shadowElevation = 5.dp,
                 ) {
                     Row(Modifier.height(38.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box {
+                            val ratio = zoom * (canvasView?.width ?: 0) / PageCropTransform.visibleWidth(selectedPage).coerceAtLeast(1f)
+                            val zoomDescription = tr("Quick zoom", "快捷缩放")
+                            TextButton(onClick = { quickZoomMenu = true }, modifier = Modifier.semantics { contentDescription = zoomDescription }, contentPadding = PaddingValues(horizontal = 10.dp)) {
+                                Text("${(ratio * 100f).roundToInt()}%", fontSize = 11.sp, color = Ink)
+                            }
+                            DropdownMenu(expanded = quickZoomMenu, onDismissRequest = { quickZoomMenu = false }) {
+                                listOf(75, 90, 100, 110, 125).forEach { percent ->
+                                    DropdownMenuItem(text = { Text("$percent%") }, onClick = {
+                                        val view = canvasView
+                                        if (view != null && view.width > 0) {
+                                            val target = percent / 100f * PageCropTransform.visibleWidth(selectedPage) / view.width
+                                            applyViewport(ViewportTransform.zoomAroundScreen(ViewportState(zoom, panX, panY, viewRotation), target / zoom.coerceAtLeast(.001f), 0f, 0f, geometry = currentViewportGeometry()))
+                                        }
+                                        quickZoomMenu = false
+                                    })
+                                }
+                                DropdownMenuItem(text = { Text(tr("Fit page", "适合页面")) }, onClick = { fitPage(); quickZoomMenu = false })
+                            }
+                        }
+
                         IconButton(
                             onClick = { document.pages.getOrNull(currentPageIndex - 1)?.let { selectPageWithViewport(it.id) } },
                             enabled = currentPageIndex > 0,

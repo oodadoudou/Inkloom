@@ -165,6 +165,19 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription(description).performClick()
     }
 
+    @Test fun quickZoomShowsPixelPercentAndFitsPage() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Quick zoom").performClick()
+        composeRule.onNodeWithText("125%").performClick()
+        composeRule.onNodeWithText("125%").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Quick zoom").performClick()
+        composeRule.onNodeWithText("75%").performClick()
+        composeRule.onNodeWithText("75%").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Quick zoom").performClick()
+        composeRule.onNodeWithText("Fit page").performClick()
+        composeRule.onNodeWithContentDescription("Quick zoom").assertIsDisplayed()
+    }
+
     @Test fun libraryScreenLaunches() {
         composeRule.onNodeWithText("Inkloom").assertIsDisplayed()
     }
