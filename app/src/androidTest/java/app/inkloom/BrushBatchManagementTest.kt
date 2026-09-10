@@ -314,6 +314,9 @@ class BrushBatchManagementTest {
         }
         composeRule.mainClock.advanceTimeBy(650)
         composeRule.waitForIdle()
+        val previewBounds = composeRule.onNodeWithContentDescription("Dragged brush preview", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val density = composeRule.activity.resources.displayMetrics.density
+        assertTrue("Dragged preview stays compact: $previewBounds", previewBounds.height <= 40f * density + 1f && previewBounds.width <= 220f * density + 1f)
         composeRule.onNodeWithContentDescription("Brush preset Target C").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Brush preset Target C").performTouchInput { moveTo(center); up() }
         val store = BrushMetadataStore(composeRule.activity)

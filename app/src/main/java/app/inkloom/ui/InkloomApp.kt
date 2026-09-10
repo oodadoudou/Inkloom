@@ -9085,11 +9085,13 @@ private fun ProcreateBrushLibrary(
             }
         }
         draggingBrush?.let { lifted ->
+            val dragPreviewDescription = tr("Dragged brush preview", "拖动中的笔刷预览")
             Text(lifted.name, color = Ink, maxLines = 1, fontSize = 12.sp,
                 modifier = Modifier.offset {
                     val point = (brushDragPosition ?: panelOrigin[0]) - panelOrigin[0]
                     IntOffset(point.x.roundToInt() + 20, point.y.roundToInt() - 48)
-                }.widthIn(max = 220.dp).shadow(8.dp, RoundedCornerShape(8.dp))
+                }.wrapContentSize(Alignment.TopStart, unbounded = true).widthIn(max = 220.dp).heightIn(max = 40.dp)
+                    .semantics { contentDescription = dragPreviewDescription }.shadow(8.dp, RoundedCornerShape(8.dp))
                     .background(SageContainer, RoundedCornerShape(8.dp)).padding(12.dp, 8.dp))
         }
     }
