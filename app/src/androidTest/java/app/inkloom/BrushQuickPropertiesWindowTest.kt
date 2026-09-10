@@ -35,6 +35,7 @@ class BrushQuickPropertiesWindowTest {
                 .putBoolean("showPageRail", false).commit()
             context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE).edit().clear().commit()
             context.getSharedPreferences("brush_preset_sizes", Context.MODE_PRIVATE).edit().clear().commit()
+            context.getSharedPreferences("inkloom_color_palette", Context.MODE_PRIVATE).edit().remove("studioTab").commit()
             context.filesDir.resolve("library.json").delete()
             try { base.evaluate() }
             finally { context.getSharedPreferences("brush_preset_sizes", Context.MODE_PRIVATE).edit().clear().commit() }

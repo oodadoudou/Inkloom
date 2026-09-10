@@ -75,6 +75,7 @@ class InkloomLaunchTest {
             override fun evaluate() {
                 val context = ApplicationProvider.getApplicationContext<android.content.Context>()
                 // Live masters now survive editor sessions; this fixture requires default brushes.
+                context.getSharedPreferences("inkloom_color_palette", android.content.Context.MODE_PRIVATE).edit().remove("studioTab").commit()
                 context.getSharedPreferences("brush_preset_sizes", android.content.Context.MODE_PRIVATE).edit().clear().commit()
                 java.io.File(context.filesDir, "page-templates.json").delete()
                 java.io.File(context.filesDir, "library.json").delete()
@@ -914,7 +915,7 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
 
         composeRule.onNodeWithContentDescription("Colors").performClick()
-        composeRule.onNodeWithText("Color wheel").assertIsDisplayed()
+        composeRule.onNodeWithText("Wheel").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Resize color picker").performTouchInput {
             swipe(center, center + Offset(80f, 70f), durationMillis = 300)
         }

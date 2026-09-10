@@ -6,6 +6,15 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ColorPickerDraftTest {
+    @Test fun nearbyAxesChangeSaturationAndValueWithoutChangingHue() {
+        val reference = floatArrayOf(210f, .5f, .5f)
+        fun hsv(column: Int, row: Int) = FloatArray(3).also { Color.colorToHSV(app.inkloom.ui.nearbyColor(reference, column, row, .3f, .3f), it) }
+        val center = hsv(3, 3); val right = hsv(6, 3); val upper = hsv(3, 0)
+        assertEquals(210f, right[0], 1f); assertEquals(210f, upper[0], 1f)
+        assertEquals(.5f, center[1], .01f); assertEquals(.8f, right[1], .01f)
+        assertEquals(.5f, right[2], .01f); assertEquals(.8f, upper[2], .01f)
+    }
+
     @Test fun blackRetainsBothHiddenCoordinatesAndAlpha() {
         val draft = ColorPickerDraft.fromColor(0x7f000000).withHsv(hue = 213f, saturation = .75f)
         assertEquals(0x7f000000, draft.color)

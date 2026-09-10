@@ -2029,7 +2029,8 @@ private fun EditorScreen(
                             Icon(Icons.Outlined.SwapHoriz, tr("Swap foreground and background colors", "交换前景色和背景色"), Modifier.size(18.dp))
                         }
                     }
-                    CspColorPanel(
+                    ColorStudioPanel(
+                        language = LocalUiLanguage.current,
                         color = if (editSecondaryColor) backgroundColor else brushColor,
                         onColorPreview = { preview ->
                             if (editSecondaryColor) canvasView?.secondaryInkColor = preview
@@ -6966,12 +6967,13 @@ private fun hslToColor(alpha: Int, hue: Float, saturation: Float, lightness: Flo
 }
 
 @Composable
-private fun CspColorPanel(
+internal fun CspColorPanel(
     color: Int,
     onColorPreview: (Int) -> Unit,
     onColorCommit: (Int) -> Unit,
     initiallyExpanded: Boolean = true,
     onResizeWidth: ((Float) -> Unit)? = null,
+    showHeader: Boolean = true,
 ) {
     SideEffect { ColorPickerInteractionTrace.panelComposition() }
     var expanded by rememberSaveable(initiallyExpanded) { mutableStateOf(initiallyExpanded) }
@@ -7020,7 +7022,7 @@ private fun CspColorPanel(
         border = CardDefaults.outlinedCardBorder(),
     ) {
         Column {
-            Row(
+            if (showHeader) Row(
                 Modifier.fillMaxWidth().height(34.dp).clickable { expanded = !expanded }.padding(horizontal = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

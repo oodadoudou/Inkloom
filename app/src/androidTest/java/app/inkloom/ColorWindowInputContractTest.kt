@@ -33,6 +33,8 @@ class ColorWindowInputContractTest {
                 .putBoolean("showBrushPanel", false).putBoolean("showLayerPanel", false)
                 .putBoolean("showPageRail", false).commit()
             context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE).edit().clear().commit()
+            context.getSharedPreferences("inkloom_color_palette", Context.MODE_PRIVATE).edit().clear().commit()
+            context.filesDir.resolve("color-mixing-board.bin").delete()
             context.filesDir.resolve("library.json").delete()
             base.evaluate()
         }
@@ -250,6 +252,62 @@ class ColorWindowInputContractTest {
             trace.enabled = false
             trace.reset()
         }
+    }
+
+    @Test fun nearbyColorsKeepReferenceAndRememberTheOpenTab() {
+        tap("New Note"); tap("Create"); val view = canvas()
+        tap("Colors"); tap("Nearby")
+        val original = view.inkColor
+        tap("Nearby color 1, 7")
+        val selected = view.inkColor
+        org.junit.Assert.assertNotEquals(original, selected)
+        tap("Nearby color 1, 7")
+        assertEquals("Picking twice must not shift the grid", selected, view.inkColor)
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        tap("Colors")
+        assertTrue(hasText("Saturation × brightness (HSV)"))
+        tap("Use current color as reference")
+        tap("Nearby color 4, 4")
+        assertEquals(selected, view.inkColor)
+    }
+
+    @Test fun savedSwatchesCanBePickedWithoutChangingTheBrush() {
+        tap("New Note"); tap("Create"); val view = canvas()
+        val original = view.inkColor; val brush = view.brushId
+        tap("Colors"); tap("Palettes"); tap("Save current color")
+        tap("Nearby"); tap("Nearby color 1, 7")
+        org.junit.Assert.assertNotEquals(original, view.inkColor)
+        tap("Palettes"); tap("Saved color #%06X".format(original and 0xffffff))
+        assertEquals(original, view.inkColor); assertEquals(brush, view.brushId)
+        assertEquals(listOf(original), app.inkloom.settings.ColorPaletteStore(ApplicationProvider.getApplicationContext()).load())
+    }
+
+    @Test fun mixingBoardSupportsUndoPickAndReopenWithoutChangingNotebookPixels() {
+        tap("New Note"); tap("Create"); val canvas = canvas()
+        val revision = canvas.activeRasterSnapshotForTest()?.revision
+        tap("Colors"); tap("Mix")
+        val area = bounds("Color mixing board")
+        // Wait for the independent background restore to complete before the first contact.
+        SystemClock.sleep(500)
+        val start = Offset(area.left + area.width() * .2f, area.exactCenterY())
+        val end = Offset(area.left + area.width() * .7f, area.exactCenterY())
+        stroke(start, end); compose.waitForIdle()
+        tap("Undo mixing"); tap("Redo mixing")
+        tap("Pick from mixing board"); tapAt(Offset(area.exactCenterX(), area.exactCenterY()))
+        compose.waitForIdle()
+        val picked = canvas.inkColor
+        assertTrue("Picking the painted line should be dark", android.graphics.Color.red(picked) < 80)
+        assertEquals("Mixing must never touch document history", revision, canvas.activeRasterSnapshotForTest()?.revision)
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        tap("Colors")
+        SystemClock.sleep(500)
+        tap("Pick from mixing board")
+        val restored = bounds("Color mixing board")
+        tapAt(Offset(restored.exactCenterX(), restored.exactCenterY())); compose.waitForIdle()
+        assertEquals("Scratchpad must survive closing its popup", picked, canvas.inkColor)
+        tap("Clear mixing board"); tap("Undo mixing")
+        tapAt(Offset(restored.exactCenterX(), restored.exactCenterY())); compose.waitForIdle()
+        assertEquals("Clear can be undone", picked, canvas.inkColor)
     }
 
     private fun hasText(text: String): Boolean {
