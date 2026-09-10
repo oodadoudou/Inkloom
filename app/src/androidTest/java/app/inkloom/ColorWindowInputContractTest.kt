@@ -328,9 +328,40 @@ class ColorWindowInputContractTest {
         assertEquals("Clear can be undone", picked, canvas.inkColor)
     }
 
+    @Test fun mixingWheelRoundTripKeepsPanelTargetsAndUndoSession() {
+        tap("New Note"); tap("Create"); val canvas = canvas()
+        val revision = canvas.activeRasterSnapshotForTest()?.revision
+        tap("Colors"); tap("Mix")
+        SystemClock.sleep(500)
+        val mixTab = center("Mix")
+        val area = bounds("Color mixing board")
+        val point = Offset(area.exactCenterX(), area.exactCenterY())
+        stroke(Offset(area.left + area.width() * .2f, point.y), point)
+        tap("Blend on mixing board")
+        repeat(3) {
+            tap("Wheel")
+            val ring = bounds("Hue ring")
+            tapAt(Offset(ring.exactCenterX(), ring.top + ring.height() * .07f))
+            assertEquals("Tab must not move when the color interface changes", mixTab, center("Mix"))
+            // Reuse the physical pen target, rather than searching for a relocated tab.
+            tapAt(mixTab); compose.waitForIdle()
+            assertTrue("Switching and picking colors must keep the panel open", hasText("Primary color"))
+            compose.onNodeWithContentDescription("Blend on mixing board").assertIsSelected()
+        }
+        tap("Undo mixing")
+        tap("Pick from mixing board"); tapAt(point); compose.waitForIdle()
+        assertEquals("Undo must survive leaving the mixing tab", app.inkloom.color.MixingBoard.PAPER, canvas.inkColor)
+        tap("Redo mixing"); tapAt(point); compose.waitForIdle()
+        assertTrue(android.graphics.Color.red(canvas.inkColor) < 80)
+        assertEquals(revision, canvas.activeRasterSnapshotForTest()?.revision)
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.waitUntil(5_000) { !hasText("Primary color") }
+    }
+
     private fun hasText(text: String): Boolean {
         fun visit(node: android.view.accessibility.AccessibilityNodeInfo?): Boolean {
             if (node == null) return false
+            node.refresh()
             if (node.text?.toString() == text) return true
             return (0 until node.childCount).any { visit(node.getChild(it)) }
         }

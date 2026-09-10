@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
@@ -41,6 +42,10 @@ internal fun ColorStudioPanel(
 ) {
     val context = LocalContext.current
     val preferences = remember { context.getSharedPreferences("inkloom_color_palette", Context.MODE_PRIVATE) }
+    val mixingView = remember { ColorMixingView(context) }
+    var mixingTool by remember { mutableStateOf(MixingBoard.Tool.PAINT) }
+    var mixingRadius by remember { mutableFloatStateOf(12f) }
+    val contentHeight = (LocalConfiguration.current.screenHeightDp - 200).coerceIn(160, 420).dp
     var draft by remember { mutableStateOf(ColorPickerDraft.fromColor(color)) }
     LaunchedEffect(color) { draft = draft.withColor(color) }
     fun pick(value: Int) { draft = draft.withColor(value); onColorCommit(value) }
@@ -57,11 +62,18 @@ internal fun ColorStudioPanel(
                 }
             }
         }
-        when (tab) {
-            0 -> CspColorPanel(color, onColorPreview, ::pick, onResizeWidth = onResizeWidth, showHeader = false, initialDraft = draft, onDraftChange = { draft = it })
-            1 -> SavedColorSwatches(color, language, ::pick)
-            2 -> MixingPalette(color, language, ::pick)
-            3 -> NearbyColorPalette(draft, language, ::pick)
+        // Keep tab targets fixed: a shorter page must not relocate the popup under the pen.
+        Box(Modifier.fillMaxWidth().height(contentHeight)) {
+            key(tab) {
+                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                    when (tab) {
+                        0 -> CspColorPanel(color, onColorPreview, ::pick, onResizeWidth = onResizeWidth, showHeader = false, initialDraft = draft, onDraftChange = { draft = it })
+                        1 -> SavedColorSwatches(color, language, ::pick)
+                        2 -> MixingPalette(color, language, ::pick, mixingView, mixingTool, { mixingTool = it }, mixingRadius, { mixingRadius = it })
+                        3 -> NearbyColorPalette(draft, language, ::pick)
+                    }
+                }
+            }
         }
     }
 }
@@ -155,12 +167,13 @@ private fun RangeControl(label: String, value: Float, onValue: (Float) -> Unit) 
 }
 
 @Composable
-private fun MixingPalette(color: Int, language: UiLanguage, onPick: (Int) -> Unit) {
-    var tool by remember { mutableStateOf(MixingBoard.Tool.PAINT) }
-    var radius by remember { mutableFloatStateOf(12f) }
-    var view by remember { mutableStateOf<ColorMixingView?>(null) }
-    var canUndo by remember { mutableStateOf(false) }
-    var canRedo by remember { mutableStateOf(false) }
+private fun MixingPalette(
+    color: Int, language: UiLanguage, onPick: (Int) -> Unit, view: ColorMixingView,
+    tool: MixingBoard.Tool, onTool: (MixingBoard.Tool) -> Unit,
+    radius: Float, onRadius: (Float) -> Unit,
+) {
+    var canUndo by remember { mutableStateOf(view.board.canUndo) }
+    var canRedo by remember { mutableStateOf(view.board.canRedo) }
     var storageError by remember { mutableStateOf(false) }
     fun tr(en: String, zh: String) = language.text(en, zh)
     val boardLabel = tr("Color mixing board", "混色画板")
@@ -169,14 +182,14 @@ private fun MixingPalette(color: Int, language: UiLanguage, onPick: (Int) -> Uni
             listOf(Triple(MixingBoard.Tool.PAINT, Icons.Outlined.Brush, tr("Paint on mixing board", "混色画笔")),
                 Triple(MixingBoard.Tool.BLEND, Icons.Outlined.BlurOn, tr("Blend on mixing board", "混合颜色")),
                 Triple(MixingBoard.Tool.PICK, Icons.Outlined.Colorize, tr("Pick from mixing board", "吸取混色"))).forEach { (value, icon, label) ->
-                StudioIcon(icon, label, selected = tool == value) { tool = value }
+                StudioIcon(icon, label, selected = tool == value) { onTool(value) }
             }
             Spacer(Modifier.weight(1f))
-            StudioIcon(Icons.Outlined.Undo, tr("Undo mixing", "撤销混色"), enabled = canUndo) { view?.undo() }
-            StudioIcon(Icons.Outlined.Redo, tr("Redo mixing", "重做混色"), enabled = canRedo) { view?.redo() }
-            StudioIcon(Icons.Outlined.DeleteOutline, tr("Clear mixing board", "清空混色画板")) { view?.clear() }
+            StudioIcon(Icons.Outlined.Undo, tr("Undo mixing", "撤销混色"), enabled = canUndo) { view.undo() }
+            StudioIcon(Icons.Outlined.Redo, tr("Redo mixing", "重做混色"), enabled = canRedo) { view.redo() }
+            StudioIcon(Icons.Outlined.DeleteOutline, tr("Clear mixing board", "清空混色画板")) { view.clear() }
         }
-        AndroidView(factory = { context -> ColorMixingView(context).also { view = it } },
+        AndroidView(factory = { view },
             modifier = Modifier.fillMaxWidth().aspectRatio(1.5f).border(1.dp, OutlineSoft),
             update = {
                 it.ink = color; it.tool = tool; it.brushRadius = radius; it.onPick = onPick
@@ -186,7 +199,7 @@ private fun MixingPalette(color: Int, language: UiLanguage, onPick: (Int) -> Uni
             })
         Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(tr("Size", "大小"), Modifier.width(48.dp), color = MutedInk, fontSize = 11.sp)
-            BrushParameterSlider(radius, { radius = it }, Modifier.weight(1f), valueRange = 2f..48f)
+            BrushParameterSlider(radius, onRadius, Modifier.weight(1f), valueRange = 2f..48f)
             Text("${(radius * 2).toInt()} px", Modifier.width(42.dp), color = MutedInk, fontSize = 10.sp)
         }
         if (storageError) Text(tr("Mixing board could not be saved or restored", "混色画板保存或恢复失败"), color = Ink, fontSize = 11.sp)
@@ -195,7 +208,7 @@ private fun MixingPalette(color: Int, language: UiLanguage, onPick: (Int) -> Uni
 
 @Composable
 private fun StudioIcon(icon: ImageVector, label: String, selected: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
-    IconButton(onClick, enabled = enabled, modifier = Modifier.size(40.dp)
+    IconButton(onClick, enabled = enabled, modifier = Modifier.size(40.dp).semantics { this.selected = selected }
         .background(if (selected) SageContainer else Color.Transparent, RoundedCornerShape(5.dp))) {
         Icon(icon, label, Modifier.size(19.dp), tint = if (enabled) Ink else MutedInk.copy(alpha = .35f))
     }
