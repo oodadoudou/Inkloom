@@ -350,12 +350,40 @@ class ColorWindowInputContractTest {
         }
         tap("Undo mixing")
         tap("Pick from mixing board"); tapAt(point); compose.waitForIdle()
-        assertEquals("Undo must survive leaving the mixing tab", app.inkloom.color.MixingBoard.PAPER, canvas.inkColor)
+        assertEquals("Undo must survive leaving the mixing tab", 0xffeeeeea.toInt(), canvas.inkColor)
         tap("Redo mixing"); tapAt(point); compose.waitForIdle()
         assertTrue(android.graphics.Color.red(canvas.inkColor) < 80)
         assertEquals(revision, canvas.activeRasterSnapshotForTest()?.revision)
         instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
         compose.waitUntil(5_000) { !hasText("Primary color") }
+    }
+
+    @Test fun mixingPinchAndBackgroundChangesDoNotAlterPaintHistory() {
+        tap("New Note"); tap("Create"); val view = canvas()
+        tap("Colors"); tap("Mix"); SystemClock.sleep(500)
+        val area = bounds("Color mixing board")
+        val middle = Offset(area.exactCenterX(), area.exactCenterY())
+        stroke(middle - Offset(100f, 0f), middle + Offset(100f, 0f))
+        val now = SystemClock.uptimeMillis()
+        fun fingers(action: Int, span: Float, count: Int = 2) {
+            val properties = Array(count) { i -> MotionEvent.PointerProperties().apply { id = i; toolType = MotionEvent.TOOL_TYPE_FINGER } }
+            val coords = Array(count) { i -> MotionEvent.PointerCoords().apply { x = middle.x + if (i == 0) -span else span; y = middle.y; pressure = .5f; size = .05f } }
+            val motion = MotionEvent.obtain(now, SystemClock.uptimeMillis(), action, count, properties, coords, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+            try { assertTrue(instrumentation.uiAutomation.injectInputEvent(motion, true)) } finally { motion.recycle() }
+        }
+        fingers(MotionEvent.ACTION_DOWN, 40f, 1)
+        fingers(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 40f)
+        repeat(12) { SystemClock.sleep(10); fingers(MotionEvent.ACTION_MOVE, 40f + it * 8f) }
+        fingers(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 128f)
+        fingers(MotionEvent.ACTION_UP, 128f, 1)
+        tap("Mixing palette menu"); tap("Reset view")
+        tap("Mixing palette menu"); tap("Black")
+        tap("Pick from mixing board"); tapAt(middle); compose.waitForIdle()
+        val painted = view.inkColor
+        tap("Undo mixing"); tapAt(middle); compose.waitForIdle()
+        assertEquals("Pinching must not add a paint transaction", android.graphics.Color.BLACK, view.inkColor)
+        tap("Redo mixing"); tapAt(middle); compose.waitForIdle()
+        assertEquals("Background changes must not tint pigment", painted, view.inkColor)
     }
 
     private fun hasText(text: String): Boolean {

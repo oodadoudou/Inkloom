@@ -2,10 +2,10 @@ package app.inkloom.color
 
 import kotlin.math.*
 
-/** Independent opaque mixing scratchpad. No notebook, brush dispatcher or document history access. */
+/** Independent transparent mixing scratchpad. No notebook, brush dispatcher or document history access. */
 class MixingBoard(val width: Int = 384, val height: Int = 256) {
     enum class Tool { PAINT, BLEND, PICK }
-    private var pixels = IntArray(width * height) { PAPER }
+    private var pixels = IntArray(width * height)
     private val undo = ArrayDeque<IntArray>()
     private val redo = ArrayDeque<IntArray>()
     private var before: IntArray? = null
@@ -49,8 +49,8 @@ class MixingBoard(val width: Int = 384, val height: Int = 256) {
     fun cancel() { before?.let { pixels = it }; before = null }
     fun clear(): Boolean {
         cancel()
-        if (pixels.all { it == PAPER }) return false
-        pushUndo(pixels); pixels = IntArray(width * height) { PAPER }; redo.clear(); return true
+        if (pixels.all { it == 0 }) return false
+        pushUndo(pixels); pixels = IntArray(width * height); redo.clear(); return true
     }
     fun undo(): Boolean {
         cancel(); if (undo.isEmpty()) return false
@@ -73,16 +73,28 @@ class MixingBoard(val width: Int = 384, val height: Int = 256) {
             val coverage = ((radius - distance) / (radius * .2f).coerceAtLeast(1f)).coerceIn(0f, 1f)
             if (coverage == 0f) continue
             val index = py * width + px
-            pixels[index] = mix(pixels[index], ink, coverage * if (tool == Tool.BLEND) .28f else .5f)
+            pixels[index] = if (tool == Tool.BLEND) mix(pixels[index], ink, coverage * .28f)
+                else sourceOver(pixels[index], ink, coverage * .5f)
         }
     }
     companion object {
-        const val PAPER = 0xffeeeeea.toInt()
+        const val PAPER = 0
         /** Encoded RGB brush mixing, deliberately not advertised as spectral pigment simulation. */
         fun mix(a: Int, b: Int, amount: Float): Int {
             val t = amount.coerceIn(0f, 1f)
-            fun channel(shift: Int) = (((a ushr shift and 255) * (1f - t) + (b ushr shift and 255) * t).roundToInt()).coerceIn(0, 255)
-            return (255 shl 24) or (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
+            val aa = (a ushr 24) / 255f * (1f - t)
+            val ba = (b ushr 24) / 255f * t
+            return weighted(a, b, aa, ba)
+        }
+        fun sourceOver(a: Int, b: Int, coverage: Float): Int {
+            val ba = (b ushr 24) / 255f * coverage.coerceIn(0f, 1f)
+            return weighted(a, b, (a ushr 24) / 255f * (1f - ba), ba)
+        }
+        private fun weighted(a: Int, b: Int, aa: Float, ba: Float): Int {
+            val alpha = aa + ba
+            if (alpha <= 0f) return 0
+            fun channel(shift: Int) = (((a ushr shift and 255) * aa + (b ushr shift and 255) * ba) / alpha).roundToInt().coerceIn(0, 255)
+            return ((alpha * 255).roundToInt().coerceIn(0, 255) shl 24) or (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
         }
     }
 }

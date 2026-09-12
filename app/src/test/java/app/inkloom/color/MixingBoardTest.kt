@@ -59,4 +59,19 @@ class MixingBoardTest {
         assertEquals(0xffff0000.toInt(), board.sample(-10f, 300f))
         assertFalse(board.canUndo)
     }
+    @Test fun transparentPaperDoesNotTintPigmentAndMixingRespectsAlpha() {
+        val board = MixingBoard(60, 40)
+        assertEquals(0, board.sample(20f, 20f))
+        board.begin(20f, 20f, MixingBoard.Tool.PAINT, 0xffff0000.toInt(), 8f)
+        board.finish()
+        val red = board.sample(20f, 20f)
+        assertTrue(red ushr 24 in 1..254)
+        assertEquals(0x00ff0000, red and 0x00ffffff)
+        assertEquals(0x80ff0000.toInt(), MixingBoard.mix(0, 0xffff0000.toInt(), .5f))
+        assertEquals(0x80ff0000.toInt(), MixingBoard.sourceOver(0, 0xffff0000.toInt(), .5f))
+        val snapshot = board.snapshot()
+        board.clear(); assertTrue(board.snapshot().all { it == 0 })
+        board.undo(); assertArrayEquals(snapshot, board.snapshot())
+    }
+
 }
