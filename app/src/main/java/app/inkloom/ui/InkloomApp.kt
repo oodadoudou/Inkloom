@@ -1091,15 +1091,15 @@ private fun LibraryScreen(onCreateCustomTemplate: (String, Int, Int, PageBackgro
         onDismissRequest = { newNoteOpen = false },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
-        val nameFocus = androidx.compose.ui.platform.LocalFocusManager.current
+        val creationFocus = remember { FocusRequester() }
         val nameKeyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-        val finishName = { nameFocus.clearFocus(); nameKeyboard?.hide(); Unit }
+        val finishName = { creationFocus.requestFocus(); nameKeyboard?.hide(); Unit }
         // A keyboard session returning from the system picker must not refocus the title
         // in a subsequently opened notebook dialog. Typing begins when the user taps it.
         LaunchedEffect(Unit) { finishName() }
         Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp), contentAlignment = Alignment.Center) {
         Surface(Modifier.widthIn(max = 560.dp), shape = MaterialTheme.shapes.extraLarge, color = Paper, contentColor = Ink) {
-        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.focusRequester(creationFocus).focusable().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(tr("Create notebook", "新建笔记本"), style = MaterialTheme.typography.headlineSmall)
             Column(Modifier.weight(1f, fill = false).heightIn(max = 570.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 OutlinedTextField(newNoteTitle, { newNoteTitle = it.take(120); newNoteCreateFailed = false }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
