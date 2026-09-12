@@ -295,9 +295,9 @@ class ColorWindowInputContractTest {
         tap("Colors"); tap("Palettes"); tap("Save current color")
         tap("Nearby"); tap("Nearby color 1, 7")
         org.junit.Assert.assertNotEquals(original, view.inkColor)
-        tap("Palettes"); tap("Saved color #%06X".format(original and 0xffffff))
+        tap("Palettes"); tap("Color tile 1")
         assertEquals(original, view.inkColor); assertEquals(brush, view.brushId)
-        assertEquals(listOf(original), app.inkloom.settings.ColorPaletteStore(ApplicationProvider.getApplicationContext()).load())
+        assertEquals(listOf(original), app.inkloom.settings.ColorSetLibraryStore(ApplicationProvider.getApplicationContext()).load().activeSet?.swatches?.map { it.color })
     }
 
     @Test fun mixingBoardSupportsUndoPickAndReopenWithoutChangingNotebookPixels() {
@@ -384,6 +384,20 @@ class ColorWindowInputContractTest {
         assertEquals("Pinching must not add a paint transaction", android.graphics.Color.BLACK, view.inkColor)
         tap("Redo mixing"); tapAt(middle); compose.waitForIdle()
         assertEquals("Background changes must not tint pigment", painted, view.inkColor)
+    }
+
+    @Test fun mixingPickerMatchesDisplayedTranslucentColor() {
+        tap("New Note"); tap("Create"); val view = canvas()
+        tap("Colors"); tap("Mix"); SystemClock.sleep(500)
+        tap("Mixing palette menu"); tap("White")
+        val area = bounds("Color mixing board")
+        val point = Offset(area.exactCenterX(), area.exactCenterY())
+        tapAt(point); compose.waitForIdle()
+        val screenshot = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+        val displayed = screenshot.getPixel(point.x.toInt(), point.y.toInt())
+        screenshot.recycle()
+        tap("Pick from mixing board"); tapAt(point); compose.waitForIdle()
+        for (shift in listOf(0, 8, 16)) assertTrue("Picker must sample the displayed pigment/background composite", kotlin.math.abs((displayed ushr shift and 255) - (view.inkColor ushr shift and 255)) <= 2)
     }
 
     private fun hasText(text: String): Boolean {

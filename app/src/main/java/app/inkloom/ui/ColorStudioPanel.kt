@@ -21,6 +21,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -28,7 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.inkloom.color.MixingBoard
-import app.inkloom.settings.ColorPaletteStore
+import app.inkloom.settings.MixingColorBarStore
+import app.inkloom.settings.ColorSetLibrary
 import app.inkloom.settings.UiLanguage
 import app.inkloom.settings.text
 import app.inkloom.ui.theme.*
@@ -47,6 +51,8 @@ internal fun ColorStudioPanel(
     var mixingTool by remember { mutableStateOf(MixingBoard.Tool.entries.getOrElse(preferences.getInt("mixTool", 0)) { MixingBoard.Tool.PAINT }) }
     var mixingRadius by remember { mutableFloatStateOf(preferences.getFloat("mixRadius", 12f).coerceIn(2f, 48f)) }
     val contentHeight = (LocalConfiguration.current.screenHeightDp - 200).coerceIn(160, 420).dp
+    val density = LocalDensity.current
+    var visibleContentHeight by remember { mutableStateOf(contentHeight) }
     var draft by remember { mutableStateOf(ColorPickerDraft.fromColor(color)) }
     LaunchedEffect(color) { draft = draft.withColor(color) }
     fun pick(value: Int) { draft = draft.withColor(value); onColorCommit(value) }
@@ -64,55 +70,17 @@ internal fun ColorStudioPanel(
             }
         }
         // Keep tab targets fixed: a shorter page must not relocate the popup under the pen.
-        Box(Modifier.fillMaxWidth().height(contentHeight)) {
+        // The surrounding popup scroll container can clip a larger measured child after IME resize.
+        Box(Modifier.fillMaxWidth().height(contentHeight).onGloballyPositioned { visibleContentHeight = with(density) { it.boundsInWindow().height.toDp() } }) {
             key(tab) {
                 Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                     when (tab) {
                         0 -> CspColorPanel(color, onColorPreview, ::pick, onResizeWidth = onResizeWidth, showHeader = false, initialDraft = draft, onDraftChange = { draft = it })
-                        1 -> SavedColorSwatches(color, language, ::pick)
+                        1 -> ColorSetPanel(color, language, visibleContentHeight, ::pick)
                         2 -> MixingPalette(color, language, ::pick, mixingView, mixingTool, { mixingTool = it; preferences.edit().putInt("mixTool", it.ordinal).apply() }, mixingRadius, { mixingRadius = it; preferences.edit().putFloat("mixRadius", it).apply() })
                         3 -> NearbyColorPalette(draft, language, ::pick)
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SavedColorSwatches(color: Int, language: UiLanguage, onPick: (Int) -> Unit) {
-    val context = LocalContext.current
-    val store = remember { ColorPaletteStore(context) }
-    var colors by remember { mutableStateOf(store.load()) }
-    var menuColor by remember { mutableStateOf<Int?>(null) }
-    fun tr(en: String, zh: String) = language.text(en, zh)
-    Column(Modifier.fillMaxWidth().heightIn(min = 240.dp, max = 360.dp).verticalScroll(rememberScrollState())) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(tr("Saved colors", "已存颜色"), Modifier.weight(1f), color = MutedInk, fontSize = 12.sp)
-            Text("${colors.size}/32", color = MutedInk, fontSize = 10.sp)
-            StudioIcon(Icons.Outlined.Add, tr("Save current color", "保存当前颜色"), enabled = colors.size < 32 && color !in colors) {
-                colors = store.add(color)
-            }
-        }
-        if (colors.isEmpty()) Text(tr("Tap + to save the current color", "点击 + 保存当前颜色"), color = MutedInk, fontSize = 12.sp, modifier = Modifier.padding(vertical = 16.dp))
-        colors.chunked(8).forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                row.forEach { value ->
-                    val hex = "#%06X".format(value and 0xffffff)
-                    Box(Modifier.weight(1f).aspectRatio(1f).padding(vertical = 2.dp)
-                        .background(Color(value), RoundedCornerShape(3.dp))
-                        .border(if (value == color) 2.dp else .5.dp, if (value == color) Ink else OutlineSoft, RoundedCornerShape(3.dp))
-                        .semantics { contentDescription = tr("Saved color $hex", "已存颜色 $hex") }
-                        .combinedClickable(onClick = { onPick(value) }, onLongClick = { menuColor = value })) {
-                        DropdownMenu(expanded = menuColor == value, onDismissRequest = { menuColor = null }) {
-                            DropdownMenuItem(text = { Text(tr("Replace with current", "替换为当前颜色")) }, onClick = {
-                                colors = store.replace(colors.map { if (it == value) color else it }.distinct()); menuColor = null
-                            })
-                            DropdownMenuItem(text = { Text(tr("Delete", "删除")) }, onClick = { colors = store.remove(value); menuColor = null })
-                        }
-                    }
-                }
-                repeat(8 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
@@ -183,8 +151,10 @@ private fun MixingPalette(
     var showColors by remember { mutableStateOf(prefs.getBoolean("mixShowColors", true)) }
     var background by remember { mutableIntStateOf(prefs.getInt("mixBackground", 4).coerceIn(0, 4)) }
     val tones = listOf<Int?>(null, 0xffffffff.toInt(), 0xff000000.toInt(), 0xff808080.toInt(), 0xffeeeeea.toInt())
-    val paletteStore = remember { ColorPaletteStore(context) }
-    var saved by remember { mutableStateOf(paletteStore.load()) }
+    val paletteStore = remember { MixingColorBarStore(context) }
+    var library by remember { mutableStateOf(runCatching { paletteStore.load() }.getOrElse { storageError = true; ColorSetLibrary() }) }
+    var swatchMenu by remember { mutableStateOf<String?>(null) }
+    var resetColors by remember { mutableStateOf(false) }
     fun tr(en: String, zh: String) = language.text(en, zh)
     Column {
         AndroidView(factory = { view },
@@ -197,23 +167,37 @@ private fun MixingPalette(
                 it.onStorageError = { storageError = true }
             })
         if (showColors) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-            val quickColors = saved.ifEmpty { listOf(0xffe53935.toInt(), 0xffff9800.toInt(), 0xffffeb3b.toInt(), 0xff43a047.toInt(), 0xff00838f.toInt(), 0xff1e88e5.toInt(), 0xff8e24aa.toInt(), 0xff111111.toInt(), 0xffffffff.toInt()) }
-            quickColors.forEach { swatch ->
+            library.activeSet?.swatches.orEmpty().forEach { swatch ->
+                val label = tr("Mixing color #%06X".format(swatch.color and 0xffffff), "混色色块 #%06X".format(swatch.color and 0xffffff))
                 Box(Modifier.size(32.dp).padding(horizontal = 3.dp, vertical = 7.dp)
-                    .background(Color(swatch), RoundedCornerShape(2.dp)).border(if (swatch == color) 1.5.dp else .5.dp, if (swatch == color) Ink else OutlineSoft)
-                    .semantics { contentDescription = tr("Mixing color #%06X".format(swatch and 0xffffff), "混色色块 #%06X".format(swatch and 0xffffff)) }
-                    .clickable { onPick(swatch) })
+                    .background(Color(swatch.color), RoundedCornerShape(2.dp)).border(if (library.activeSet?.selectedSwatchId == swatch.id) 1.5.dp else .5.dp, if (library.activeSet?.selectedSwatchId == swatch.id) Ink else OutlineSoft)
+                    .semantics { contentDescription = label }
+                    .combinedClickable(onClick = {
+                        runCatching { paletteStore.update { it.selectSwatch(MixingColorBarStore.SET_ID, swatch.id) } }.onSuccess { library = it }.onFailure { storageError = true }
+                        onPick(swatch.color)
+                    }, onLongClick = { swatchMenu = swatch.id })) {
+                    ColorPaletteDropdownMenu(swatchMenu == swatch.id, { swatchMenu = null }) {
+                        DropdownMenuItem(text = { Text(tr("Replace with current", "替换为当前颜色")) }, onClick = {
+                            runCatching { paletteStore.update { it.replaceSwatch(MixingColorBarStore.SET_ID, swatch.id, color) } }.onSuccess { library = it }.onFailure { storageError = true }; swatchMenu = null
+                        })
+                        DropdownMenuItem(text = { Text(tr("Delete color", "删除颜色")) }, onClick = {
+                            runCatching { paletteStore.update { it.removeSwatch(MixingColorBarStore.SET_ID, swatch.id) } }.onSuccess { library = it }.onFailure { storageError = true }; swatchMenu = null
+                        })
+                    }
+                }
             }
-            StudioIcon(Icons.Outlined.Add, tr("Add mixing color", "添加混色色块")) { saved = paletteStore.add(color) }
+            StudioIcon(Icons.Outlined.Add, tr("Add mixing color", "添加混色色块")) {
+                runCatching { paletteStore.update { it.insertSwatch(MixingColorBarStore.SET_ID, color, beforeIndex = it.activeSet?.swatches?.size) } }.onSuccess { library = it }.onFailure { storageError = true }
+            }
         }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(32.dp).padding(7.dp).background(Color(color)).border(.5.dp, OutlineSoft))
             StudioIcon(Icons.Outlined.DeleteOutline, tr("Clear mixing board", "清空混色画板")) { view.clear() }
             StudioIcon(Icons.Outlined.Undo, tr("Undo mixing", "撤销混色"), enabled = canUndo) { view.undo() }
             StudioIcon(Icons.Outlined.Redo, tr("Redo mixing", "重做混色"), enabled = canRedo) { view.redo() }
             Box {
                 StudioIcon(Icons.Outlined.FiberManualRecord, tr("Mixing brush size", "混色笔刷大小")) { sizeMenu = true }
-                DropdownMenu(sizeMenu, { sizeMenu = false }) {
+                ColorPaletteDropdownMenu(sizeMenu, { sizeMenu = false }) {
                     listOf(4f to tr("Small", "小"), 12f to tr("Medium", "中"), 28f to tr("Large", "大")).forEach { (size, label) ->
                         DropdownMenuItem(text = { Text(label) }, onClick = { onRadius(size); sizeMenu = false })
                     }
@@ -223,7 +207,6 @@ private fun MixingPalette(
                     }
                 }
             }
-            Spacer(Modifier.weight(1f))
             listOf(Triple(MixingBoard.Tool.PAINT, Icons.Outlined.Brush, tr("Paint on mixing board", "混色画笔")),
                 Triple(MixingBoard.Tool.BLEND, Icons.Outlined.BlurOn, tr("Blend on mixing board", "混合颜色")),
                 Triple(MixingBoard.Tool.PICK, Icons.Outlined.Colorize, tr("Pick from mixing board", "吸取混色"))).forEach { (value, icon, label) ->
@@ -231,11 +214,17 @@ private fun MixingPalette(
             }
             Box {
                 StudioIcon(Icons.Outlined.MoreHoriz, tr("Mixing palette menu", "混色面板菜单")) { menu = true }
-                DropdownMenu(menu, { menu = false }) {
+                ColorPaletteDropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem(text = { Text(tr("Reset view", "复位视图")) }, onClick = { view.resetViewport(); menu = false })
                     DropdownMenuItem(text = { Text(tr("Color set bar", "常用色条")) }, trailingIcon = { if (showColors) Icon(Icons.Outlined.Check, null) }, onClick = {
                         showColors = !showColors; prefs.edit().putBoolean("mixShowColors", showColors).apply()
                     })
+                    DropdownMenuItem(text = { Text(tr("Replace selected color", "替换所选颜色")) }, enabled = library.activeSet?.selectedSwatchId != null, onClick = {
+                        val id = library.activeSet?.selectedSwatchId
+                        if (id != null) runCatching { paletteStore.update { it.replaceSwatch(MixingColorBarStore.SET_ID, id, color) } }.onSuccess { library = it }.onFailure { storageError = true }
+                        menu = false
+                    })
+                    DropdownMenuItem(text = { Text(tr("Reset color bar", "重置常用色条")) }, onClick = { menu = false; resetColors = true })
                     HorizontalDivider()
                     listOf(tr("Transparent", "透明"), tr("White", "白色"), tr("Black", "黑色"), tr("Gray", "灰色"), tr("Beige", "米色")).forEachIndexed { index, label ->
                         DropdownMenuItem(text = { Text(label) }, trailingIcon = { if (background == index) Icon(Icons.Outlined.Check, null) }, onClick = {
@@ -247,6 +236,13 @@ private fun MixingPalette(
         }
         if (storageError) Text(tr("Mixing board could not be saved or restored", "混色画板保存或恢复失败"), color = Ink, fontSize = 11.sp)
     }
+    if (resetColors) AlertDialog(onDismissRequest = { resetColors = false }, title = { Text(tr("Reset color bar", "重置常用色条")) },
+        text = { Text(tr("Replace the mixing colors with the original colors?", "将混色区的常用色条恢复为初始颜色？")) },
+        confirmButton = { TextButton(onClick = {
+            runCatching { paletteStore.reset() }.onSuccess { library = it }.onFailure { storageError = true }
+            resetColors = false
+        }) { Text(tr("Reset", "重置")) } },
+        dismissButton = { TextButton(onClick = { resetColors = false }) { Text(tr("Cancel", "取消")) } })
 }
 
 @Composable

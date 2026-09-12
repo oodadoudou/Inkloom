@@ -139,7 +139,8 @@ import app.inkloom.settings.AxisShortcutBinding
 import app.inkloom.settings.BuiltInWorkspace
 import app.inkloom.settings.BuiltInWorkspaces
 import app.inkloom.settings.ButtonShortcutBinding
-import app.inkloom.settings.ColorPaletteStore
+import app.inkloom.settings.ColorSetLibraryStore
+import app.inkloom.settings.ColorSetLibrary
 import app.inkloom.settings.EraserPreset
 import app.inkloom.settings.FloatingToolbarPlacement
 import app.inkloom.settings.SelectionFilter
@@ -446,7 +447,7 @@ fun InkloomApp(initialIntent: Intent?) {
     val brushStore = remember { BrushMetadataStore(context) }
     val brushGroupStore = remember { BrushGroupStore(context) }
     val settingsStore = remember { AppSettingsStore(context) }
-    val colorPaletteStore = remember { ColorPaletteStore(context) }
+    val colorPaletteStore = remember { ColorSetLibraryStore(context) }
     var settings by remember { mutableStateOf(settingsStore.load()) }
     // The persisted setting is the single source of truth. Keeping a second mutable flag here
     // allowed workspace changes and the toolbar click to observe different open states in the
@@ -599,7 +600,7 @@ fun InkloomApp(initialIntent: Intent?) {
     val bundleExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) runCatching { viewModel.exportCurrentBundle(uri) }.onFailure { importError = it.message } }
     val libraryBackupExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) {
-            val preferences = runCatching { AppSettingsBackupCodec.encode(settings, colorPaletteStore.load()) }
+            val preferences = runCatching { AppSettingsBackupCodec.encode(settings, colorSetLibrary = colorPaletteStore.load(settings.language.text("Saved colors", "已存颜色"))) }
                 .getOrElse { error -> importError = error.message; return@rememberLauncherForActivityResult }
             viewModel.exportLibraryBackup(uri, importedBrushes, brushGroups, preferences) { result ->
                 result.onSuccess { Toast.makeText(context, settings.language.text("Library backup saved.", "资料库备份已保存。"), Toast.LENGTH_LONG).show() }
@@ -620,7 +621,7 @@ fun InkloomApp(initialIntent: Intent?) {
                             toolboxQuickSlots = ToolboxQuickSlots.remapBrushIds(preferences.settings.toolboxQuickSlots, restored.brushIdMappings),
                         )
                         updateSettings(restoredSettings)
-                        colorPaletteStore.replace(preferences.colorPalette)
+                        colorPaletteStore.replace(preferences.colorSetLibrary ?: ColorSetLibrary.fromLegacy(preferences.colorPalette, settings.language.text("Saved colors", "已存颜色")))
                     }.onFailure { error ->
                         importError = settings.language.text(
                             "Notes and brushes were restored, but app settings were ignored: ${error.message}",
@@ -6861,60 +6862,14 @@ private fun CompactToolbarIconButton(onClick: () -> Unit, description: String, s
 @Composable
 private fun BrushColorPicker(color: Int, onColor: (Int) -> Unit, square: Boolean = false) {
     var open by remember { mutableStateOf(false) }
-    var editorOpen by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-    val paletteStore = remember { ColorPaletteStore(context) }
-    var customPalette by remember { mutableStateOf(paletteStore.load()) }
-    var hue by remember { mutableFloatStateOf(0f) }
-    var saturation by remember { mutableFloatStateOf(0f) }
-    var brightness by remember { mutableFloatStateOf(0f) }
-    val presets = listOf(0xFF111111, 0xFF5B4B8A, 0xFFB33A3A, 0xFF235A9F, 0xFFB56A21, 0xFF2E7D60, 0xFFFFFFFF).map { it.toInt() }
-    val colors = (presets + customPalette).distinct()
-    LaunchedEffect(editorOpen, color) {
-        if (editorOpen) {
-            val values = FloatArray(3)
-            AndroidColor.colorToHSV(color, values)
-            hue = values[0]; saturation = values[1]; brightness = values[2]
-        }
-    }
-    val customColor = AndroidColor.HSVToColor(floatArrayOf(hue, saturation, brightness))
+    var width by rememberSaveable { mutableFloatStateOf(360f) }
     Box {
-        val swatchShape = if (square) RoundedCornerShape(2.dp) else CircleShape
-        Box(Modifier.size(28.dp).clip(swatchShape).background(Color(color)).border(1.dp, OutlineSoft, swatchShape).clickable { customPalette = paletteStore.load(); open = true })
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            Column(Modifier.widthIn(min = 280.dp, max = 420.dp).padding(10.dp)) {
-                Text(tr("Colors", "颜色"), fontSize = 12.sp, color = MutedInk)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) { items(colors) { value -> Box(Modifier.size(30.dp).clip(CircleShape).background(Color(value)).border(if (value == color) 3.dp else 1.dp, if (value == color) Sage else OutlineSoft, CircleShape).clickable { onColor(value); open = false }) } }
-                TextButton(onClick = { open = false; editorOpen = true }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Palette, null); Spacer(Modifier.width(8.dp)); Text(tr("Custom color and palette", "自定义颜色与色板")) }
-            }
+        val shape = if (square) RoundedCornerShape(2.dp) else CircleShape
+        Box(Modifier.size(28.dp).clip(shape).background(Color(color)).border(1.dp, OutlineSoft, shape).clickable { open = true })
+        DropdownMenu(open, { open = false }, Modifier.width(width.dp).background(Paper).padding(6.dp)) {
+            ColorStudioPanel(color, LocalUiLanguage.current, {}, onColor, { delta -> width = (width + delta).coerceIn(280f, 680f) })
         }
     }
-    if (editorOpen) AlertDialog(
-        onDismissRequest = { editorOpen = false },
-        title = { Text(tr("Color and palette", "颜色与色板")) },
-        text = {
-            LazyColumn(Modifier.widthIn(min = 340.dp, max = 520.dp).heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                item { Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(54.dp).clip(CircleShape).background(Color(customColor)).border(1.dp, OutlineSoft, CircleShape)); Spacer(Modifier.width(12.dp)); Text("#${customColor.toUInt().toString(16).padStart(8, '0').uppercase()}") } }
-                item { Text("${tr("Hue", "色相")}  ${hue.toInt()}°"); BrushParameterSlider(hue, { hue = it }, valueRange = 0f..360f) }
-                item { Text("${tr("Saturation", "饱和度")}  ${(saturation * 100).toInt()}%"); BrushParameterSlider(saturation, { saturation = it }, valueRange = 0f..1f) }
-                item { Text("${tr("Brightness", "明度")}  ${(brightness * 100).toInt()}%"); BrushParameterSlider(brightness, { brightness = it }, valueRange = 0f..1f) }
-                item { OutlinedButton(onClick = { customPalette = paletteStore.add(customColor) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text(tr("Add current color to palette", "将当前颜色加入色板")) } }
-                if (customPalette.isNotEmpty()) item {
-                    Text(tr("Saved palette", "已保存色板"), color = MutedInk, fontSize = 11.sp)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
-                        items(customPalette, key = { it }) { value ->
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Box(Modifier.size(32.dp).clip(CircleShape).background(Color(value)).border(1.dp, OutlineSoft, CircleShape).clickable { val values = FloatArray(3); AndroidColor.colorToHSV(value, values); hue = values[0]; saturation = values[1]; brightness = values[2] })
-                                IconButton(onClick = { customPalette = paletteStore.remove(value) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Close, tr("Remove color", "移除颜色"), modifier = Modifier.size(14.dp)) }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { Button(onClick = { onColor(customColor); editorOpen = false }) { Text(tr("Use color", "使用此颜色")) } },
-        dismissButton = { TextButton(onClick = { editorOpen = false }) { Text(tr("Cancel", "取消")) } },
-    )
 }
 
 @Composable
