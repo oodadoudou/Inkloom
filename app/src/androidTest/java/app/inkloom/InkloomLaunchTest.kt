@@ -1132,14 +1132,12 @@ class InkloomLaunchTest {
         }
     }
 
-    @Test fun layerPanelDisclosesSettingsAndSupportsSwipeAndLongPressReorder() {
+    @Test fun layerPanelKeepsPropertiesFixedAndSupportsSwipeAndLongPressReorder() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Layers").performClick()
-        assertTrue(composeRule.onAllNodesWithText("Opacity").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithContentDescription("Layer opacity").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Add layer").performClick()
-        composeRule.onNodeWithContentDescription("Layer blending Layer 1").performClick()
-        composeRule.onNodeWithText("Opacity").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Layer blending Layer 1").performClick()
+        composeRule.onNodeWithContentDescription("Layer opacity").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Add layer").performClick()
         val source = composeRule.onNodeWithContentDescription("Reorder layer Layer 2")
         val target = composeRule.onNodeWithContentDescription("Reorder layer Layer 1")
@@ -1163,19 +1161,18 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Layer 2 copy").assertIsDisplayed()
     }
 
-    @Test fun layerBlendChoicesStayInlineAndRightSwipeAddsSecondarySelection() {
+    @Test fun layerBlendDropdownClosesAfterChoiceAndRightSwipeAddsSecondarySelection() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Layers").performClick()
         composeRule.onNodeWithContentDescription("Add layer").performClick()
-        composeRule.onNodeWithContentDescription("Layer blending Layer 1").performClick()
+        composeRule.onNodeWithContentDescription("Layer blend mode").performClick()
         composeRule.onNodeWithText("Multiply").performClick()
-        composeRule.onNodeWithContentDescription("Layer blend modes").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithContentDescription("Layer blend modes").fetchSemanticsNodes().isEmpty())
         val blendLayerId = requireNotNull(findInkCanvasView()).activeLayerId
         composeRule.runOnIdle {
             assertEquals(app.inkloom.document.LayerBlendMode.MULTIPLY,
                 FileDocumentStore(composeRule.activity.filesDir).list().flatMap { it.pages }.flatMap { it.layers }.single { it.id == blendLayerId }.blendMode)
         }
-        composeRule.onNodeWithContentDescription("Layer blending Layer 1").performClick()
         composeRule.onNodeWithContentDescription("Add layer").performClick()
         val active = FileDocumentStore(composeRule.activity.filesDir).list().flatMap { it.pages }
             .single { page -> page.layers.any { it.id == blendLayerId } }.layers.single { it.name == "Layer 2" }.id

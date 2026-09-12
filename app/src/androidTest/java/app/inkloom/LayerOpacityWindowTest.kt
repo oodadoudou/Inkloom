@@ -13,6 +13,11 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.ui.InkCanvasView
@@ -63,7 +68,7 @@ class LayerOpacityWindowTest {
             finally { bitmap.recycle() }
         }
         val dark = brightness()
-        tap("Layers"); tap("N")
+        tap("Layers")
         val slider = bounds("Layer opacity")
         fun point(f: Float) = Offset(slider.left + 20f + (slider.width() - 40f) * f, slider.exactCenterY())
         val down = SystemClock.uptimeMillis()
@@ -95,6 +100,138 @@ class LayerOpacityWindowTest {
         org.junit.Assert.assertArrayEquals(ink, pixels(canvas()))
     }
 
+    @Test fun numericOpacityAndBlendModeHaveScopedHistoryAndSurviveReopening() {
+        tap("New Note"); tap("Create"); val view = canvas()
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync { model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java] }
+        chooseRgb(180)
+        val baseId = view.activeLayerId
+        fun baseOpacity() = requireNotNull(model.currentPage()).layers.first { it.id == baseId }.opacity
+        val a = pagePoint(view, .22f, .28f); val b = pagePoint(view, .55f, .28f)
+        stroke(a, b)
+        compose.waitUntil(10_000) { model.currentPage()?.layers?.first { it.id == baseId }?.rasterTileSurface != null }
+        tap("Layers")
+        val fixed = bounds("Layer properties")
+        for (percent in listOf(0, 1, 50, 99, 100)) {
+            tap("Edit layer opacity"); typePercent(percent.toString()); tap("Apply layer opacity")
+            compose.waitUntil(10_000) { baseOpacity() == percent / 100f && !view.selectionLayerTransferPending }
+        }
+        tap("Edit layer opacity"); typePercent("25")
+        assertEquals(1f, baseOpacity())
+        typePercent("101")
+        compose.onNodeWithContentDescription("Apply layer opacity").assertIsNotEnabled()
+        typePercent("")
+        compose.onNodeWithContentDescription("Apply layer opacity").assertIsNotEnabled()
+        tap("Cancel layer opacity")
+        assertEquals(1f, baseOpacity()); assertTrue(!view.selectionLayerTransferPending)
+        compose.waitUntil(5_000) { fixed == bounds("Layer properties") }
+        assertEquals("Numeric keyboard dismissal preserves the fixed bar", fixed, bounds("Layer properties"))
+        tap("Edit layer opacity"); typePercent("50"); tap("Apply layer opacity")
+        compose.waitUntil { baseOpacity() == .5f && !view.selectionLayerTransferPending }
+        tap("Add layer")
+        compose.waitUntil { view.activeLayerId != baseId }
+        val upperId = view.activeLayerId
+        fun mode() = requireNotNull(model.currentPage()).layers.first { it.id == upperId }.blendMode
+        tap("Close layers panel"); chooseRgb(0); stroke(a, b)
+        compose.waitUntil(10_000) { model.currentPage()?.layers?.first { it.id == upperId }?.rasterTileSurface != null }
+        val ink = pixels(view)
+        fun brightness(): Int {
+            SystemClock.sleep(160)
+            val image = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            try { val probe = a + (b - a) * .5f; return android.graphics.Color.red(image.getPixel(probe.x.toInt(), probe.y.toInt())) }
+            finally { image.recycle() }
+        }
+        val dark = brightness()
+        tap("Layers"); tap("Layer blend mode")
+        compose.onNodeWithText("Screen").performScrollTo(); tap("Screen")
+        compose.waitUntil(10_000) { mode() == app.inkloom.document.LayerBlendMode.SCREEN && !view.selectionLayerTransferPending }
+        val screened = brightness()
+        assertTrue("Screen must expose the gray layer below black ink: $dark -> $screened", screened > dark + 30)
+        org.junit.Assert.assertArrayEquals(ink, pixels(view))
+        tap("Undo"); compose.waitUntil { mode() == app.inkloom.document.LayerBlendMode.NORMAL }
+        assertTrue(kotlin.math.abs(brightness() - dark) <= 2)
+        tap("Redo"); compose.waitUntil { mode() == app.inkloom.document.LayerBlendMode.SCREEN }
+        tap("Close layers panel")
+        stroke(pagePoint(view, .22f, .55f), pagePoint(view, .55f, .55f))
+        compose.waitUntil(10_000) { !ink.contentEquals(pixels(view)) }
+        tap("Undo"); compose.waitUntil(10_000) { ink.contentEquals(pixels(view)) }
+        assertEquals(app.inkloom.document.LayerBlendMode.SCREEN, mode())
+        tap("Undo"); compose.waitUntil { mode() == app.inkloom.document.LayerBlendMode.NORMAL }
+        org.junit.Assert.assertArrayEquals(ink, pixels(view))
+        tap("Redo"); compose.waitUntil { mode() == app.inkloom.document.LayerBlendMode.SCREEN }
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        assertEquals(app.inkloom.document.LayerBlendMode.SCREEN, mode())
+        assertEquals(.5f, baseOpacity())
+        tap("Layers"); tap("Layer 1")
+        assertEquals(fixed, bounds("Layer properties"))
+        assertTrue(hasText("Screen"))
+    }
+
+    @Test fun scrollingTheActualLayerListKeepsPropertiesFixedOnTheSelectedLayer() {
+        tap("New Note"); tap("Create"); val view = canvas(); tap("Layers")
+        val propertyBounds = bounds("Layer properties")
+        repeat(12) { tap("Add layer") }
+        val targetId = view.activeLayerId
+        fun visibleRows(): Set<String> = compose.onAllNodes(hasContentDescription("Reorder layer", substring = true))
+            .fetchSemanticsNodes().filter { it.boundsInWindow.height > 0f }
+            .map { it.config[SemanticsProperties.ContentDescription].joinToString() }.toSet()
+        val before = visibleRows()
+        val list = bounds("Layer list")
+        val top = Offset(list.exactCenterX(), list.top + 60f)
+        val bottom = Offset(list.exactCenterX(), list.bottom - 60f)
+        fun swipe(start: Offset, end: Offset) {
+            val down = SystemClock.uptimeMillis()
+            event(MotionEvent.ACTION_DOWN, start, down, MotionEvent.TOOL_TYPE_FINGER)
+            repeat(20) { i ->
+                SystemClock.sleep(16)
+                event(MotionEvent.ACTION_MOVE, start + (end - start) * ((i + 1) / 20f), down, MotionEvent.TOOL_TYPE_FINGER)
+            }
+            event(MotionEvent.ACTION_UP, end, down, MotionEvent.TOOL_TYPE_FINGER)
+            compose.waitForIdle()
+        }
+        swipe(bottom, top)
+        if (before == visibleRows()) swipe(top, bottom)
+        assertTrue("Native vertical drag must actually scroll the layer list", before != visibleRows())
+        assertEquals(propertyBounds, bounds("Layer properties"))
+        assertEquals(targetId, view.activeLayerId)
+        tap("Edit layer opacity"); typePercent("25"); tap("Apply layer opacity")
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync { model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java] }
+        compose.waitUntil(10_000) { model.currentPage()?.layers?.first { it.id == targetId }?.opacity == .25f }
+        assertEquals("A scrolled-off layer remains the property target", targetId, view.activeLayerId)
+    }
+
+    private fun chooseRgb(value: Int) {
+        tap("Colors"); tap("Wheel"); tap("Edit color values")
+        for (channel in listOf("R", "G", "B")) {
+            val node = compose.onNodeWithContentDescription("Color value $channel")
+            val field = node.fetchSemanticsNode()
+            tapAt(field.boundsInWindow.center + field.positionOnScreen - field.positionInWindow)
+            instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_MOVE_END)
+            repeat(field.config[SemanticsProperties.EditableText].text.length) {
+                instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DEL)
+            }
+            value.toString().forEach { digit -> instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_0 + digit.digitToInt()) }
+            compose.waitForIdle()
+        }
+        tap("Done")
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
+    }
+
+    private fun typePercent(text: String) {
+        val field = compose.onNode(hasSetTextAction()).fetchSemanticsNode()
+        val screen = field.boundsInWindow.center + field.positionOnScreen - field.positionInWindow
+        tapAt(screen)
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_MOVE_END)
+        repeat(field.config[SemanticsProperties.EditableText].text.length) {
+            instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DEL)
+        }
+        text.forEach { digit -> instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_0 + digit.digitToInt()) }
+        compose.waitForIdle()
+        assertEquals(text, compose.onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+    }
+
     private fun pixels(view: InkCanvasView): IntArray {
         val snapshot = requireNotNull(view.activeRasterSnapshotForTest())
         return snapshot.copyPremultipliedPixels(app.inkloom.engine.v5.surface.PixelRect(0, 0, snapshot.logicalWidth, snapshot.logicalHeight))
@@ -123,6 +260,7 @@ class LayerOpacityWindowTest {
                     result = android.graphics.Rect().also { node.getBoundsInScreen(it) }
                 } else repeat(node.childCount) { visit(node.getChild(it)) }
             }
+            if (android.os.Build.VERSION.SDK_INT >= 34) instrumentation.uiAutomation.clearCache()
             visit(instrumentation.uiAutomation.rootInActiveWindow)
             result != null
         }
@@ -146,6 +284,7 @@ class LayerOpacityWindowTest {
                     result = Offset(rect.exactCenterX(), rect.exactCenterY())
                 } else repeat(node.childCount) { visit(node.getChild(it)) }
             }
+            if (android.os.Build.VERSION.SDK_INT >= 34) instrumentation.uiAutomation.clearCache()
             visit(instrumentation.uiAutomation.rootInActiveWindow)
             result != null
         }

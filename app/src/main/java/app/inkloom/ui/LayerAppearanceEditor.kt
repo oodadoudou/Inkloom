@@ -5,6 +5,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.inkloom.document.InkPage
 import app.inkloom.document.LayerOpacityEdit
+import app.inkloom.document.LayerAppearanceEdit
+import app.inkloom.document.LayerBlendEdit
+import app.inkloom.document.LayerBlendMode
+import app.inkloom.document.LayerHierarchy
 import app.inkloom.document.LayerRole
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -19,16 +23,16 @@ internal sealed interface LayerOpacityAction {
 }
 
 /** One page owns the preview and publication barrier. Dragging never writes the document store. */
-internal class LayerOpacityEditor(
+internal class LayerAppearanceEditor(
     private val documentId: String,
     private val pageId: String,
     private val page: () -> InkPage,
     private val canvas: () -> InkCanvasView?,
-    private val apply: (LayerOpacityEdit, Boolean) -> Boolean,
+    private val apply: (LayerAppearanceEdit, Boolean) -> Boolean,
     private val scope: CoroutineScope,
     private val rejected: () -> Unit,
 ) {
-    var preview by mutableStateOf<LayerOpacityEdit?>(null)
+    var preview by mutableStateOf<LayerAppearanceEdit?>(null)
         private set
     private var owner: InkCanvasView? = null
     private var publication: Job? = null
@@ -45,20 +49,8 @@ internal class LayerOpacityEditor(
         when (action) {
             is LayerOpacityAction.Preview -> {
                 if (!action.value.isFinite()) { cancel(); rejected(); return }
-                if (preview == null) {
-                    val layer = page().layers.firstOrNull { it.id == layerId }
-                    val view = canvas()
-                    if (layer == null || layer.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) ||
-                        view == null || view.selectionLayerTransferPending || view.hasActivePaintContact() ||
-                        !view.isBoundToSelectionPage(documentId, pageId)) {
-                        // Do not steal the pen-up from a contact that still owns the canvas.
-                        rejectedGesture = true; rejected(); return
-                    }
-                    owner = view
-                    view.selectionLayerTransferPending = true
-                    preview = LayerOpacityEdit(layerId, layer.opacity, layer.opacity)
-                }
-                val current = preview ?: return
+                if (preview == null && !begin(layerId) { LayerOpacityEdit(layerId, it.opacity, it.opacity) }) return
+                val current = preview as? LayerOpacityEdit ?: return
                 if (current.layerId == layerId) preview = current.copy(after = action.value.coerceIn(0f, 1f))
             }
             LayerOpacityAction.Cancel -> if (preview?.layerId == layerId) cancel()
@@ -66,10 +58,34 @@ internal class LayerOpacityEditor(
         }
     }
 
+    fun setBlendMode(layerId: String, mode: LayerBlendMode) {
+        if (closed || finishing || preview != null) { rejected(); return }
+        if (begin(layerId) { LayerBlendEdit(layerId, it.blendMode, mode) }) commit()
+        // A discrete choice owns no subsequent pointer-up to clear this flag.
+        rejectedGesture = false
+    }
+
+    private fun begin(layerId: String, edit: (app.inkloom.document.InkLayer) -> LayerAppearanceEdit): Boolean {
+        val currentPage = page()
+        val layer = currentPage.layers.firstOrNull { it.id == layerId }
+        val view = canvas()
+        if (layer == null || layer.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) ||
+            LayerHierarchy.effectiveLocked(currentPage.layers, layer) ||
+            view == null || view.selectionLayerTransferPending || view.hasActivePaintContact() ||
+            !view.isBoundToSelectionPage(documentId, pageId)) {
+            // Never steal the pen-up from a contact that still owns the canvas.
+            rejectedGesture = true; rejected(); return false
+        }
+        owner = view
+        view.selectionLayerTransferPending = true
+        preview = edit(layer)
+        return true
+    }
+
     private fun commit() {
         val edit = preview ?: return
         val view = owner ?: return
-        if (edit.before == edit.after) { cancel(); return }
+        if (edit.isNoOp) { cancel(); return }
         finishing = true
         publication = scope.launch {
             try {

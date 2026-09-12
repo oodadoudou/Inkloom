@@ -841,8 +841,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onRenameLayer = viewModel::renameLayer,
             onToggleLayerVisibility = viewModel::toggleLayerVisibility,
             onToggleLayerLock = viewModel::toggleLayerLock,
-            onApplyLayerOpacityEdit = viewModel::applyLayerOpacityEdit,
-            onSetLayerBlendMode = viewModel::setLayerBlendMode,
+            onApplyLayerAppearanceEdit = viewModel::applyLayerAppearanceEdit,
             onSetLayerRasterTileSurface = viewModel::setLayerRasterTileSurface,
             onToggleLayerAlphaLock = viewModel::toggleLayerAlphaLock,
             onToggleLayerClippedToBelow = viewModel::toggleLayerClippedToBelow,
@@ -1419,8 +1418,7 @@ private fun EditorScreen(
     onRenameLayer: (String, String, String, String) -> Unit,
     onToggleLayerVisibility: (String, String, String) -> Unit,
     onToggleLayerLock: (String, String, String) -> Unit,
-    onApplyLayerOpacityEdit: (String, String, LayerOpacityEdit, Boolean) -> Boolean,
-    onSetLayerBlendMode: (String, String, String, LayerBlendMode) -> Unit,
+    onApplyLayerAppearanceEdit: (String, String, LayerAppearanceEdit, Boolean) -> Boolean,
     onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit,
     onToggleLayerAlphaLock: (String, String, String) -> Unit,
     onToggleLayerClippedToBelow: (String, String, String) -> Unit,
@@ -1467,18 +1465,18 @@ private fun EditorScreen(
     }
     val storedPage = document.pages.firstOrNull { it.id == selectedPageId } ?: document.pages.first()
     var canvasView by remember { mutableStateOf<InkCanvasView?>(null) }
-    val opacityScope = rememberCoroutineScope()
-    val currentOpacityPage by rememberUpdatedState(storedPage)
-    val currentOpacityCanvas by rememberUpdatedState(canvasView)
-    val currentOpacityApply by rememberUpdatedState(onApplyLayerOpacityEdit)
-    val opacityFailure = tr("Could not change layer opacity; finish the current operation and try again", "无法修改图层不透明度，请完成当前操作后重试")
-    val opacityEditor = remember(document.id, storedPage.id) {
-        LayerOpacityEditor(document.id, storedPage.id, { currentOpacityPage }, { currentOpacityCanvas },
-            { edit, undo -> currentOpacityApply(document.id, storedPage.id, edit, undo) }, opacityScope,
-            { Toast.makeText(context, opacityFailure, Toast.LENGTH_SHORT).show() })
+    val appearanceScope = rememberCoroutineScope()
+    val currentAppearancePage by rememberUpdatedState(storedPage)
+    val currentAppearanceCanvas by rememberUpdatedState(canvasView)
+    val currentAppearanceApply by rememberUpdatedState(onApplyLayerAppearanceEdit)
+    val appearanceFailure = tr("Could not change layer properties; finish the current operation or unlock the layer and try again", "无法修改图层属性，请完成当前操作或解锁图层后重试")
+    val appearanceEditor = remember(document.id, storedPage.id) {
+        LayerAppearanceEditor(document.id, storedPage.id, { currentAppearancePage }, { currentAppearanceCanvas },
+            { edit, undo -> currentAppearanceApply(document.id, storedPage.id, edit, undo) }, appearanceScope,
+            { Toast.makeText(context, appearanceFailure, Toast.LENGTH_SHORT).show() })
     }
-    DisposableEffect(opacityEditor) { onDispose { opacityEditor.close() } }
-    val selectedPage = opacityEditor.preview?.apply(storedPage) ?: storedPage
+    DisposableEffect(appearanceEditor) { onDispose { appearanceEditor.close() } }
+    val selectedPage = appearanceEditor.preview?.apply(storedPage) ?: storedPage
     val availableBrushes = remember(brushes) { (systemBrushCatalog() + brushes).distinctBy(ImportedBrush::id) }
     val persistedBrush = availableBrushes.firstOrNull {
         it.id == settings.persistentBrushPresetId && !it.hidden
@@ -2322,7 +2320,7 @@ private fun EditorScreen(
         val visibleLayerPanelBounds = WorkspacePanelPlacement.clamp(layerPanelBounds, workspaceWidthDp, usableWorkspaceHeightDp, minimumWidthDp = 176f)
         LaunchedEffect(visiblePagePanelBounds) { if (pagePanelBounds != visiblePagePanelBounds) pagePanelBounds = visiblePagePanelBounds }
         // Clamp only the presentation. A delayed effect must not overwrite a newer resize or the saved width.
-        LaunchedEffect(visibleLayerPanelBounds) { if (layerPanelBounds != visibleLayerPanelBounds) layerPanelBounds = visibleLayerPanelBounds }
+        // Keyboard-driven presentation clamping must not replace the user's floating layer bounds.
         val orderedPanelTabs = WorkspacePanelTabs.normalizeOrder(settings.panelTabOrder)
         fun visibleTabsAt(dock: WorkspacePanelDock, includePages: Boolean = true) = orderedPanelTabs.filter { panel ->
             when (panel) {
@@ -2724,8 +2722,8 @@ private fun EditorScreen(
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
-                onOpacity = opacityEditor::handle,
-                onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
+                onOpacity = appearanceEditor::handle,
+                onBlendMode = appearanceEditor::setBlendMode,
                 onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                 onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
@@ -3529,8 +3527,8 @@ private fun EditorScreen(
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
-                onOpacity = opacityEditor::handle,
-                onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
+                onOpacity = appearanceEditor::handle,
+                onBlendMode = appearanceEditor::setBlendMode,
                 onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                 onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
@@ -3607,8 +3605,8 @@ private fun EditorScreen(
                     onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                     onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                     onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
-                    onOpacity = opacityEditor::handle,
-                onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
+                    onOpacity = appearanceEditor::handle,
+                onBlendMode = appearanceEditor::setBlendMode,
                     onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                     onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                     onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
@@ -3711,7 +3709,7 @@ private fun EditorScreen(
             onActivate = { activeFloatingPanel = "layers" },
             onResize = { left, top, right, bottom ->
                 activeFloatingPanel = "layers"
-                layerPanelBounds = resizeFloatingPanel(WorkspacePanelKind.LAYERS, layerPanelBounds, left / editorDensity.density, top / editorDensity.density, right / editorDensity.density, bottom / editorDensity.density)
+                layerPanelBounds = resizeFloatingPanel(WorkspacePanelKind.LAYERS, visibleLayerPanelBounds, left / editorDensity.density, top / editorDensity.density, right / editorDensity.density, bottom / editorDensity.density)
             },
             onResizeEnd = { if (freePanelsStacked) persistFloatingPanels(freePanelTabs) else persistLayerPanel(layerPanelBounds) },
             tabs = if (freePanelsStacked) freePanelTabs else emptyList(),
@@ -3735,8 +3733,8 @@ private fun EditorScreen(
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
-                onOpacity = opacityEditor::handle,
-                onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
+                onOpacity = appearanceEditor::handle,
+                onBlendMode = appearanceEditor::setBlendMode,
                 onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                 onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
@@ -3758,7 +3756,7 @@ private fun EditorScreen(
                     activeFloatingPanel = "layers"
                     val deltaXDp = dx / editorDensity.density
                     val deltaYDp = dy / editorDensity.density
-                    val next = moveFloatingPanel(WorkspacePanelKind.LAYERS, layerPanelBounds, deltaXDp, deltaYDp)
+                    val next = moveFloatingPanel(WorkspacePanelKind.LAYERS, visibleLayerPanelBounds, deltaXDp, deltaYDp)
                     layerPanelBounds = next
                     updatePanelDockPreview(WorkspacePanelKind.LAYERS, next, deltaXDp, deltaYDp)
                 },
@@ -7336,7 +7334,6 @@ private fun PaintingLayerPanel(
     val currentMoveToFolder by rememberUpdatedState(onMoveToFolder)
     var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
     var renameValue by remember { mutableStateOf("") }
-    var propertiesLayerId by remember { mutableStateOf<String?>(null) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var layerSearch by rememberSaveable { mutableStateOf("") }
     var selectedLayerIds by remember { mutableStateOf(emptySet<String>()) }
@@ -7349,6 +7346,7 @@ private fun PaintingLayerPanel(
     val currentPanelDragEnd by rememberUpdatedState(onPanelDragEnd)
     val currentPanelDragCancel by rememberUpdatedState(onPanelDragCancel)
     val dragDescription = tr("Drag layers panel", "拖动图层面板")
+    val layerListDescription = tr("Layer list", "图层列表")
     val shape = RoundedCornerShape(14.dp)
     Surface(modifier.shadow(12.dp, shape), shape = shape, color = Paper, contentColor = Ink, border = CardDefaults.outlinedCardBorder()) {
         Column {
@@ -7385,6 +7383,13 @@ private fun PaintingLayerPanel(
                 IconButton(onClick = onAdd, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Add, tr("Add layer", "添加图层"), tint = Ink) }
                 IconButton(onClick = onClose, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Close, tr("Close layers panel", "关闭图层面板"), tint = Ink) }
             }
+            val propertyLayer = page.layers.firstOrNull { it.id == activeLayerId }
+            LayerPropertiesBar(propertyLayer,
+                editable = propertyLayer != null && propertyLayer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) &&
+                    !LayerHierarchy.effectiveLocked(page.layers, propertyLayer),
+                language = LocalUiLanguage.current,
+                onOpacity = { onOpacity(activeLayerId, it) },
+                onMode = { onBlendMode(activeLayerId, it) })
             HorizontalDivider(color = OutlineSoft)
             if (searchOpen) OutlinedTextField(
                 value = layerSearch,
@@ -7405,7 +7410,7 @@ private fun PaintingLayerPanel(
                     IconButton({ selectedLayerIds = emptySet() }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Close, tr("Exit layer selection", "退出图层多选"), Modifier.size(17.dp)) }
                 }
             }
-            LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            LazyColumn(Modifier.weight(1f).semantics { contentDescription = layerListDescription }, contentPadding = PaddingValues(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(filteredLayers, key = { it.id }) { layer ->
                     var menu by remember { mutableStateOf(false) }
                     var maskMenu by remember { mutableStateOf(false) }
@@ -7482,6 +7487,11 @@ private fun PaintingLayerPanel(
                                 },
                             )
                         }) {
+                            if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) Text(
+                                "${(layer.opacity * 100).roundToInt()}%  ${LayerBlendModeDisplayName.of(layer.blendMode, LocalUiLanguage.current)}",
+                                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                fontSize = 10.sp, color = MutedInk,
+                            )
                             Text(if (draggingLayerId == layer.id) "↕ ${layer.name}" else layer.name, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, fontSize = 13.sp, color = rowInk)
 
                         }
@@ -7489,12 +7499,6 @@ private fun PaintingLayerPanel(
                         if (layer.reference) Icon(Icons.Outlined.Lightbulb, tr("Reference layer", "参考图层"), Modifier.size(15.dp), tint = MutedInk)
                         if (layer.draft) Icon(Icons.Outlined.EditNote, tr("Draft layer", "草稿图层"), Modifier.size(15.dp), tint = MutedInk)
                         layer.mask?.let { mask -> LayerMaskThumbnailView(mask, Modifier.size(24.dp)) }
-                        val blendingDescription = "${tr("Layer blending", "图层混合")} ${layer.name}"
-                        if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) TextButton(
-                            onClick = { propertiesLayerId = if (propertiesLayerId == layer.id) null else layer.id },
-                            modifier = Modifier.width(44.dp).height(48.dp).semantics { contentDescription = blendingDescription },
-                            contentPadding = PaddingValues(0.dp),
-                        ) { Text(if (layer.blendMode == LayerBlendMode.NORMAL) "N" else layer.blendMode.name.take(2), fontSize = 12.sp, color = rowInk) }
                         IconButton(onClick = { onVisibility(layer.id) }, modifier = Modifier.size(40.dp)) { Icon(if (layer.visible) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, tr("Toggle layer visibility", "切换图层可见性"), Modifier.size(19.dp), tint = rowInk) }
                         val layerActionsDescription = "${tr("Layer actions", "图层操作")} ${layer.name}"
                         Box(Modifier.semantics { contentDescription = layerActionsDescription }) {
@@ -7522,9 +7526,6 @@ private fun PaintingLayerPanel(
                             }
                         }
                     }
-                    }
-                    if (propertiesLayerId == layer.id && layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) {
-                        LayerBlendControls(layer, LocalUiLanguage.current, { onOpacity(layer.id, it) }, { onBlendMode(layer.id, it) })
                     }
                 }
             }
