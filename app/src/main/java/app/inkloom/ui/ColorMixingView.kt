@@ -130,8 +130,12 @@ internal class ColorMixingView(context: Context) : View(context) {
         fun y(value: Float) = boardY(value).coerceIn(0f, board.height - .001f)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                if (boardX(event.x) !in 0f..board.width.toFloat() || boardY(event.y) !in 0f..board.height.toFloat()) {
+                    pointer = -1
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    return true
+                }
                 parent?.requestDisallowInterceptTouchEvent(true)
-                if (boardX(event.x) !in 0f..board.width.toFloat() || boardY(event.y) !in 0f..board.height.toFloat()) return true
                 pointer = event.getPointerId(0); edited = true
                 board.begin(x(event.x), y(event.y), tool, ink, brushRadius)
             }
@@ -142,11 +146,14 @@ internal class ColorMixingView(context: Context) : View(context) {
                 board.move(x(event.getX(index)), y(event.getY(index)))
             }
             MotionEvent.ACTION_UP -> {
-                if (pointer < 0) return true
+                if (pointer < 0) {
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    return true
+                }
                 board.move(x(event.x), y(event.y))
                 if (tool == MixingBoard.Tool.PICK) {
                     val sampled = board.sample(x(event.x), y(event.y))
-                    if (sampled ushr 24 != 0) onPick(sampled or (0xff shl 24))
+                    if (sampled ushr 24 != 0) onPick(backgroundTone?.let { MixingBoard.sourceOver(it, sampled, 1f) } ?: (sampled or (0xff shl 24)))
                     else backgroundTone?.let(onPick)
                 }
                 if (board.finish()) save()
@@ -184,7 +191,15 @@ internal class ColorMixingView(context: Context) : View(context) {
     fun undo() { if (board.undo()) { edited = true; refresh(); save() } }
     fun redo() { if (board.redo()) { edited = true; refresh(); save() } }
     fun clear() { if (board.clear()) { edited = true; refresh(); save() } }
-    override fun onDetachedFromWindow() { board.cancel(); pointer = -1; navigating = false; hoverX = -1f; super.onDetachedFromWindow() }
+    override fun onDetachedFromWindow() {
+        board.cancel()
+        pointer = -1; navigating = false; hoverX = -1f
+        parent?.requestDisallowInterceptTouchEvent(false)
+        // This view survives color-tab changes. The cached bitmap must reflect the
+        // rolled-back board even when detaching did not first deliver ACTION_CANCEL.
+        refresh()
+        super.onDetachedFromWindow()
+    }
     private fun refresh() {
         board.copyPixelsTo(displayPixels)
         bitmap.setPixels(displayPixels, 0, board.width, 0, 0, board.width, board.height)
