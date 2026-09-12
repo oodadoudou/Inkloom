@@ -76,19 +76,28 @@ internal class PigmentBucketReservoir(
     }
 
     /** Caller-owned output avoids allocating on the frame path. */
-    fun copyArgb(output: IntArray) {
+    fun copyArgb(output: IntArray, mixing: Float = 0f) {
         require(output.size >= bucketCount)
+        val mix = mixing.coerceIn(0f, 1f)
+        val retain = 1f - mix
+        // Blend relaxes differences across the entire loaded footprint. Smear retains
+        // those differences as bristle-like spatial pigment. Transparent pixels carry
+        // no RGB, so averaging must happen before unpremultiplication.
+        val meanA = if (mix > 0f) alpha.sum() / bucketCount * mix else 0f
+        val meanR = if (mix > 0f) red.sum() / bucketCount * mix else 0f
+        val meanG = if (mix > 0f) green.sum() / bucketCount * mix else 0f
+        val meanB = if (mix > 0f) blue.sum() / bucketCount * mix else 0f
         for (index in 0 until bucketCount) {
-            val a = alpha[index].coerceIn(0f, 1f)
+            val a = (alpha[index] * retain + meanA).coerceIn(0f, 1f)
             if (a <= MIN_ALPHA) {
                 output[index] = 0
                 continue
             }
             val inverse = 1f / a
             val outA = (a * 255f + .5f).toInt().coerceIn(0, 255)
-            val outR = (red[index] * inverse * 255f + .5f).toInt().coerceIn(0, 255)
-            val outG = (green[index] * inverse * 255f + .5f).toInt().coerceIn(0, 255)
-            val outB = (blue[index] * inverse * 255f + .5f).toInt().coerceIn(0, 255)
+            val outR = ((red[index] * retain + meanR) * inverse * 255f + .5f).toInt().coerceIn(0, 255)
+            val outG = ((green[index] * retain + meanG) * inverse * 255f + .5f).toInt().coerceIn(0, 255)
+            val outB = ((blue[index] * retain + meanB) * inverse * 255f + .5f).toInt().coerceIn(0, 255)
             output[index] = (outA shl 24) or (outR shl 16) or (outG shl 8) or outB
         }
     }

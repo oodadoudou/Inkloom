@@ -5,6 +5,25 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PigmentBucketReservoirTest {
+    @Test fun mixingAveragesTheLoadedFootprintWithoutChangingSmearBuckets() {
+        val reservoir = PigmentBucketReservoir(2, 2)
+        reservoir.pickup(intArrayOf(0xffff0000.toInt(), 0xff0000ff.toInt(), 0xffff0000.toInt(), 0xff0000ff.toInt()), 2, 2, 1f)
+        val output = IntArray(4)
+        reservoir.copyArgb(output, 1f)
+        assertTrue(output.all { it == 0xff800080.toInt() })
+        reservoir.copyArgb(output)
+        assertEquals(0xffff0000.toInt(), output[0])
+        assertEquals(0xff0000ff.toInt(), output[1])
+    }
+
+    @Test fun mixingTransparentBucketsPreservesPigmentHue() {
+        val reservoir = PigmentBucketReservoir(2, 2)
+        reservoir.pickup(intArrayOf(0xff00ffff.toInt(), 0, 0, 0), 2, 2, 1f)
+        val output = IntArray(4)
+        reservoir.copyArgb(output, 1f)
+        assertTrue(output.all { it == 0x4000ffff })
+    }
+
     @Test fun bucketsPreserveSpatiallyDifferentPigmentInsteadOfAveragingOneColor() {
         val reservoir = PigmentBucketReservoir(columns = 4, rows = 4)
         val pixels = IntArray(16 * 16) { index ->

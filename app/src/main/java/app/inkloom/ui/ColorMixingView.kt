@@ -118,6 +118,12 @@ internal class ColorMixingView @JvmOverloads constructor(context: Context, priva
         }
         fun x(value: Float) = boardX(value).coerceIn(0f, board.width - .001f)
         fun y(value: Float) = boardY(value).coerceIn(0f, board.height - .001f)
+        fun pressure(index: Int, history: Int? = null): Float {
+            val type = event.getToolType(index)
+            if (type != MotionEvent.TOOL_TYPE_STYLUS && type != MotionEvent.TOOL_TYPE_ERASER) return 1f
+            val value = history?.let { event.getHistoricalPressure(index, it) } ?: event.getPressure(index)
+            return if (value.isFinite()) value.coerceIn(0f, 1f) else 1f
+        }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 if (boardX(event.x) !in 0f..board.width.toFloat() || boardY(event.y) !in 0f..board.height.toFloat()) {
@@ -127,20 +133,25 @@ internal class ColorMixingView @JvmOverloads constructor(context: Context, priva
                 }
                 parent?.requestDisallowInterceptTouchEvent(true)
                 pointer = event.getPointerId(0); session.claim(this)
-                board.begin(x(event.x), y(event.y), tool, ink, brushRadius)
+                board.begin(x(event.x), y(event.y), tool, ink, brushRadius, pressure(0))
             }
             MotionEvent.ACTION_MOVE -> {
                 val index = event.findPointerIndex(pointer)
                 if (index < 0 || !session.owns(this)) return true
-                for (h in 0 until event.historySize) board.move(x(event.getHistoricalX(index, h)), y(event.getHistoricalY(index, h)))
-                board.move(x(event.getX(index)), y(event.getY(index)))
+                for (h in 0 until event.historySize) board.move(x(event.getHistoricalX(index, h)), y(event.getHistoricalY(index, h)), pressure(index, h))
+                board.move(x(event.getX(index)), y(event.getY(index)), pressure(index))
             }
             MotionEvent.ACTION_UP -> {
                 if (pointer < 0 || !session.owns(this)) {
                     parent?.requestDisallowInterceptTouchEvent(false)
                     return true
                 }
-                board.move(x(event.x), y(event.y))
+                val index = event.findPointerIndex(pointer).coerceAtLeast(0)
+                for (h in 0 until event.historySize) board.move(x(event.getHistoricalX(index, h)), y(event.getHistoricalY(index, h)), pressure(index, h))
+                // UP usually reports zero pressure after contact is lost. Retain the last
+                // measured contact pressure instead of growing or cutting the stroke tip.
+                if (pressure(index) > 0f) board.move(x(event.getX(index)), y(event.getY(index)), pressure(index))
+                else board.move(x(event.getX(index)), y(event.getY(index)))
                 if (tool == MixingBoard.Tool.PICK) {
                     val sampled = board.sample(x(event.x), y(event.y))
                     if (sampled ushr 24 != 0) onPick(backgroundTone?.let { MixingBoard.sourceOver(it, sampled, 1f) } ?: (sampled or (0xff shl 24)))

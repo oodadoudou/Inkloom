@@ -28,6 +28,7 @@ internal class ColorMixingSession(context: Context) {
     private val saveLock = Any()
     private var pendingSave: IntArray? = null
     private var saveQueued = false
+    private var closed = false
 
     init {
         IO.execute {
@@ -39,6 +40,7 @@ internal class ColorMixingSession(context: Context) {
                 }
             }
             main.post {
+                if (closed) return@post
                 restored.getOrNull()?.let(board::restore)
                 ready = true
                 storageFailed = restored.isFailure
@@ -71,6 +73,10 @@ internal class ColorMixingSession(context: Context) {
     fun undo() = edit { board.undo() }
     fun redo() = edit { board.redo() }
     fun clear() = edit { board.clear() }
+    fun close() {
+        closed = true; owner = null
+        board.close(); observers.clear()
+    }
     private inline fun edit(operation: () -> Boolean) {
         if (!ready) return
         owner = null

@@ -8,6 +8,9 @@ import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
+import android.graphics.Matrix
+import android.graphics.RadialGradient
+import android.graphics.Shader
 import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v5.surface.PixelTileTransactionRecord
@@ -17,29 +20,36 @@ import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.hypot
 
+enum class RasterBlendMode { SMEAR, MIX }
+
 /** Pigment transport directly over one sparse tile transaction. */
 class RasterTileBlendSession private constructor(
     surface: PixelTileSurface,
     private val selection: RasterSelectionMask,
     private val preserveDestinationAlpha: Boolean,
+    private val mode: RasterBlendMode,
 ) : AutoCloseable {
     constructor(
         surface: PixelTileSurface,
         preserveDestinationAlpha: Boolean = false,
+        mode: RasterBlendMode = RasterBlendMode.SMEAR,
     ) : this(
         surface,
         RasterSelectionMask(null, surface.logicalWidth, surface.logicalHeight),
         preserveDestinationAlpha,
+        mode,
     )
 
     internal constructor(
         surface: PixelTileSurface,
         selectionMask: MaskTileSurfaceSnapshot?,
         preserveDestinationAlpha: Boolean = false,
+        mode: RasterBlendMode = RasterBlendMode.SMEAR,
     ) : this(
         surface,
         RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
         preserveDestinationAlpha,
+        mode,
     )
 
     private val edits = RasterTileEditSession(surface, "raster blend")
@@ -57,6 +67,10 @@ class RasterTileBlendSession private constructor(
     private val maskPaint = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN) }
     private val depositPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val reservoirPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val mixingMask = RadialGradient(0f, 0f, 1f,
+        intArrayOf(Color.WHITE, 0xeeffffff.toInt(), 0x80ffffff.toInt(), 0x17ffffff, Color.TRANSPARENT),
+        floatArrayOf(0f, .25f, .5f, .75f, 1f), Shader.TileMode.CLAMP)
+    private val mixingMatrix = Matrix()
     private val blurFilters = object : LinkedHashMap<Int, BlurMaskFilter>(16, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, BlurMaskFilter>): Boolean = size > 24
     }
@@ -160,14 +174,14 @@ class RasterTileBlendSession private constructor(
                 pickupReservoir(sample, sampleGlobal, previousX, previousY, radius, strength)
                 pickupDistance = 0f
             }
-            transport.drawBitmap(
+            if (mode == RasterBlendMode.SMEAR) transport.drawBitmap(
                 sample,
                 sampleGlobal.left - destination.left + deltaX,
                 sampleGlobal.top - destination.top + deltaY,
                 sourcePaint,
             )
             if (reservoir.hasPigment) {
-                reservoir.copyArgb(reservoirPixels)
+                reservoir.copyArgb(reservoirPixels, if (mode == RasterBlendMode.MIX) .9f else 0f)
                 reservoirBitmap.setPixels(
                     reservoirPixels,
                     0,
@@ -183,7 +197,7 @@ class RasterTileBlendSession private constructor(
                     ceil(currentX + radius - destination.left).toInt(),
                     ceil(currentY + radius - destination.top).toInt(),
                 )
-                reservoirPaint.alpha = (strength.coerceIn(0f, 1f) * RESERVOIR_DEPOSIT_ALPHA * 255f + .5f)
+                reservoirPaint.alpha = if (mode == RasterBlendMode.MIX) 255 else (strength.coerceIn(0f, 1f) * RESERVOIR_DEPOSIT_ALPHA * 255f + .5f)
                     .toInt().coerceIn(0, 255)
                 transport.drawBitmap(reservoirBitmap, null, reservoirDestination, reservoirPaint)
                 reservoirPaint.alpha = 255
@@ -194,13 +208,25 @@ class RasterTileBlendSession private constructor(
             val localCenterY = currentY - destination.top
             val hardRadius = radius * hardness.coerceIn(0f, 1f)
             val featherRadius = (radius - hardRadius).coerceAtLeast(0f)
-            coveragePaint.style = Paint.Style.STROKE
-            coveragePaint.strokeCap = Paint.Cap.ROUND
-            coveragePaint.strokeJoin = Paint.Join.ROUND
-            coveragePaint.strokeWidth = hardRadius.coerceAtLeast(.5f) * 2f
-            coveragePaint.maskFilter = if (featherRadius <= .01f) null else cachedBlur(featherRadius)
-            coverage.drawLine(localPreviousX, localPreviousY, localCenterX, localCenterY, coveragePaint)
-            coveragePaint.maskFilter = null
+            if (mode == RasterBlendMode.MIX) {
+                // Compact smooth coverage has no clipped Gaussian tail at ROI edges.
+                // It also avoids transporting quantized transparent edges repeatedly.
+                mixingMatrix.setScale(radius, radius)
+                mixingMatrix.postTranslate(localCenterX, localCenterY)
+                mixingMask.setLocalMatrix(mixingMatrix)
+                coveragePaint.style = Paint.Style.FILL
+                coveragePaint.shader = mixingMask
+                coverage.drawCircle(localCenterX, localCenterY, radius, coveragePaint)
+                coveragePaint.shader = null
+            } else {
+                coveragePaint.style = Paint.Style.STROKE
+                coveragePaint.strokeCap = Paint.Cap.ROUND
+                coveragePaint.strokeJoin = Paint.Join.ROUND
+                coveragePaint.strokeWidth = hardRadius.coerceAtLeast(.5f) * 2f
+                coveragePaint.maskFilter = if (featherRadius <= .01f) null else cachedBlur(featherRadius)
+                coverage.drawLine(localPreviousX, localPreviousY, localCenterX, localCenterY, coveragePaint)
+                coveragePaint.maskFilter = null
+            }
             localRect.set(0, 0, destination.width, destination.height)
             transport.drawBitmap(requireNotNull(coverageBitmap), localRect, localRect, maskPaint)
             selection.apply(
@@ -227,7 +253,7 @@ class RasterTileBlendSession private constructor(
         radius: Float,
         strength: Float,
     ) {
-        val pickupRadius = (radius * PICKUP_RADIUS_FACTOR).coerceAtLeast(1f)
+        val pickupRadius = (radius * if (mode == RasterBlendMode.MIX) 1f else PICKUP_RADIUS_FACTOR).coerceAtLeast(1f)
         val left = floor(centerX - pickupRadius).toInt().coerceIn(sampleGlobal.left, sampleGlobal.right - 1)
         val top = floor(centerY - pickupRadius).toInt().coerceIn(sampleGlobal.top, sampleGlobal.bottom - 1)
         val right = ceil(centerX + pickupRadius).toInt().coerceIn(left + 1, sampleGlobal.right)
@@ -246,8 +272,9 @@ class RasterTileBlendSession private constructor(
             pickupHeight,
         )
         // Strong smudge carries pigment farther; low strength refreshes from the canvas sooner.
-        val pickupRate = (PICKUP_RATE_MAX - strength.coerceIn(0f, 1f) * PICKUP_RATE_RANGE)
-            .coerceIn(PICKUP_RATE_MIN, PICKUP_RATE_MAX)
+        val pickupRate = if (mode == RasterBlendMode.MIX) .10f + (1f - strength.coerceIn(0f, 1f)) * .12f
+            else (PICKUP_RATE_MAX - strength.coerceIn(0f, 1f) * PICKUP_RATE_RANGE)
+                .coerceIn(PICKUP_RATE_MIN, PICKUP_RATE_MAX)
         reservoir.pickup(pickupPixels, pickupWidth, pickupHeight, pickupRate)
     }
 
