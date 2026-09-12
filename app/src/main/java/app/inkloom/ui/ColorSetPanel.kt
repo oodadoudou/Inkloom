@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import app.inkloom.settings.ColorSetLibrary
 import app.inkloom.settings.ColorSetLibraryStore
+import app.inkloom.settings.StarterColorSet
 import app.inkloom.settings.UiLanguage
 import app.inkloom.settings.text
 import app.inkloom.ui.theme.*
@@ -57,6 +58,7 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
     }
     var chooser by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
+    var starterPicker by remember { mutableStateOf(false) }
     var naming by remember { mutableStateOf<String?>(null) }
     var name by remember { mutableStateOf("") }
     var deletion by remember { mutableStateOf(false) }
@@ -85,6 +87,7 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
                 SetAction(Icons.Outlined.MoreHoriz, tr("Color set menu", "色板菜单")) { menu = true }
                 ColorPaletteDropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem(text = { Text(tr("New color set", "新建色板")) }, onClick = { startName("new", "") })
+                    DropdownMenuItem(text = { Text(tr("Add starter color set", "添加基础色板")) }, onClick = { menu = false; starterPicker = true })
                     if (set != null) {
                         DropdownMenuItem(text = { Text(tr("Rename color set", "重命名色板")) }, onClick = { startName("rename", set.name) })
                         DropdownMenuItem(text = { Text(tr("Duplicate color set", "复制色板")) }, onClick = { edit { it.duplicateSet(set.id, "${set.name} ${tr("copy", "副本")}".take(120)) }; menu = false })
@@ -145,6 +148,25 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
         }
         error?.let { Text(it, color = Ink, fontSize = 11.sp) }
     }
+    if (starterPicker) AlertDialog(onDismissRequest = { starterPicker = false },
+        title = { Text(tr("Inkloom color sets", "Inkloom 基础色板")) },
+        text = {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                StarterColorSet.entries.forEach { preset ->
+                    Column(Modifier.fillMaxWidth().clickable {
+                        edit { preset.addTo(it, language) }; starterPicker = false
+                    }.padding(vertical = 8.dp).semantics { contentDescription = "${tr("Add", "添加")} ${preset.displayName(language)}" }) {
+                        Text(preset.displayName(language), color = Ink, fontSize = 13.sp)
+                        Spacer(Modifier.height(8.dp))
+                        Row(Modifier.fillMaxWidth().height(24.dp)) {
+                            preset.swatches(language).forEach { (value, _) ->
+                                Box(Modifier.weight(1f).fillMaxHeight().background(Color(value)).border(.5.dp, OutlineSoft))
+                            }
+                        }
+                    }
+                }
+            }
+        }, confirmButton = {}, dismissButton = { TextButton(onClick = { starterPicker = false }) { Text(tr("Cancel", "取消")) } })
     if (naming != null) AlertDialog(onDismissRequest = { naming = null }, title = { Text(tr("Name", "名称")) }, text = {
         OutlinedTextField(name, { name = it.take(120) }, singleLine = true, modifier = Modifier.semantics { contentDescription = tr("Name", "名称") })
     }, confirmButton = {

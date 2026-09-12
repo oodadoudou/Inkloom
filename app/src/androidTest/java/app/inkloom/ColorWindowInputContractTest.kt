@@ -419,6 +419,37 @@ class ColorWindowInputContractTest {
         assertEquals(listOf(original), app.inkloom.settings.ColorSetLibraryStore(ApplicationProvider.getApplicationContext()).load().activeSet?.swatches?.map { it.color })
     }
 
+    @Test fun starterPalettesAreOptionalAndKeepColorsBrushAndUserSwatchesUntilPicked() {
+        tap("New Note"); tap("Create"); val view = canvas()
+        val color = view.inkColor; val secondary = view.secondaryInkColor; val brush = view.brushId
+        val store = app.inkloom.settings.ColorSetLibraryStore(ApplicationProvider.getApplicationContext())
+        tap("Colors"); tap("Palettes"); tap("Save current color")
+        val original = store.load()
+        tap("Color set menu"); tap("Add starter color set"); tap("Cancel")
+        assertEquals(original, store.load())
+        tap("Color set menu"); tap("Add starter color set"); tap("Add Line art")
+        assertEquals("Line art", store.load().activeSet!!.name)
+        assertEquals(12, store.load().activeSet!!.swatches.size)
+        assertEquals(original.sets, store.load().sets.take(original.sets.size))
+        assertEquals(color, view.inkColor); assertEquals(secondary, view.secondaryInkColor)
+        assertEquals(brush, view.brushId)
+        tap("Color tile 5")
+        assertEquals(0xff322522.toInt(), view.inkColor); assertEquals(secondary, view.secondaryInkColor)
+        tap("Mix"); tap("Palettes")
+        val saved = store.load()
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        tap("Colors"); tap("Palettes")
+        assertEquals(saved, store.load())
+        tap("Color set menu"); tap("Add starter color set"); tap("Add Sketch")
+        assertEquals("Sketch", store.load().activeSet!!.name)
+        tap("Color tile 1")
+        assertEquals(0xffc6e1f4.toInt(), view.inkColor)
+        assertEquals(brush, view.brushId)
+        val ready = store.load()
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        assertEquals(ready, store.load())
+    }
+
     @Test fun mixingBoardSupportsUndoPickAndReopenWithoutChangingNotebookPixels() {
         tap("New Note"); tap("Create"); val canvas = canvas()
         val revision = canvas.activeRasterSnapshotForTest()?.revision
