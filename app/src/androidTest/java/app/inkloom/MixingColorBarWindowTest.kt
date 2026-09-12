@@ -193,10 +193,10 @@ class MixingColorBarWindowTest {
     private fun chooseWheelColor(saturation: Float, verticalFraction: Float): Int {
         tap("Wheel")
         val ring = bounds("Hue ring")
-        tapAt(Offset(ring.exactCenterX(), ring.top + ring.height() * .07f))
+        tapAt(ColorWheelTestCoordinates.hue(ring, 270f))
         compose.waitForIdle()
         val field = bounds("Saturation and brightness field")
-        tapAt(Offset(field.left + field.width() * saturation, field.top + field.height() * verticalFraction))
+        tapAt(ColorWheelTestCoordinates.triangle(field, saturation, 1f - verticalFraction))
         compose.waitForIdle()
         return canvas().inkColor
     }

@@ -8,6 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
@@ -43,6 +44,108 @@ class ColorWindowInputContractTest {
         }
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
+
+    private fun huePoint(ring: android.graphics.Rect, hue: Float): Offset {
+        val radians = Math.toRadians((hue + 210f).toDouble())
+        return Offset(ring.exactCenterX() + kotlin.math.cos(radians).toFloat() * ring.width() * .43f,
+            ring.exactCenterY() + kotlin.math.sin(radians).toFloat() * ring.height() * .43f)
+    }
+    private fun trianglePoint(field: android.graphics.Rect, saturation: Float, value: Float): Offset =
+        Offset(field.left + field.width() * saturation * value,
+            field.top + field.height() * (1f - value + saturation * value * .5f))
+
+    @Test fun trianglePixelsMatchPickedColorsAndHsvModeSurvivesClosing() {
+        tap("New Note"); tap("Create"); val view = canvas(); tap("Colors")
+        assertTrue(compose.onAllNodesWithContentDescription("Use HSV square").fetchSemanticsNodes().isNotEmpty())
+        tapAt(huePoint(bounds("Hue ring"), 0f)); compose.waitForIdle()
+        val field = bounds("Saturation and brightness field")
+        for ((s, v) in listOf(.5f to .8f, .7f to .55f, .2f to .7f)) {
+            val point = trianglePoint(field, s, v)
+            val screenshot = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            val rendered = screenshot.getPixel(point.x.toInt(), point.y.toInt()); screenshot.recycle()
+            tapAt(point); compose.waitForIdle()
+            for (shift in listOf(16, 8, 0)) assertTrue("Displayed triangle color must match selected RGB",
+                kotlin.math.abs((rendered ushr shift and 255) - (view.inkColor ushr shift and 255)) <= 4)
+        }
+        val original = view.inkColor
+        tap("Use HSV square"); assertEquals(original, view.inkColor)
+        val square = bounds("Saturation and brightness field")
+        assertTrue(kotlin.math.abs(square.width() - square.height()) <= 1)
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK); compose.waitForIdle(); tap("Colors")
+        assertTrue(compose.onAllNodesWithContentDescription("Use HLS triangle").fetchSemanticsNodes().isNotEmpty())
+        assertEquals(original, view.inkColor)
+        tap("Color channel values"); compose.waitForIdle(); assertTrue(hasText("R"))
+        tap("Edit secondary color"); compose.waitForIdle(); assertTrue("Subcolor hit target", hasText("Secondary color"))
+        val secondaryField = bounds("Saturation and brightness field")
+        tapAt(Offset(secondaryField.left + secondaryField.width() * .7f, secondaryField.top + secondaryField.height() * .4f))
+        compose.waitForIdle()
+        assertEquals("Editing the subcolor does not change the foreground", original, view.inkColor)
+        org.junit.Assert.assertNotEquals(android.graphics.Color.WHITE, view.secondaryInkColor)
+        tap("Edit primary color"); assertEquals(original, view.inkColor)
+    }
+
+    @Test fun cancelledHueDragRestoresPreviewWithoutPersistingAColor() {
+        tap("New Note"); tap("Create"); val view = canvas(); tap("Colors")
+        tapAt(trianglePoint(bounds("Saturation and brightness field"), .8f, .7f)); compose.waitForIdle()
+        val before = view.inkColor
+        val preferences = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("inkloom_drawing_colors", Context.MODE_PRIVATE)
+        val persisted = preferences.all.toMap()
+        val trace = app.inkloom.engine.v5.diagnostics.ColorPickerInteractionTrace
+        trace.reset(); trace.enabled = true
+        val down = SystemClock.uptimeMillis(); val point = huePoint(bounds("Hue ring"), 180f)
+        try {
+            event(MotionEvent.ACTION_DOWN, point, down, MotionEvent.TOOL_TYPE_STYLUS); compose.waitForIdle()
+            org.junit.Assert.assertNotEquals(before, view.inkColor)
+            event(MotionEvent.ACTION_CANCEL, point, down, MotionEvent.TOOL_TYPE_STYLUS); compose.waitForIdle()
+            assertEquals(before, view.inkColor)
+            assertEquals(persisted, preferences.all)
+            assertEquals(0L, trace.snapshot().workspaceCommits)
+        } finally { trace.enabled = false; trace.reset() }
+    }
+
+    @Test fun numericColorPreviewCanCancelAndCommitsOnceToTheSelectedRole() {
+        tap("New Note"); tap("Create"); val view = canvas(); tap("Colors")
+        val original = view.inkColor
+        val prefs = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("inkloom_drawing_colors", Context.MODE_PRIVATE)
+        val before = prefs.all.toMap()
+        val trace = app.inkloom.engine.v5.diagnostics.ColorPickerInteractionTrace
+        trace.reset(); trace.enabled = true
+        try {
+            tap("Edit color values")
+            compose.onNodeWithContentDescription("Color value L").performTextReplacement("75")
+            compose.waitForIdle()
+            compose.waitUntil(5_000) { view.inkColor != original }
+            assertEquals(before, prefs.all)
+            tap("Cancel")
+            compose.waitUntil(5_000) { !hasText("Color values") }
+            assertEquals(original, view.inkColor)
+            assertTrue(hasText("Primary color"))
+            assertEquals(0L, trace.snapshot().workspaceCommits)
+            tap("Edit secondary color"); tap("Edit color values")
+            compose.onNodeWithContentDescription("Color value H").performTextReplacement("240")
+            compose.onNodeWithContentDescription("Color value L").performTextReplacement("50")
+            compose.onNodeWithContentDescription("Color value S").performTextReplacement("100")
+            compose.waitForIdle()
+            assertEquals(original, view.inkColor)
+            tap("Done")
+            assertEquals(original, view.inkColor)
+            assertEquals(android.graphics.Color.BLUE, view.secondaryInkColor)
+            assertEquals(1L, trace.snapshot().workspaceCommits)
+        } finally { trace.enabled = false; trace.reset() }
+    }
+
+    @Test fun everyHueArcCanBePickedAndImmediateFieldGestureUsesTheNewHue() {
+        tap("New Note"); tap("Create"); val view = canvas(); tap("Colors")
+        for (hue in 0..330 step 30) {
+            tapAt(huePoint(bounds("Hue ring"), hue.toFloat()))
+            // Deliberately no compose frame between successive contacts.
+            tapAt(trianglePoint(bounds("Saturation and brightness field"), .8f, .7f))
+            compose.waitForIdle()
+            val hsv = FloatArray(3).also { android.graphics.Color.colorToHSV(view.inkColor, it) }
+            val difference = kotlin.math.abs(hsv[0] - hue)
+            assertTrue("Arc $hue returned ${hsv[0]}", minOf(difference, 360 - difference) < 2f)
+        }
+    }
 
     @Test fun toolbarSwapWorksWithoutOpeningColorPanelAndKeepsBrushSelection() {
         tap("New Note")
@@ -105,7 +208,7 @@ class ColorWindowInputContractTest {
     private fun assertHueSelectionSurvivesNeutralColor(canvas: InkCanvasView) {
         val originalColor = canvas.inkColor
         val ring = bounds("Hue ring")
-        val contact = Offset(ring.exactCenterX(), ring.top + ring.height() * .07f)
+        val contact = huePoint(ring, 270f)
         val time = SystemClock.uptimeMillis()
         event(MotionEvent.ACTION_DOWN, contact, time, MotionEvent.TOOL_TYPE_FINGER)
         try {
@@ -117,7 +220,7 @@ class ColorWindowInputContractTest {
         compose.waitForIdle()
         assertEquals("system-hb-pencil", canvas.brushId)
         val field = bounds("Saturation and brightness field")
-        tapAt(Offset(field.left + field.width() * .8f, field.top + field.height() * .3f))
+        tapAt(trianglePoint(field, .8f, .7f))
         compose.waitForIdle()
         val hsv = FloatArray(3)
         android.graphics.Color.colorToHSV(canvas.inkColor, hsv)
@@ -153,10 +256,10 @@ class ColorWindowInputContractTest {
         tap("Close brushes panel")
         tap("Colors")
         val ring = bounds("Hue ring")
-        tapAt(Offset(ring.exactCenterX(), ring.top + ring.height() * .07f))
+        tapAt(huePoint(ring, 270f))
         compose.waitForIdle()
         val field = bounds("Saturation and brightness field")
-        tapAt(Offset(field.left + field.width() * .8f, field.top + field.height() * .3f))
+        tapAt(trianglePoint(field, .8f, .7f))
         compose.waitForIdle()
         val violet = canvas().inkColor
         tap("Swap foreground and background colors")
@@ -204,7 +307,7 @@ class ColorWindowInputContractTest {
         val canvas = canvas()
         tap("Colors")
         val field = bounds("Saturation and brightness field")
-        tapAt(Offset(field.left + field.width() * .8f, field.top + field.height() * .3f))
+        tapAt(trianglePoint(field, .8f, .7f))
         compose.waitForIdle()
         val brushBefore = canvas.brushId
         val trace = app.inkloom.engine.v5.diagnostics.ColorPickerInteractionTrace
@@ -261,7 +364,7 @@ class ColorWindowInputContractTest {
         tap("New Note"); tap("Create"); val view = canvas()
         tap("Colors")
         val ring = bounds("Hue ring")
-        tapAt(Offset(ring.exactCenterX(), ring.top + ring.height() * .07f))
+        tapAt(huePoint(ring, 270f))
         compose.waitForIdle()
         tap("Nearby"); tap("Nearby color 1, 7")
         val hsv = FloatArray(3).also { android.graphics.Color.colorToHSV(view.inkColor, it) }
@@ -376,11 +479,11 @@ class ColorWindowInputContractTest {
         repeat(3) {
             tap("Wheel")
             val ring = bounds("Hue ring")
-            tapAt(Offset(ring.exactCenterX(), ring.top + ring.height() * .07f))
+            tapAt(huePoint(ring, 270f))
             val field = bounds("Saturation and brightness field")
-            tapAt(Offset(field.left + field.width() * .8f, field.top + field.height() * .3f))
+            tapAt(trianglePoint(field, .8f, .7f))
             compose.waitForIdle()
-            assertTrue("Picking a new saturated color must reach the active drawing color",
+            assertTrue("Picking a new saturated color must reach the active drawing color: ${canvas.inkColor.toUInt().toString(16)}",
                 android.graphics.Color.blue(canvas.inkColor) > android.graphics.Color.red(canvas.inkColor) &&
                     android.graphics.Color.red(canvas.inkColor) > android.graphics.Color.green(canvas.inkColor))
             assertEquals("Tab must not move when the color interface changes", mixTab, center("Mix"))

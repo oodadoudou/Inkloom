@@ -6,6 +6,23 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ColorPickerDraftTest {
+    @Test fun hlsLightnessSaturationAndAlphaRoundTripAcrossBothModels() {
+        for (hue in listOf(0f, 61f, 120f, 213.5f, 300f)) for (l in listOf(.05f, .25f, .5f, .75f, .95f)) for (s in listOf(.1f, .5f, 1f)) {
+            val draft = ColorPickerDraft.fromColor(0x7f000000).withHls(hue, l, s)
+            assertEquals(l, draft.lightness, .00001f)
+            assertEquals(s, draft.hlsSaturation, .00001f)
+            assertEquals(127, Color.alpha(draft.color))
+            val returned = draft.withHsv().withHls()
+            assertEquals(draft.color, returned.color)
+        }
+        val blue = ColorPickerDraft.fromColor(Color.BLUE)
+        assertEquals(.5f, blue.lightness, 0f)
+        val white = blue.withHls(lightness = 1f)
+        assertEquals(Color.WHITE, white.color)
+        assertEquals(Color.BLUE, white.withHls(lightness = .5f).color)
+        assertEquals(Color.BLUE, blue.withHls(lightness = 0f).withHls(lightness = .5f).color)
+    }
+
     @Test fun nearbyAxesChangeSaturationAndValueWithoutChangingHue() {
         val reference = floatArrayOf(210f, .5f, .5f)
         fun hsv(column: Int, row: Int) = FloatArray(3).also { Color.colorToHSV(app.inkloom.ui.nearbyColor(reference, column, row, .3f, .3f), it) }

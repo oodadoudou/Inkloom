@@ -35,7 +35,7 @@ class BrushQuickPropertiesWindowTest {
                 .putBoolean("showPageRail", false).commit()
             context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE).edit().clear().commit()
             context.getSharedPreferences("brush_preset_sizes", Context.MODE_PRIVATE).edit().clear().commit()
-            context.getSharedPreferences("inkloom_color_palette", Context.MODE_PRIVATE).edit().remove("studioTab").commit()
+            context.getSharedPreferences("inkloom_color_palette", Context.MODE_PRIVATE).edit().remove("studioTab").putBoolean("wheelHlsTriangle", true).commit()
             context.filesDir.resolve("library.json").delete()
             try { base.evaluate() }
             finally { context.getSharedPreferences("brush_preset_sizes", Context.MODE_PRIVATE).edit().clear().commit() }
@@ -52,9 +52,9 @@ class BrushQuickPropertiesWindowTest {
         tap("Close brushes panel")
         tap("Colors")
         val ring = bounds("Hue ring")
-        tapAt(Offset(ring.exactCenterX(), ring.top + ring.height() * .07f))
+        tapAt(ColorWheelTestCoordinates.hue(ring, 270f))
         val field = bounds("Saturation and brightness field")
-        tapAt(Offset(field.left + field.width() * .8f, field.top + field.height() * .3f))
+        tapAt(ColorWheelTestCoordinates.triangle(field, .8f, .7f))
         closePopup()
         val opacity = bounds("Brush opacity")
         tapAt(Offset(opacity.exactCenterX(), opacity.top + opacity.height() * .4f))

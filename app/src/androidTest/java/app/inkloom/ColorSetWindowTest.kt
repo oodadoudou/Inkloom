@@ -128,7 +128,7 @@ class ColorSetWindowTest {
 
         tap("Wheel")
         val field = bounds("Saturation and brightness field")
-        tapAt(Offset(field.left + field.width() * .8f, field.top + field.height() * .3f))
+        tapAt(ColorWheelTestCoordinates.triangle(field, .8f, .7f))
         compose.waitForIdle()
         tap("Palettes")
         tap("Replace selected color")

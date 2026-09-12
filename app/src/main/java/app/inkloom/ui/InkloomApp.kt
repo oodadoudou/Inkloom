@@ -1513,12 +1513,14 @@ private fun EditorScreen(
     }
     val drawingColorStore = remember { DrawingColorStore(context) }
     var drawingColors by remember(document.id) { mutableStateOf(drawingColorStore.load(document.id)) }
+    val colorPreview = remember(document.id) { DrawingColorPreview() }
     val brushColor = drawingColors.foreground
     val backgroundColor = drawingColors.background
     var offeredContinueFillColor by remember { mutableStateOf<Int?>(null) }
     var continueFilling by remember { mutableStateOf(false) }
     var continueFillStartedWithTool by remember { mutableStateOf<EditorTool?>(null) }
     fun commitDrawingColors(colors: DrawingColors) {
+        colorPreview.clear()
         drawingColors = colors
         // The next pen sample can arrive before AndroidView recomposes.
         canvasView?.inkColor = colors.foreground
@@ -1733,7 +1735,7 @@ private fun EditorScreen(
     fun syncCanvasInput(prepareAssets: Boolean = false) {
         canvasView?.let { view ->
             view.activeLayerId = activeLayerId
-            view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, settings.eraserPreset, backgroundColor)
+            view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, colorPreview.foreground ?: brushColor, settings.eraserPreset, colorPreview.secondary ?: backgroundColor)
             if (prepareAssets) view.prepareBrushAssetsNow()
             view.requestFocus()
         }
@@ -2022,7 +2024,12 @@ private fun EditorScreen(
                 }
                 DropdownMenu(
                     expanded = colorPanelOpen,
-                    onDismissRequest = { colorPanelOpen = false },
+                    onDismissRequest = {
+                        colorPanelOpen = false
+                        colorPreview.clear()
+                        canvasView?.inkColor = brushColor
+                        canvasView?.secondaryInkColor = backgroundColor
+                    },
                     modifier = Modifier.width(colorPanelWidth.dp).background(Paper).padding(8.dp),
                 ) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -2033,10 +2040,16 @@ private fun EditorScreen(
                     }
                     ColorStudioPanel(
                         language = LocalUiLanguage.current,
+                        colorPair = ColorPairControls(brushColor, backgroundColor, editSecondaryColor) { editSecondaryColor = it },
                         color = if (editSecondaryColor) backgroundColor else brushColor,
                         onColorPreview = { preview ->
-                            if (editSecondaryColor) canvasView?.secondaryInkColor = preview
-                            else canvasView?.inkColor = preview
+                            if (editSecondaryColor) {
+                                colorPreview.secondary = preview
+                                canvasView?.secondaryInkColor = preview
+                            } else {
+                                colorPreview.foreground = preview
+                                canvasView?.inkColor = preview
+                            }
                         },
                         onColorCommit = if (editSecondaryColor) ::changeBackgroundColor else ::changeBrushColor,
                         onResizeWidth = { delta -> colorPanelWidth = (colorPanelWidth + delta).coerceIn(320f, 680f) },
@@ -2784,7 +2797,7 @@ private fun EditorScreen(
                     brushSize = brushSize,
                     brushOpacity = brushOpacity,
                     brushColor = brushColor,
-                    secondaryBrushColor = backgroundColor,
+                    secondaryBrushColor = backgroundColor, colorPreview = colorPreview,
                     shapeKind = insertShape,
                     activeLayerId = activeLayerId,
                     eraserPreset = settings.eraserPreset,
@@ -5183,7 +5196,7 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
+private fun PaperCanvas(onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val selectionMaskSize = remember(renderedPage.width, renderedPage.height) {
         requireNotNull(SelectionMaskCompositor.maskSize(renderedPage.width, renderedPage.height))
@@ -5603,7 +5616,7 @@ private fun PaperCanvas(onApplyRasterLayerMerge: (String, String, RasterLayerMer
                 view.onGradientCommitted = commitGradient
                 installFillCommit(view)
                 installRasterCommit(view)
-                view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, eraserPreset, secondaryBrushColor)
+                view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, colorPreview.foreground ?: brushColor, eraserPreset, colorPreview.secondary ?: secondaryBrushColor)
                 view.onViewportScale = onZoom
                 view.onViewportPinch = onPinch
                 view.onViewportPan = onPan
@@ -6931,242 +6944,6 @@ private fun hslToColor(alpha: Int, hue: Float, saturation: Float, lightness: Flo
         ((rawGreen + match) * 255f).toInt().coerceIn(0, 255),
         ((rawBlue + match) * 255f).toInt().coerceIn(0, 255),
     )
-}
-
-@Composable
-internal fun CspColorPanel(
-    color: Int,
-    onColorPreview: (Int) -> Unit,
-    onColorCommit: (Int) -> Unit,
-    initiallyExpanded: Boolean = true,
-    onResizeWidth: ((Float) -> Unit)? = null,
-    showHeader: Boolean = true,
-    initialDraft: ColorPickerDraft? = null,
-    onDraftChange: (ColorPickerDraft) -> Unit = {},
-) {
-    SideEffect { ColorPickerInteractionTrace.panelComposition() }
-    var expanded by rememberSaveable(initiallyExpanded) { mutableStateOf(initiallyExpanded) }
-    var channelMode by rememberSaveable { mutableStateOf("HSV") }
-    var pickerHeight by rememberSaveable { mutableFloatStateOf(148f) }
-    var draft by remember { mutableStateOf(initialDraft ?: ColorPickerDraft.fromColor(color)) }
-    val draftColor = draft.color
-    val latestOnDraftChange by rememberUpdatedState(onDraftChange)
-    val latestOnColorPreview by rememberUpdatedState(onColorPreview)
-    val latestOnColorCommit by rememberUpdatedState(onColorCommit)
-    LaunchedEffect(color) { draft = draft.withColor(color) }
-    val hueColor = Color(AndroidColor.HSVToColor(floatArrayOf(draft.hue, 1f, 1f)))
-    val hueRingBrush = remember {
-        ColorPickerInteractionTrace.hueRingAllocation()
-        Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red))
-    }
-    val saturationBrush = remember(hueColor) {
-        ColorPickerInteractionTrace.saturationGradientAllocation()
-        Brush.horizontalGradient(listOf(Color.White, hueColor))
-    }
-    val valueBrush = remember {
-        Brush.verticalGradient(listOf(Color.Transparent, Color.Black))
-    }
-    val hueRingDescription = tr("Hue ring", "色相环")
-    val saturationValueDescription = tr("Saturation and brightness field", "饱和度和明度区域")
-    val resizeColorPickerDescription = tr("Resize color picker", "调整色环大小")
-    fun updateDraft(next: ColorPickerDraft) {
-        val colorChanged = draft.color != next.color
-        draft = next
-        latestOnDraftChange(next)
-        if (colorChanged) {
-            ColorPickerInteractionTrace.previewWrite()
-            latestOnColorPreview(next.color)
-        }
-    }
-    fun updateColor(next: Int) = updateDraft(draft.withColor(next))
-    fun publish(hue: Float = draft.hue, saturation: Float = draft.saturation, value: Float = draft.value) {
-        updateDraft(draft.withHsv(hue, saturation, value))
-    }
-    fun commitDraft() {
-        ColorPickerInteractionTrace.workspaceCommit()
-        latestOnColorCommit(draft.color)
-    }
-    Surface(
-        Modifier.fillMaxWidth(),
-        color = Paper,
-        shape = RoundedCornerShape(3.dp),
-        border = CardDefaults.outlinedCardBorder(),
-    ) {
-        Column {
-            if (showHeader) Row(
-                Modifier.fillMaxWidth().height(34.dp).clickable { expanded = !expanded }.padding(horizontal = 7.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(tr("Color wheel", "色环"), Modifier.weight(1f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                Box(Modifier.size(18.dp).background(Color(draftColor)).border(1.dp, OutlineSoft))
-                Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (expanded) tr("Collapse color panel", "收起颜色面板") else tr("Expand color panel", "展开颜色面板"), Modifier.size(18.dp))
-            }
-            if (expanded) {
-                Row(
-                    Modifier.fillMaxWidth().height(pickerHeight.dp).padding(horizontal = 7.dp),
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
-                ) {
-                    Canvas(
-                        Modifier
-                            .fillMaxHeight()
-                            .aspectRatio(1f)
-                            .semantics { contentDescription = hueRingDescription }
-                            .pointerInput(Unit) {
-                                awaitEachGesture {
-                                    val down = awaitFirstDown(requireUnconsumed = false)
-                                    val dx = down.position.x - size.width / 2f
-                                    val dy = down.position.y - size.height / 2f
-                                    val distance = kotlin.math.hypot(dx, dy)
-                                    val outer = minOf(size.width, size.height) / 2f
-                                    val inner = outer * .66f
-                                    if (distance !in inner..outer * 1.12f) return@awaitEachGesture
-                                    var gestureDraft = draft
-                                    fun update(point: Offset) {
-                                        ColorPickerInteractionTrace.pointerSample()
-                                        var degrees = Math.toDegrees(kotlin.math.atan2(
-                                            (point.y - size.height / 2f).toDouble(),
-                                            (point.x - size.width / 2f).toDouble(),
-                                        )).toFloat()
-                                        if (degrees < 0f) degrees += 360f
-                                        gestureDraft = gestureDraft.withHsv(hue = degrees)
-                                        updateDraft(gestureDraft)
-                                    }
-                                    down.consume()
-                                    update(down.position)
-                                    while (true) {
-                                        val event = awaitPointerEvent()
-                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                        if (!change.pressed) {
-                                            ColorPickerInteractionTrace.workspaceCommit()
-                                            latestOnColorCommit(gestureDraft.color)
-                                            break
-                                        }
-                                        change.consume()
-                                        update(change.position)
-                                    }
-                                }
-                            },
-                    ) {
-                        val ring = size.minDimension * .15f
-                        val radius = size.minDimension / 2f - ring / 2f
-                        drawCircle(
-                            hueRingBrush,
-                            radius = radius,
-                            style = Stroke(ring),
-                        )
-                        val radians = Math.toRadians(draft.hue.toDouble())
-                        val markerRadius = radius
-                        val marker = Offset(center.x + kotlin.math.cos(radians).toFloat() * markerRadius, center.y + kotlin.math.sin(radians).toFloat() * markerRadius)
-                        drawCircle(Color.White, size.minDimension * .045f, marker)
-                        drawCircle(Ink, size.minDimension * .045f, marker, style = Stroke(size.minDimension * .012f))
-                        drawCircle(Color(draftColor), radius = (radius - ring / 1.5f).coerceAtLeast(1f))
-                    }
-                    Canvas(
-                        Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .semantics { contentDescription = saturationValueDescription }
-                            .pointerInput(Unit) {
-                                awaitEachGesture {
-                                    val down = awaitFirstDown(requireUnconsumed = false)
-                                    var gestureDraft = draft
-                                    fun update(point: Offset) {
-                                        ColorPickerInteractionTrace.pointerSample()
-                                        gestureDraft = gestureDraft.withHsv(
-                                            saturation = point.x / size.width.coerceAtLeast(1),
-                                            value = 1f - point.y / size.height.coerceAtLeast(1),
-                                        )
-                                        updateDraft(gestureDraft)
-                                    }
-                                    down.consume()
-                                    update(down.position)
-                                    while (true) {
-                                        val event = awaitPointerEvent()
-                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                        if (!change.pressed) {
-                                            ColorPickerInteractionTrace.workspaceCommit()
-                                            latestOnColorCommit(gestureDraft.color)
-                                            break
-                                        }
-                                        change.consume()
-                                        update(change.position)
-                                    }
-                                }
-                            },
-                    ) {
-                        // The rendered field and the inverse pointer mapping intentionally use the
-                        // same rectangular HSV model: X is saturation, Y is inverse value. The old
-                        // triangular barycentric mapping was applied to a rectangular gradient,
-                        // so the selected S/V numbers could not match the color under the cursor.
-                        drawRect(saturationBrush)
-                        drawRect(valueBrush)
-                        drawRect(Ink, style = Stroke(1f))
-                        val marker = Offset(draft.saturation * size.width, (1f - draft.value) * size.height)
-                        drawCircle(Color.White, 5f, marker)
-                        drawCircle(Ink, 5f, marker, style = Stroke(1.5f))
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
-                Row(Modifier.fillMaxWidth().padding(horizontal = 7.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf("HSV", "RGB").forEach { mode ->
-                        FilterChip(
-                            selected = channelMode == mode,
-                            onClick = { channelMode = mode },
-                            label = { Text(mode, fontSize = 9.sp) },
-                            modifier = Modifier.height(25.dp),
-                        )
-                    }
-                    Spacer(Modifier.weight(1f))
-                    BrushColorPicker(draftColor, { selected ->
-                        updateColor(selected)
-                        ColorPickerInteractionTrace.workspaceCommit()
-                        latestOnColorCommit(selected)
-                    }, square = true)
-                }
-                if (channelMode == "RGB") {
-                    CspColorChannel("R", AndroidColor.red(draftColor), { updateColor(AndroidColor.argb(AndroidColor.alpha(draftColor), it, AndroidColor.green(draftColor), AndroidColor.blue(draftColor))) }, ::commitDraft)
-                    CspColorChannel("G", AndroidColor.green(draftColor), { updateColor(AndroidColor.argb(AndroidColor.alpha(draftColor), AndroidColor.red(draftColor), it, AndroidColor.blue(draftColor))) }, ::commitDraft)
-                    CspColorChannel("B", AndroidColor.blue(draftColor), { updateColor(AndroidColor.argb(AndroidColor.alpha(draftColor), AndroidColor.red(draftColor), AndroidColor.green(draftColor), it)) }, ::commitDraft)
-                } else {
-                    CspFloatColorChannel("H", draft.hue, 0f..360f, "${draft.hue.toInt()}°", { publish(hue = it) }, ::commitDraft)
-                    CspFloatColorChannel("S", draft.saturation, 0f..1f, "${(draft.saturation * 100f).toInt()}%", { publish(saturation = it) }, ::commitDraft)
-                    CspFloatColorChannel("V", draft.value, 0f..1f, "${(draft.value * 100f).toInt()}%", { publish(value = it) }, ::commitDraft)
-                }
-                Row(
-                    Modifier.fillMaxWidth().height(26.dp).semantics { contentDescription = resizeColorPickerDescription }
-                        .pointerInput(Unit) {
-                            detectDragGestures { change, amount ->
-                                change.consume()
-                                pickerHeight = (pickerHeight + amount.y / density).coerceIn(112f, 280f)
-                                onResizeWidth?.invoke(amount.x / density)
-                            }
-                        },
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(Modifier.width(48.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFB7B7B7)))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CspFloatColorChannel(label: String, value: Float, range: ClosedFloatingPointRange<Float>, display: String, onValue: (Float) -> Unit, onFinished: () -> Unit) {
-    Row(Modifier.fillMaxWidth().height(20.dp).padding(horizontal = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.width(18.dp), color = MutedInk, fontSize = 9.sp)
-        BrushParameterSlider(value.coerceIn(range.start, range.endInclusive), onValue, Modifier.weight(1f).height(19.dp), onValueChangeFinished = onFinished, valueRange = range)
-        Text(display, Modifier.width(34.dp), color = MutedInk, fontSize = 9.sp, textAlign = TextAlign.End)
-    }
-}
-
-@Composable
-private fun CspColorChannel(label: String, value: Int, onValue: (Int) -> Unit, onFinished: () -> Unit) {
-    Row(Modifier.fillMaxWidth().height(20.dp).padding(horizontal = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.width(18.dp), color = MutedInk, fontSize = 9.sp)
-        BrushParameterSlider(value.toFloat(), { onValue(it.toInt().coerceIn(0, 255)) }, Modifier.weight(1f).height(19.dp), onValueChangeFinished = onFinished, valueRange = 0f..255f)
-        Text(value.toString(), Modifier.width(28.dp), color = MutedInk, fontSize = 9.sp, textAlign = TextAlign.End)
-    }
 }
 
 @Composable

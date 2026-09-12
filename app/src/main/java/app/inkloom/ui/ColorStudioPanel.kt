@@ -45,6 +45,7 @@ internal fun ColorStudioPanel(
     onColorPreview: (Int) -> Unit,
     onColorCommit: (Int) -> Unit,
     onResizeWidth: (Float) -> Unit,
+    colorPair: ColorPairControls? = null,
 ) {
     val context = LocalContext.current
     val state = LocalColorStudioState.current
@@ -54,7 +55,8 @@ internal fun ColorStudioPanel(
     var visibleContentHeight by remember { mutableStateOf(contentHeight) }
     var draft by remember { mutableStateOf(ColorPickerDraft.fromColor(color)) }
     LaunchedEffect(color) { draft = draft.withColor(color) }
-    fun pick(value: Int) { draft = draft.withColor(value); onColorCommit(value) }
+    val currentColorCommit by rememberUpdatedState(onColorCommit)
+    fun pick(value: Int) { draft = draft.withColor(value); currentColorCommit(value) }
     val tab = state.tab
     fun tr(en: String, zh: String) = language.text(en, zh)
     Column(Modifier.fillMaxWidth()) {
@@ -74,7 +76,7 @@ internal fun ColorStudioPanel(
             key(tab) {
                 Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                     when (tab) {
-                        0 -> CspColorPanel(color, onColorPreview, ::pick, onResizeWidth = onResizeWidth, showHeader = false, initialDraft = draft, onDraftChange = { draft = it })
+                        0 -> CspColorPanel(color, onColorPreview, ::pick, onResizeWidth = onResizeWidth, showHeader = false, initialDraft = draft, onDraftChange = { draft = it }, maximumHeight = visibleContentHeight, colorPair = colorPair, language = language)
                         1 -> ColorSetPanel(color, language, visibleContentHeight, ::pick)
                         2 -> MixingPalette(color, language, ::pick, mixingView, state.mixingTool, state::selectTool, state.mixingRadius, state::setRadius)
                         3 -> NearbyColorPalette(draft, language, ::pick)

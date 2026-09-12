@@ -75,7 +75,7 @@ class InkloomLaunchTest {
             override fun evaluate() {
                 val context = ApplicationProvider.getApplicationContext<android.content.Context>()
                 // Live masters now survive editor sessions; this fixture requires default brushes.
-                context.getSharedPreferences("inkloom_color_palette", android.content.Context.MODE_PRIVATE).edit().remove("studioTab").commit()
+                context.getSharedPreferences("inkloom_color_palette", android.content.Context.MODE_PRIVATE).edit().remove("studioTab").putBoolean("wheelHlsTriangle", true).putBoolean("wheelRgbValues", false).commit()
                 context.getSharedPreferences("brush_preset_sizes", android.content.Context.MODE_PRIVATE).edit().clear().commit()
                 java.io.File(context.filesDir, "page-templates.json").delete()
                 java.io.File(context.filesDir, "library.json").delete()
@@ -919,9 +919,11 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Resize color picker").performTouchInput {
             swipe(center, center + Offset(80f, 70f), durationMillis = 300)
         }
-        composeRule.onNodeWithText("HSV").assertIsDisplayed()
-        composeRule.onNodeWithText("RGB").assertIsDisplayed().performClick()
-        composeRule.onNodeWithText("HSV").performClick()
+        composeRule.onNodeWithContentDescription("Use HSV square").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("Use HLS triangle").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("Color channel values").performClick()
+        composeRule.onNodeWithText("R").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Color channel values").performClick()
         composeRule.onNodeWithContentDescription("Colors").performClick()
         composeRule.onNodeWithContentDescription("Open layers for this page").performClick()
         composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
@@ -931,7 +933,7 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Colors").performClick()
         composeRule.onNodeWithContentDescription("Saturation and brightness field").performTouchInput {
-            swipe(Offset(width * .2f, height * .2f), Offset(width * .78f, height * .22f), durationMillis = 250)
+            swipe(ColorWheelTestCoordinates.triangle(width.toFloat(), height.toFloat(), .2f, .8f), ColorWheelTestCoordinates.triangle(width.toFloat(), height.toFloat(), .78f, .78f), durationMillis = 250)
         }
         composeRule.waitForIdle()
         val view = findInkCanvasView()!!
@@ -973,7 +975,7 @@ class InkloomLaunchTest {
         // target touched in the newly opened picker. A neutral seed would hide a hue-only change.
         composeRule.onNodeWithContentDescription("Colors").performClick()
         composeRule.onNodeWithContentDescription("Saturation and brightness field").performTouchInput {
-            click(Offset(width * .82f, height * .2f))
+            click(ColorWheelTestCoordinates.triangle(width.toFloat(), height.toFloat(), .82f, .8f))
         }
         composeRule.onNodeWithContentDescription("Colors").performClick()
         val seededColor = view.inkColor
