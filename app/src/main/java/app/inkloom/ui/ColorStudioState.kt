@@ -3,6 +3,7 @@ package app.inkloom.ui
 import android.app.Application
 import android.content.Context
 import androidx.compose.runtime.*
+import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import app.inkloom.color.MixingBoard
 
@@ -17,9 +18,9 @@ internal class ColorStudioState(application: Application) : AndroidViewModel(app
     var mixingRadius by mutableFloatStateOf(preferences.getFloat("mixRadius", 12f).coerceIn(2f, 48f))
         private set
 
-    fun selectTab(value: Int) { tab = value.coerceIn(0, 3); preferences.edit().putInt("studioTab", tab).apply() }
-    fun selectTool(value: MixingBoard.Tool) { mixingTool = value; preferences.edit().putInt("mixTool", value.ordinal).apply() }
-    fun setRadius(value: Float) { mixingRadius = value.coerceIn(2f, 48f); preferences.edit().putFloat("mixRadius", mixingRadius).apply() }
+    fun selectTab(value: Int) { tab = value.coerceIn(0, 3); preferences.edit { putInt("studioTab", tab) } }
+    fun selectTool(value: MixingBoard.Tool) { mixingTool = value; preferences.edit { putInt("mixTool", value.ordinal) } }
+    fun setRadius(value: Float) { mixingRadius = value.coerceIn(2f, 48f); preferences.edit { putFloat("mixRadius", mixingRadius) } }
 }
 
 internal val LocalColorStudioState = staticCompositionLocalOf<ColorStudioState> {

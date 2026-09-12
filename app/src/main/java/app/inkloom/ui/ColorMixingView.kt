@@ -12,7 +12,7 @@ import kotlin.math.min
 import app.inkloom.color.MixingBoard
 
 /** Small local scratchpad; I/O never runs on the pen event path. */
-internal class ColorMixingView(context: Context, private val session: ColorMixingSession = ColorMixingSession(context)) : View(context) {
+internal class ColorMixingView @JvmOverloads constructor(context: Context, private val session: ColorMixingSession = ColorMixingSession(context)) : View(context) {
     val board get() = session.board
     var tool = MixingBoard.Tool.PAINT
     var ink = 0xff111111.toInt()
