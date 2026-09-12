@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollTo
@@ -59,6 +60,37 @@ class NotebookCreationWindowTest {
         compose.onNodeWithText(label).performTextReplacement(value)
         instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
         compose.waitForIdle()
+    }
+
+    @Test fun deletingWidthDigitsKeepsDotPreviewResponsiveAndRejectsIncompleteSizes() {
+        tap("New Note")
+        compose.onNodeWithText("Custom paper").performScrollTo(); tap("Custom paper")
+        fill("Template name", "Typed dimensions")
+        compose.onNodeWithText("Dots").performScrollTo(); tap("Dots")
+        compose.onNodeWithText("Dense").performScrollTo(); tap("Dense")
+        fill("Height (px)", "20000")
+        val field = compose.onNodeWithText("Width (px)")
+        field.performScrollTo().performTextReplacement("1600")
+        tapAt(screenCenter(field.fetchSemanticsNode()))
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_MOVE_END)
+        listOf("160", "16", "1", "").forEach { expected ->
+            val start = SystemClock.uptimeMillis()
+            instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DEL)
+            compose.waitForIdle()
+            assertTrue("Preview blocked a real backspace at width '$expected'", SystemClock.uptimeMillis() - start < 2_000)
+            assertEquals(expected, field.fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.EditableText].text)
+            if (expected.length < 3) compose.onNodeWithText("Save template").assertIsNotEnabled()
+        }
+        val start = SystemClock.uptimeMillis()
+        field.performTextReplacement("32"); compose.waitForIdle()
+        assertTrue("Valid narrow paper preview must also be bounded", SystemClock.uptimeMillis() - start < 2_000)
+        field.performTextReplacement("1400")
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        fill("Height (px)", "1800")
+        tap("Save template")
+        val saved = PageTemplateStore(compose.activity.filesDir).load().customTemplates.single()
+        assertEquals(1400f, saved.width); assertEquals(1800f, saved.height)
+        assertEquals(PaperPattern.DOT, (saved.background as PageBackground.Paper).pattern)
     }
 
     @Test fun customPaperKeepsItsColorsAndDensityInMyTemplatesAndInheritedPages() {

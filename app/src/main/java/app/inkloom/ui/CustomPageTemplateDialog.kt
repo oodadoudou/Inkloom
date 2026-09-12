@@ -106,13 +106,19 @@ internal fun CustomPageTemplateDialog(
                 OutlinedTextField(hex, { hex = it.removePrefix("#").filter { c -> c in "0123456789abcdefABCDEF" }.take(6).uppercase() }, Modifier.fillMaxWidth(),
                     label = { Text(tr("Paper color (RGB hex)", "纸色（RGB 十六进制）")) }, prefix = { Text("#") }, singleLine = true, isError = color == null)
                 Canvas(Modifier.fillMaxWidth().height(112.dp).semantics { contentDescription = tr("Custom paper preview", "自定义纸张预览") }) {
-                    val pw = (w ?: base.width.toInt()).coerceAtLeast(1).toFloat()
-                    val ph = (h ?: base.height.toInt()).coerceAtLeast(1).toFloat()
+                    // Intermediate input ("", "1", etc.) is not a canvas size. A near-zero
+                    // width makes page-relative dot spacing microscopic and can stall input.
+                    val pw = (w?.takeIf { it in 32..20_000 } ?: base.width.toInt().coerceIn(32, 20_000)).toFloat()
+                    val ph = (h?.takeIf { it in 32..20_000 } ?: base.height.toInt().coerceIn(32, 20_000)).toFloat()
                     val scale = minOf(size.width / pw, size.height / ph)
                     val sw = pw * scale; val sh = ph * scale
                     translate((size.width - sw) / 2f, (size.height - sh) / 2f) {
                         drawRect(Color(displayed.colorArgb), size = androidx.compose.ui.geometry.Size(sw, sh))
-                        drawIntoCanvas { PaperPatternRenderer.draw(it.nativeCanvas, displayed.pattern, displayed.density, sw, sh) }
+                        // On valid, extremely narrow paper the preview cannot resolve the
+                        // pattern. Show its paper color/aspect without enumerating tiny dots.
+                        if (minOf(sw, sh) >= 24.dp.toPx()) {
+                            drawIntoCanvas { PaperPatternRenderer.draw(it.nativeCanvas, displayed.pattern, displayed.density, sw, sh) }
+                        }
                     }
                 }
                 if (error) Text(tr("Could not save this template", "无法保存此模板"))
