@@ -926,6 +926,7 @@ private fun LibraryScreen(onCreateCustomTemplate: (String, Int, Int, PageBackgro
     var newNoteTitle by remember { mutableStateOf(untitledNoteLabel) }
     var newNoteCover by remember { mutableStateOf(CoverStyle.MINIMAL) }
     var customNoteTemplateOpen by remember { mutableStateOf(false) }
+    var customNoteTemplatesSelected by remember { mutableStateOf(false) }
     var newNoteTemplateId by remember { mutableStateOf(PageTemplateCatalog.blank.id) }
     var newNotePaperColor by remember { mutableLongStateOf(PaperColorCatalog.WHITE) }
     val visible = remember(documents, filter, folderId, search) {
@@ -1062,7 +1063,11 @@ private fun LibraryScreen(onCreateCustomTemplate: (String, Int, Int, PageBackgro
         base = pageTemplates.template(newNoteTemplateId) ?: PageTemplateCatalog.blank,
         onDismiss = { customNoteTemplateOpen = false },
         onCreate = onCreateCustomTemplate,
-        onCreated = { newNoteTemplateId = it.id; customNoteTemplateOpen = false },
+        onCreated = {
+            newNoteTemplateId = it.id
+            newNotePaperColor = (it.background as? PageBackground.Paper)?.colorArgb ?: PaperColorCatalog.WHITE
+            customNoteTemplatesSelected = true; customNoteTemplateOpen = false
+        },
     )
     if (newNoteOpen) AlertDialog(
         onDismissRequest = { newNoteOpen = false },
@@ -1085,10 +1090,15 @@ private fun LibraryScreen(onCreateCustomTemplate: (String, Int, Int, PageBackgro
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(tr("Page template", "页面模板"), Modifier.weight(1f), color = MutedInk, fontSize = 12.sp)
-                    TextButton(onClick = { customNoteTemplateOpen = true }) { Text(tr("Custom size", "自定义尺寸")) }
+                    TextButton(onClick = { customNoteTemplateOpen = true }) { Text(tr("Custom paper", "自定义纸张")) }
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(!customNoteTemplatesSelected, { customNoteTemplatesSelected = false }, label = { Text(tr("Presets", "预设")) })
+                    FilterChip(customNoteTemplatesSelected, { customNoteTemplatesSelected = true }, label = { Text(tr("My templates", "我的模板")) })
+                }
+                if (customNoteTemplatesSelected && pageTemplates.customTemplates.isEmpty()) Text(tr("Save a custom paper to see it here", "保存自定义纸张后会显示在这里"), color = MutedInk, fontSize = 12.sp)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(pageTemplates.allTemplates(), key = { it.id }) { template ->
+                    items(if (customNoteTemplatesSelected) pageTemplates.customTemplates else PageTemplateCatalog.builtIns, key = { it.id }) { template ->
                         val selected = template.id == newNoteTemplateId
                         val name = pageTemplateName(template)
                         val templateDescription = tr("New note template $name", "新笔记模板 $name")
@@ -1097,12 +1107,15 @@ private fun LibraryScreen(onCreateCustomTemplate: (String, Int, Int, PageBackgro
                                 .width(76.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .border(if (selected) 2.dp else 1.dp, if (selected) Ink else OutlineSoft, RoundedCornerShape(8.dp))
-                                .clickable { newNoteTemplateId = template.id }
+                                .clickable {
+                                    newNoteTemplateId = template.id
+                                    if (!PageTemplateCatalog.isBuiltIn(template.id)) newNotePaperColor = (template.background as? PageBackground.Paper)?.colorArgb ?: PaperColorCatalog.WHITE
+                                }
                                 .semantics { contentDescription = templateDescription }
                                 .padding(7.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            PageTemplatePreview(PageTemplateOperations.withPaperColor(template, newNotePaperColor), selected)
+                            PageTemplatePreview(if (selected || PageTemplateCatalog.isBuiltIn(template.id)) PageTemplateOperations.withPaperColor(template, newNotePaperColor) else template, selected)
                             Spacer(Modifier.height(4.dp))
                             Text(name, fontSize = 9.sp, minLines = 2, maxLines = 2,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -5058,6 +5071,7 @@ private fun PageTemplatePickerDialog(
     onSaveCurrent: (() -> Unit)? = null,
 ) {
     var customSizeOpen by remember { mutableStateOf(false) }
+    var paperColorOverridden by remember(documentId) { mutableStateOf(false) }
     if (customSizeOpen) CustomPageTemplateDialog(
         language = LocalUiLanguage.current,
         base = library.defaultFor(documentId),
@@ -5092,7 +5106,7 @@ private fun PageTemplatePickerDialog(
                     OutlinedButton(onClick = onImport) { Icon(Icons.Outlined.FileOpen, null); Spacer(Modifier.width(6.dp)); Text(tr("Import image/PDF", "导入图片/PDF")) }
                     if (onSaveCurrent != null) OutlinedButton(onClick = onSaveCurrent) { Icon(Icons.Outlined.BookmarkAdd, null); Spacer(Modifier.width(6.dp)); Text(tr("Save current", "保存当前页")) }
                 }
-                TextButton(onClick = { customSizeOpen = true }) { Icon(Icons.Outlined.Add, null); Text(tr("Custom size", "自定义尺寸")) }
+                TextButton(onClick = { customSizeOpen = true }) { Icon(Icons.Outlined.Add, null); Text(tr("Custom paper", "自定义纸张")) }
                 Text(tr("Paper color", "纸张颜色"), color = MutedInk, fontSize = 12.sp)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     PaperColorCatalog.options.forEach { option ->
@@ -5103,14 +5117,14 @@ private fun PageTemplatePickerDialog(
                                 .size(32.dp)
                                 .background(Color(option.colorArgb), CircleShape)
                                 .border(if (paperColor == option.colorArgb) 2.dp else 1.dp, if (paperColor == option.colorArgb) Ink else OutlineSoft, CircleShape)
-                                .clickable { paperColor = option.colorArgb }
+                                .clickable { paperColor = option.colorArgb; paperColorOverridden = true }
                                 .semantics { contentDescription = description },
                         )
                     }
                 }
                 LazyColumn(Modifier.heightIn(max = 430.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     items(ordered, key = { it.id }) { template ->
-                        val displayedTemplate = PageTemplateOperations.withPaperColor(template, paperColor)
+                        val displayedTemplate = if (PageTemplateCatalog.isBuiltIn(template.id) || paperColorOverridden) PageTemplateOperations.withPaperColor(template, paperColor) else template
                         val selected = currentBackground == displayedTemplate.background
                         val builtIn = PageTemplateCatalog.isBuiltIn(template.id)
                         val isDefault = template.id == defaultId

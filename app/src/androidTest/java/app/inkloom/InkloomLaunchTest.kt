@@ -552,7 +552,7 @@ class InkloomLaunchTest {
 
     @Test fun customPageSizeCreatesPersistentNotebookAndInheritedPage() {
         composeRule.onNodeWithText("New Note").performClick()
-        composeRule.onNodeWithText("Custom size").performClick()
+        composeRule.onNodeWithText("Custom paper").performClick()
         composeRule.onNodeWithText("Template name").performTextInput("Landscape test")
         composeRule.onNodeWithText("Width (px)").performTextClearance()
         composeRule.onNodeWithText("Width (px)").performTextInput("6400")
