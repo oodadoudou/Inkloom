@@ -73,6 +73,8 @@ internal class ColorMixingView(context: Context) : View(context) {
     }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        val clip = canvas.save()
+        canvas.clipRect(0, 0, width, height)
         paint.color = android.graphics.Color.WHITE; paint.style = Paint.Style.FILL
         val tone = backgroundTone
         if (tone != null) canvas.drawColor(tone) else {
@@ -98,6 +100,7 @@ internal class ColorMixingView(context: Context) : View(context) {
                 canvas.drawLine(hoverX, hoverY - radius, hoverX, hoverY + radius, paint)
             }
         }
+        canvas.restoreToCount(clip)
     }
     override fun onHoverEvent(event: MotionEvent): Boolean {
         hoverX = if (event.actionMasked == MotionEvent.ACTION_HOVER_EXIT) -1f else event.x

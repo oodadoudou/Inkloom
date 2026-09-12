@@ -337,6 +337,12 @@ class ColorWindowInputContractTest {
         val area = bounds("Color mixing board")
         val point = Offset(area.exactCenterX(), area.exactCenterY())
         stroke(Offset(area.left + area.width() * .2f, point.y), point)
+        val screenshot = instrumentation.uiAutomation.takeScreenshot()
+        try {
+            assertEquals("The native mixing background must not paint over the color bar or command icons",
+                screenshot.getPixel(area.right - 8, area.top - 10),
+                screenshot.getPixel(area.right - 8, area.bottom + 32))
+        } finally { screenshot.recycle() }
         tap("Blend on mixing board")
         repeat(3) {
             tap("Wheel")

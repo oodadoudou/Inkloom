@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -158,7 +159,7 @@ private fun MixingPalette(
     fun tr(en: String, zh: String) = language.text(en, zh)
     Column {
         AndroidView(factory = { view },
-            modifier = Modifier.fillMaxWidth().aspectRatio(1.5f).border(.5.dp, OutlineSoft),
+            modifier = Modifier.fillMaxWidth().aspectRatio(1.5f).clipToBounds().border(.5.dp, OutlineSoft),
             update = {
                 it.ink = color; it.tool = tool; it.brushRadius = radius; it.onPick = onPick
                 it.backgroundTone = tones[background]
