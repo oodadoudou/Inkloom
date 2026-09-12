@@ -14,6 +14,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -254,8 +255,18 @@ internal fun CspColorPanel(
                     }
                 }
             }
-        }, confirmButton = { TextButton(onClick = { publish(draft); editStart = null }) { Text(tr("Done", "完成")) } }, dismissButton = { TextButton(onClick = ::cancel) { Text(tr("Cancel", "取消")) } })
+        }, confirmButton = {
+            ColorDialogButton(tr("Done", "完成")) { publish(draft); editStart = null }
+        }, dismissButton = { ColorDialogButton(tr("Cancel", "取消"), ::cancel) })
     }
+}
+
+/** Release the dialog's IME owner before disposing it, so the palette does not inherit its resize. */
+@Composable
+private fun ColorDialogButton(label: String, action: () -> Unit) {
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    TextButton(onClick = { focus.clearFocus(force = true); keyboard?.hide(); action() }) { Text(label) }
 }
 
 @Composable

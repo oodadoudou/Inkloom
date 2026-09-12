@@ -134,6 +134,22 @@ class ColorWindowInputContractTest {
         } finally { trace.enabled = false; trace.reset() }
     }
 
+    @Test fun numericKeyboardCancelAndDoneRestoreThePaletteGeometry() {
+        tap("New Note"); tap("Create"); tap("Colors")
+        val ring = bounds("Hue ring")
+        for (action in listOf("Cancel", "Done")) {
+            tap("Edit color values")
+            tap("Color value L") // Open the real IME, not only the semantics text-edit action.
+            compose.onNodeWithContentDescription("Color value L").performTextReplacement("75")
+            SystemClock.sleep(500)
+            tap(action)
+            compose.waitUntil(5_000) { !hasText("Color values") }
+            compose.waitUntil(5_000) { bounds("Hue ring") == ring }
+            tap("Mix"); tap("Wheel")
+            assertEquals("Returning from text input must retain the original wheel bounds", ring, bounds("Hue ring"))
+        }
+    }
+
     @Test fun everyHueArcCanBePickedAndImmediateFieldGestureUsesTheNewHue() {
         tap("New Note"); tap("Create"); val view = canvas(); tap("Colors")
         for (hue in 0..330 step 30) {
