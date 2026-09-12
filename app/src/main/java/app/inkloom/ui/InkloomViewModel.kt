@@ -401,8 +401,11 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(locked = !it.locked) else it })
     }
 
-    fun setLayerOpacity(documentId: String, pageId: String, layerId: String, opacity: Float) = updatePage(documentId, pageId) { page ->
-        page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(opacity = opacity.coerceIn(0f, 1f)) else it })
+    fun applyLayerOpacityEdit(documentId: String, pageId: String, edit: LayerOpacityEdit, undo: Boolean): Boolean {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return false
+        val changed = edit.apply(page, undo) ?: return false
+        updatePage(documentId, pageId) { changed }
+        return true
     }
 
     fun setLayerBlendMode(documentId: String, pageId: String, layerId: String, blendMode: LayerBlendMode) = updatePage(documentId, pageId) { page ->

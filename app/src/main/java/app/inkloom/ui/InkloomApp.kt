@@ -847,7 +847,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onRenameLayer = viewModel::renameLayer,
             onToggleLayerVisibility = viewModel::toggleLayerVisibility,
             onToggleLayerLock = viewModel::toggleLayerLock,
-            onSetLayerOpacity = viewModel::setLayerOpacity,
+            onApplyLayerOpacityEdit = viewModel::applyLayerOpacityEdit,
             onSetLayerBlendMode = viewModel::setLayerBlendMode,
             onSetLayerRasterTileSurface = viewModel::setLayerRasterTileSurface,
             onToggleLayerAlphaLock = viewModel::toggleLayerAlphaLock,
@@ -1369,7 +1369,7 @@ private fun EditorScreen(
     onRenameLayer: (String, String, String, String) -> Unit,
     onToggleLayerVisibility: (String, String, String) -> Unit,
     onToggleLayerLock: (String, String, String) -> Unit,
-    onSetLayerOpacity: (String, String, String, Float) -> Unit,
+    onApplyLayerOpacityEdit: (String, String, LayerOpacityEdit, Boolean) -> Boolean,
     onSetLayerBlendMode: (String, String, String, LayerBlendMode) -> Unit,
     onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit,
     onToggleLayerAlphaLock: (String, String, String) -> Unit,
@@ -1415,14 +1415,26 @@ private fun EditorScreen(
         brushUsage = next
         brushUsageStore.save(next)
     }
-    val selectedPage = document.pages.firstOrNull { it.id == selectedPageId } ?: document.pages.first()
+    val storedPage = document.pages.firstOrNull { it.id == selectedPageId } ?: document.pages.first()
+    var canvasView by remember { mutableStateOf<InkCanvasView?>(null) }
+    val opacityScope = rememberCoroutineScope()
+    val currentOpacityPage by rememberUpdatedState(storedPage)
+    val currentOpacityCanvas by rememberUpdatedState(canvasView)
+    val currentOpacityApply by rememberUpdatedState(onApplyLayerOpacityEdit)
+    val opacityFailure = tr("Could not change layer opacity; finish the current operation and try again", "无法修改图层不透明度，请完成当前操作后重试")
+    val opacityEditor = remember(document.id, storedPage.id) {
+        LayerOpacityEditor(document.id, storedPage.id, { currentOpacityPage }, { currentOpacityCanvas },
+            { edit, undo -> currentOpacityApply(document.id, storedPage.id, edit, undo) }, opacityScope,
+            { Toast.makeText(context, opacityFailure, Toast.LENGTH_SHORT).show() })
+    }
+    DisposableEffect(opacityEditor) { onDispose { opacityEditor.close() } }
+    val selectedPage = opacityEditor.preview?.apply(storedPage) ?: storedPage
     val availableBrushes = remember(brushes) { (systemBrushCatalog() + brushes).distinctBy(ImportedBrush::id) }
     val persistedBrush = availableBrushes.firstOrNull {
         it.id == settings.persistentBrushPresetId && !it.hidden
     }
     val persistedTool = persistedBrush?.let(BrushRoleClassifier::editorTool) ?: settings.persistentDrawingTool
     var tool by remember(document.id) { mutableStateOf(persistedTool) }
-    var canvasView by remember { mutableStateOf<InkCanvasView?>(null) }
     var selectedBrushId by remember(document.id) { mutableStateOf(persistedBrush?.id) }
     var activeBrush by remember(document.id) { mutableStateOf(persistedBrush) }
     var brushSize by remember(document.id) {
@@ -2662,7 +2674,7 @@ private fun EditorScreen(
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
-                onOpacity = { layerId, value -> onSetLayerOpacity(document.id, selectedPage.id, layerId, value) },
+                onOpacity = opacityEditor::handle,
                 onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
                 onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
@@ -3467,7 +3479,7 @@ private fun EditorScreen(
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
-                onOpacity = { layerId, value -> onSetLayerOpacity(document.id, selectedPage.id, layerId, value) },
+                onOpacity = opacityEditor::handle,
                 onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
                 onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
@@ -3545,7 +3557,7 @@ private fun EditorScreen(
                     onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                     onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                     onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
-                    onOpacity = { layerId, value -> onSetLayerOpacity(document.id, selectedPage.id, layerId, value) },
+                    onOpacity = opacityEditor::handle,
                 onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
                     onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                     onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
@@ -3673,7 +3685,7 @@ private fun EditorScreen(
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
-                onOpacity = { layerId, value -> onSetLayerOpacity(document.id, selectedPage.id, layerId, value) },
+                onOpacity = opacityEditor::handle,
                 onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
                 onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
@@ -7134,7 +7146,7 @@ private fun LayerPanel(
     onRename: (String, String) -> Unit,
     onVisibility: (String) -> Unit,
     onLock: (String) -> Unit,
-    onOpacity: (String, Float) -> Unit,
+    onOpacity: (String, LayerOpacityAction) -> Unit,
     onBlendMode: (String, LayerBlendMode) -> Unit,
     onToggleAlphaLock: (String) -> Unit,
     onToggleClippedToBelow: (String) -> Unit,
@@ -7213,7 +7225,12 @@ private fun LayerPanel(
 private fun LayerContentPreview(page: InkPage, layer: InkLayer, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val assets = remember(context) { DocumentAssetService(context.applicationContext) }
-    val thumbnail by produceState<android.graphics.Bitmap?>(null, page.id, page.crop, layer,
+    // The isolated thumbnail ignores compositing properties. An opacity drag must not decode
+    // and redraw the entire layer on the IO pool for every intermediate value.
+    val thumbnailLayer = layer.copy(opacity = 1f, visible = true, parentId = null,
+        blendMode = LayerBlendMode.NORMAL, clippedToBelow = false)
+    val thumbnail by produceState<android.graphics.Bitmap?>(null, page.id, page.crop, page.width, page.height,
+        page.backgroundRotationQuarterTurns, thumbnailLayer,
         page.elements.filter { it.layerId == layer.id }) {
         value = withContext(Dispatchers.IO) { runCatching { assets.renderLayerThumbnail(page, layer.id) }.getOrNull() }
     }
@@ -7240,7 +7257,7 @@ private fun PaintingLayerPanel(
     onRename: (String, String) -> Unit,
     onVisibility: (String) -> Unit,
     onLock: (String) -> Unit,
-    onOpacity: (String, Float) -> Unit,
+    onOpacity: (String, LayerOpacityAction) -> Unit,
     onBlendMode: (String, LayerBlendMode) -> Unit,
     onToggleAlphaLock: (String) -> Unit,
     onToggleClippedToBelow: (String) -> Unit,

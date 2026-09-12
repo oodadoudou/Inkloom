@@ -5730,6 +5730,7 @@ class InkCanvasView(context: Context) : View(context) {
     var onLayerMergeRequested: (String) -> Unit = {}
     private var pendingPaintPublicationsForMerge = 0
     internal fun hasPendingPaintPublicationForMerge() = pendingPaintPublicationsForMerge > 0 || v5StrokeController.isActive
+    internal fun hasActivePaintContact() = v5StrokeController.isActive
     fun requestLayerMerge(layerId: String) {
         if (selectionLayerTransferPending) return
         if (v5StrokeController.isActive) {
