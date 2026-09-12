@@ -85,7 +85,7 @@ internal fun CspColorPanel(
     val density = LocalDensity.current
     val preferences = remember(context) { context.getSharedPreferences("inkloom_color_palette", Context.MODE_PRIVATE) }
     var triangleMode by remember { mutableStateOf(preferences.getBoolean("wheelHlsTriangle", true)) }
-    var rgbValues by remember { mutableStateOf(preferences.getBoolean("wheelRgbValues", false)) }
+    var rgbValues by remember { mutableStateOf(preferences.getBoolean("wheelRgbValues", true)) }
     var expanded by remember { mutableStateOf(initiallyExpanded) }
     var draft by remember { mutableStateOf(initialDraft ?: ColorPickerDraft.fromColor(color)) }
     var editStart by remember { mutableStateOf<ColorPickerDraft?>(null) }

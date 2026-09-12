@@ -74,7 +74,9 @@ class ColorWindowInputContractTest {
         instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK); compose.waitForIdle(); tap("Colors")
         assertTrue(compose.onAllNodesWithContentDescription("Use HLS triangle").fetchSemanticsNodes().isNotEmpty())
         assertEquals(original, view.inkColor)
-        tap("Color channel values"); compose.waitForIdle(); assertTrue(hasText("R"))
+        assertTrue("RGB is the initial channel display", hasText("R"))
+        tap("Color channel values"); assertTrue(hasText("H"))
+        tap("Color channel values"); assertTrue(hasText("R"))
         tap("Edit secondary color"); compose.waitForIdle(); assertTrue("Subcolor hit target", hasText("Secondary color"))
         val secondaryField = bounds("Saturation and brightness field")
         tapAt(Offset(secondaryField.left + secondaryField.width() * .7f, secondaryField.top + secondaryField.height() * .4f))
@@ -112,7 +114,7 @@ class ColorWindowInputContractTest {
         trace.reset(); trace.enabled = true
         try {
             tap("Edit color values")
-            compose.onNodeWithContentDescription("Color value L").performTextReplacement("75")
+            compose.onNodeWithContentDescription("Color value R").performTextReplacement("75")
             compose.waitForIdle()
             compose.waitUntil(5_000) { view.inkColor != original }
             assertEquals(before, prefs.all)
@@ -122,9 +124,9 @@ class ColorWindowInputContractTest {
             assertTrue(hasText("Primary color"))
             assertEquals(0L, trace.snapshot().workspaceCommits)
             tap("Edit secondary color"); tap("Edit color values")
-            compose.onNodeWithContentDescription("Color value H").performTextReplacement("240")
-            compose.onNodeWithContentDescription("Color value L").performTextReplacement("50")
-            compose.onNodeWithContentDescription("Color value S").performTextReplacement("100")
+            compose.onNodeWithContentDescription("Color value R").performTextReplacement("0")
+            compose.onNodeWithContentDescription("Color value G").performTextReplacement("0")
+            compose.onNodeWithContentDescription("Color value B").performTextReplacement("255")
             compose.waitForIdle()
             assertEquals(original, view.inkColor)
             tap("Done")
@@ -139,8 +141,8 @@ class ColorWindowInputContractTest {
         val ring = bounds("Hue ring")
         for (action in listOf("Cancel", "Done")) {
             tap("Edit color values")
-            tap("Color value L") // Open the real IME, not only the semantics text-edit action.
-            compose.onNodeWithContentDescription("Color value L").performTextReplacement("75")
+            tap("Color value R") // Open the real IME, not only the semantics text-edit action.
+            compose.onNodeWithContentDescription("Color value R").performTextReplacement("75")
             SystemClock.sleep(500)
             tap(action)
             compose.waitUntil(5_000) { !hasText("Color values") }
@@ -222,6 +224,7 @@ class ColorWindowInputContractTest {
     }
 
     private fun assertHueSelectionSurvivesNeutralColor(canvas: InkCanvasView) {
+        tap("Color channel values") // Explicitly select HLS when inspecting undefined hue intent.
         val originalColor = canvas.inkColor
         val ring = bounds("Hue ring")
         val contact = huePoint(ring, 270f)
@@ -378,7 +381,7 @@ class ColorWindowInputContractTest {
 
     @Test fun neutralHueSurvivesSwitchingToNearbyColors() {
         tap("New Note"); tap("Create"); val view = canvas()
-        tap("Colors")
+        tap("Colors"); tap("Color channel values")
         val ring = bounds("Hue ring")
         tapAt(huePoint(ring, 270f))
         compose.waitForIdle()
