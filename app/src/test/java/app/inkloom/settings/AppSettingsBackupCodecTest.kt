@@ -2,6 +2,8 @@ package app.inkloom.settings
 
 import android.view.KeyEvent
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import app.inkloom.document.PerspectiveGuideMode
@@ -101,6 +103,47 @@ class AppSettingsBackupCodecTest {
 
         assertEquals(settings, restored.settings)
         assertEquals(palette, restored.colorPalette)
+        assertNull(restored.colorSetLibrary)
+    }
+
+    @Test fun `named sets backup preserves duplicate colors names active set selected tile and order`() {
+        val red = 0xffcc2222.toInt()
+        val library = ColorSetLibrary().createSet("肤色", "skin")
+            .insertSwatch("skin", red, "亮部", id = "light")
+            .insertSwatch("skin", red, "暗部", id = "dark")
+            .createSet("背景", "background").insertSwatch("background", 0x772244aa, "天空", id = "sky")
+            .selectSwatch("skin", "light").moveSet("skin", 1)
+        val bytes = AppSettingsBackupCodec.encode(AppSettings(), colorPalette = listOf(1, 2), colorSetLibrary = library)
+        val restored = AppSettingsBackupCodec.decode(bytes).getOrThrow()
+        assertEquals(library, restored.colorSetLibrary)
+        assertEquals(emptyList<Int>(), restored.colorPalette)
+        assertFalse("New backups must not dual-write the obsolete quickpalette", bytes.toString(Charsets.UTF_8).contains("\"colorPalette\""))
+    }
+
+    @Test fun `legacy backup can migrate once without changing original swatch order`() {
+        val colors = listOf(0xff112233.toInt(), 0xffaa4433.toInt())
+        val legacy = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(AppSettings(), colors)).getOrThrow()
+        val migrated = legacy.colorSetLibrary ?: ColorSetLibrary.fromLegacy(legacy.colorPalette, "已存颜色")
+        val newBackup = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(legacy.settings, colorSetLibrary = migrated)).getOrThrow()
+        assertEquals(colors, newBackup.colorSetLibrary!!.activeSet!!.swatches.map { it.color })
+        assertEquals("已存颜色", newBackup.colorSetLibrary!!.activeSet!!.name)
+        assertEquals(migrated, newBackup.colorSetLibrary)
+        assertTrue(newBackup.colorPalette.isEmpty())
+    }
+
+    @Test fun `named sets beyond the old half megabyte limit remain restorable`() {
+        val swatches = List(4096) { ColorSetSwatch("swatch-$it", it, "颜色".repeat(60)) }
+        val library = ColorSetLibrary(listOf(NamedColorSet("set", "大色组", swatches, "swatch-2048")), "set")
+        val bytes = AppSettingsBackupCodec.encode(AppSettings(), colorSetLibrary = library)
+        assertTrue(bytes.size > 512 * 1024)
+        assertEquals(library, AppSettingsBackupCodec.decode(bytes).getOrThrow().colorSetLibrary)
+    }
+
+    @Test fun `invalid new color library fails backup restore instead of silently loading legacy colors`() {
+        val source = AppSettingsBackupCodec.encode(AppSettings(), colorSetLibrary = ColorSetLibrary()).toString(Charsets.UTF_8)
+        val invalid = source.replace("\"colorSetLibrary\": {", "\"colorSetLibrary\": {\"activeSetId\": \"missing\",")
+            .replace("\"activeSetId\": null,", "")
+        assertTrue(AppSettingsBackupCodec.decode(invalid.toByteArray()).isFailure)
     }
 
     @Test fun `decode rejects malformed oversized and unknown settings payloads`() {

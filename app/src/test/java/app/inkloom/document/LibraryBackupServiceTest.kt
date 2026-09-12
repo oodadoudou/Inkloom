@@ -5,6 +5,11 @@ import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
+import app.inkloom.settings.AppSettings
+import app.inkloom.settings.AppSettingsBackupCodec
+import app.inkloom.settings.ColorSetLibrary
+import app.inkloom.settings.ColorSetSwatch
+import app.inkloom.settings.NamedColorSet
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -18,6 +23,31 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LibraryBackupServiceTest {
+    @Test
+    fun namedColorSetsLargerThanLegacyLimitSurviveActualZipExportAndRestore() {
+        val sourceRoot = Files.createTempDirectory("inkloom-color-backup-source-").toFile()
+        val restoreRoot = Files.createTempDirectory("inkloom-color-backup-target-").toFile()
+        try {
+            val colors = ColorSetLibrary(listOf(NamedColorSet(
+                "colors", "完整命名色组",
+                List(2048) { index -> ColorSetSwatch("tile-$index", 0xff998877.toInt(), "色".repeat(120)) },
+                "tile-1500",
+            )), "colors")
+            val preferences = AppSettingsBackupCodec.encode(AppSettings(), colorSetLibrary = colors)
+            assertTrue("Fixture must cross the old outer service limit", preferences.size > 512 * 1024)
+            val backup = ByteArrayOutputStream().also { output ->
+                LibraryBackupService(sourceRoot).export(emptyList(), emptyList(), emptyList(), output, preferences = preferences)
+            }.toByteArray()
+            val restored = LibraryBackupService(restoreRoot).restore(ByteArrayInputStream(backup))
+            val restoredPreferences = requireNotNull(restored.preferences)
+            assertTrue(preferences.contentEquals(restoredPreferences))
+            assertEquals(colors, AppSettingsBackupCodec.decode(restoredPreferences).getOrThrow().colorSetLibrary)
+        } finally {
+            sourceRoot.deleteRecursively()
+            restoreRoot.deleteRecursively()
+        }
+    }
+
     @Test
     fun roundTripRestoresPortableLibraryWithoutOverwritingIds() {
         val sourceRoot = Files.createTempDirectory("inkloom-backup-source-").toFile()

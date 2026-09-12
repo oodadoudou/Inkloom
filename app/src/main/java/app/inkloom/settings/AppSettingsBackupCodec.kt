@@ -13,21 +13,30 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import app.inkloom.document.PressureResponseCurve
 
-data class AppPreferencesBackup(val settings: AppSettings, val colorPalette: List<Int>)
+data class AppPreferencesBackup(
+    val settings: AppSettings,
+    val colorPalette: List<Int>,
+    val colorSetLibrary: ColorSetLibrary? = null,
+)
 
 object AppSettingsBackupCodec {
-    const val MAX_BYTES = 512 * 1024
+    // Named sets can contain 16,384 named swatches; retain an explicit file-size bound.
+    const val MAX_BYTES = 32 * 1024 * 1024
     private const val FORMAT = "inkloom-app-settings"
     private const val VERSION = 1
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
 
-    fun encode(settings: AppSettings, colorPalette: List<Int>): ByteArray {
+    fun encode(settings: AppSettings, colorPalette: List<Int> = emptyList(), colorSetLibrary: ColorSetLibrary? = null): ByteArray {
         val value = buildJsonObject {
             put("format", FORMAT)
             put("version", VERSION)
             put("settings", settings.toJson())
             put("shortcutProfile", json.parseToJsonElement(ShortcutProfileCodec.encode(ShortcutProfile(settings.shortcutBindings, settings.shortcutBrushGroupTargets, settings.toolboxQuickSlots, settings.shortcutAxisBindings, settings.shortcutButtonBindings)).toString(Charsets.UTF_8)))
-            put("colorPalette", buildJsonArray { colorPalette.distinct().take(32).forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } })
+            if (colorSetLibrary != null) {
+                put("colorSetLibrary", json.parseToJsonElement(ColorSetLibraryCodec.encode(colorSetLibrary)))
+            } else {
+                put("colorPalette", buildJsonArray { colorPalette.distinct().take(32).forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } })
+            }
         }
         return json.encodeToString(JsonObject.serializer(), value).encodeToByteArray().also {
             require(it.size <= MAX_BYTES) { "App settings backup is too large" }
@@ -42,6 +51,7 @@ object AppSettingsBackupCodec {
         val profile = root["shortcutProfile"]?.toString()?.encodeToByteArray()?.let { ShortcutProfileCodec.decodeProfile(it).getOrThrow() }
             ?: ShortcutProfile(base.shortcutBindings)
         val palette = root["colorPalette"]?.jsonArray?.mapNotNull { runCatching { it.jsonPrimitive.int }.getOrNull() }?.distinct()?.take(32).orEmpty()
+        val colorSets = root["colorSetLibrary"]?.let { ColorSetLibraryCodec.decode(it.toString()) }
         AppPreferencesBackup(
             base.copy(
                 shortcutBindings = profile.bindings,
@@ -51,6 +61,7 @@ object AppSettingsBackupCodec {
                 toolboxQuickSlots = profile.quickSlots,
             ),
             palette,
+            colorSets,
         )
     }
 

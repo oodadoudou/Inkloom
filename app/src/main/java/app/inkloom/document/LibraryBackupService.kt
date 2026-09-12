@@ -5,6 +5,7 @@ package app.inkloom.document
 import app.inkloom.model.ImportedBrush
 import app.inkloom.importer.BrushGroupOperations
 import app.inkloom.engine.v5.storage.PixelTileArchiveStore
+import app.inkloom.settings.AppSettingsBackupCodec
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -384,7 +385,7 @@ class LibraryBackupService(private val filesRoot: File) {
         const val MAX_BRUSHES = 20_000
         const val MAX_BRUSH_GROUPS = 20_000
         const val MAX_PAGE_TEMPLATES = 200
-        const val MAX_PREFERENCES_BYTES = 512 * 1024
+        const val MAX_PREFERENCES_BYTES = AppSettingsBackupCodec.MAX_BYTES
         const val MAX_ENTRIES = 50_000
         const val MAX_MANIFEST_BYTES = 128L * 1024 * 1024
         const val MAX_SINGLE_ASSET_BYTES = 512L * 1024 * 1024
