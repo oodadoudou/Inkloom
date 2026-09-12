@@ -263,9 +263,12 @@ class DocumentAssetService(private val context: Context) {
     fun importCoverImage(uri: Uri): String {
         val extension = context.contentResolver.getType(uri)?.substringAfterLast('/')?.take(8).orEmpty().ifBlank { "image" }
         val asset = copyAsset(uri, extension)
-        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(asset.absolutePath, options)
-        require(options.outWidth > 0 && options.outHeight > 0) { "Selected cover could not be decoded" }
+        try { CoverImageDecoder.decode(asset, 64).recycle() }
+        catch (failure: Exception) {
+            // copyAsset is content-addressed; an existing notebook may own the same file.
+            // The normal reference-aware collector will remove it only if it is unused.
+            throw IllegalArgumentException("Selected cover could not be decoded", failure)
+        }
         return asset.absolutePath
     }
 

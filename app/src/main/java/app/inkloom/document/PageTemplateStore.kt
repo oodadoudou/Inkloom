@@ -17,11 +17,19 @@ data class PageTemplate(
 )
 
 @Serializable
+data class NotebookCoverTemplate(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val assetPath: String,
+)
+
+@Serializable
 data class PageTemplateLibrary(
     val customTemplates: List<PageTemplate> = emptyList(),
     val favoriteIds: Set<String> = emptySet(),
     val notebookDefaults: Map<String, String> = emptyMap(),
     val notebookPaperColors: Map<String, Long> = emptyMap(),
+    val customCovers: List<NotebookCoverTemplate> = emptyList(),
 ) {
     fun allTemplates(): List<PageTemplate> = PageTemplateCatalog.builtIns + customTemplates
     fun template(id: String?): PageTemplate? = id?.let { wanted -> allTemplates().firstOrNull { it.id == wanted } }
@@ -157,6 +165,20 @@ class PageTemplateStore(private val root: File) {
     }
 
     @Synchronized
+    fun addCover(cover: NotebookCoverTemplate): PageTemplateLibrary {
+        val current = load()
+        require(cover.name.isNotBlank() && cover.assetPath.isNotBlank() && cover.id.isNotBlank())
+        require(current.customCovers.size < MAX_CUSTOM_TEMPLATES) { "Cover library is full" }
+        require(current.customCovers.none { it.id == cover.id }) { "Cover already exists" }
+        return save(current.copy(customCovers = current.customCovers + cover))
+    }
+
+    @Synchronized
+    fun deleteCover(coverId: String): PageTemplateLibrary = load().let { current ->
+        save(current.copy(customCovers = current.customCovers.filterNot { it.id == coverId }))
+    }
+
+    @Synchronized
     fun toggleFavorite(templateId: String): PageTemplateLibrary {
         val current = load()
         if (current.template(templateId) == null) return current
@@ -202,6 +224,9 @@ class PageTemplateStore(private val root: File) {
         val ids = (PageTemplateCatalog.builtIns.map(PageTemplate::id) + custom.map(PageTemplate::id)).toSet()
         return PageTemplateLibrary(
             customTemplates = custom,
+            customCovers = source.customCovers.filter { it.id.isNotBlank() && it.name.isNotBlank() && it.assetPath.isNotBlank() }
+                .distinctBy(NotebookCoverTemplate::id).take(MAX_CUSTOM_TEMPLATES)
+                .map { it.copy(name = it.name.trim().take(MAX_TEMPLATE_NAME_LENGTH)) },
             favoriteIds = source.favoriteIds.filterTo(linkedSetOf()) { it in ids },
             notebookDefaults = source.notebookDefaults.entries.asSequence()
                 .filter { (documentId, templateId) -> documentId.isNotBlank() && templateId in ids }

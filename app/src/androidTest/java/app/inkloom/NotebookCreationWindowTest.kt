@@ -11,6 +11,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollTo
@@ -30,6 +31,11 @@ import org.junit.runners.model.Statement
 class NotebookCreationWindowTest {
     private val compose = createAndroidComposeRule<MainActivity>()
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
+    private fun windowRoot(): android.view.accessibility.AccessibilityNodeInfo? {
+        // The system picker and IME switch windows outside Compose's idle synchronization.
+        if (android.os.Build.VERSION.SDK_INT >= 34) instrumentation.uiAutomation.clearCache()
+        return instrumentation.uiAutomation.rootInActiveWindow
+    }
     private val clean = TestRule { base, _ -> object : Statement() {
         override fun evaluate() {
             val context = ApplicationProvider.getApplicationContext<Context>()
@@ -76,9 +82,11 @@ class NotebookCreationWindowTest {
         assertEquals(expected, store.load().customTemplates.single().background)
         compose.onNodeWithText("My templates").performScrollTo()
         compose.onNodeWithText("My templates").assertIsSelected()
-        assertTrue(hasText("Sketch dots"))
+        compose.onNodeWithContentDescription("New note template Sketch dots").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Presets").performScrollTo()
         tap("Presets"); assertTrue(!hasText("Sketch dots"))
-        tap("My templates"); assertTrue(hasText("Sketch dots"))
+        tap("My templates")
+        compose.onNodeWithContentDescription("New note template Sketch dots").performScrollTo().assertIsDisplayed()
         tap("Create")
         fun pages() = created().single().pages
         assertEquals(expected, pages().single().background)
@@ -96,13 +104,128 @@ class NotebookCreationWindowTest {
         created().forEach { assertEquals(expected, it.pages.first().background) }
     }
 
+    @Test fun coverFilePickerCancelImportReuseAndDeleteKeepExistingNotebooks() {
+        val context = compose.activity
+        val resolver = context.contentResolver
+        val name = "Inkloom-cover-${SystemClock.uptimeMillis()}"
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "$name.png")
+            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/png")
+            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+            put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val uri = requireNotNull(resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values))
+        val bitmap = android.graphics.Bitmap.createBitmap(64, 96, android.graphics.Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(0xffbc7856.toInt())
+        requireNotNull(resolver.openOutputStream(uri)).use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+        resolver.update(uri, android.content.ContentValues().apply { put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+        val templates = PageTemplateStore(context.filesDir)
+        val documents = FileDocumentStore(context.filesDir)
+        val before = documents.list().map { it.id }.toSet()
+        fun created() = documents.list().filter { it.id !in before }
+        try {
+            tap("New Note"); tap("Import cover image")
+            nativeNode { it.contentDescription?.toString() == "Show roots" }
+            instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK); compose.waitForIdle()
+            assertTrue(templates.load().customCovers.isEmpty()); assertTrue(created().isEmpty())
+            assertTrue(hasText("Create notebook"))
+            tap("Import cover image")
+            nativeNode { it.contentDescription?.toString() == "Show roots" && clickNative(it) }
+            nativeNode { it.text?.toString() == "Downloads" && it.isVisibleToUser && clickNative(it) }
+            nativeNode { it.contentDescription?.toString() == "Search" && clickNative(it) }
+            instrumentation.sendStringSync(name)
+            instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_ENTER)
+            // Use the provider's stable list row while image thumbnails are still loading.
+            nativeNode { (it.contentDescription?.toString() == "List view" && clickNative(it)) || it.contentDescription?.toString() == "Grid view" }
+            nativeNode { it.text?.toString() == "$name.png" && clickNative(it) }
+            nativeNode { (it.text?.toString()?.equals("Open", ignoreCase = true) == true && clickNative(it)) || it.packageName?.toString() == "app.inkloom" }
+            compose.waitUntil(10_000) { templates.load().customCovers.size == 1 || hasText("Could not import this cover image") }
+            assertEquals("Cover import failed after returning from the system picker", 1, templates.load().customCovers.size)
+            compose.waitForIdle()
+            assertTrue("Importing a cover must not create a notebook", created().isEmpty())
+            val cover = templates.load().customCovers.single()
+            val preview = bounds("Use cover $name")
+            compose.waitUntil(5_000) {
+                val shot = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+                try { shot.getPixel(preview.centerX(), preview.centerY()) == 0xffbc7856.toInt() } finally { shot.recycle() }
+            }
+            tap("Create")
+            canvas()
+            assertEquals(cover.assetPath, created().single().coverImagePath)
+            tap("Gallery"); tap("New Note")
+            compose.onNodeWithText("My covers").performScrollTo(); tap("My covers")
+            compose.onNodeWithText("My covers").assertIsSelected()
+            val coverNode = compose.onNodeWithContentDescription("Use cover $name")
+            coverNode.performScrollTo().assertIsDisplayed()
+            tapAt(coverNode.fetchSemanticsNode().boundsInWindow.center)
+            compose.waitForIdle()
+            compose.onNodeWithContentDescription("Use cover $name").assertIsSelected()
+            // The action row must remain reachable while the title keyboard is open.
+            compose.onNodeWithText("Title").performScrollTo(); tap("Title")
+            compose.onNodeWithText("Title").performTextReplacement("Second cover notebook")
+            tap("Create")
+            canvas()
+            compose.waitUntil(5_000) { created().size == 2 }
+            assertEquals(2, created().size)
+            created().forEach { assertEquals(cover.assetPath, it.coverImagePath); assertEquals(CoverStyle.CUSTOM_IMAGE, it.coverStyle) }
+            tap("Gallery"); tap("New Note")
+            compose.onNodeWithText("My covers").performScrollTo(); tap("My covers")
+            val deleteNode = compose.onNodeWithContentDescription("Delete cover $name")
+            deleteNode.performScrollTo().assertIsDisplayed()
+            tapAt(deleteNode.fetchSemanticsNode().boundsInWindow.center)
+            compose.waitForIdle(); tap("Delete")
+            assertTrue(templates.load().customCovers.isEmpty())
+            assertTrue(java.io.File(cover.assetPath).isFile)
+            created().forEach { assertEquals(cover.assetPath, it.coverImagePath) }
+            tap("Cancel"); compose.activityRule.scenario.recreate(); compose.waitForIdle()
+            assertTrue(templates.load().customCovers.isEmpty())
+            created().forEach { assertTrue(java.io.File(requireNotNull(it.coverImagePath)).isFile) }
+        } catch (failure: Throwable) {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand("screencap -p /data/local/tmp/inkloom-cover-failed.png")).use { it.readBytes() }
+            throw failure
+        } finally { resolver.delete(uri, null, null) }
+    }
+
+    private fun nativeNode(predicate: (android.view.accessibility.AccessibilityNodeInfo) -> Boolean): android.view.accessibility.AccessibilityNodeInfo {
+        var found: android.view.accessibility.AccessibilityNodeInfo? = null
+        try {
+            compose.waitUntil(10_000) {
+                fun visit(node: android.view.accessibility.AccessibilityNodeInfo?) {
+                    if (node == null || found != null) return
+                    if (predicate(node)) found = node else repeat(node.childCount) { visit(node.getChild(it)) }
+                }
+                visit(windowRoot())
+                found != null
+            }
+        } catch (failure: Throwable) {
+            val labels = mutableListOf<String>()
+            fun inspect(node: android.view.accessibility.AccessibilityNodeInfo?) {
+                if (node == null) return
+                if (!node.text.isNullOrEmpty() || !node.contentDescription.isNullOrEmpty()) labels += "${node.text} / ${node.contentDescription} / ${node.isClickable}"
+                repeat(node.childCount) { inspect(node.getChild(it)) }
+            }
+            inspect(windowRoot())
+            throw AssertionError("System picker contents: ${labels.joinToString(" | ")}", failure)
+        }
+        return requireNotNull(found)
+    }
+    private fun clickNative(node: android.view.accessibility.AccessibilityNodeInfo): Boolean {
+        var current: android.view.accessibility.AccessibilityNodeInfo? = node
+        while (current != null) {
+            if (current.isClickable && current.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)) return true
+            current = current.parent
+        }
+        return false
+    }
+
     private fun hasText(text: String): Boolean {
         fun visit(node: android.view.accessibility.AccessibilityNodeInfo?): Boolean {
             if (node == null) return false
             if (node.text?.toString() == text) return true
             return (0 until node.childCount).any { visit(node.getChild(it)) }
         }
-        return visit(instrumentation.uiAutomation.rootInActiveWindow)
+        return visit(windowRoot())
     }
 
     private fun bounds(label: String): android.graphics.Rect {
@@ -114,13 +237,16 @@ class NotebookCreationWindowTest {
                     result = android.graphics.Rect().also { node.getBoundsInScreen(it) }
                 } else repeat(node.childCount) { visit(node.getChild(it)) }
             }
-            visit(instrumentation.uiAutomation.rootInActiveWindow)
+            visit(windowRoot())
             result != null
         }
         return requireNotNull(result)
     }
 
     private fun tap(node: String) {
+        // A tab can resize this dialog after Compose is idle but before accessibility has
+        // published its new screen bounds. Wait for the real window before injecting input.
+        instrumentation.uiAutomation.waitForIdle(100, 3_000)
         tapAt(center(node))
         compose.waitForIdle()
     }
@@ -137,7 +263,7 @@ class NotebookCreationWindowTest {
                     result = Offset(rect.exactCenterX(), rect.exactCenterY())
                 } else repeat(node.childCount) { visit(node.getChild(it)) }
             }
-            visit(instrumentation.uiAutomation.rootInActiveWindow)
+            visit(windowRoot())
             result != null
         }
         return requireNotNull(result)

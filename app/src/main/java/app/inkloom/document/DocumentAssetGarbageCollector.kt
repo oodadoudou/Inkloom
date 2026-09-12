@@ -19,6 +19,7 @@ object DocumentAssetGarbageCollector {
             if (file.parentFile == root) referenced += file.path
         }
         protectedPaths.forEach(::retain)
+        pageTemplates.customCovers.forEach { retain(it.assetPath) }
         documents.forEach { document ->
             retain(document.coverImagePath)
             document.pages.forEach { page ->

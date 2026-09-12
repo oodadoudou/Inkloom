@@ -76,12 +76,22 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         paperColorArgb: Long = PaperColorCatalog.WHITE,
     ): InkDocument = createNoteDocument(title, coverStyle, null, templateId, paperColorArgb)
 
-    fun createNoteWithCover(
-        uri: Uri,
-        title: String = "Untitled Note",
-        templateId: String = PageTemplateCatalog.blank.id,
-        paperColorArgb: Long = PaperColorCatalog.WHITE,
-    ): InkDocument = createNoteDocument(title, CoverStyle.CUSTOM_IMAGE, assets.importCoverImage(uri), templateId, paperColorArgb)
+    fun importNotebookCover(uri: Uri, name: String): NotebookCoverTemplate {
+        val cover = NotebookCoverTemplate(name = name.trim().ifBlank { "Cover" }.take(80), assetPath = assets.importCoverImage(uri))
+        mutablePageTemplates.value = pageTemplateStore.addCover(cover)
+        return cover
+    }
+
+    fun deleteNotebookCover(id: String) {
+        mutablePageTemplates.value = pageTemplateStore.deleteCover(id)
+        scheduleAssetGarbageCollection()
+    }
+
+    fun createNoteUsingCover(title: String, coverId: String, templateId: String, paperColorArgb: Long): InkDocument {
+        val cover = requireNotNull(pageTemplateStore.load().customCovers.firstOrNull { it.id == coverId }) { "Cover no longer exists" }
+        require(java.io.File(cover.assetPath).isFile) { "Cover image is missing" }
+        return createNoteDocument(title, CoverStyle.CUSTOM_IMAGE, cover.assetPath, templateId, paperColorArgb)
+    }
 
     private fun createNoteDocument(
         title: String,
@@ -631,8 +641,10 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
                     val existingTemplates = pageTemplateStore.load()
                     mutablePageTemplates.value = pageTemplateStore.save(existingTemplates.copy(
                         customTemplates = (existingTemplates.customTemplates + restored.pageTemplates.customTemplates).distinctBy(PageTemplate::id),
+                        customCovers = (existingTemplates.customCovers + restored.pageTemplates.customCovers).distinctBy(NotebookCoverTemplate::id),
                         favoriteIds = existingTemplates.favoriteIds + restored.pageTemplates.favoriteIds,
                         notebookDefaults = existingTemplates.notebookDefaults + restored.pageTemplates.notebookDefaults,
+                        notebookPaperColors = existingTemplates.notebookPaperColors + restored.pageTemplates.notebookPaperColors,
                     ))
                     restored
                 }

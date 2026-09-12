@@ -58,6 +58,7 @@ class LibraryBackupService(private val filesRoot: File) {
         require(brushGroups.size <= MAX_BRUSH_GROUPS) { "Library has too many brush groups to back up" }
         require(preferences == null || preferences.size <= MAX_PREFERENCES_BYTES) { "Library preferences are too large to back up" }
         require(pageTemplates.customTemplates.size <= MAX_PAGE_TEMPLATES) { "Library has too many page templates to back up" }
+        require(pageTemplates.customCovers.size <= MAX_PAGE_TEMPLATES) { "Library has too many covers to back up" }
         val portableBrushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, brushes)
         val assets = linkedMapOf<String, File>()
         fun register(path: String?, folder: String): String? {
@@ -129,7 +130,9 @@ class LibraryBackupService(private val filesRoot: File) {
                 )
             })
         }
-        val portablePageTemplates = pageTemplates.copy(customTemplates = pageTemplates.customTemplates.map { template ->
+        val portablePageTemplates = pageTemplates.copy(customCovers = pageTemplates.customCovers.map {
+            it.copy(assetPath = register(it.assetPath, DOCUMENT_ASSETS)!!)
+        }, customTemplates = pageTemplates.customTemplates.map { template ->
             template.copy(background = when (val background = template.background) {
                 is PageBackground.Paper -> background
                 is PageBackground.Pdf -> background.copy(assetPath = register(background.assetPath, DOCUMENT_ASSETS)!!)
@@ -173,6 +176,7 @@ class LibraryBackupService(private val filesRoot: File) {
             val manifest = json.decodeFromString<LibraryBackupManifest>(manifestFile.readText())
             require(manifest.formatVersion == FORMAT_VERSION) { "Backup version ${manifest.formatVersion} is not supported" }
             require(manifest.engineVersion == ENGINE_VERSION) { "Backup engine version ${manifest.engineVersion} is not supported" }
+            require(manifest.pageTemplates.customCovers.size <= MAX_PAGE_TEMPLATES) { "Backup has too many covers" }
             require(manifest.documents.size <= MAX_DOCUMENTS && manifest.folders.size <= MAX_FOLDERS && manifest.brushes.size <= MAX_BRUSHES && manifest.brushGroups.size <= MAX_BRUSH_GROUPS && manifest.pageTemplates.customTemplates.size <= MAX_PAGE_TEMPLATES) { "Backup manifest exceeds library limits" }
 
             fun retained(relativePath: String?, folder: String): String? {
@@ -274,6 +278,9 @@ class LibraryBackupService(private val filesRoot: File) {
                 else -> templateIds[id]
             }
             val restoredPageTemplates = PageTemplateLibrary(
+                customCovers = manifest.pageTemplates.customCovers.map {
+                    it.copy(id = UUID.randomUUID().toString(), assetPath = retained(it.assetPath, DOCUMENT_ASSETS)!!)
+                },
                 customTemplates = manifest.pageTemplates.customTemplates.map { template ->
                     template.copy(
                         id = templateIds.getValue(template.id),

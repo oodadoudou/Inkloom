@@ -120,7 +120,7 @@ class LibraryBackupServiceTest {
             val folder = InkFolder(id = "folder-1", name = "School")
             val document = InkDocument(id = "document-1", title = "Lecture", folderId = folder.id, coverStyle = CoverStyle.CUSTOM_IMAGE, coverImagePath = coverAsset.absolutePath, pages = listOf(page))
             val template = PageTemplate(id = "template-1", name = "Lecture sheet", width = 1200f, height = 1800f, background = PageBackground.Pdf(documentAsset.absolutePath, 0))
-            val templates = PageTemplateLibrary(listOf(template), setOf(template.id), mapOf(document.id to template.id))
+            val templates = PageTemplateLibrary(listOf(template), setOf(template.id), mapOf(document.id to template.id), customCovers = listOf(NotebookCoverTemplate(id = "custom-cover", name = "Reusable cover", assetPath = coverAsset.absolutePath)))
             val preferences = "{\"format\":\"test-preferences\"}".toByteArray()
             val bytes = ByteArrayOutputStream().also { LibraryBackupService(sourceRoot).export(listOf(document), listOf(folder), listOf(brush), it, listOf("Drawing/Ink", "Empty/Erasers"), preferences, templates) }.toByteArray()
             val manifestText = java.util.zip.ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
@@ -163,6 +163,11 @@ class LibraryBackupServiceTest {
             assertTrue(File((restoredTemplate.background as PageBackground.Pdf).assetPath).isFile)
             assertTrue(restoredTemplate.id in restored.pageTemplates.favoriteIds)
             assertEquals(restoredTemplate.id, restored.pageTemplates.notebookDefaults[restored.documents.single().id])
+            val restoredCover = restored.pageTemplates.customCovers.single()
+            assertNotEquals("custom-cover", restoredCover.id)
+            assertEquals("Reusable cover", restoredCover.name)
+            assertEquals(restored.documents.single().coverImagePath, restoredCover.assetPath)
+            assertTrue(File(restoredCover.assetPath).readBytes().contentEquals(coverAsset.readBytes()))
             assertFalse(restored.documents.single().trashedAt != null)
         } finally {
             sourceRoot.deleteRecursively()

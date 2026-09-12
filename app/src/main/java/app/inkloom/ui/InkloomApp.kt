@@ -699,16 +699,6 @@ fun InkloomApp(initialIntent: Intent?) {
         }.onFailure { importError = it.message }
     }
     var deletionFailed by remember { mutableStateOf(false) }
-    var pendingCoverTitle by remember { mutableStateOf("Untitled Note") }
-    var pendingCoverTemplateId by remember { mutableStateOf(PageTemplateCatalog.blank.id) }
-    var pendingCoverPaperColor by remember { mutableLongStateOf(PaperColorCatalog.WHITE) }
-    val coverImagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) runCatching {
-            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            viewModel.createNoteWithCover(uri, pendingCoverTitle, pendingCoverTemplateId, pendingCoverPaperColor)
-            destination = AppDestination.EDITOR
-        }.onFailure { importError = it.message }
-    }
 
     LaunchedEffect(initialIntent) {
         val uris = buildList<Uri> {
@@ -753,13 +743,17 @@ fun InkloomApp(initialIntent: Intent?) {
             onLayout = { updateSettings(settings.copy(libraryLayout = it)) },
             onOpen = { viewModel.select(it.id); destination = AppDestination.EDITOR },
             onCreateCustomTemplate = viewModel::createCustomPageTemplate,
-            onNewNote = { title, style, templateId, paperColor -> viewModel.createNote(title, style, templateId, paperColor); destination = AppDestination.EDITOR },
-            onImportCover = { title, templateId, paperColor ->
-                pendingCoverTitle = title
-                pendingCoverTemplateId = templateId
-                pendingCoverPaperColor = paperColor
-                coverImagePicker.launch(arrayOf("image/*"))
+            onNewNote = { title, style, templateId, paperColor, coverId ->
+                runCatching {
+                    if (coverId == null) viewModel.createNote(title, style, templateId, paperColor)
+                    else viewModel.createNoteUsingCover(title, coverId, templateId, paperColor)
+                    destination = AppDestination.EDITOR
+                }.onFailure {
+                    android.util.Log.e("Inkloom", "Could not create notebook", it)
+                }.isSuccess
             },
+            onImportCover = viewModel::importNotebookCover,
+            onDeleteCover = viewModel::deleteNotebookCover,
             onImport = { documentPicker.launch(arrayOf("application/pdf", "image/*", "application/zip")) },
             onFavorite = viewModel::toggleFavorite,
             onArchive = viewModel::toggleArchive,
@@ -912,11 +906,12 @@ fun InkloomApp(initialIntent: Intent?) {
 }
 
 @Composable
-private fun LibraryScreen(onCreateCustomTemplate: (String, Int, Int, PageBackground.Paper) -> PageTemplate?, documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long) -> Unit, onImportCover: (String, String, Long) -> Unit, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
+private fun LibraryScreen(onCreateCustomTemplate: (String, Int, Int, PageBackground.Paper) -> PageTemplate?, documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long, String?) -> Boolean, onImportCover: (Uri, String) -> NotebookCoverTemplate, onDeleteCover: (String) -> Unit, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
     var filter by remember { mutableStateOf(LibraryFilter.ALL) }
     var search by remember { mutableStateOf("") }
     var folderId by remember { mutableStateOf<String?>(null) }
     var newNoteOpen by remember { mutableStateOf(false) }
+    var newNoteCreateFailed by remember { mutableStateOf(false) }
     var draggingDocumentId by remember { mutableStateOf<String?>(null) }
     var documentDragPosition by remember { mutableStateOf<Offset?>(null) }
     val documentCardBounds = remember { mutableStateMapOf<String, Rect>() }
@@ -925,6 +920,29 @@ private fun LibraryScreen(onCreateCustomTemplate: (String, Int, Int, PageBackgro
     val untitledNoteLabel = tr("Untitled Note", "未命名笔记")
     var newNoteTitle by remember { mutableStateOf(untitledNoteLabel) }
     var newNoteCover by remember { mutableStateOf(CoverStyle.MINIMAL) }
+    var newNoteCoverId by remember { mutableStateOf<String?>(null) }
+    var coverImporting by remember { mutableStateOf(false) }
+    var coverImportError by remember { mutableStateOf(false) }
+    val coverScope = rememberCoroutineScope()
+    val coverContext = LocalContext.current
+    val currentCoverImport by rememberUpdatedState(onImportCover)
+    val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) coverScope.launch {
+            coverImporting = true; coverImportError = false
+            try {
+                val cover = withContext(Dispatchers.IO) {
+                    val filename = coverContext.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                        if (it.moveToFirst()) it.getString(0) else null
+                    }?.substringBeforeLast('.') ?: libraryLanguage.text("Cover", "封面")
+                    currentCoverImport(uri, filename)
+                }
+                newNoteCover = CoverStyle.CUSTOM_IMAGE; newNoteCoverId = cover.id
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { coverImportError = true }
+            finally { coverImporting = false }
+        }
+    }
+
     var customNoteTemplateOpen by remember { mutableStateOf(false) }
     var customNoteTemplatesSelected by remember { mutableStateOf(false) }
     var newNoteTemplateId by remember { mutableStateOf(PageTemplateCatalog.blank.id) }
@@ -1005,7 +1023,7 @@ private fun LibraryScreen(onCreateCustomTemplate: (String, Int, Int, PageBackgro
                 Spacer(Modifier.width(4.dp))
                 OutlinedButton(onClick = onImport, shape = RoundedCornerShape(50)) { Icon(Icons.Outlined.FileDownload, null); Spacer(Modifier.width(8.dp)); Text(tr("Import", "导入")) }
                 Spacer(Modifier.width(10.dp))
-                Button(onClick = { newNoteOpen = true }, shape = RoundedCornerShape(50)) {
+                Button(onClick = { newNoteCreateFailed = false; newNoteOpen = true }, shape = RoundedCornerShape(50)) {
                     Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text(tr("New Note", "新建笔记"))
                 }
             }
@@ -1069,32 +1087,40 @@ private fun LibraryScreen(onCreateCustomTemplate: (String, Int, Int, PageBackgro
             customNoteTemplatesSelected = true; customNoteTemplateOpen = false
         },
     )
-    if (newNoteOpen) AlertDialog(
+    if (newNoteOpen) Dialog(
         onDismissRequest = { newNoteOpen = false },
-        title = { Text(tr("Create notebook", "新建笔记本")) },
-        text = {
-            Column(Modifier.widthIn(min = 380.dp, max = 560.dp).heightIn(max = 570.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                OutlinedTextField(newNoteTitle, { newNoteTitle = it.take(120) }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Text(tr("Cover template", "封面模板"), color = MutedInk, fontSize = 12.sp)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(NotebookCoverCatalog.creationStyles) { style ->
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Card(
-                                Modifier.size(92.dp, 120.dp).clickable { newNoteCover = style },
-                                border = if (newNoteCover == style) androidx.compose.foundation.BorderStroke(2.dp, Ink) else CardDefaults.outlinedCardBorder(),
-                            ) { NotebookCover(InkDocument(title = newNoteTitle, coverStyle = style, coverArgb = NotebookCoverCatalog.defaultArgb(style)), Modifier.fillMaxSize()) }
-                            Spacer(Modifier.height(4.dp))
-                            Text(NotebookCoverCatalog.displayName(style, LocalUiLanguage.current), fontSize = 9.sp)
-                        }
-                    }
-                }
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        val nameFocus = androidx.compose.ui.platform.LocalFocusManager.current
+        val nameKeyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+        val finishName = { nameFocus.clearFocus(); nameKeyboard?.hide(); Unit }
+        // A keyboard session returning from the system picker must not refocus the title
+        // in a subsequently opened notebook dialog. Typing begins when the user taps it.
+        LaunchedEffect(Unit) { finishName() }
+        Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp), contentAlignment = Alignment.Center) {
+        Surface(Modifier.widthIn(max = 560.dp), shape = MaterialTheme.shapes.extraLarge, color = Paper, contentColor = Ink) {
+        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(tr("Create notebook", "新建笔记本"), style = MaterialTheme.typography.headlineSmall)
+            Column(Modifier.weight(1f, fill = false).heightIn(max = 570.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                OutlinedTextField(newNoteTitle, { newNoteTitle = it.take(120); newNoteCreateFailed = false }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { finishName() }))
+                NotebookCoverPicker(newNoteTitle, pageTemplates.customCovers, newNoteCover, newNoteCoverId, coverImporting, LocalUiLanguage.current,
+                    onSelect = { style, id -> finishName(); newNoteCover = style; newNoteCoverId = id },
+                    onImport = { finishName(); coverPicker.launch(arrayOf("image/*")) },
+                    onBrowse = finishName,
+                    onDelete = { id ->
+                        onDeleteCover(id)
+                        if (newNoteCoverId == id) { newNoteCoverId = null; newNoteCover = CoverStyle.MINIMAL }
+                    })
+                if (coverImportError) Text(tr("Could not import this cover image", "无法导入此封面图片"), color = Ink, fontSize = 12.sp)
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(tr("Page template", "页面模板"), Modifier.weight(1f), color = MutedInk, fontSize = 12.sp)
-                    TextButton(onClick = { customNoteTemplateOpen = true }) { Text(tr("Custom paper", "自定义纸张")) }
+                    TextButton(onClick = { finishName(); customNoteTemplateOpen = true }) { Text(tr("Custom paper", "自定义纸张")) }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(!customNoteTemplatesSelected, { customNoteTemplatesSelected = false }, label = { Text(tr("Presets", "预设")) })
-                    FilterChip(customNoteTemplatesSelected, { customNoteTemplatesSelected = true }, label = { Text(tr("My templates", "我的模板")) })
+                    FilterChip(!customNoteTemplatesSelected, { finishName(); customNoteTemplatesSelected = false }, label = { Text(tr("Presets", "预设")) })
+                    FilterChip(customNoteTemplatesSelected, { finishName(); customNoteTemplatesSelected = true }, label = { Text(tr("My templates", "我的模板")) })
                 }
                 if (customNoteTemplatesSelected && pageTemplates.customTemplates.isEmpty()) Text(tr("Save a custom paper to see it here", "保存自定义纸张后会显示在这里"), color = MutedInk, fontSize = 12.sp)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1140,16 +1166,22 @@ private fun LibraryScreen(onCreateCustomTemplate: (String, Int, Int, PageBackgro
                         }
                     }
                 }
-                OutlinedButton(onClick = { newNoteOpen = false; onImportCover(newNoteTitle, newNoteTemplateId, newNotePaperColor) }, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Outlined.AddPhotoAlternate, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(tr("Import image as cover", "导入图片作为封面"))
-                }
+
             }
-        },
-        confirmButton = { Button(onClick = { newNoteOpen = false; onNewNote(newNoteTitle, newNoteCover, newNoteTemplateId, newNotePaperColor) }) { Text(tr("Create", "创建")) } },
-        dismissButton = { TextButton(onClick = { newNoteOpen = false }) { Text(tr("Cancel", "取消")) } },
-    )
+            if (newNoteCreateFailed) Text(tr("Could not create this notebook. Check the selected cover and try again.", "无法创建笔记，请检查所选封面后重试。"), style = MaterialTheme.typography.bodySmall)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { finishName(); newNoteOpen = false }) { Text(tr("Cancel", "取消")) }
+                Spacer(Modifier.width(8.dp))
+                Button(enabled = !coverImporting, onClick = {
+                    finishName()
+                    if (onNewNote(newNoteTitle, newNoteCover, newNoteTemplateId, newNotePaperColor, newNoteCoverId)) newNoteOpen = false
+                    else newNoteCreateFailed = true
+                }) { Text(tr("Create", "创建")) }
+            }
+        }
+        }
+        }
+    }
 }
 
 @Composable
@@ -1290,13 +1322,18 @@ private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (Ink
 }
 
 @Composable
-private fun NotebookCover(document: InkDocument, modifier: Modifier = Modifier) {
-    val coverBitmap = remember(document.coverImagePath) { document.coverImagePath?.let { path -> runCatching { BitmapFactory.decodeFile(path) }.getOrNull() } }
+internal fun NotebookCover(document: InkDocument, modifier: Modifier = Modifier) {
+    val coverBitmapState = produceState<android.graphics.Bitmap?>(null, document.coverImagePath) {
+        value = document.coverImagePath?.let { path -> withContext(Dispatchers.IO) {
+            runCatching { CoverImageDecoder.decode(java.io.File(path)) }.getOrNull()
+        } }
+    }
+    val coverBitmap = coverBitmapState.value
     DisposableEffect(coverBitmap) { onDispose { coverBitmap?.recycle() } }
     val light = document.coverStyle in setOf(CoverStyle.MINIMAL, CoverStyle.PAPER, CoverStyle.GRID, CoverStyle.WHITE, CoverStyle.WHITE_GRID)
     Box(modifier.background(if (light) Color(0xFFF4F4F4) else Color(document.coverArgb))) {
         if (document.coverStyle == CoverStyle.CUSTOM_IMAGE && coverBitmap != null) {
-            Image(coverBitmap.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            Image(requireNotNull(coverBitmap).asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         } else Canvas(Modifier.fillMaxSize().padding(14.dp)) {
             val line = if (light) Color.Black.copy(alpha = .42f) else Color.White.copy(alpha = .7f)
             when (document.coverStyle) {
