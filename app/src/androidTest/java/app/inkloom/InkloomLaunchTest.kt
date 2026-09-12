@@ -28,6 +28,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performSemanticsAction
@@ -248,8 +249,10 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("New Note").performClick()
         composeRule.onAllNodes(hasSetTextAction()).onLast().performTextClearance()
         composeRule.onAllNodes(hasSetTextAction()).onLast().performTextInput(title)
-        composeRule.onNodeWithContentDescription("New note template Grid · Dense").performClick()
-        composeRule.onNodeWithContentDescription("New note paper color Warm ivory").performClick()
+        composeRule.onAllNodes(hasSetTextAction()).onLast().performImeAction()
+        composeRule.onNodeWithText("Paper color").performScrollTo()
+        composeRule.onNodeWithContentDescription("New note template Grid · Dense").performScrollTo().assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("New note paper color Warm ivory").performScrollTo().performClick()
         composeRule.onNodeWithText("Create").performClick()
         composeRule.waitForIdle()
 

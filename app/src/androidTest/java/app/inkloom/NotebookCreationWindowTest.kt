@@ -150,35 +150,35 @@ class NotebookCreationWindowTest {
                 val shot = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
                 try { shot.getPixel(preview.centerX(), preview.centerY()) == 0xffbc7856.toInt() } finally { shot.recycle() }
             }
-            tap("Create")
+            notebookTap("Create")
             canvas()
             assertEquals(cover.assetPath, created().single().coverImagePath)
             tap("Gallery"); tap("New Note")
-            compose.onNodeWithText("My covers").performScrollTo(); tap("My covers")
+            compose.onNodeWithText("My covers").performScrollTo(); notebookTap("My covers")
             compose.onNodeWithText("My covers").assertIsSelected()
             val coverNode = compose.onNodeWithContentDescription("Use cover $name")
             coverNode.performScrollTo().assertIsDisplayed()
-            tapAt(coverNode.fetchSemanticsNode().boundsInWindow.center)
+            tapAt(screenCenter(coverNode.fetchSemanticsNode()))
             compose.waitForIdle()
             compose.onNodeWithContentDescription("Use cover $name").assertIsSelected()
             // The action row must remain reachable while the title keyboard is open.
-            compose.onNodeWithText("Title").performScrollTo(); tap("Title")
+            compose.onNodeWithText("Title").performScrollTo(); notebookTap("Title")
             compose.onNodeWithText("Title").performTextReplacement("Second cover notebook")
-            tap("Create")
+            notebookTap("Create")
             canvas()
             compose.waitUntil(5_000) { created().size == 2 }
             assertEquals(2, created().size)
             created().forEach { assertEquals(cover.assetPath, it.coverImagePath); assertEquals(CoverStyle.CUSTOM_IMAGE, it.coverStyle) }
             tap("Gallery"); tap("New Note")
-            compose.onNodeWithText("My covers").performScrollTo(); tap("My covers")
+            compose.onNodeWithText("My covers").performScrollTo(); notebookTap("My covers")
             val deleteNode = compose.onNodeWithContentDescription("Delete cover $name")
             deleteNode.performScrollTo().assertIsDisplayed()
-            tapAt(deleteNode.fetchSemanticsNode().boundsInWindow.center)
+            tapAt(screenCenter(deleteNode.fetchSemanticsNode()))
             compose.waitForIdle(); tap("Delete")
             assertTrue(templates.load().customCovers.isEmpty())
             assertTrue(java.io.File(cover.assetPath).isFile)
             created().forEach { assertEquals(cover.assetPath, it.coverImagePath) }
-            tap("Cancel"); compose.activityRule.scenario.recreate(); compose.waitForIdle()
+            notebookTap("Cancel"); compose.activityRule.scenario.recreate(); compose.waitForIdle()
             assertTrue(templates.load().customCovers.isEmpty())
             created().forEach { assertTrue(java.io.File(requireNotNull(it.coverImagePath)).isFile) }
         } catch (failure: Throwable) {
@@ -250,6 +250,17 @@ class NotebookCreationWindowTest {
         tapAt(center(node))
         compose.waitForIdle()
     }
+
+    private fun notebookTap(label: String) {
+        // The keyboard may also move the native window, independently of Compose layout.
+        // Use the currently rendered node and its actual window-to-screen translation.
+        val node = compose.onNodeWithText(label).assertIsDisplayed().fetchSemanticsNode()
+        tapAt(screenCenter(node))
+        compose.waitForIdle()
+    }
+
+    private fun screenCenter(node: androidx.compose.ui.semantics.SemanticsNode): Offset =
+        node.boundsInWindow.center + node.positionOnScreen - node.positionInWindow
 
     private fun center(label: String): Offset {
         var result: Offset? = null
