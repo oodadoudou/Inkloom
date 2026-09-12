@@ -48,6 +48,7 @@ internal fun ColorStudioPanel(
     colorPair: ColorPairControls? = null,
 ) {
     val context = LocalContext.current
+    RelayoutPaletteOnWindowResize()
     val state = LocalColorStudioState.current
     val mixingView = remember(context, state) { ColorMixingView(context, state.mixing) }
     val contentHeight = (LocalConfiguration.current.screenHeightDp - 200).coerceIn(160, 420).dp
@@ -84,6 +85,32 @@ internal fun ColorStudioPanel(
                 }
             }
         }
+    }
+}
+
+/** Compose 1.8 fixes a Popup's window dimensions after measuring, but does not remeasure it
+ * when adjustPan's visible display frame grows again after a dialog closes the IME. Observe the
+ * Activity's real frame; resizing only the popup preserves all palette and mixing state. */
+@Composable
+private fun RelayoutPaletteOnWindowResize() {
+    val popupView = androidx.compose.ui.platform.LocalView.current
+    DisposableEffect(popupView) {
+        var context: android.content.Context? = popupView.context
+        while (context is android.content.ContextWrapper && context !is android.app.Activity) context = context.baseContext
+        val decor = (context as? android.app.Activity)?.window?.decorView
+        val popup = popupView.rootView
+        val previous = android.graphics.Rect()
+        val current = android.graphics.Rect()
+        decor?.getWindowVisibleDisplayFrame(previous)
+        val listener = android.view.ViewTreeObserver.OnGlobalLayoutListener {
+            decor?.getWindowVisibleDisplayFrame(current)
+            if (current != previous) {
+                previous.set(current)
+                if (popup !== decor && popup.isAttachedToWindow) popup.requestLayout()
+            }
+        }
+        decor?.viewTreeObserver?.addOnGlobalLayoutListener(listener)
+        onDispose { decor?.viewTreeObserver?.takeIf { it.isAlive }?.removeOnGlobalLayoutListener(listener) }
     }
 }
 
