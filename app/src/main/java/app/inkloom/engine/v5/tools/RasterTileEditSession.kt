@@ -22,6 +22,8 @@ import app.inkloom.engine.v5.surface.PixelTileTransactionRecord
 class RasterTileEditSession(
     private val surface: PixelTileSurface,
     label: String,
+    /** Optional immutable reconstruction source; the transaction still starts from current pixels. */
+    originalSample: PixelTileSurfaceSnapshot? = null,
 ) : AutoCloseable {
     private val original: app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
     private val transaction: app.inkloom.engine.v5.surface.PixelTileWriteTransaction
@@ -37,7 +39,11 @@ class RasterTileEditSession(
     private val reusableOutputs = scratchCache()
 
     init {
-        original = surface.snapshot()
+        require(originalSample == null || (originalSample.logicalWidth == surface.logicalWidth &&
+            originalSample.logicalHeight == surface.logicalHeight && originalSample.surfaceId == surface.surfaceId)) {
+            "Reconstruction source belongs to another surface"
+        }
+        original = originalSample ?: surface.snapshot()
         transaction = surface.beginWrite(label)
     }
 

@@ -19,6 +19,32 @@ import org.junit.runner.RunWith
 /** Professional tool integration over V5 raster state only. */
 @RunWith(AndroidJUnit4::class)
 class InkCanvasProfessionalToolsTest {
+    @Test fun distinctPenContactsReconstructAndCancelPreservesEarlierEdits() {
+        val (view, surface) = rasterLiquifyCanvas()
+        val bounds = PixelRect(0, 0, surface.logicalWidth, surface.logicalHeight)
+        val original = surface.snapshot().copyPremultipliedPixels(bounds)
+        send(view, MotionEvent.ACTION_DOWN, 500f, 500f, 0L)
+        send(view, MotionEvent.ACTION_MOVE, 650f, 500f, 10L)
+        send(view, MotionEvent.ACTION_UP, 650f, 500f, 20L)
+        val pushed = surface.snapshot().copyPremultipliedPixels(bounds)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.liquifyMode = app.inkloom.document.LiquifyMode.RECONSTRUCT }
+        send(view, MotionEvent.ACTION_DOWN, 650f, 500f, 30L)
+        repeat(6) { send(view, MotionEvent.ACTION_MOVE, 650f, 500f, 40L + it) }
+        send(view, MotionEvent.ACTION_CANCEL, 650f, 500f, 50L)
+        assertEquals(pushed.toList(), surface.snapshot().copyPremultipliedPixels(bounds).toList())
+        send(view, MotionEvent.ACTION_DOWN, 650f, 500f, 60L)
+        repeat(6) { send(view, MotionEvent.ACTION_MOVE, 650f, 500f, 70L + it) }
+        send(view, MotionEvent.ACTION_UP, 650f, 500f, 80L)
+        val reconstructed = surface.snapshot().copyPremultipliedPixels(bounds)
+        assertFalse(pushed.contentEquals(reconstructed))
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.undo() }
+        assertEquals(pushed.toList(), surface.snapshot().copyPremultipliedPixels(bounds).toList())
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.undo() }
+        assertEquals(original.toList(), surface.snapshot().copyPremultipliedPixels(bounds).toList())
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.redo(); view.redo() }
+        assertEquals(reconstructed.toList(), surface.snapshot().copyPremultipliedPixels(bounds).toList())
+    }
+
     @Test fun liquifyCommitsOneReversibleRasterTransaction() {
         val (view, surface) = rasterLiquifyCanvas()
         val wholePage = PixelRect(0, 0, surface.logicalWidth, surface.logicalHeight)

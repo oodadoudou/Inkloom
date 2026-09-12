@@ -7,6 +7,7 @@ import android.graphics.Paint
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.LiquifyMode
 import app.inkloom.engine.v5.tools.RasterTileLiquifySession
+import app.inkloom.engine.v5.tools.RasterLiquifyReconstructionState
 import app.inkloom.engine.v5.tools.RasterAbyssPolicy
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection
@@ -20,6 +21,69 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterLiquifySessionTest {
+    @Test fun laterContactReconstructsEarlierWarpAndHistoryIsExact() {
+        val bitmap = fixture()
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        bitmap.recycle()
+        val original = checksum(surface)
+        val state = RasterLiquifyReconstructionState(surface)
+        val push = RasterTileLiquifySession(surface, null, state).use { contact ->
+            contact.deform(75f, 90f, 135f, 90f, 68f, 1f, .3f, LiquifyMode.PUSH)
+            contact.commit()
+        }
+        val deformed = checksum(surface)
+        val restore = RasterTileLiquifySession(surface, null, state).use { contact ->
+            repeat(8) { assertTrue(contact.deform(130f, 90f, 130f, 90f, 80f, 1f, .2f, LiquifyMode.RECONSTRUCT) != null) }
+            contact.commit()
+        }
+        try {
+            val reconstructed = checksum(surface)
+            assertNotEquals(deformed, reconstructed)
+            surface.apply(restore, HistoryDirection.UNDO)
+            assertEquals(deformed, checksum(surface))
+            surface.apply(push, HistoryDirection.UNDO)
+            assertEquals(original, checksum(surface))
+            surface.apply(push, HistoryDirection.REDO)
+            surface.apply(restore, HistoryDirection.REDO)
+            assertEquals(reconstructed, checksum(surface))
+            assertTrue("History invalidates the transient reconstruction baseline", !state.matches(surface))
+        } finally { push.close(); restore.close() }
+    }
+
+    @Test fun canceledContactDoesNotPolluteNextReconstruction() {
+        fun result(cancelExtraPush: Boolean): Long {
+            val bitmap = fixture()
+            val surface = PixelTileBitmapAdapter.import(bitmap)
+            bitmap.recycle()
+            val state = RasterLiquifyReconstructionState(surface)
+            RasterTileLiquifySession(surface, null, state).use { contact ->
+                contact.deform(75f, 90f, 135f, 90f, 68f, 1f, .3f, LiquifyMode.PUSH)
+                contact.commit().close()
+            }
+            val committed = checksum(surface)
+            if (cancelExtraPush) RasterTileLiquifySession(surface, null, state).use { contact ->
+                contact.deform(135f, 90f, 155f, 110f, 68f, 1f, .3f, LiquifyMode.PUSH)
+                contact.restoreOriginal()
+            }
+            assertEquals(committed, checksum(surface))
+            RasterTileLiquifySession(surface, null, state).use { contact ->
+                repeat(5) { contact.deform(130f, 90f, 130f, 90f, 80f, 1f, .2f, LiquifyMode.RECONSTRUCT) }
+                contact.commit().close()
+            }
+            return checksum(surface)
+        }
+        assertEquals(result(false), result(true))
+    }
+
+    @Test fun unrelatedEditsAndSurfaceReplacementCannotReuseOriginalPixels() {
+        val surface = PixelTileSurface(240, 180)
+        val state = RasterLiquifyReconstructionState(surface)
+        assertTrue(state.matches(surface))
+        assertTrue(!state.matches(PixelTileSurface(240, 180)))
+        surface.beginWrite("foreign edit").use { edit -> edit.setPixel(20, 20, Color.RED); edit.commit().close() }
+        assertTrue(!state.matches(surface))
+    }
+
     @Test fun surfaceOnlyLiquifyOnEightKAllocatesOnlyLocalTiles() {
         val surface = PixelTileSurface(8192, 8192)
         surface.beginWrite("seed local pigment").use { seed ->

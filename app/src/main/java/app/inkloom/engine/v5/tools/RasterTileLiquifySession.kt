@@ -25,6 +25,7 @@ import kotlin.math.hypot
 class RasterTileLiquifySession private constructor(
     surface: PixelTileSurface,
     private val selection: RasterSelectionMask,
+    private val reconstruction: RasterLiquifyReconstructionState? = null,
 ) : AutoCloseable {
     constructor(surface: PixelTileSurface) : this(
         surface,
@@ -36,8 +37,15 @@ class RasterTileLiquifySession private constructor(
         RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
     )
 
-    private val edits = RasterTileEditSession(surface, "raster liquify")
-    private val displacement = SparseDisplacementField(surface.logicalWidth, surface.logicalHeight)
+    internal constructor(surface: PixelTileSurface, selectionMask: MaskTileSurfaceSnapshot?, reconstruction: RasterLiquifyReconstructionState) : this(
+        surface,
+        RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
+        reconstruction.also { require(it.matches(surface)) { "Liquify reconstruction source is stale" } },
+    )
+
+    private val edits = RasterTileEditSession(surface, "raster liquify", reconstruction?.original)
+    private val displacement = reconstruction?.displacement?.copy()
+        ?: SparseDisplacementField(surface.logicalWidth, surface.logicalHeight)
     private var warpBitmap: Bitmap? = null
     private var warpCanvas: Canvas? = null
     private var coverageBitmap: Bitmap? = null
@@ -151,7 +159,7 @@ class RasterTileLiquifySession private constructor(
     fun commit(): PixelTileTransactionRecord {
         check(!completed) { "Raster tile liquify session is complete" }
         completed = true
-        return edits.commit()
+        return edits.commit().also { reconstruction?.accept(displacement) }
     }
 
     fun restoreOriginal() {

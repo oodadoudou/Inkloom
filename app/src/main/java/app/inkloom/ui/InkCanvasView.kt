@@ -382,6 +382,8 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
     private var rasterTileLiquifySession: RasterTileLiquifySession? = null
+    private var liquifyReconstruction: app.inkloom.engine.v5.tools.RasterLiquifyReconstructionState? = null
+    private var liquifyReconstructionSelection: Pair<String, Long>? = null
     private var liquifyLastX = 0f
     private var liquifyLastY = 0f
     private var liquifyChanged = false
@@ -625,6 +627,7 @@ class InkCanvasView(context: Context) : View(context) {
     var tool: EditorTool = EditorTool.PEN
         set(value) {
             if (field == value) return
+            if (field == EditorTool.LIQUIFY) clearLiquifyReconstruction()
             if (value != EditorTool.SELECT) { commitSelectionContour(); finishSelectionColorFill(true); finishSelectionTransform(apply = true) }
             field = value
             hoverToolCode = ToolCursorGlyph.code(value)
@@ -667,7 +670,7 @@ class InkCanvasView(context: Context) : View(context) {
     var brushRenderSeed: Int = brushId.hashCode()
     var activeLayerId: String = app.inkloom.document.LayerIds.INK
         set(value) {
-            if (field != value) { finishSelectionColorFill(true); finishSelectionTransform(apply = true) }
+            if (field != value) { clearLiquifyReconstruction(); finishSelectionColorFill(true); finishSelectionTransform(apply = true) }
             field = value
         }
     var layerOpacities: Map<String, Float> = emptyMap()
@@ -1020,6 +1023,7 @@ class InkCanvasView(context: Context) : View(context) {
     /** Binds selection alpha to the document runtime before any page content is installed. */
     internal fun bindDocumentSelectionState(state: DocumentSelectionState) {
         if (documentSelectionState === state) return
+        clearLiquifyReconstruction()
         finishSelectionColorFill(true)
         finishAutomaticSelection(false)
         clearLassoInput()
@@ -1034,6 +1038,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun setProtectedLayerIds(value: Set<String>) {
+        if (activeLayerId in value) clearLiquifyReconstruction()
         if (activeLayerId in value && selectionCanvasTransform != null) {
             finishSelectionTransform(apply = false)
             onPaintCapabilityRejected("The transform was cancelled because the active layer is locked")
@@ -1068,7 +1073,7 @@ class InkCanvasView(context: Context) : View(context) {
             rasterLayerTileSurfaces[layerId] !== value[layerId]
         }
         if (changedLayerIds.isEmpty()) return
-        if (activeLayerId in changedLayerIds) finishSelectionTransform(apply = false)
+        if (activeLayerId in changedLayerIds) { clearLiquifyReconstruction(); finishSelectionTransform(apply = false) }
         changedLayerIds.forEach { layerId ->
             rasterLayerTileSurfaces[layerId]?.let { previous ->
                 if (previous !== value[layerId]) rasterTileRenderer.releaseSurface(previous.surfaceId)
@@ -1497,6 +1502,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onDetachedFromWindow() {
+        clearLiquifyReconstruction()
         selectionAnimation.cancel()
         finishSelectionColorFill(true)
         finishAutomaticSelection(false)
@@ -4305,6 +4311,12 @@ class InkCanvasView(context: Context) : View(context) {
         )
     }
 
+    private fun clearLiquifyReconstruction() {
+        if (rasterTileLiquifySession != null) cancelLiquifyGesture()
+        liquifyReconstruction = null
+        liquifyReconstructionSelection = null
+    }
+
     private fun beginLiquifyGesture(x: Float, y: Float, pressure: Float): Boolean {
         removeCallbacks(liquifyFrame)
         removeCallbacks(liquifyHoldStart)
@@ -4318,7 +4330,15 @@ class InkCanvasView(context: Context) : View(context) {
             ?.takeUnless { activeLayerId in protectedLayerIds }
             ?: return false
         beginRasterToolInput(x, y, surface, pressure)
-        rasterTileLiquifySession = RasterTileLiquifySession(surface, selectionMaskForRasterTools())
+        val selectionMask = selectionMaskForRasterTools()
+        val selectionKey = selectionMask?.let { it.surfaceId to it.revision }
+        val reconstruction = liquifyReconstruction?.takeIf {
+            it.matches(surface) && selectionKey == liquifyReconstructionSelection
+        } ?: app.inkloom.engine.v5.tools.RasterLiquifyReconstructionState(surface).also {
+            liquifyReconstruction = it
+            liquifyReconstructionSelection = selectionKey
+        }
+        rasterTileLiquifySession = RasterTileLiquifySession(surface, selectionMask, reconstruction)
         liquifyLastX = x.coerceIn(0f, 1f)
         liquifyLastY = y.coerceIn(0f, 1f)
         liquifyDownX = liquifyLastX
@@ -5662,6 +5682,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun undo() {
         if (selectionLayerTransferPending) return
+        clearLiquifyReconstruction()
         finishSelectionColorFill(true)
         v5LassoSession?.let { if (it.undoContact()) { syncLassoPreview(it.preview()); invalidate(); return } }
         finishSelectionTransform(apply = true)
@@ -5671,6 +5692,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun redo() {
         if (selectionLayerTransferPending) return
+        clearLiquifyReconstruction()
         v5LassoSession?.let { if (it.redoContact()) { syncLassoPreview(it.preview()); invalidate(); return } }
         finishSelectionTransform(apply = true)
         val edit = editHistory.takeRedo() ?: return

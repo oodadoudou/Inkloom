@@ -8,6 +8,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SparseDisplacementFieldTest {
+    @Test fun contactCopyRetainsSparseWarpWithoutMutatingCommittedField() {
+        val field = SparseDisplacementField(8192, 8192)
+        field.appendSegment(180f, 256f, 240f, 256f, 80f, 1f, .3f, LiquifyMode.PUSH)
+        val before = field.displacementAt(230f, 256f)
+        val contact = field.copy()
+        assertEquals(field.retainedByteSize, contact.retainedByteSize)
+        assertEquals(field.processedStampCount, contact.processedStampCount)
+        repeat(6) { contact.appendSegment(230f, 256f, 230f, 256f, 80f, .45f, .3f, LiquifyMode.RECONSTRUCT) }
+        assertEquals(before, field.displacementAt(230f, 256f))
+        val after = contact.displacementAt(230f, 256f)
+        assertTrue(hypot(after.first, after.second) < hypot(before.first, before.second))
+        assertTrue(contact.retainedByteSize <= 4L * 64 * 64 * 2 * Float.SIZE_BYTES)
+    }
+
     @Test fun missingTilesAreIdentityAndOneLocalStrokeStaysSparseOn8kPage() {
         val field = SparseDisplacementField(8192, 8192)
         assertEquals(0f, field.displacementAt(4000f, 4000f).first, 0f)

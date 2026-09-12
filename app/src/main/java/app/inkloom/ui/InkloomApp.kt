@@ -1968,7 +1968,7 @@ private fun EditorScreen(
             ProcreateTopButton(Icons.Outlined.Brush, tr("Brushes", "笔刷"), selected = tool == EditorTool.PEN, onClick = {
                 exitCanvasNavigation()
                 val alreadySelected = tool == EditorTool.PEN
-                if (alreadySelected && activeBrush != null) {
+                if ((alreadySelected || tool == EditorTool.LIQUIFY) && activeBrush != null) {
                     // Opening the library is not a brush selection. Keep the live masters.
                     onToggleBrushes()
                     return@ProcreateTopButton

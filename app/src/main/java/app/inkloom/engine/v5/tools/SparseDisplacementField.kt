@@ -11,7 +11,7 @@ import kotlin.math.pow
 import kotlin.math.sin
 
 /**
- * Gesture-local sparse two-channel forward-displacement field.
+ * Sparse two-channel forward-displacement field, with isolated copies for cancelable contacts.
  *
  * The field is deliberately independent of Android Bitmap/Canvas. Nodes are stored at a bounded
  * document-pixel spacing and interpolated for preview. Missing tiles are the identity transform.
@@ -35,6 +35,13 @@ internal class SparseDisplacementField(
     val tileCount: Int get() = tiles.size
     val retainedByteSize: Long get() = tiles.size.toLong() * tileNodes * tileNodes * 2 * Float.SIZE_BYTES
     val processedStampCount: Int get() = stamps
+
+    /** Copy only allocated field tiles at pen-down; no whole-canvas allocation or per-MOVE copy. */
+    fun copy(): SparseDisplacementField = SparseDisplacementField(logicalWidth, logicalHeight, nodeSpacing, tileNodes).also { result ->
+        tiles.forEach { key, value -> result.tiles.getOrPut(key) { value.copyOf() } }
+        result.stamps = stamps
+        result.maximumDisplacement = maximumDisplacement
+    }
 
     /** Appends only this input segment and returns the union of its old/new output extent. */
     fun appendSegment(
@@ -251,6 +258,12 @@ internal class SparseDisplacementField(
         private var values = arrayOfNulls<FloatArray>(16)
         var size: Int = 0
             private set
+
+        fun forEach(action: (Long, FloatArray) -> Unit) {
+            keys.indices.forEach { index ->
+                if (keys[index] != EMPTY) action(keys[index], requireNotNull(values[index]))
+            }
+        }
 
         operator fun get(key: Long): FloatArray? {
             var slot = slot(key, keys.size)
