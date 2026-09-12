@@ -12,6 +12,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.color.MixingBoard
 import app.inkloom.ui.ColorMixingView
+import app.inkloom.ui.ColorMixingSession
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.DataInputStream
@@ -20,6 +21,82 @@ import java.util.UUID
 
 class ColorMixingViewportTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
+
+    @Test fun changingPaletteHostsRetainsViewportAndOldDetachCannotCancelNewContact() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val directory = File(context.cacheDir, "mix-hosts-${UUID.randomUUID()}").apply { mkdirs() }
+        val isolated = object : ContextWrapper(context) { override fun getFilesDir() = directory }
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                lateinit var session: ColorMixingSession
+                lateinit var old: ColorMixingView
+                lateinit var next: ColorMixingView
+                lateinit var host: FrameLayout
+                scenario.onActivity { activity ->
+                    session = ColorMixingSession(isolated)
+                    host = FrameLayout(activity)
+                    old = ColorMixingView(activity, session)
+                    host.addView(old, FrameLayout.LayoutParams(600, 400))
+                    activity.setContentView(host)
+                }
+                waitUntil { var ready = false; instrumentation.runOnMainSync { ready = old.ready && old.width > 0 }; ready }
+                lateinit var saved: IntArray
+                var scale = 0f
+                var pan = 0f
+                instrumentation.runOnMainSync {
+                    old.ink = android.graphics.Color.RED
+                    touch(old, MotionEvent.ACTION_DOWN, 300f, 200f)
+                    touch(old, MotionEvent.ACTION_UP, 300f, 200f)
+                    saved = session.board.snapshot()
+                    wheel(old, 3f, 200f, 100f)
+                    scale = old.zoom
+                    pan = session.panX
+                    next = ColorMixingView(host.context, session)
+                    host.addView(next, FrameLayout.LayoutParams(900, 600))
+                }
+                instrumentation.waitForIdleSync()
+                instrumentation.runOnMainSync {
+                    assertEquals(scale, next.zoom)
+                    assertEquals(pan, session.panX)
+                    var picked = 0
+                    next.tool = MixingBoard.Tool.PICK; next.onPick = { picked = it }
+                    val paintedX = (200f + 100f * scale) * 1.5f
+                    val paintedY = (100f + 100f * scale) * 1.5f
+                    touch(next, MotionEvent.ACTION_DOWN, paintedX, paintedY)
+                    touch(next, MotionEvent.ACTION_UP, paintedX, paintedY)
+                    assertTrue("Resizing preserves zoom and the visible board location", android.graphics.Color.red(picked) > 240 && android.graphics.Color.green(picked) < 90)
+                    // A new host replaces an unfinished old-host contact. The old host
+                    // can still receive CANCEL/detach during the popup exit animation.
+                    touch(old, MotionEvent.ACTION_DOWN, 300f, 100f)
+                    next.tool = MixingBoard.Tool.PAINT; next.ink = android.graphics.Color.BLUE
+                    touch(next, MotionEvent.ACTION_DOWN, 450f, 450f)
+                    touch(next, MotionEvent.ACTION_MOVE, 520f, 450f)
+                    val preview = session.board.snapshot()
+                    assertFalse(saved.contentEquals(preview))
+                    host.removeView(old)
+                    touch(old, MotionEvent.ACTION_CANCEL, 300f, 100f)
+                    touch(old, MotionEvent.ACTION_UP, 300f, 100f)
+                    assertArrayEquals("Old host disposal must not erase the new host's in-flight pigment", preview, session.board.snapshot())
+                    touch(next, MotionEvent.ACTION_UP, 520f, 450f)
+                    next.undo()
+                    assertArrayEquals("Only the new contact commits; the old preview was cancelled", saved, session.board.snapshot())
+                    next.redo()
+                    assertFalse(saved.contentEquals(session.board.snapshot()))
+                }
+                waitUntil {
+                    runCatching {
+                        DataInputStream(File(directory, "color-mixing-board.bin").inputStream().buffered()).use { input ->
+                            input.readInt(); val width = input.readInt(); val height = input.readInt()
+                            val pixels = IntArray(width * height) { input.readInt() }
+                            var equal = false
+                            instrumentation.runOnMainSync { equal = pixels.contentEquals(session.board.snapshot()) }
+                            equal
+                        }
+                    }.getOrDefault(false)
+                }
+            }
+        } finally { directory.deleteRecursively() }
+    }
 
     @Test fun touchingOutsideZoomedOutBoardDoesNotKeepParentInterceptionLocked() {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -160,9 +237,9 @@ class ColorMixingViewportTest {
         try { assertTrue(view.dispatchTouchEvent(event)) } finally { event.recycle() }
     }
 
-    private fun wheel(view: ColorMixingView, amount: Float) {
+    private fun wheel(view: ColorMixingView, amount: Float, pointX: Float = view.width / 2f, pointY: Float = view.height / 2f) {
         val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_MOUSE })
-        val coordinates = arrayOf(MotionEvent.PointerCoords().apply { x = view.width / 2f; y = view.height / 2f; setAxisValue(MotionEvent.AXIS_VSCROLL, amount) })
+        val coordinates = arrayOf(MotionEvent.PointerCoords().apply { x = pointX; y = pointY; setAxisValue(MotionEvent.AXIS_VSCROLL, amount) })
         val now = SystemClock.uptimeMillis()
         val event = MotionEvent.obtain(now, now, MotionEvent.ACTION_SCROLL, 1, properties, coordinates, 0, 0, 1f, 1f, 0, 0, android.view.InputDevice.SOURCE_MOUSE, 0)
         try { assertTrue(view.dispatchGenericMotionEvent(event)) } finally { event.recycle() }

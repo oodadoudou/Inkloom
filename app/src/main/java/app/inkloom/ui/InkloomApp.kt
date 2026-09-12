@@ -440,6 +440,7 @@ fun InkloomApp(initialIntent: Intent?) {
     val context = LocalContext.current
     val importScope = rememberCoroutineScope()
     val viewModel: InkloomViewModel = viewModel()
+    val colorStudioState: ColorStudioState = viewModel()
     val libraryState by viewModel.state.collectAsState()
     val pageTemplates by viewModel.pageTemplates.collectAsState()
     val repository = remember { BrushImportRepository(context) }
@@ -733,7 +734,7 @@ fun InkloomApp(initialIntent: Intent?) {
         }
     }
 
-    CompositionLocalProvider(LocalUiLanguage provides settings.language) {
+    CompositionLocalProvider(LocalUiLanguage provides settings.language, LocalColorStudioState provides colorStudioState) {
     Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
     if (libraryState.migratingLegacyFills) {
         Surface(Modifier.fillMaxSize(), color = Paper) {

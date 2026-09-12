@@ -5,71 +5,54 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
-import android.util.AtomicFile
 import android.view.MotionEvent
 import android.view.View
 import android.view.ScaleGestureDetector
 import kotlin.math.min
 import app.inkloom.color.MixingBoard
-import java.io.DataInputStream
-import java.io.DataOutputStream
-import java.io.File
-import java.util.concurrent.Executors
 
 /** Small local scratchpad; I/O never runs on the pen event path. */
-internal class ColorMixingView(context: Context) : View(context) {
-    val board = MixingBoard()
+internal class ColorMixingView(context: Context, private val session: ColorMixingSession = ColorMixingSession(context)) : View(context) {
+    val board get() = session.board
     var tool = MixingBoard.Tool.PAINT
     var ink = 0xff111111.toInt()
     var brushRadius = 12f
     var backgroundTone: Int? = 0xffeeeeea.toInt()
         set(value) { field = value; invalidate() }
-    var zoom = 1f
-        private set
-    private var panX = 0f
-    private var panY = 0f
+    var zoom: Float
+        get() = session.zoom
+        private set(value) { session.zoom = value }
+    private var panX: Float
+        get() = session.panX * contentScale()
+        set(value) { session.panX = value / contentScale() }
+    private var panY: Float
+        get() = session.panY * contentScale()
+        set(value) { session.panY = value / contentScale() }
     private var navigating = false
     private var focusX = 0f
     private var focusY = 0f
     private val scaler = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(detector: ScaleGestureDetector): Boolean {
-            zoomAt(detector.scaleFactor, detector.focusX, detector.focusY)
+            if (navigating && session.owns(this@ColorMixingView)) zoomAt(detector.scaleFactor, detector.focusX, detector.focusY)
             return true
         }
     })
     var onPick: (Int) -> Unit = {}
     var onHistory: (Boolean, Boolean) -> Unit = { _, _ -> }
     var onStorageError: () -> Unit = {}
+        set(value) { field = value; if (session.storageFailed) value() }
     private val bitmap = Bitmap.createBitmap(board.width, board.height, Bitmap.Config.ARGB_8888)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private var pointer = -1
-    private var edited = false
-    var ready = false
-        private set
+    val ready get() = session.ready
     private val displayPixels = IntArray(board.width * board.height)
     private var hoverX = -1f
     private var hoverY = -1f
-    private val saveLock = Any()
-    private var pendingSave: IntArray? = null
-    private var saveQueued = false
-    private val storage = AtomicFile(File(context.filesDir, "color-mixing-board.bin"))
-    init {
-        isFocusable = true
-        refresh()
-        IO.execute {
-            val restored = runCatching {
-                if (!storage.baseFile.exists()) null else DataInputStream(storage.openRead()).use { stream ->
-                    require(stream.readInt() == MAGIC)
-                    require(stream.readInt() == board.width && stream.readInt() == board.height)
-                    IntArray(board.width * board.height) { stream.readInt() }
-                }
-            }
-            post {
-                if (!edited) restored.getOrNull()?.let { board.restore(it); refresh() }
-                ready = true
-                if (restored.isFailure) onStorageError()
-            }
-        }
+    private val observer: () -> Unit = { refresh(); if (session.storageFailed) onStorageError() }
+    init { isFocusable = true; refresh() }
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        session.observe(observer)
     }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
@@ -110,7 +93,7 @@ internal class ColorMixingView(context: Context) : View(context) {
         if (!ready) return true
         if (width == 0 || height == 0) return false
         if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
-            board.cancel(); pointer = -1; navigating = true
+            session.claim(this); pointer = -1; navigating = true
             focusX = (event.getX(0) + event.getX(1)) / 2f
             focusY = (event.getY(0) + event.getY(1)) / 2f
             parent?.requestDisallowInterceptTouchEvent(true)
@@ -118,14 +101,18 @@ internal class ColorMixingView(context: Context) : View(context) {
         }
         scaler.onTouchEvent(event)
         if (navigating) {
+            if (!session.owns(this)) {
+                navigating = false; parent?.requestDisallowInterceptTouchEvent(false)
+                return true
+            }
             if (event.actionMasked == MotionEvent.ACTION_MOVE && event.pointerCount >= 2) {
                 val fx = (event.getX(0) + event.getX(1)) / 2f
                 val fy = (event.getY(0) + event.getY(1)) / 2f
                 panX += fx - focusX; panY += fy - focusY; focusX = fx; focusY = fy
-                clampPan(); invalidate()
+                clampPan(); session.publish()
             }
             if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
-                navigating = false; parent?.requestDisallowInterceptTouchEvent(false)
+                session.cancel(this); navigating = false; parent?.requestDisallowInterceptTouchEvent(false)
             }
             return true
         }
@@ -139,17 +126,17 @@ internal class ColorMixingView(context: Context) : View(context) {
                     return true
                 }
                 parent?.requestDisallowInterceptTouchEvent(true)
-                pointer = event.getPointerId(0); edited = true
+                pointer = event.getPointerId(0); session.claim(this)
                 board.begin(x(event.x), y(event.y), tool, ink, brushRadius)
             }
             MotionEvent.ACTION_MOVE -> {
                 val index = event.findPointerIndex(pointer)
-                if (index < 0) return true
+                if (index < 0 || !session.owns(this)) return true
                 for (h in 0 until event.historySize) board.move(x(event.getHistoricalX(index, h)), y(event.getHistoricalY(index, h)))
                 board.move(x(event.getX(index)), y(event.getY(index)))
             }
             MotionEvent.ACTION_UP -> {
-                if (pointer < 0) {
+                if (pointer < 0 || !session.owns(this)) {
                     parent?.requestDisallowInterceptTouchEvent(false)
                     return true
                 }
@@ -159,14 +146,14 @@ internal class ColorMixingView(context: Context) : View(context) {
                     if (sampled ushr 24 != 0) onPick(backgroundTone?.let { MixingBoard.sourceOver(it, sampled, 1f) } ?: (sampled or (0xff shl 24)))
                     else backgroundTone?.let(onPick)
                 }
-                if (board.finish()) save()
+                session.finish(this)
                 pointer = -1; performClick(); parent?.requestDisallowInterceptTouchEvent(false)
             }
             MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> {
-                board.cancel(); pointer = -1; parent?.requestDisallowInterceptTouchEvent(false)
+                session.cancel(this); pointer = -1; parent?.requestDisallowInterceptTouchEvent(false)
             }
         }
-        refresh(); return true
+        session.publish(); return true
     }
     private fun contentScale() = min(width.toFloat() / board.width, height.toFloat() / board.height).coerceAtLeast(.001f) * zoom
     private fun boardX(x: Float) = (x - width / 2f - panX) / contentScale() + board.width / 2f
@@ -176,13 +163,13 @@ internal class ColorMixingView(context: Context) : View(context) {
         zoom = (zoom * factor).coerceIn(.25f, 8f)
         panX = x - width / 2f - (bx - board.width / 2f) * contentScale()
         panY = y - height / 2f - (by - board.height / 2f) * contentScale()
-        clampPan(); invalidate()
+        clampPan(); session.publish()
     }
     private fun clampPan() {
         panX = panX.coerceIn(-board.width * contentScale() / 2f, board.width * contentScale() / 2f)
         panY = panY.coerceIn(-board.height * contentScale() / 2f, board.height * contentScale() / 2f)
     }
-    fun resetViewport() { zoom = 1f; panX = 0f; panY = 0f; invalidate() }
+    fun resetViewport() { zoom = 1f; panX = 0f; panY = 0f; session.publish() }
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_SCROLL) {
             zoomAt(kotlin.math.exp(event.getAxisValue(MotionEvent.AXIS_VSCROLL) * .12f), event.x, event.y)
@@ -191,11 +178,12 @@ internal class ColorMixingView(context: Context) : View(context) {
         return super.onGenericMotionEvent(event)
     }
     override fun performClick(): Boolean { super.performClick(); return true }
-    fun undo() { if (board.undo()) { edited = true; refresh(); save() } }
-    fun redo() { if (board.redo()) { edited = true; refresh(); save() } }
-    fun clear() { if (board.clear()) { edited = true; refresh(); save() } }
+    fun undo() = session.undo()
+    fun redo() = session.redo()
+    fun clear() = session.clear()
     override fun onDetachedFromWindow() {
-        board.cancel()
+        session.cancel(this)
+        session.removeObserver(observer)
         pointer = -1; navigating = false; hoverX = -1f
         parent?.requestDisallowInterceptTouchEvent(false)
         // This view survives color-tab changes. The cached bitmap must reflect the
@@ -207,32 +195,5 @@ internal class ColorMixingView(context: Context) : View(context) {
         board.copyPixelsTo(displayPixels)
         bitmap.setPixels(displayPixels, 0, board.width, 0, 0, board.width, board.height)
         onHistory(board.canUndo, board.canRedo); invalidate()
-    }
-    private fun save() {
-        synchronized(saveLock) {
-            pendingSave = board.snapshot()
-            if (saveQueued) return
-            saveQueued = true
-        }
-        IO.execute {
-            while (true) {
-                val pixels = synchronized(saveLock) {
-                    pendingSave.also { pendingSave = null; if (it == null) saveQueued = false }
-                } ?: break
-                val result = runCatching {
-                    val output = storage.startWrite()
-                    try {
-                        val stream = DataOutputStream(java.io.BufferedOutputStream(output))
-                        stream.writeInt(MAGIC); stream.writeInt(board.width); stream.writeInt(board.height)
-                        pixels.forEach(stream::writeInt); stream.flush(); storage.finishWrite(output)
-                    } catch (error: Exception) { storage.failWrite(output); throw error }
-                }
-                if (result.isFailure) post { onStorageError() }
-            }
-        }
-    }
-    companion object {
-        private const val MAGIC = 0x494d5831
-        private val IO = Executors.newSingleThreadExecutor { work -> Thread(work, "Inkloom-mixing-store").apply { isDaemon = true } }
     }
 }

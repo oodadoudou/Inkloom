@@ -328,6 +328,35 @@ class ColorWindowInputContractTest {
         assertEquals("Clear can be undone", picked, canvas.inkColor)
     }
 
+    @Test fun mixingHistorySurvivesClosingColorWindowAndActivityRecreation() {
+        tap("New Note"); tap("Create")
+        val revision = canvas().activeRasterSnapshotForTest()?.revision
+        tap("Colors"); tap("Mix")
+        SystemClock.sleep(500)
+        val area = bounds("Color mixing board")
+        stroke(Offset(area.left + area.width() * .2f, area.exactCenterY()),
+            Offset(area.exactCenterX(), area.exactCenterY()))
+        tap("Blend on mixing board")
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.waitUntil(5_000) { !hasText("Primary color") }
+        tap("Colors")
+        compose.onNodeWithContentDescription("Blend on mixing board").assertIsSelected()
+        tap("Undo mixing")
+        tap("Pick from mixing board")
+        val point = bounds("Color mixing board").let { Offset(it.exactCenterX(), it.exactCenterY()) }
+        tapAt(point); compose.waitForIdle()
+        assertEquals("Closing a palette must not discard the preceding mixing stroke's undo", 0xffeeeeea.toInt(), canvas().inkColor)
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.activityRule.scenario.recreate()
+        compose.waitForIdle()
+        tap("Colors")
+        tap("Redo mixing"); tap("Pick from mixing board")
+        val restored = bounds("Color mixing board")
+        tapAt(Offset(restored.exactCenterX(), restored.exactCenterY())); compose.waitForIdle()
+        assertTrue("Redo must survive activity recreation", android.graphics.Color.red(canvas().inkColor) < 80)
+        assertEquals(revision, canvas().activeRasterSnapshotForTest()?.revision)
+    }
+
     @Test fun mixingWheelRoundTripKeepsPanelTargetsAndUndoSession() {
         tap("New Note"); tap("Create"); val canvas = canvas()
         val revision = canvas.activeRasterSnapshotForTest()?.revision
@@ -348,6 +377,12 @@ class ColorWindowInputContractTest {
             tap("Wheel")
             val ring = bounds("Hue ring")
             tapAt(Offset(ring.exactCenterX(), ring.top + ring.height() * .07f))
+            val field = bounds("Saturation and brightness field")
+            tapAt(Offset(field.left + field.width() * .8f, field.top + field.height() * .3f))
+            compose.waitForIdle()
+            assertTrue("Picking a new saturated color must reach the active drawing color",
+                android.graphics.Color.blue(canvas.inkColor) > android.graphics.Color.red(canvas.inkColor) &&
+                    android.graphics.Color.red(canvas.inkColor) > android.graphics.Color.green(canvas.inkColor))
             assertEquals("Tab must not move when the color interface changes", mixTab, center("Mix"))
             // Reuse the physical pen target, rather than searching for a relocated tab.
             tapAt(mixTab); compose.waitForIdle()

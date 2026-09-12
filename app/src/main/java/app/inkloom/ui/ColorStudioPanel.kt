@@ -47,17 +47,15 @@ internal fun ColorStudioPanel(
     onResizeWidth: (Float) -> Unit,
 ) {
     val context = LocalContext.current
-    val preferences = remember { context.getSharedPreferences("inkloom_color_palette", Context.MODE_PRIVATE) }
-    val mixingView = remember { ColorMixingView(context) }
-    var mixingTool by remember { mutableStateOf(MixingBoard.Tool.entries.getOrElse(preferences.getInt("mixTool", 0)) { MixingBoard.Tool.PAINT }) }
-    var mixingRadius by remember { mutableFloatStateOf(preferences.getFloat("mixRadius", 12f).coerceIn(2f, 48f)) }
+    val state = LocalColorStudioState.current
+    val mixingView = remember(context, state) { ColorMixingView(context, state.mixing) }
     val contentHeight = (LocalConfiguration.current.screenHeightDp - 200).coerceIn(160, 420).dp
     val density = LocalDensity.current
     var visibleContentHeight by remember { mutableStateOf(contentHeight) }
     var draft by remember { mutableStateOf(ColorPickerDraft.fromColor(color)) }
     LaunchedEffect(color) { draft = draft.withColor(color) }
     fun pick(value: Int) { draft = draft.withColor(value); onColorCommit(value) }
-    var tab by remember { mutableIntStateOf(preferences.getInt("studioTab", 0).coerceIn(0, 3)) }
+    val tab = state.tab
     fun tr(en: String, zh: String) = language.text(en, zh)
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
@@ -65,7 +63,7 @@ internal fun ColorStudioPanel(
                 Box(Modifier.weight(1f).height(40.dp)
                     .background(if (tab == index) SageContainer else Color.Transparent)
                     .semantics { selected = tab == index }
-                    .clickable { tab = index; preferences.edit().putInt("studioTab", index).apply() }, contentAlignment = Alignment.Center) {
+                    .clickable { state.selectTab(index) }, contentAlignment = Alignment.Center) {
                     Text(label, color = if (tab == index) Ink else MutedInk, fontSize = 12.sp)
                 }
             }
@@ -78,7 +76,7 @@ internal fun ColorStudioPanel(
                     when (tab) {
                         0 -> CspColorPanel(color, onColorPreview, ::pick, onResizeWidth = onResizeWidth, showHeader = false, initialDraft = draft, onDraftChange = { draft = it })
                         1 -> ColorSetPanel(color, language, visibleContentHeight, ::pick)
-                        2 -> MixingPalette(color, language, ::pick, mixingView, mixingTool, { mixingTool = it; preferences.edit().putInt("mixTool", it.ordinal).apply() }, mixingRadius, { mixingRadius = it; preferences.edit().putFloat("mixRadius", it).apply() })
+                        2 -> MixingPalette(color, language, ::pick, mixingView, state.mixingTool, state::selectTool, state.mixingRadius, state::setRadius)
                         3 -> NearbyColorPalette(draft, language, ::pick)
                     }
                 }
