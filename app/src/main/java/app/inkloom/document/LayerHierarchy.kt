@@ -25,25 +25,6 @@ object LayerHierarchy {
     fun availableFolders(layers: List<InkLayer>, movingLayerId: String): List<InkLayer> =
         layers.filter { candidate -> candidate.role == LayerRole.FOLDER && candidate.id != movingLayerId && !isDescendant(layers, candidate.id, movingLayerId) }
 
-    /** A drag commits once, keeping hierarchy ownership and the paper plane fixed. */
-    fun moveBy(page: InkPage, layerId: String, delta: Int): InkPage {
-        val from = page.layers.indexOfFirst { it.id == layerId }
-        if (from < 0) return page
-        val source = page.layers[from]
-        val to = (from.toLong() + delta).coerceIn(0L, page.layers.lastIndex.toLong()).toInt()
-        val target = page.layers[to]
-        if (from == to || source.role == LayerRole.BACKGROUND || target.role == LayerRole.BACKGROUND || source.parentId != target.parentId) return page
-        return page.copy(layers = page.layers.toMutableList().apply { add(to, removeAt(from)) })
-    }
-
-    fun moveToFolder(page: InkPage, layerId: String, folderId: String?): InkPage {
-        val layer = page.layers.firstOrNull { it.id == layerId } ?: return page
-        if (layer.role == LayerRole.BACKGROUND) return page
-        val parent = folderId?.let { id -> page.layers.firstOrNull { it.id == id && it.role == LayerRole.FOLDER } } ?: if (folderId == null) null else return page
-        if (parent?.id == layer.id || (parent != null && isDescendant(page.layers, parent.id, layer.id))) return page
-        return page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(parentId = parent?.id) else it })
-    }
-
     fun removeFolder(page: InkPage, folderId: String): InkPage {
         val folder = page.layers.firstOrNull { it.id == folderId && it.role == LayerRole.FOLDER } ?: return page
         return page.copy(

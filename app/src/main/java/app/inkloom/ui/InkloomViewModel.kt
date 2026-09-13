@@ -441,16 +441,8 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(draft = !it.draft) else it })
     }
 
-    fun moveLayerToFolder(documentId: String, pageId: String, layerId: String, folderId: String?) = updateLayerStructure(documentId, pageId) { page ->
-        LayerHierarchy.moveToFolder(page, layerId, folderId)
-    }
-
     fun toggleLayerFolderCollapsed(documentId: String, pageId: String, folderId: String) = updatePage(documentId, pageId) { page ->
         page.copy(layers = page.layers.map { if (it.id == folderId && it.role == LayerRole.FOLDER) it.copy(collapsed = !it.collapsed) else it })
-    }
-
-    fun moveLayer(documentId: String, pageId: String, layerId: String, delta: Int) = updateLayerStructure(documentId, pageId) { page ->
-        LayerHierarchy.moveBy(page, layerId, delta)
     }
 
     fun duplicateLayer(documentId: String, pageId: String, layerId: String): String? {

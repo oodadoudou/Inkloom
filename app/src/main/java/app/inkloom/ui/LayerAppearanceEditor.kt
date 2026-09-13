@@ -73,6 +73,19 @@ internal class LayerAppearanceEditor(
         rejectedGesture = false
     }
 
+    fun move(primaryId: String, selected: Set<String>, drop: app.inkloom.document.LayerDrop) {
+        if (closed || finishing || preview != null) { rejected(); return }
+        val edit = try { app.inkloom.document.LayerOrderEdit.create(page(), primaryId, selected, drop) }
+        catch (failure: app.inkloom.document.LayerMoveRejected) {
+            if (failure.reason == app.inkloom.document.LayerMoveRejection.THROUGH_CLIPPING) throughRejected() else rejected()
+            return
+        }
+        if (edit.isNoOp) return
+        canvas()?.finishSelectionTransform(apply = true)
+        if (begin(primaryId) { edit }) commit()
+        rejectedGesture = false
+    }
+
     private fun begin(layerId: String, edit: (app.inkloom.document.InkLayer) -> LayerAppearanceEdit): Boolean {
         val currentPage = page()
         val layer = currentPage.layers.firstOrNull { it.id == layerId }

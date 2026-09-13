@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
@@ -66,8 +68,18 @@ internal fun LayerOpacitySlider(value: Float, label: String, onAction: (LayerOpa
         val inset = 10.dp.toPx()
         val start = Offset(inset, center.y); val end = Offset(size.width - inset, center.y)
         val thumb = Offset(start.x + (end.x - start.x) * value, center.y)
-        drawLine(OutlineSoft, start, end, 3.dp.toPx(), StrokeCap.Round)
-        drawLine(MutedInk, start, thumb, 3.dp.toPx(), StrokeCap.Round)
-        drawCircle(Color.White, 7.dp.toPx(), thumb)
+        val height = 14.dp.toPx()
+        val width = (end.x - start.x).coerceAtLeast(0f)
+        val top = center.y - height / 2
+        val cell = height / 2
+        drawRect(Color(0xFFE2E2E2), Offset(start.x, top), Size(width, height))
+        for (row in 0..1) for (column in 0..(width / cell).toInt()) {
+            if ((row + column) % 2 == 0) drawRect(Color(0xFF999999),
+                Offset(start.x + column * cell, top + row * cell), Size(minOf(cell, width - column * cell), cell))
+        }
+        drawRect(Brush.horizontalGradient(listOf(Color.Transparent, MutedInk), startX = start.x, endX = end.x),
+            Offset(start.x, top), Size(width, height))
+        drawLine(Paper, Offset(thumb.x, top - 4.dp.toPx()), Offset(thumb.x, top + height + 4.dp.toPx()), 5.dp.toPx())
+        drawLine(Ink, Offset(thumb.x, top - 4.dp.toPx()), Offset(thumb.x, top + height + 4.dp.toPx()), 1.dp.toPx())
     }
 }
