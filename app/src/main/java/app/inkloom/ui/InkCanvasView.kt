@@ -5788,6 +5788,7 @@ class InkCanvasView(context: Context) : View(context) {
         return finishRasterSelectionTransform()
     }
 
+    var onLayerCreationRequested: ((String, Boolean) -> Unit)? = null
     var onLayerMergeRequested: (String) -> Unit = {}
     private var pendingPaintPublicationsForMerge = 0
     internal fun hasPendingPaintPublicationForMerge() = pendingPaintPublicationsForMerge > 0 || v5StrokeController.isActive

@@ -1102,6 +1102,7 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Layers").performClick()
         composeRule.onNodeWithContentDescription("Add layer group").performClick()
+        composeRule.onNodeWithContentDescription("Select layer Notes").performClick()
         composeRule.onNodeWithContentDescription("Add layer").performClick()
 
         composeRule.onNodeWithText("Folder 1").assertIsDisplayed()
@@ -1187,6 +1188,7 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Layers").performClick()
         composeRule.onNodeWithContentDescription("Add layer group").performClick()
+        composeRule.onNodeWithContentDescription("Select layer Notes").performClick()
         composeRule.onNodeWithContentDescription("Add layer").performClick()
         val source = composeRule.onNodeWithContentDescription("Reorder layer Layer 1")
         val target = composeRule.onNodeWithContentDescription("Reorder layer Folder 1")

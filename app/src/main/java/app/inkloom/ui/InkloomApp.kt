@@ -837,8 +837,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onRotatePage = viewModel::rotatePageClockwise,
             onApplySelectionLayerTransfer = viewModel::applySelectionLayerTransfer,
             onSetSavedSelections = viewModel::setSavedSelections,
-            onAddLayer = viewModel::addLayer,
-            onAddLayerFolder = viewModel::addLayerFolder,
+            onApplyLayerInsertion = viewModel::applyLayerInsertion,
             onRenameLayer = viewModel::renameLayer,
             onToggleLayerVisibility = viewModel::toggleLayerVisibility,
             onToggleLayerLock = viewModel::toggleLayerLock,
@@ -1414,8 +1413,7 @@ private fun EditorScreen(
     onRotatePage: (String, String) -> Unit,
     onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit,
     onSetSavedSelections: (String, String, List<app.inkloom.document.SavedSelection>) -> Unit,
-    onAddLayer: (String, String, String) -> String,
-    onAddLayerFolder: (String, String) -> Unit,
+    onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean,
     onRenameLayer: (String, String, String, String) -> Unit,
     onToggleLayerVisibility: (String, String, String) -> Unit,
     onToggleLayerLock: (String, String, String) -> Unit,
@@ -1520,6 +1518,7 @@ private fun EditorScreen(
     var selectionTransformState by remember(document.id, selectedPage.id) { mutableStateOf<SelectionTransformUiState?>(null) }
     BackHandler(enabled = selectionTransformState != null) { canvasView?.finishSelectionTransform(apply = false) }
     var activeLayerId by rememberSaveable(document.id, selectedPage.id) { mutableStateOf(LayerIds.INK) }
+    fun createLayer(folder: Boolean) { canvasView?.onLayerCreationRequested?.invoke(activeLayerId, folder) }
     fun performLayerMaskCommand(layerId: String, command: LayerMaskCommand) {
         if (command == LayerMaskCommand.EDIT) {
             canvasView?.let { view ->
@@ -2727,8 +2726,8 @@ private fun EditorScreen(
                 onColor = ::changeBrushColor,
                 onSelect = ::selectLayerTarget,
                 onSelectContents = ::selectLayerContents,
-                onAdd = { activeLayerId = onAddLayer(document.id, selectedPage.id, "Layer") },
-                onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
+                onAdd = { createLayer(folder = false) },
+                onAddFolder = { createLayer(folder = true) },
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
@@ -2776,6 +2775,7 @@ private fun EditorScreen(
                 val toolbarAreaHeight = maxHeight
                 PaperCanvas(
                     onApplyRasterLayerMerge = onApplyRasterLayerMerge,
+                    onApplyLayerInsertion = onApplyLayerInsertion,
                     onApplySelectionLayerTransfer = onApplySelectionLayerTransfer,
                     onSelectionTransferLayerChosen = { activeLayerId = it; canvasView?.activeLayerId = it },
                     modifier = Modifier.sizeIn(maxWidth = toolbarAreaWidth * .88f, maxHeight = toolbarAreaHeight * .88f).aspectRatio(PageCropTransform.visibleWidth(selectedPage) / PageCropTransform.visibleHeight(selectedPage).coerceAtLeast(1f)),
@@ -3052,7 +3052,7 @@ private fun EditorScreen(
                             ShortcutAction.DESELECT -> finishSelectionTool(deselect = true)
                             ShortcutAction.UNDO -> canvasView?.undo()
                             ShortcutAction.REDO -> canvasView?.redo()
-                            ShortcutAction.NEW_LAYER -> { activeLayerId = onAddLayer(document.id, selectedPage.id, "Layer") }
+                            ShortcutAction.NEW_LAYER -> { createLayer(folder = false) }
                             ShortcutAction.MERGE_LAYER_DOWN -> canvasView?.requestLayerMerge(activeLayerId)
                             ShortcutAction.SELECT_LAYER_ABOVE -> LayerShortcutSelection.adjacentEditable(selectedPage.layers, activeLayerId, 1)?.let { activeLayerId = it }
                             ShortcutAction.SELECT_LAYER_BELOW -> LayerShortcutSelection.adjacentEditable(selectedPage.layers, activeLayerId, -1)?.let { activeLayerId = it }
@@ -3529,8 +3529,8 @@ private fun EditorScreen(
                 onColor = ::changeBrushColor,
                 onSelect = ::selectLayerTarget,
                 onSelectContents = ::selectLayerContents,
-                onAdd = { activeLayerId = onAddLayer(document.id, selectedPage.id, "Layer") },
-                onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
+                onAdd = { createLayer(folder = false) },
+                onAddFolder = { createLayer(folder = true) },
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
@@ -3607,8 +3607,8 @@ private fun EditorScreen(
                     onColor = ::changeBrushColor,
                     onSelect = ::selectLayerTarget,
                 onSelectContents = ::selectLayerContents,
-                    onAdd = { activeLayerId = onAddLayer(document.id, selectedPage.id, "Layer") },
-                    onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
+                    onAdd = { createLayer(folder = false) },
+                    onAddFolder = { createLayer(folder = true) },
                     onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                     onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                     onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
@@ -3735,8 +3735,8 @@ private fun EditorScreen(
                 onColor = ::changeBrushColor,
                 onSelect = ::selectLayerTarget,
                 onSelectContents = ::selectLayerContents,
-                onAdd = { activeLayerId = onAddLayer(document.id, selectedPage.id, "Layer") },
-                onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
+                onAdd = { createLayer(folder = false) },
+                onAddFolder = { createLayer(folder = true) },
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
@@ -5264,7 +5264,7 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
+private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val selectionMaskSize = remember(renderedPage.width, renderedPage.height) {
         requireNotNull(SelectionMaskCompositor.maskSize(renderedPage.width, renderedPage.height))
@@ -5443,6 +5443,14 @@ private fun PaperCanvas(onApplyRasterLayerMerge: (String, String, RasterLayerMer
         }
 
         installSelectionTransfer(view)
+        view.onLayerCreationRequested = { targetId, folder ->
+            LayerCreationEditor(documentId, page.id, { currentMergePage }, rasterSurfaceRuntime,
+                pendingRasterSaves, rasterCommitMutex, latestRasterAssets,
+                { edit, undo -> onApplyLayerInsertion(documentId, page.id, edit, undo) },
+                { id -> onSelectionTransferLayerChosen(id); view.selectLayerContent(id) }, gradientCommitScope,
+                { Toast.makeText(context, settings.language.text("Could not create or restore layer; finish the current operation or unlock its folder", "无法新建或恢复图层，请完成当前操作或解锁目标文件夹"), Toast.LENGTH_SHORT).show() }
+            ).create(view, targetId, folder)
+        }
         view.onLayerMergeRequested = { sourceId ->
             LayerMergeController(context, documentId, assets, rasterSurfaceRuntime, rasterCommitMutex,
                 latestRasterAssets, pendingRasterSaves, gradientCommitScope, { currentMergePage },

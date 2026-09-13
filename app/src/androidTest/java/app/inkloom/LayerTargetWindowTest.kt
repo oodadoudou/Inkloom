@@ -115,6 +115,72 @@ class LayerTargetWindowTest {
         assertEquals("Recreation retains the explicit target", target, canvas().activeLayerId)
     }
 
+    @Test fun creationFollowsSelectedSiblingOrFolderAndSharesPaintHistory() {
+        tap("New Note"); tap("Create"); val view = canvas()
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync { model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java] }
+        fun layers() = model.currentPage()!!.layers
+        fun id(name: String) = layers().single { it.name == name }.id
+        fun history(redo: Boolean = false) {
+            val key = if (redo) android.view.KeyEvent.KEYCODE_Y else android.view.KeyEvent.KEYCODE_Z
+            val time = SystemClock.uptimeMillis()
+            instrumentation.sendKeySync(android.view.KeyEvent(time, time, android.view.KeyEvent.ACTION_DOWN, key, 0, android.view.KeyEvent.META_CTRL_ON))
+            instrumentation.sendKeySync(android.view.KeyEvent(time, time + 1, android.view.KeyEvent.ACTION_UP, key, 0, android.view.KeyEvent.META_CTRL_ON))
+            compose.waitForIdle()
+        }
+        tap("Layers"); tap("Add layer"); assertNativeSelected("Layer 1")
+        tap("Add layer"); assertNativeSelected("Layer 2")
+        tap("Select layer Notes"); tap("Add layer"); assertNativeSelected("Layer 3")
+        assertEquals(listOf("Layer 2", "Layer 1", "Layer 3", "Notes", "Background"),
+            app.inkloom.document.LayerHierarchy.panelOrder(layers()).map { it.name })
+        tap("Add layer group"); assertNativeSelected("Folder 1")
+        val folderId = id("Folder 1")
+        tap("Toggle folder Folder 1"); tap("Add layer"); assertNativeSelected("Layer 4")
+        val childId = id("Layer 4")
+        assertEquals(folderId, layers().single { it.id == childId }.parentId)
+        assertTrue(!layers().single { it.id == folderId }.collapsed)
+        history()
+        compose.waitUntil { layers().none { it.id == childId } }
+        assertNativeSelected("Folder 1")
+        assertTrue(layers().single { it.id == folderId }.collapsed)
+        history(true); assertNativeSelected("Layer 4")
+        assertEquals(childId, view.activeLayerId)
+        tap("Close layers panel")
+        stroke(pagePoint(view, .25f, .5f), pagePoint(view, .6f, .5f))
+        compose.waitUntil(10_000) { layers().single { it.id == childId }.rasterTileSurface != null }
+        val painted = pixels(view)
+        history() // Ink precedes creation in reverse chronological order.
+        compose.waitForIdle(); SystemClock.sleep(300)
+        assertTrue(layers().any { it.id == childId })
+        assertTrue("Undo paint clears its surface", pixels(view).all { it == 0 })
+        history()
+        compose.waitUntil(5_000) { layers().none { it.id == childId } }
+        assertEquals(folderId, view.activeLayerId)
+        history(true)
+        compose.waitUntil { layers().any { it.id == childId } }
+        assertEquals(childId, view.activeLayerId)
+        history(true)
+        compose.waitUntil(10_000) { layers().single { it.id == childId }.rasterTileSurface != null }
+        compose.waitUntil(10_000) { painted.contentEquals(pixels(view)) }
+        tap("Layers"); assertNativeSelected("Layer 4")
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        assertEquals(childId, canvas().activeLayerId)
+        assertEquals(folderId, model.currentPage()!!.layers.single { it.id == childId }.parentId)
+        // Create while the parent is hidden, then reveal it before drawing. The history surface
+        // must already be retained even though a visibility-filtered reconciliation would omit it.
+        tap("Select layer Folder 1"); tapVisibility("Folder 1"); tap("Add layer")
+        assertNativeSelected("Layer 5"); val hiddenChild = id("Layer 5")
+        tapVisibility("Folder 1"); tap("Close layers panel")
+        val recreatedView = canvas()
+        stroke(pagePoint(recreatedView, .25f, .7f), pagePoint(recreatedView, .6f, .7f))
+        compose.waitUntil(10_000) { layers().single { it.id == hiddenChild }.rasterTileSurface != null }
+        val hiddenPainted = pixels(recreatedView)
+        history(); compose.waitForIdle(); history()
+        compose.waitUntil(5_000) { layers().none { it.id == hiddenChild } }
+        history(true); compose.waitUntil { layers().any { it.id == hiddenChild } }
+        history(true); compose.waitUntil(10_000) { hiddenPainted.contentEquals(pixels(recreatedView)) }
+    }
+
     private fun assertNativeSelected(name: String) {
         compose.onNodeWithContentDescription("Select layer $name").assertIsSelected()
         compose.waitUntil(5_000) {

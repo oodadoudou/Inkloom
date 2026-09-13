@@ -380,23 +380,11 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun setSavedSelections(documentId: String, pageId: String, selections: List<SavedSelection>) =
         updatePage(documentId, pageId) { it.copy(savedSelections = selections) }
 
-    fun addLayer(
-        documentId: String,
-        pageId: String,
-        name: String = "Layer",
-    ): String {
-        val id = java.util.UUID.randomUUID().toString()
-        updatePage(documentId, pageId) { page ->
-            val suffix = page.layers.count { it.role == LayerRole.CUSTOM } + 1
-            page.copy(layers = page.layers + InkLayer(id = id,
-                name = if (name == "Layer") "Layer $suffix" else name.trim().ifBlank { "Layer $suffix" }))
-        }
-        return id
-    }
-
-    fun addLayerFolder(documentId: String, pageId: String) = updatePage(documentId, pageId) { page ->
-        val suffix = page.layers.count { it.role == LayerRole.FOLDER } + 1
-        page.copy(layers = page.layers + InkLayer(name = "Folder $suffix", role = LayerRole.FOLDER))
+    fun applyLayerInsertion(documentId: String, pageId: String, edit: LayerInsertionEdit, undo: Boolean): Boolean {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return false
+        val changed = edit.apply(page, undo) ?: return false
+        updatePage(documentId, pageId) { changed }
+        return true
     }
 
     fun renameLayer(documentId: String, pageId: String, layerId: String, name: String) = updatePage(documentId, pageId) { page ->

@@ -79,6 +79,14 @@ internal class RasterLayerSurfaceRuntime(
         sourceKeys[layer.id] = RasterSurfaceSourceKey.from(page, layer, renderWidth)
     }
 
+    /** Creation must retain hidden layers too: they can become visible and acquire paint history later. */
+    @Synchronized
+    fun retainCreatedLayerForHistory(page: InkPage, layer: InkLayer): PixelTileSurface {
+        val surface = surfaces[layer.id] ?: loader(page, layer.id, renderWidth)
+        retainHistoryLayer(page, layer, surface)
+        return surface
+    }
+
     @Synchronized
     fun releaseHistoryLayer(layerId: String) { historyLayers -= layerId }
 
