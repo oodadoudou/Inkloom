@@ -69,7 +69,7 @@ internal class LayerAppearanceEditor(
         val currentPage = page()
         val layer = currentPage.layers.firstOrNull { it.id == layerId }
         val view = canvas()
-        if (layer == null || layer.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) ||
+        if (layer == null || layer.role == LayerRole.BACKGROUND ||
             LayerHierarchy.effectiveLocked(currentPage.layers, layer) ||
             view == null || view.selectionLayerTransferPending || view.hasActivePaintContact() ||
             !view.isBoundToSelectionPage(documentId, pageId)) {

@@ -35,7 +35,7 @@ class LayerBlendEditTest {
         assertNull(edit.apply(page.copy(layers = emptyList())))
         assertNull(edit.apply(page.copy(layers = listOf(layer.copy(blendMode = LayerBlendMode.SCREEN)))))
         assertNull(edit.apply(page, undo = true))
-        for (role in listOf(LayerRole.FOLDER, LayerRole.BACKGROUND))
+        for (role in listOf(LayerRole.BACKGROUND))
             assertNull(edit.apply(page.copy(layers = listOf(layer.copy(role = role)))))
     }
 }

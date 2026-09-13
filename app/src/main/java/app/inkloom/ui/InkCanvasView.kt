@@ -47,7 +47,10 @@ import app.inkloom.engine.v5.history.EngineTransactionJournal
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.android.PixelTileCanvasRenderer
 import app.inkloom.engine.v5.android.MaskTileCanvasRenderer
-import app.inkloom.engine.v5.composite.PixelLayerProjectionCache
+import app.inkloom.engine.v5.composite.PixelGroupProjectionCache
+import app.inkloom.engine.v5.composite.PixelProjectionNode
+import app.inkloom.document.LayerCompositingTree
+import app.inkloom.document.LayerCompositingNode
 import app.inkloom.engine.v5.composite.PixelLayerProjectionInput
 import app.inkloom.engine.v5.composite.PixelActiveDeltaBlend
 import app.inkloom.engine.v5.selection.AlphaMaskOperation
@@ -1119,7 +1122,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private val rasterLayerTileSurfaces = mutableMapOf<String, PixelTileSurface>()
     private val rasterTileRenderer = PixelTileCanvasRenderer()
-    private var rasterLayerProjectionCache: PixelLayerProjectionCache? = null
+    private var rasterLayerProjectionCache: PixelGroupProjectionCache? = null
     private var rasterLayerProjectionGeometry: RasterProjectionGeometry? = null
     @VisibleForTesting internal var v5RasterProjectionDrawCount: Int = 0
     @VisibleForTesting internal var lastRasterProjectionRecomposedTileCount: Int = 0
@@ -1602,13 +1605,13 @@ class InkCanvasView(context: Context) : View(context) {
         val orderedLayerIds = (layerOrder.filter { it in availableLayerIds } + availableLayerIds.filterNot { it in layerOrder }).distinct()
         val compositionBounds = RectF(canvas.clipBounds)
         if (compositionBounds.isEmpty) return
-        var previousLayerId: String? = null
-        orderedLayerIds.forEach { layerId ->
+        lateinit var drawNode: (LayerCompositingNode, LayerCompositingNode?) -> Unit
+        fun drawLeaf(layerId: String, lowerNode: LayerCompositingNode?) {
             val opacity = (layerOpacities[layerId] ?: 1f).coerceIn(0f, 1f)
-            if (opacity <= 0f) return@forEach
+            if (opacity <= 0f) return
             val layerBlendMode = layerBlendModes[layerId] ?: LayerBlendMode.NORMAL
             val clipped = layerId in clippedLayers
-            val lowerLayerId = previousLayerId
+            val lowerLayerId = lowerNode?.layer?.id
             if (!clipped || lowerLayerId != null) {
                 val hasEnabledMask = layerMasks[layerId]?.enabled == true && layerMaskSurfaces[layerId] != null
                 if (opacity >= .999f && layerBlendMode == LayerBlendMode.NORMAL && !clipped && !hasEnabledMask) {
@@ -1616,8 +1619,7 @@ class InkCanvasView(context: Context) : View(context) {
                     // full-canvas saveLayer here made every front-buffer packet pay an offscreen
                     // composition cost even though direct drawing is pixel-identical.
                     drawV5RawLayerContent(canvas, layerId, includeElements)
-                    previousLayerId = layerId
-                    return@forEach
+                    return
                 }
                 val checkpoint = canvas.saveLayer(compositionBounds, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     alpha = (opacity * 255f).toInt().coerceIn(0, 255)
@@ -1632,12 +1634,54 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 if (clipped && lowerLayerId != null) {
                     val maskCheckpoint = canvas.saveLayer(compositionBounds, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
-                    drawV5RawLayerContent(canvas, lowerLayerId, includeElements)
+                    drawNode(requireNotNull(lowerNode), null)
                     canvas.restoreToCount(maskCheckpoint)
                 }
                 canvas.restoreToCount(checkpoint)
             }
-            previousLayerId = layerId
+        }
+        fun drawMask(layerId: String) {
+            layerMasks[layerId]?.takeIf { it.enabled }?.let {
+                val sparse = layerMaskSurfaces[layerId] ?: return@let
+                val save = canvas.saveLayer(compositionBounds, Paint().apply { blendMode = android.graphics.BlendMode.DST_IN })
+                MaskTileCanvasRenderer.draw(sparse, canvas, RectF(0f, 0f, width.toFloat(), height.toFloat()))
+                canvas.restoreToCount(save)
+            }
+        }
+        fun drawSiblings(nodes: List<LayerCompositingNode>) {
+            var previous: LayerCompositingNode? = null
+            nodes.forEach { node ->
+                drawNode(node, previous)
+                if (node.layer.id !in clippedLayers) previous = node
+            }
+        }
+        drawNode = { node, lower ->
+            val layer = node.layer
+            if (layer.role != app.inkloom.document.LayerRole.FOLDER) {
+                if (layer.id in availableLayerIds) drawLeaf(layer.id, lower)
+            } else {
+                val save = canvas.saveLayer(compositionBounds, Paint().apply {
+                    alpha = ((layerOpacities[layer.id] ?: layer.opacity).coerceIn(0f, 1f) * 255f).toInt()
+                    blendMode = (layerBlendModes[layer.id] ?: layer.blendMode).toBlendMode()
+                })
+                drawSiblings(node.children)
+                drawMask(layer.id)
+                if (layer.id in clippedLayers) {
+                    val clip = canvas.saveLayer(compositionBounds, Paint().apply { blendMode = android.graphics.BlendMode.DST_IN })
+                    if (lower != null) drawNode(lower, null)
+                    canvas.restoreToCount(clip)
+                }
+                canvas.restoreToCount(save)
+            }
+        }
+        val documentLayers = boundDocumentLayers
+        if (documentLayers != null && layerFilter == null) drawSiblings(LayerCompositingTree.roots(documentLayers))
+        else {
+            var previous: LayerCompositingNode? = null
+            orderedLayerIds.forEach { id ->
+                drawLeaf(id, previous)
+                if (id !in clippedLayers) previous = LayerCompositingNode(app.inkloom.document.InkLayer(id = id, name = id))
+            }
         }
     }
 
@@ -1661,7 +1705,7 @@ class InkCanvasView(context: Context) : View(context) {
                 rasterLayerTileSurfaces.keys.filterNot(layerOrder::contains)
             ).distinct()
         if (orderedIds.isEmpty()) return false
-        val directSourceOverStack = orderedIds.all { layerId ->
+        val directSourceOverStack = boundDocumentLayers?.none { it.role == app.inkloom.document.LayerRole.FOLDER } != false && orderedIds.all { layerId ->
             (layerOpacities[layerId] ?: 1f) >= .999f &&
                 (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL) == LayerBlendMode.NORMAL &&
                 layerMasks[layerId]?.enabled != true && layerId !in clippedLayers
@@ -1697,17 +1741,17 @@ class InkCanvasView(context: Context) : View(context) {
         var cache = rasterLayerProjectionCache
         if (cache == null || rasterLayerProjectionGeometry != geometry) {
             releaseRasterLayerProjection()
-            cache = PixelLayerProjectionCache(
-                logicalWidth = geometry.width,
-                logicalHeight = geometry.height,
+            cache = PixelGroupProjectionCache(
+                width = geometry.width,
+                height = geometry.height,
                 tileSize = geometry.tileSize,
-                pixelFormat = geometry.pixelFormat,
+                format = geometry.pixelFormat,
                 surfaceId = "live-raster-projection-${System.identityHashCode(this)}",
             )
             rasterLayerProjectionCache = cache
             rasterLayerProjectionGeometry = geometry
         }
-        val update = cache.update(orderedIds.map { layerId ->
+        val inputs = orderedIds.map { layerId ->
             val active = activeV5PaintPresentation(layerId)
             PixelLayerProjectionInput(
                 layerId = layerId,
@@ -1724,7 +1768,16 @@ class InkCanvasView(context: Context) : View(context) {
                     else -> PixelActiveDeltaBlend.SOURCE_OVER
                 },
             )
-        })
+        }.associateBy { it.layerId }
+        val nodes = boundDocumentLayers?.let { layers -> LayerCompositingTree.project<PixelProjectionNode>(layers,
+            paint = { layer -> inputs[layer.id]?.let(PixelProjectionNode::Paint) },
+            group = { layer, children -> PixelProjectionNode.Group(layer.id, children,
+                layerOpacities[layer.id] ?: layer.opacity,
+                (layerBlendModes[layer.id] ?: layer.blendMode).toPixelBlendMode(),
+                layerMasks[layer.id]?.takeIf { it.enabled }?.let { layerMaskSurfaces[layer.id] },
+                layer.id in clippedLayers) }) }
+            ?: inputs.values.map(PixelProjectionNode::Paint)
+        val update = cache.update(nodes)
         lastRasterProjectionRecomposedTileCount = update.recomposedTileCount
         v5RasterProjectionDrawCount++
         rasterTileRenderer.draw(

@@ -34,7 +34,7 @@ class LayerOpacityEditTest {
         assertNull(edit.apply(page.copy(layers = emptyList())))
         assertNull(edit.apply(page.copy(layers = listOf(layer.copy(opacity = .7f)))))
         assertNull(edit.apply(page, undo = true))
-        for (role in listOf(LayerRole.FOLDER, LayerRole.BACKGROUND)) {
+        for (role in listOf(LayerRole.BACKGROUND)) {
             assertNull(edit.apply(page.copy(layers = listOf(layer.copy(role = role)))))
         }
         for (invalid in listOf(Float.NaN, Float.POSITIVE_INFINITY, -.1f, 1.1f)) {

@@ -167,6 +167,64 @@ class LayerOpacityWindowTest {
         assertTrue(hasText("Screen"))
     }
 
+    @Test fun groupOpacityCompositesOverlappingChildrenOnceAndSharesPaintHistory() {
+        tap("New Note"); tap("Create"); val view = canvas()
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync { model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java] }
+        tap("Layers"); tap("Add layer group")
+        val groupId = view.activeLayerId
+        tap("Add layer"); val firstId = view.activeLayerId
+        tap("Close layers panel")
+        stroke(pagePoint(view, .2f, .4f), pagePoint(view, .6f, .4f))
+        compose.waitUntil(10_000) { model.currentPage()?.layers?.first { it.id == firstId }?.rasterTileSurface != null }
+        tap("Layers"); tap("Add layer"); val secondId = view.activeLayerId
+        tap("Close layers panel")
+        stroke(pagePoint(view, .4f, .25f), pagePoint(view, .4f, .6f))
+        compose.waitUntil(10_000) { model.currentPage()?.layers?.first { it.id == secondId }?.rasterTileSurface != null }
+        val original = pixels(view)
+        tap("Layers"); tap("Select layer Folder 1")
+        compose.waitUntil { view.activeLayerId == groupId }
+        fun opacity() = requireNotNull(model.currentPage()).layers.first { it.id == groupId }.opacity
+        val probes = listOf(.3f to .4f, .4f to .4f, .4f to .5f)
+        fun screenValues(): List<Int> {
+            SystemClock.sleep(160)
+            val bitmap = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            return try { probes.map { (x, y) ->
+                val point = pagePoint(canvas(), x, y)
+                android.graphics.Color.red(bitmap.getPixel(point.x.toInt(), point.y.toInt()))
+            } } finally { bitmap.recycle() }
+        }
+        fun exportValues(): List<Int> {
+            val bitmap = app.inkloom.document.DocumentAssetService(compose.activity).renderPageBitmap(requireNotNull(model.currentPage()), 800)
+            return try { probes.map { (x, y) -> android.graphics.Color.red(bitmap.getPixel((x * bitmap.width).toInt(), (y * bitmap.height).toInt())) } }
+            finally { bitmap.recycle() }
+        }
+        val beforeScreen = screenValues(); val beforeExport = exportValues()
+        assertTrue("All probes must contain real paint", beforeScreen.all { it < 100 } && beforeExport.all { it < 100 })
+        tap("Edit layer opacity"); typePercent("50"); tap("Apply layer opacity")
+        compose.waitUntil(10_000) { opacity() == .5f && !view.selectionLayerTransferPending }
+        fun checkPicture() {
+            screenValues().zip(beforeScreen).forEach { (after, before) ->
+                assertEquals("Group opacity applies once, including overlapping paint", (255 + before) / 2.0, after.toDouble(), 2.0)
+            }
+            exportValues().zip(beforeExport).forEach { (after, before) ->
+                assertEquals("Export applies the same group alpha", (255 + before) / 2.0, after.toDouble(), 2.0)
+            }
+        }
+        checkPicture()
+        tap("Undo"); compose.waitUntil { opacity() == 1f }
+        tap("Redo"); compose.waitUntil { opacity() == .5f }
+        tap("Select layer Layer 2"); tap("Close layers panel")
+        stroke(pagePoint(view, .2f, .7f), pagePoint(view, .6f, .7f))
+        compose.waitUntil(10_000) { !original.contentEquals(pixels(view)) }
+        tap("Undo"); compose.waitUntil(10_000) { original.contentEquals(pixels(view)) }
+        tap("Undo"); compose.waitUntil { opacity() == 1f }
+        tap("Redo"); compose.waitUntil { opacity() == .5f }
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        assertEquals(.5f, opacity()); checkPicture()
+        org.junit.Assert.assertArrayEquals(original, pixels(canvas()))
+    }
+
     @Test fun scrollingTheActualLayerListKeepsPropertiesFixedOnTheSelectedLayer() {
         tap("New Note"); tap("Create"); val view = canvas(); tap("Layers")
         val propertyBounds = bounds("Layer properties")

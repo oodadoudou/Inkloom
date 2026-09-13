@@ -16,7 +16,7 @@ data class LayerBlendEdit(
 
     override fun apply(page: InkPage, undo: Boolean): InkPage? {
         val layer = page.layers.firstOrNull { it.id == layerId } ?: return null
-        if (layer.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) return null
+        if (layer.role == LayerRole.BACKGROUND) return null
         if (layer.blendMode != if (undo) after else before) return null
         return page.copy(layers = page.layers.map {
             if (it.id == layerId) it.copy(blendMode = if (undo) before else after) else it

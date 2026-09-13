@@ -16,7 +16,8 @@ import android.graphics.pdf.PdfDocument
 import app.inkloom.engine.v5.storage.DocumentCheckpointCodec
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.android.PixelTileCanvasRenderer
-import app.inkloom.engine.v5.composite.PixelLayerProjectionCache
+import app.inkloom.engine.v5.composite.PixelGroupProjectionCache
+import app.inkloom.engine.v5.composite.PixelProjectionNode
 import app.inkloom.engine.v5.composite.PixelLayerProjectionInput
 import app.inkloom.engine.v5.storage.PixelTileArchiveStore
 import app.inkloom.engine.v5.storage.MaskTileArchiveCodec
@@ -854,7 +855,8 @@ class DocumentAssetService(private val context: Context) {
                 includeRaster = includeRaster,
                 applyLayerEffects = applyLayerEffects,
             )) return
-        visibleLayers.forEachIndexed { layerIndex, layer ->
+        lateinit var drawNode: (LayerCompositingNode, LayerCompositingNode?) -> Unit
+        fun drawLeaf(layer: InkLayer, lowerNode: LayerCompositingNode?) {
             val layerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 alpha = (layer.opacity.coerceIn(0f, 1f) * 255f).toInt().coerceIn(0, 255)
                 blendMode = layer.blendMode.toBlendMode()
@@ -1045,17 +1047,53 @@ class DocumentAssetService(private val context: Context) {
                 canvas.restoreToCount(maskCheckpoint)
             }
             if (applyLayerEffects && layer.clippedToBelow) {
-                val lowerLayer = visibleLayers.getOrNull(layerIndex - 1)
+                val lowerLayer = lowerNode?.layer
                 if (lowerLayer == null) {
                     canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
                 } else {
                     val maskCheckpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
-                    drawLayerWithAlphaLock(lowerLayer)
+                    if (applyLayerEffects && includedLayerIds == null) drawNode(requireNotNull(lowerNode), null)
+                    else drawLayerWithAlphaLock(lowerLayer)
                     canvas.restoreToCount(maskCheckpoint)
                 }
             }
             canvas.restoreToCount(layerCheckpoint)
         }
+        fun drawSiblings(nodes: List<LayerCompositingNode>) {
+            var previous: LayerCompositingNode? = null
+            nodes.forEach { node ->
+                drawNode(node, previous)
+                if (!node.layer.clippedToBelow) previous = node
+            }
+        }
+        val visibleIds = visibleLayers.mapTo(hashSetOf()) { it.id }
+        drawNode = { node, lower ->
+            val layer = node.layer
+            if (layer.role != LayerRole.FOLDER) {
+                if (layer.id in visibleIds) drawLeaf(layer, lower)
+            } else {
+                val save = canvas.saveLayer(null, Paint().apply {
+                    alpha = (layer.opacity.coerceIn(0f, 1f) * 255f).toInt()
+                    blendMode = layer.blendMode.toBlendMode()
+                })
+                drawSiblings(node.children)
+                layer.mask?.takeIf { it.enabled }?.surface?.let { reference ->
+                    val mask = loadMaskTileSurface(reference).snapshot()
+                    val checkpoint = canvas.saveLayer(null, Paint().apply { blendMode = android.graphics.BlendMode.DST_IN })
+                    app.inkloom.engine.v5.android.MaskTileCanvasRenderer.draw(mask, canvas, RectF(0f, 0f, width.toFloat(), height.toFloat()))
+                    canvas.restoreToCount(checkpoint)
+                }
+                if (layer.clippedToBelow) {
+                    val checkpoint = canvas.saveLayer(null, Paint().apply { blendMode = android.graphics.BlendMode.DST_IN })
+                    if (lower != null) drawNode(lower, null)
+                    canvas.restoreToCount(checkpoint)
+                }
+                canvas.restoreToCount(save)
+            }
+        }
+        // Loading one editable surface must never bake in its parent's opacity or mask.
+        if (applyLayerEffects && includedLayerIds == null) drawSiblings(LayerCompositingTree.roots(page.layers))
+        else visibleLayers.forEachIndexed { index, layer -> drawLeaf(layer, visibleLayers.getOrNull(index - 1)?.let(::LayerCompositingNode)) }
     }
 
     /** Export counterpart of the live V5 sparse-tile projection. */
@@ -1088,14 +1126,14 @@ class DocumentAssetService(private val context: Context) {
                 surface.logicalWidth != first.logicalWidth || surface.logicalHeight != first.logicalHeight ||
                     surface.tileSize != first.tileSize || surface.pixelFormat != first.pixelFormat
             }) return false
-        val projection = PixelLayerProjectionCache(
-            logicalWidth = first.logicalWidth,
-            logicalHeight = first.logicalHeight,
+        val projection = PixelGroupProjectionCache(
+            width = first.logicalWidth,
+            height = first.logicalHeight,
             tileSize = first.tileSize,
-            pixelFormat = first.pixelFormat,
+            format = first.pixelFormat,
             surfaceId = "export-raster-projection-${sourcePage.id}-$width",
         )
-        val update = projection.update(surfaces.map { (layer, surface) ->
+        val inputs = surfaces.map { (layer, surface) ->
             PixelLayerProjectionInput(
                 layerId = layer.id,
                 pixels = surface.snapshot(),
@@ -1104,7 +1142,14 @@ class DocumentAssetService(private val context: Context) {
                 mask = layer.mask?.takeIf(LayerMask::enabled)?.surface?.let { loadMaskTileSurface(it).snapshot() },
                 clipToBaseBelow = layer.clippedToBelow,
             )
-        })
+        }.associateBy { it.layerId }
+        val nodes = LayerCompositingTree.project<PixelProjectionNode>(projectedPage.layers,
+            paint = { inputs[it.id]?.let(PixelProjectionNode::Paint) },
+            group = { layer, children -> PixelProjectionNode.Group(layer.id, children, layer.opacity,
+                layer.blendMode.toPixelBlendMode(),
+                layer.mask?.takeIf { it.enabled }?.surface?.let { loadMaskTileSurface(it).snapshot() },
+                layer.clippedToBelow) })
+        val update = projection.update(nodes)
         PixelTileCanvasRenderer().use { renderer ->
             renderer.draw(canvas, update.snapshot, RectF(0f, 0f, width.toFloat(), height.toFloat()))
         }

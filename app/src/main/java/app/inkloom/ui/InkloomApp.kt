@@ -7400,7 +7400,7 @@ private fun PaintingLayerPanel(
             }
             val propertyLayer = page.layers.firstOrNull { it.id == activeLayerId }
             LayerPropertiesBar(propertyLayer,
-                editable = propertyLayer != null && propertyLayer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) &&
+                editable = propertyLayer != null && propertyLayer.role != LayerRole.BACKGROUND &&
                     !LayerHierarchy.effectiveLocked(page.layers, propertyLayer),
                 language = LocalUiLanguage.current,
                 onOpacity = { onOpacity(activeLayerId, it) },
@@ -7503,7 +7503,7 @@ private fun PaintingLayerPanel(
                                 },
                             )
                         }) {
-                            if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) Text(
+                            if (layer.role != LayerRole.BACKGROUND) Text(
                                 "${(layer.opacity * 100).roundToInt()}%  ${LayerBlendModeDisplayName.of(layer.blendMode, LocalUiLanguage.current)}",
                                 maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                 fontSize = 10.sp, color = MutedInk,
