@@ -844,16 +844,44 @@ fun InkloomApp(initialIntent: Intent?) {
             onApplyLayerAppearanceEdit = viewModel::applyLayerAppearanceEdit,
             onSetLayerRasterTileSurface = viewModel::setLayerRasterTileSurface,
             onToggleLayerAlphaLock = viewModel::toggleLayerAlphaLock,
-            onToggleLayerClippedToBelow = viewModel::toggleLayerClippedToBelow,
+            onToggleLayerClippedToBelow = { documentId, pageId, layerId ->
+                viewModel.toggleLayerClippedToBelow(documentId, pageId, layerId)?.let { rejection ->
+                    val message = if (rejection == app.inkloom.document.LayerGroupRejection.THROUGH_CLIPPING)
+                        settings.language.text("Through folders cannot be a clipping base. Remove clipping first.", "穿透组不能作为剪贴底层，请先取消剪贴。")
+                    else settings.language.text("The layer target is no longer available.", "目标图层已不可用。")
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                }
+            },
             onToggleLayerReference = viewModel::toggleLayerReference,
             onToggleLayerDraft = viewModel::toggleLayerDraft,
             onLayerMaskCommand = viewModel::updateLayerMask,
-            onMoveLayerToFolder = viewModel::moveLayerToFolder,
+            onMoveLayerToFolder = { documentId, pageId, layerId, folderId ->
+                viewModel.moveLayerToFolder(documentId, pageId, layerId, folderId)?.let { rejection ->
+                    val message = if (rejection == app.inkloom.document.LayerGroupRejection.THROUGH_CLIPPING)
+                        settings.language.text("Through folders cannot be a clipping base. Remove clipping first.", "穿透组不能作为剪贴底层，请先取消剪贴。")
+                    else settings.language.text("The layer target is no longer available.", "目标图层已不可用。")
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                }
+            },
             onToggleLayerFolderCollapsed = viewModel::toggleLayerFolderCollapsed,
-            onMoveLayer = viewModel::moveLayer,
+            onMoveLayer = { documentId, pageId, layerId, delta ->
+                viewModel.moveLayer(documentId, pageId, layerId, delta)?.let { rejection ->
+                    val message = if (rejection == app.inkloom.document.LayerGroupRejection.THROUGH_CLIPPING)
+                        settings.language.text("Through folders cannot be a clipping base. Remove clipping first.", "穿透组不能作为剪贴底层，请先取消剪贴。")
+                    else settings.language.text("The layer target is no longer available.", "目标图层已不可用。")
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                }
+            },
             onDuplicateLayer = viewModel::duplicateLayer,
             onApplyRasterLayerMerge = viewModel::applyRasterLayerMerge,
-            onDeleteLayer = viewModel::deleteLayer,
+            onDeleteLayer = { documentId, pageId, layerId ->
+                viewModel.deleteLayer(documentId, pageId, layerId)?.let { rejection ->
+                    val message = if (rejection == app.inkloom.document.LayerGroupRejection.THROUGH_CLIPPING)
+                        settings.language.text("Through folders cannot be a clipping base. Remove clipping first.", "穿透组不能作为剪贴底层，请先取消剪贴。")
+                    else settings.language.text("The layer target is no longer available.", "目标图层已不可用。")
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                }
+            },
             onElement = viewModel::addElement,
             onRemoveElement = viewModel::removeElement,
             onDuplicateElement = viewModel::duplicateElement,
@@ -1469,10 +1497,12 @@ private fun EditorScreen(
     val currentAppearanceCanvas by rememberUpdatedState(canvasView)
     val currentAppearanceApply by rememberUpdatedState(onApplyLayerAppearanceEdit)
     val appearanceFailure = tr("Could not change layer properties; finish the current operation or unlock the layer and try again", "无法修改图层属性，请完成当前操作或解锁图层后重试")
+    val throughFailure by rememberUpdatedState(tr("Through folders cannot use clipping or be a clipping base. Remove clipping first.", "穿透组不能使用剪贴或作为剪贴底层，请先取消剪贴。"))
     val appearanceEditor = remember(document.id, storedPage.id) {
         LayerAppearanceEditor(document.id, storedPage.id, { currentAppearancePage }, { currentAppearanceCanvas },
             { edit, undo -> currentAppearanceApply(document.id, storedPage.id, edit, undo) }, appearanceScope,
-            { Toast.makeText(context, appearanceFailure, Toast.LENGTH_SHORT).show() })
+            { Toast.makeText(context, appearanceFailure, Toast.LENGTH_SHORT).show() },
+            { Toast.makeText(context, throughFailure, Toast.LENGTH_LONG).show() })
     }
     DisposableEffect(appearanceEditor) { onDispose { appearanceEditor.close() } }
     val selectedPage = appearanceEditor.preview?.apply(storedPage) ?: storedPage
@@ -2733,6 +2763,7 @@ private fun EditorScreen(
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
                 onOpacity = appearanceEditor::handle,
                 onBlendMode = appearanceEditor::setBlendMode,
+                onThrough = appearanceEditor::setThrough,
                 onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                 onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
@@ -3536,6 +3567,7 @@ private fun EditorScreen(
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
                 onOpacity = appearanceEditor::handle,
                 onBlendMode = appearanceEditor::setBlendMode,
+                onThrough = appearanceEditor::setThrough,
                 onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                 onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
@@ -3614,6 +3646,7 @@ private fun EditorScreen(
                     onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
                     onOpacity = appearanceEditor::handle,
                 onBlendMode = appearanceEditor::setBlendMode,
+                onThrough = appearanceEditor::setThrough,
                     onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                     onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                     onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
@@ -3742,6 +3775,7 @@ private fun EditorScreen(
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
                 onOpacity = appearanceEditor::handle,
                 onBlendMode = appearanceEditor::setBlendMode,
+                onThrough = appearanceEditor::setThrough,
                 onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                 onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
@@ -5526,7 +5560,8 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
     val layerOpacities = page.layers.associate { it.id to it.opacity }
     val layerBlendModes = page.layers.associate { it.id to it.blendMode }
     val layerOrder = page.layers.mapIndexed { index, layer -> layer.id to index }.toMap()
-    val layerElementBitmaps = remember(page.elements, page.layers, page.crop, page.backgroundRotationQuarterTurns) {
+    val retainedLayerKeys = RetainedLayerRenderKey.forPage(page)
+    val layerElementBitmaps = remember(page.id, page.width, page.height, page.elements, retainedLayerKeys, page.crop, page.backgroundRotationQuarterTurns) {
         page.layers.mapNotNull { layer ->
             val elementIds = page.elements.filter { it.layerId == layer.id }.mapTo(linkedSetOf(), PageElement::id)
             if (elementIds.isEmpty() || !LayerHierarchy.effectiveVisible(page.layers, layer)) return@mapNotNull null
@@ -7212,6 +7247,7 @@ private fun LayerPanel(
     onLock: (String) -> Unit,
     onOpacity: (String, LayerOpacityAction) -> Unit,
     onBlendMode: (String, LayerBlendMode) -> Unit,
+    onThrough: (String) -> Unit,
     onToggleAlphaLock: (String) -> Unit,
     onToggleClippedToBelow: (String) -> Unit,
     onToggleReference: (String) -> Unit,
@@ -7266,6 +7302,7 @@ private fun LayerPanel(
             onLock = onLock,
             onOpacity = onOpacity,
             onBlendMode = onBlendMode,
+            onThrough = onThrough,
             onToggleAlphaLock = onToggleAlphaLock,
             onToggleClippedToBelow = onToggleClippedToBelow,
             onToggleReference = onToggleReference,
@@ -7323,6 +7360,7 @@ private fun PaintingLayerPanel(
     onLock: (String) -> Unit,
     onOpacity: (String, LayerOpacityAction) -> Unit,
     onBlendMode: (String, LayerBlendMode) -> Unit,
+    onThrough: (String) -> Unit,
     onToggleAlphaLock: (String) -> Unit,
     onToggleClippedToBelow: (String) -> Unit,
     onToggleReference: (String) -> Unit,
@@ -7404,7 +7442,7 @@ private fun PaintingLayerPanel(
                     !LayerHierarchy.effectiveLocked(page.layers, propertyLayer),
                 language = LocalUiLanguage.current,
                 onOpacity = { onOpacity(activeLayerId, it) },
-                onMode = { onBlendMode(activeLayerId, it) })
+                onMode = { onBlendMode(activeLayerId, it) }, onThrough = { onThrough(activeLayerId) })
             HorizontalDivider(color = OutlineSoft)
             if (searchOpen) OutlinedTextField(
                 value = layerSearch,
@@ -7504,7 +7542,7 @@ private fun PaintingLayerPanel(
                             )
                         }) {
                             if (layer.role != LayerRole.BACKGROUND) Text(
-                                "${(layer.opacity * 100).roundToInt()}%  ${LayerBlendModeDisplayName.of(layer.blendMode, LocalUiLanguage.current)}",
+                                "${(layer.opacity * 100).roundToInt()}%  ${LayerBlendModeDisplayName.of(layer, LocalUiLanguage.current)}",
                                 maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                 fontSize = 10.sp, color = MutedInk,
                             )

@@ -189,6 +189,8 @@ data class InkLayer(
     val mask: LayerMask? = null,
     val parentId: String? = null,
     val collapsed: Boolean = false,
+    /** Folder-only: child blending participates in the parent backdrop. */
+    val passThrough: Boolean = false,
 )
 
 /** V5 has one paint-layer truth. Backgrounds and folders are structural, all other layers own pixels. */

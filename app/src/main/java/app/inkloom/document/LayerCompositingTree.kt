@@ -13,7 +13,7 @@ object LayerCompositingTree {
     fun roots(layers: List<InkLayer>): List<LayerCompositingNode> {
         val children = layers.groupBy(InkLayer::parentId)
         fun nodes(parent: String?): List<LayerCompositingNode> = children[parent].orEmpty()
-            .filter { it.visible && it.role != LayerRole.BACKGROUND }
+            .filter { it.role != LayerRole.BACKGROUND }
             .map { layer -> LayerCompositingNode(layer, if (layer.role == LayerRole.FOLDER) nodes(layer.id) else emptyList()) }
         return nodes(null)
     }

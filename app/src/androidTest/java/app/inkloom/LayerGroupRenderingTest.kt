@@ -87,4 +87,111 @@ class LayerGroupRenderingTest {
             }
         } finally { result.recycle() }
     }
+    @Test fun throughMixedAndRetainedOnlyContentMatchExportAndCacheBitmapConversions() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val assets = DocumentAssetService(instrumentation.targetContext)
+        for (rasterBackdrop in listOf(false, true)) {
+            val blue = PixelTileSurface(64, 64, tileSize = 64, surfaceId = "blue").also {
+                it.beginWrite("fixture").run { editTile(PixelTileKey(0, 0), PixelRect(0, 0, 64, 64)) { p, _ -> p.fill(Color.BLUE) }; commit().close() }
+            }
+            val ref = if (rasterBackdrop) assets.saveRasterTileSurface(blue) else null
+            val bottom = InkLayer(id = "blue", name = "Blue", rasterTileSurface = ref)
+            val group = InkLayer(id = "group", name = "Group", role = LayerRole.FOLDER, opacity = .5f, passThrough = true)
+            val child = InkLayer(id = "red", name = "Red", parentId = group.id, blendMode = LayerBlendMode.MULTIPLY)
+            fun shape(id: String, color: Long) = PageElement.Shape(x = 0f, y = 0f, width = 64f, height = 64f,
+                layerId = id, kind = ShapeKind.RECTANGLE, colorArgb = color, fillArgb = color, strokeWidth = 0f)
+            val page = InkPage(width = 64f, height = 64f, layers = listOf(bottom, group, child),
+                elements = buildList { if (!rasterBackdrop) add(shape("blue", 0xFF0000FF)); add(shape("red", 0xFFFF0000)) })
+            val exported = assets.renderPageBitmap(page, 64)
+            try {
+                assertEquals("Half of a multiply contribution over blue", 0xFF000080.toInt(), exported.getPixel(32, 32))
+                instrumentation.runOnMainSync {
+                    val bitmaps = page.layers.filter { it.id == "red" || (it.id == "blue" && !rasterBackdrop) }
+                        .associate { it.id to app.inkloom.ui.LayerElementBitmaps(assets.renderElementLayerBitmap(page, it.id, 64), null) }
+                    val view = InkCanvasView(instrumentation.targetContext).apply {
+                        layout(0, 0, 64, 64); pagePaperColor = Color.WHITE
+                        setDocumentLayers(page.layers); layerOrder = listOf("blue", "red")
+                        setRasterLayerSurfaces(if (rasterBackdrop) mapOf("blue" to blue) else emptyMap())
+                        layerOpacities = page.layers.associate { it.id to it.opacity }
+                        layerBlendModes = page.layers.associate { it.id to it.blendMode }
+                        setLayerElementBitmaps(bitmaps)
+                    }
+                    val live = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
+                    try {
+                        view.draw(Canvas(live)); assertEquals(exported.getPixel(32, 32), live.getPixel(32, 32))
+                        val conversions = view.retainedBitmapConversionCount
+                        assertEquals(bitmaps.size, conversions)
+                        view.draw(Canvas(live)); assertEquals(conversions, view.retainedBitmapConversionCount)
+                        assertEquals(0, view.lastRasterProjectionRecomposedTileCount)
+                        requireNotNull(bitmaps["red"]?.base).eraseColor(Color.WHITE)
+                        view.draw(Canvas(live)); assertEquals(Color.BLUE, live.getPixel(32, 32))
+                        assertEquals(conversions + 1, view.retainedBitmapConversionCount)
+                    } finally { live.recycle(); bitmaps.values.forEach { it.base?.recycle() } }
+                }
+            } finally { exported.recycle(); ref?.let(assets::releaseRasterTileReservation) }
+        }
+    }
+
+    @Test fun emptyOrHiddenClippingBaseNeverReusesAnEarlierSiblingInLiveOrExport() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val assets = DocumentAssetService(instrumentation.targetContext)
+        for (hidden in listOf(false, true)) {
+            val blue = InkLayer(id = "blue", name = "Blue")
+            val base = InkLayer(id = "base", name = "Empty base", visible = !hidden)
+            val clipped = InkLayer(id = "red", name = "Clipped", clippedToBelow = true)
+            fun shape(id: String, color: Long) = PageElement.Shape(x = 0f, y = 0f, width = 64f, height = 64f,
+                layerId = id, kind = ShapeKind.RECTANGLE, colorArgb = color, fillArgb = color, strokeWidth = 0f)
+            val page = InkPage(width = 64f, height = 64f, layers = listOf(blue, base, clipped),
+                elements = listOf(shape("blue", 0xFF0000FF), shape("red", 0xFFFF0000)))
+            val exported = assets.renderPageBitmap(page, 64)
+            try {
+                assertEquals(Color.BLUE, exported.getPixel(32, 32))
+                instrumentation.runOnMainSync {
+                    val bitmaps = listOf(blue, clipped).associate { it.id to app.inkloom.ui.LayerElementBitmaps(assets.renderElementLayerBitmap(page, it.id, 64), null) }
+                    val view = InkCanvasView(instrumentation.targetContext).apply {
+                        layout(0, 0, 64, 64); pagePaperColor = Color.WHITE
+                        setDocumentLayers(page.layers); layerOrder = listOf("blue", "base", "red")
+                        clippedLayers = setOf("red"); setLayerElementBitmaps(bitmaps)
+                    }
+                    val live = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
+                    try { view.draw(Canvas(live)); assertEquals(Color.BLUE, live.getPixel(32, 32)) }
+                    finally { live.recycle(); bitmaps.values.forEach { it.base?.recycle() } }
+                }
+            } finally { exported.recycle() }
+        }
+    }
+
+    @Test fun throughSparseMaskChangesStayLocalOnEightKCanvas() {
+        val back = PixelTileSurface(8192, 8192, 64)
+        val front = PixelTileSurface(8192, 8192, 64)
+        for ((surface, color) in listOf(back to Color.BLUE, front to Color.RED)) {
+            surface.beginWrite("two tiles").run {
+                for (column in 20..21) editTile(PixelTileKey(column, 20), PixelRect(0, 0, 64, 64)) { pixels, _ -> pixels.fill(color) }
+                commit().close()
+            }
+        }
+        val mask = MaskTileSurface(8192, 8192, 64, initialDefaultAlpha = 255)
+        val cache = app.inkloom.engine.v5.composite.PixelGroupProjectionCache(8192, 8192, 64)
+        fun update() = cache.update(listOf(
+            app.inkloom.engine.v5.composite.PixelProjectionNode.Paint(app.inkloom.engine.v5.composite.PixelLayerProjectionInput("back", back.snapshot())),
+            app.inkloom.engine.v5.composite.PixelProjectionNode.Group("group", listOf(
+                app.inkloom.engine.v5.composite.PixelProjectionNode.Paint(app.inkloom.engine.v5.composite.PixelLayerProjectionInput("front", front.snapshot()))),
+                .5f, mask = mask.snapshot(), passThrough = true)))
+        val initial = update().snapshot.generationAt(PixelTileKey(21, 20))
+        val times = (0 until 30).map { iteration ->
+            mask.beginWrite("local alpha").run { setAlpha(20 * 64 + iteration, 20 * 64, iteration * 7); commit().close() }
+            val start = android.os.SystemClock.elapsedRealtimeNanos()
+            val result = update()
+            val elapsed = (android.os.SystemClock.elapsedRealtimeNanos() - start) / 1_000_000f
+            assertEquals(initial, result.snapshot.generationAt(PixelTileKey(21, 20)))
+            assertEquals(2, result.snapshot.tileCount)
+            assertEquals(2, result.recomposedTileCount)
+            elapsed
+        }.drop(10).sorted()
+        val p95 = times[(times.size * .95).toInt().coerceAtMost(times.lastIndex)]
+        android.util.Log.i("InkloomPerf", "through_group_8k_local_mask_p95_ms=$p95")
+        assertTrue("Through group local mask p95 ${p95}ms", p95 < 16.7f)
+        assertEquals(0, update().recomposedTileCount)
+    }
+
 }

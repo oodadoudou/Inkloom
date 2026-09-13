@@ -47,6 +47,7 @@ internal fun LayerPropertiesBar(
     language: UiLanguage,
     onOpacity: (LayerOpacityAction) -> Unit,
     onMode: (LayerBlendMode) -> Unit,
+    onThrough: () -> Unit,
 ) {
     var modesOpen by remember(layer?.id) { mutableStateOf(false) }
     var numberOpen by remember(layer?.id) { mutableStateOf(false) }
@@ -58,7 +59,7 @@ internal fun LayerPropertiesBar(
                 modifier = Modifier.fillMaxWidth().height(40.dp).semantics {
                     contentDescription = language.text("Layer blend mode", "图层混合模式")
                 }, contentPadding = PaddingValues(horizontal = 4.dp)) {
-                Text(layer?.let { LayerBlendModeDisplayName.of(it.blendMode, language) } ?: "—",
+                Text(layer?.let { LayerBlendModeDisplayName.of(it, language) } ?: "—",
                     Modifier.weight(1f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Icon(Icons.Outlined.ExpandMore, null, Modifier.size(16.dp))
             }
@@ -66,12 +67,18 @@ internal fun LayerPropertiesBar(
                 Modifier.widthIn(min = 172.dp).heightIn(max = 320.dp).semantics {
                     contentDescription = language.text("Layer blend modes", "图层混合模式列表")
                 }) {
+                if (layer?.role == app.inkloom.document.LayerRole.FOLDER) {
+                    DropdownMenuItem(text = { Text(language.text("Through", "穿透"), fontSize = 13.sp) },
+                        trailingIcon = { if (layer.passThrough) Icon(Icons.Outlined.Check, null, Modifier.size(16.dp)) },
+                        onClick = { modesOpen = false; onThrough() })
+                    HorizontalDivider(color = OutlineSoft)
+                }
                 layerBlendGroups.forEachIndexed { index, group ->
                     if (index > 0) HorizontalDivider(color = OutlineSoft)
                     group.forEach { mode ->
                         DropdownMenuItem(
                             text = { Text(LayerBlendModeDisplayName.of(mode, language), fontSize = 13.sp) },
-                            trailingIcon = { if (mode == layer?.blendMode) Icon(Icons.Outlined.Check, null, Modifier.size(16.dp)) },
+                            trailingIcon = { if (mode == layer?.blendMode && !layer.passThrough) Icon(Icons.Outlined.Check, null, Modifier.size(16.dp)) },
                             onClick = { modesOpen = false; onMode(mode) },
                         )
                     }

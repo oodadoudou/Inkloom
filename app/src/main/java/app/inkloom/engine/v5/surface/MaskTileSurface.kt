@@ -167,6 +167,7 @@ class MaskTileSurface(
     private val generations = linkedMapOf<PixelTileKey, MaskTileGeneration>()
     private var activeTransactionId: Long? = null
     private var revisionValue = 0L
+    private var previewRevisionValue = 0L
     private var defaultAlphaValue = initialDefaultAlpha
 
     val revision: Long get() = synchronized(monitor) { revisionValue }
@@ -229,21 +230,26 @@ class MaskTileSurface(
 
     internal fun preview(transaction: MaskTileWriteTransaction): MaskTileSurfaceSnapshot = synchronized(monitor) {
         requireActive(transaction)
+        val previewRevision = --previewRevisionValue
         val previewTiles = generations.toMutableMap()
         transaction.workingTiles.forEach { (key, working) ->
             val equalsDefault = working.alpha.all { it.toInt().and(0xff) == transaction.workingDefaultAlpha }
-            if (equalsDefault) previewTiles.remove(key) else previewTiles[key] = MaskTileGeneration(
-                id = working.before?.id ?: 0L,
-                alpha = working.alpha.copyOf(),
-                nonZeroAlphaCount = working.alpha.count { it.toInt() != 0 },
-            )
+            if (equalsDefault) previewTiles.remove(key) else {
+                val cached = working.previewGeneration?.takeIf { working.previewVersion == working.contentVersion }
+                val generation = cached ?: MaskTileGeneration(previewRevision, working.alpha.copyOf(),
+                    working.alpha.count { it.toInt() != 0 }).also {
+                    working.previewGeneration = it
+                    working.previewVersion = working.contentVersion
+                }
+                previewTiles[key] = generation
+            }
         }
         MaskTileSurfaceSnapshot(
             surfaceId,
             logicalWidth,
             logicalHeight,
             tileSize,
-            revisionValue,
+            previewRevision,
             transaction.workingDefaultAlpha,
             previewTiles,
         )
@@ -345,6 +351,9 @@ internal data class WorkingMaskTile(
     val before: MaskTileGeneration?,
     val alpha: ByteArray,
     var dirtyRect: PixelRect? = null,
+    var contentVersion: Long = 0,
+    var previewVersion: Long = -1,
+    var previewGeneration: MaskTileGeneration? = null,
 )
 
 class MaskTileWriteTransaction internal constructor(
@@ -598,6 +607,7 @@ class MaskTileWriteTransaction internal constructor(
     }
 
     private fun markDirty(tile: WorkingMaskTile, rect: PixelRect) {
+        tile.contentVersion++
         tile.dirtyRect = tile.dirtyRect?.union(rect) ?: rect
     }
 

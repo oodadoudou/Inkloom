@@ -31,6 +31,7 @@ internal class LayerAppearanceEditor(
     private val apply: (LayerAppearanceEdit, Boolean) -> Boolean,
     private val scope: CoroutineScope,
     private val rejected: () -> Unit,
+    private val throughRejected: () -> Unit = rejected,
 ) {
     var preview by mutableStateOf<LayerAppearanceEdit?>(null)
         private set
@@ -60,8 +61,15 @@ internal class LayerAppearanceEditor(
 
     fun setBlendMode(layerId: String, mode: LayerBlendMode) {
         if (closed || finishing || preview != null) { rejected(); return }
-        if (begin(layerId) { LayerBlendEdit(layerId, it.blendMode, mode) }) commit()
+        if (begin(layerId) { LayerBlendEdit(layerId, it.blendMode, mode, it.passThrough) }) commit()
         // A discrete choice owns no subsequent pointer-up to clear this flag.
+        rejectedGesture = false
+    }
+
+    fun setThrough(layerId: String) {
+        if (closed || finishing || preview != null) { rejected(); return }
+        if (!app.inkloom.document.LayerGroupPolicy.canPassThrough(page().layers, layerId)) { throughRejected(); return }
+        if (begin(layerId) { app.inkloom.document.LayerGroupCompositingEdit(layerId, it.passThrough, true) }) commit()
         rejectedGesture = false
     }
 

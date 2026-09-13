@@ -16,6 +16,7 @@ import android.graphics.pdf.PdfDocument
 import app.inkloom.engine.v5.storage.DocumentCheckpointCodec
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.android.PixelTileCanvasRenderer
+import app.inkloom.engine.v5.android.LayerContentProjectionCache
 import app.inkloom.engine.v5.composite.PixelGroupProjectionCache
 import app.inkloom.engine.v5.composite.PixelProjectionNode
 import app.inkloom.engine.v5.composite.PixelLayerProjectionInput
@@ -1067,8 +1068,9 @@ class DocumentAssetService(private val context: Context) {
             }
         }
         val visibleIds = visibleLayers.mapTo(hashSetOf()) { it.id }
-        drawNode = { node, lower ->
+        drawNode = draw@{ node, lower ->
             val layer = node.layer
+            if (!layer.visible) return@draw
             if (layer.role != LayerRole.FOLDER) {
                 if (layer.id in visibleIds) drawLeaf(layer, lower)
             } else {
@@ -1111,17 +1113,19 @@ class DocumentAssetService(private val context: Context) {
     ): Boolean {
         if (!includeRaster || !applyLayerEffects) return false
         if (includedLayerIds != null || includedContentIds != null) return false
-        if (projectedPage.elements.any { element -> visibleLayers.any { it.id == element.layerId } }) return false
+        val through = projectedPage.layers.any { it.role == LayerRole.FOLDER && it.passThrough }
+        val hasElements = projectedPage.elements.any { element -> visibleLayers.any { it.id == element.layerId } }
+        if (hasElements && !through) return false
         val rasterLayers = visibleLayers.filter { layer ->
             layer.isPaintSurfaceLayer() && layer.rasterTileSurface != null
         }
-        if (rasterLayers.isEmpty()) return false
+        if (rasterLayers.isEmpty() && (!through || !hasElements)) return false
         if (rasterLayers.any { it.mask?.enabled == true && it.mask.surface == null }) return false
 
         val surfaces = rasterLayers.map { layer ->
             layer to renderRasterLayerSurface(sourcePage, layer.id, width)
         }
-        val first = surfaces.first().second
+        val first = surfaces.firstOrNull()?.second ?: PixelTileSurface(width, height)
         if (surfaces.any { (_, surface) ->
                 surface.logicalWidth != first.logicalWidth || surface.logicalHeight != first.logicalHeight ||
                     surface.tileSize != first.tileSize || surface.pixelFormat != first.pixelFormat
@@ -1133,22 +1137,33 @@ class DocumentAssetService(private val context: Context) {
             format = first.pixelFormat,
             surfaceId = "export-raster-projection-${sourcePage.id}-$width",
         )
-        val inputs = surfaces.map { (layer, surface) ->
-            PixelLayerProjectionInput(
-                layerId = layer.id,
-                pixels = surface.snapshot(),
-                opacity = layer.opacity,
-                blendMode = layer.blendMode.toPixelBlendMode(),
+        val rasterInputs = surfaces.associate { (layer, surface) -> layer.id to PixelLayerProjectionInput(layer.id, surface.snapshot()) }
+        val contentCache = if (hasElements) LayerContentProjectionCache(first.logicalWidth, first.logicalHeight, first.tileSize, first.pixelFormat) else null
+        contentCache?.beginFrame()
+        val inputs = try { visibleLayers.associate { layer ->
+            val raw = rasterInputs[layer.id]
+            val ids = projectedPage.elements.filter { it.layerId == layer.id }.mapTo(hashSetOf()) { it.id }
+            val captured = layer.alphaLockBaseContentIds.toSet().takeIf { layer.alphaLock && it.isNotEmpty() }
+            val base = if (hasElements && ids.isNotEmpty()) renderElementLayerBitmap(sourcePage, layer.id, width, captured) else null
+            val additions = if (hasElements && captured != null && (ids - captured).isNotEmpty())
+                renderElementLayerBitmap(sourcePage, layer.id, width, ids - captured) else null
+            val composed = try { contentCache?.resolve(layer.id, raw, base, additions, captured != null) }
+                finally { base?.recycle(); additions?.recycle() }
+            val content = if (composed != null) PixelLayerProjectionInput(layer.id, composed)
+                else raw ?: PixelLayerProjectionInput(layer.id, projection.emptySnapshot)
+            layer.id to content.copy(opacity = layer.opacity, blendMode = layer.blendMode.toPixelBlendMode(),
                 mask = layer.mask?.takeIf(LayerMask::enabled)?.surface?.let { loadMaskTileSurface(it).snapshot() },
-                clipToBaseBelow = layer.clippedToBelow,
-            )
-        }.associateBy { it.layerId }
+                clipToBaseBelow = layer.clippedToBelow)
+        } } finally { contentCache?.endFrame() }
+        val visibleIds = visibleLayers.mapTo(hashSetOf()) { it.id }
         val nodes = LayerCompositingTree.project<PixelProjectionNode>(projectedPage.layers,
-            paint = { inputs[it.id]?.let(PixelProjectionNode::Paint) },
+            paint = { layer -> PixelProjectionNode.Paint((inputs[layer.id] ?: PixelLayerProjectionInput(layer.id,
+                projection.emptySnapshot, opacity = layer.opacity, clipToBaseBelow = layer.clippedToBelow))
+                .copy(visible = layer.id in visibleIds)) },
             group = { layer, children -> PixelProjectionNode.Group(layer.id, children, layer.opacity,
                 layer.blendMode.toPixelBlendMode(),
                 layer.mask?.takeIf { it.enabled }?.surface?.let { loadMaskTileSurface(it).snapshot() },
-                layer.clippedToBelow) })
+                layer.clippedToBelow, visible = layer.visible, passThrough = layer.passThrough) })
         val update = projection.update(nodes)
         PixelTileCanvasRenderer().use { renderer ->
             renderer.draw(canvas, update.snapshot, RectF(0f, 0f, width.toFloat(), height.toFloat()))

@@ -16,11 +16,13 @@ class LayerCompositingTreeTest {
         assertEquals("inside", roots.first().children.last().children.single().layer.id)
     }
 
-    @Test fun hiddenFoldersHideTheirSubtreeButCollapsedFoldersStillRender() {
+    @Test fun visibilityRemainsInTheTreeSoHiddenNodesCanStillDefineClippingBases() {
         val folder = InkLayer(id = "folder", name = "Folder", role = LayerRole.FOLDER, collapsed = true)
         val child = InkLayer(id = "child", name = "Child", parentId = folder.id)
         assertEquals(1, LayerCompositingTree.roots(listOf(folder, child)).single().children.size)
-        assertTrue(LayerCompositingTree.roots(listOf(folder.copy(visible = false), child)).isEmpty())
+        val hidden = LayerCompositingTree.roots(listOf(folder.copy(visible = false), child)).single()
+        assertFalse(hidden.layer.visible)
+        assertEquals(child.id, hidden.children.single().layer.id)
     }
 
     @Test fun groupPropertyUndoPreservesChildrenAndTheirLatestPixels() {

@@ -7,6 +7,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MaskTileSurfaceTest {
+    @Test fun livePreviewGenerationsChangeOnlyForEditedTilesAndNeverMutateAnOlderSnapshot() {
+        val surface = MaskTileSurface(128, 64, tileSize = 64)
+        surface.beginWrite("two-tile live mask").use { write ->
+            write.setAlpha(10, 10, 200); write.setAlpha(80, 10, 100)
+            val first = write.previewSnapshot()
+            write.setAlpha(10, 10, 50)
+            val second = write.previewSnapshot()
+            assertTrue(first.revision != second.revision)
+            assertTrue(first.generationAt(PixelTileKey(0, 0)) != second.generationAt(PixelTileKey(0, 0)))
+            assertEquals(first.generationAt(PixelTileKey(1, 0)), second.generationAt(PixelTileKey(1, 0)))
+            assertEquals(200, first.alphaAt(10, 10)); assertEquals(50, second.alphaAt(10, 10))
+            assertEquals(0, surface.alphaAt(10, 10))
+            write.cancel()
+        }
+        assertEquals(0L, surface.revision); assertEquals(0, surface.tileCount)
+    }
+
     @Test fun eightKSelectionStartsWithoutAFullPageAllocation() {
         val surface = MaskTileSurface(8192, 8192)
 

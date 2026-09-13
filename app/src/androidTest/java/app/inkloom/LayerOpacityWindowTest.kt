@@ -225,6 +225,73 @@ class LayerOpacityWindowTest {
         org.junit.Assert.assertArrayEquals(original, pixels(canvas()))
     }
 
+    @Test fun throughModeUsesTheBackdropAndItsOwnUndoHistoryInTheRealWindow() {
+        tap("New Note"); tap("Create"); val view = canvas()
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync { model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java] }
+        chooseRgb(200)
+        val bottomId = view.activeLayerId
+        val a = pagePoint(view, .2f, .35f); val b = pagePoint(view, .6f, .35f)
+        fun brightness(): Int {
+            SystemClock.sleep(160)
+            val bitmap = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            try { val probe = a + (b - a) * .5f; return android.graphics.Color.red(bitmap.getPixel(probe.x.toInt(), probe.y.toInt())) }
+            finally { bitmap.recycle() }
+        }
+        stroke(a, b)
+        compose.waitUntil(10_000) { model.currentPage()?.layers?.first { it.id == bottomId }?.rasterTileSurface != null }
+        val backdrop = brightness()
+        tap("Layers"); tap("Add layer group"); val groupId = view.activeLayerId
+        tap("Add layer"); val childId = view.activeLayerId
+        tap("Close layers panel"); chooseRgb(128); stroke(a, b)
+        compose.waitUntil(10_000) { model.currentPage()?.layers?.first { it.id == childId }?.rasterTileSurface != null }
+        val ink = pixels(view)
+        fun group() = requireNotNull(model.currentPage()).layers.first { it.id == groupId }
+        tap("Layers"); tap("Layer blend mode")
+        compose.onNodeWithText("Multiply").performScrollTo(); tap("Multiply")
+        compose.waitUntil(10_000) { !view.selectionLayerTransferPending }
+        tap("Select layer Folder 1")
+        val isolated = brightness()
+        // Arrange retained content away from the pixel probe, then exercise actual window controls.
+        instrumentation.runOnMainSync {
+            val document = requireNotNull(model.currentDocument())
+            val page = requireNotNull(model.currentPage())
+            model.addElement(document.id, page.id, app.inkloom.document.PageElement.Shape(
+                x = .72f, y = .75f, width = 24f, height = 24f, layerId = childId,
+                kind = app.inkloom.document.ShapeKind.RECTANGLE, colorArgb = 0xFF000000,
+                fillArgb = 0xFF000000, strokeWidth = 0f))
+        }
+        compose.waitForIdle()
+        tap("Layer blend mode"); tap("Through")
+        compose.waitUntil(10_000) { group().passThrough && !view.selectionLayerTransferPending }
+        val through = brightness()
+        assertTrue("Child multiply must see the external backdrop: $isolated -> $through", through < isolated - 10)
+        tap("Undo"); compose.waitUntil { !group().passThrough }
+        assertEquals(isolated.toDouble(), brightness().toDouble(), 2.0)
+        tap("Redo"); compose.waitUntil { group().passThrough }
+        tap("Layer blend mode"); tap("Normal")
+        compose.waitUntil { !group().passThrough && !view.selectionLayerTransferPending }
+        tap("Undo"); compose.waitUntil { group().passThrough }
+        assertEquals(through.toDouble(), brightness().toDouble(), 2.0)
+        val conversions = view.retainedBitmapConversionCount
+        assertTrue("Mixed Through must convert retained content", conversions > 0)
+        tap("Edit layer opacity"); typePercent("50"); tap("Apply layer opacity")
+        compose.waitUntil { group().opacity == .5f && !view.selectionLayerTransferPending }
+        val half = brightness()
+        assertEquals("Changing group opacity must not rerender or reconvert retained content", conversions, view.retainedBitmapConversionCount)
+        android.util.Log.i("InkloomLayers", "Through window backdrop=$backdrop isolated=$isolated through=$through half=$half")
+        assertEquals("Half-strength Through interpolates the actual backdrop once", (backdrop + through) / 2.0, half.toDouble(), 2.0)
+        tap("Select layer Layer 1"); tap("Close layers panel")
+        stroke(pagePoint(view, .2f, .65f), pagePoint(view, .6f, .65f))
+        compose.waitUntil(10_000) { !ink.contentEquals(pixels(view)) }
+        tap("Undo"); compose.waitUntil(10_000) { ink.contentEquals(pixels(view)) }
+        tap("Undo"); compose.waitUntil { group().opacity == 1f }
+        tap("Redo"); compose.waitUntil { group().opacity == .5f }
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        assertTrue(group().passThrough); assertEquals(.5f, group().opacity)
+        org.junit.Assert.assertArrayEquals(ink, pixels(canvas()))
+    }
+
     @Test fun scrollingTheActualLayerListKeepsPropertiesFixedOnTheSelectedLayer() {
         tap("New Note"); tap("Create"); val view = canvas(); tap("Layers")
         val propertyBounds = bounds("Layer properties")

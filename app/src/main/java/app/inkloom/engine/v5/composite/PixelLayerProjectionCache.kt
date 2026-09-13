@@ -20,6 +20,8 @@ data class PixelLayerProjectionInput(
      * composition without materializing a full-layer preview surface. */
     val activeDelta: PixelTileSurfaceSnapshot? = null,
     val activeDeltaBlend: PixelActiveDeltaBlend = PixelActiveDeltaBlend.SOURCE_OVER,
+    /** Synthetic Through backdrops are visible, but are outside the child clipping scope. */
+    val isClippingBase: Boolean = true,
 )
 
 enum class PixelActiveDeltaBlend { SOURCE_OVER, DESTINATION_OUT, SOURCE_ATOP }
@@ -502,7 +504,7 @@ class PixelLayerProjectionCache(
         return layers.map { input ->
             val opacity = if (input.opacity.isFinite()) input.opacity.coerceIn(0f, 1f) else 0f
             val base = if (input.clipToBaseBelow) currentBase else null
-            if (!input.clipToBaseBelow) currentBase = input
+            if (!input.clipToBaseBelow && input.isClippingBase) currentBase = input
             val zeroCoverage = !input.visible || opacity <= 0f ||
                 (input.clipToBaseBelow && (base == null || !base.visible))
             val coverage = when {
@@ -630,6 +632,7 @@ class PixelLayerProjectionCache(
                 activeDeltaSurfaceId = input.activeDelta?.surfaceId,
                 activeDeltaGeneration = deltaGeneration,
                 activeDeltaBlend = input.activeDeltaBlend,
+                isClippingBase = input.isClippingBase,
                 visible = input.visible,
                 opacityBits = opacity.toRawBits(),
                 blendMode = input.blendMode,
@@ -668,6 +671,7 @@ class PixelLayerProjectionCache(
         val activeDeltaSurfaceId: String?,
         val activeDeltaGeneration: Long?,
         val activeDeltaBlend: PixelActiveDeltaBlend,
+        val isClippingBase: Boolean,
         val visible: Boolean,
         val opacityBits: Int,
         val blendMode: PixelBlendMode,

@@ -6,6 +6,9 @@ import app.inkloom.settings.text
 
 /** Localized presentation only; the stable enum remains the serialization key. */
 object LayerBlendModeDisplayName {
+    fun of(layer: app.inkloom.document.InkLayer, language: UiLanguage): String =
+        if (layer.role == app.inkloom.document.LayerRole.FOLDER && layer.passThrough) language.text("Through", "穿透") else of(layer.blendMode, language)
+
     fun of(mode: LayerBlendMode, language: UiLanguage): String {
         val (english, simplifiedChinese) = when (mode) {
             LayerBlendMode.NORMAL -> "Normal" to "正常"

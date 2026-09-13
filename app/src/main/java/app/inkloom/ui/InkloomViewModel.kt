@@ -432,7 +432,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         })
     }
 
-    fun toggleLayerClippedToBelow(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
+    fun toggleLayerClippedToBelow(documentId: String, pageId: String, layerId: String) = updateLayerStructure(documentId, pageId) { page ->
         page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(clippedToBelow = !it.clippedToBelow) else it })
     }
 
@@ -520,7 +520,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(mask = updatedMask) else it })
     }
 
-    fun moveLayerToFolder(documentId: String, pageId: String, layerId: String, folderId: String?) = updatePage(documentId, pageId) { page ->
+    fun moveLayerToFolder(documentId: String, pageId: String, layerId: String, folderId: String?) = updateLayerStructure(documentId, pageId) { page ->
         LayerHierarchy.moveToFolder(page, layerId, folderId)
     }
 
@@ -528,7 +528,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         page.copy(layers = page.layers.map { if (it.id == folderId && it.role == LayerRole.FOLDER) it.copy(collapsed = !it.collapsed) else it })
     }
 
-    fun moveLayer(documentId: String, pageId: String, layerId: String, delta: Int) = updatePage(documentId, pageId) { page ->
+    fun moveLayer(documentId: String, pageId: String, layerId: String, delta: Int) = updateLayerStructure(documentId, pageId) { page ->
         LayerHierarchy.moveBy(page, layerId, delta)
     }
 
@@ -547,8 +547,8 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         return true
     }
 
-    fun deleteLayer(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
-        val layer = page.layers.firstOrNull { it.id == layerId } ?: return@updatePage page
+    fun deleteLayer(documentId: String, pageId: String, layerId: String) = updateLayerStructure(documentId, pageId) { page ->
+        val layer = page.layers.firstOrNull { it.id == layerId } ?: return@updateLayerStructure page
         when (layer.role) {
             LayerRole.FOLDER -> LayerHierarchy.removeFolder(page, layerId)
             LayerRole.CUSTOM -> page.copy(
@@ -753,6 +753,21 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
                 handwritingIndexFingerprint = page.handwritingIndexFingerprint,
             )
         }
+    }
+
+    private fun updateLayerStructure(documentId: String, pageId: String, transform: (InkPage) -> InkPage): app.inkloom.document.LayerGroupRejection? {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId }
+            ?: return app.inkloom.document.LayerGroupRejection.INVALID_TARGET
+        val candidate = transform(page)
+        app.inkloom.document.LayerGroupPolicy.rejection(candidate.layers)?.let { return it }
+        if (candidate == page) return null
+        var rejection: app.inkloom.document.LayerGroupRejection? = null
+        updatePage(documentId, pageId) { current ->
+            val changed = transform(current)
+            rejection = app.inkloom.document.LayerGroupPolicy.rejection(changed.layers)
+            if (rejection == null) changed else current
+        }
+        return rejection
     }
 
     private fun update(id: String, transform: (InkDocument) -> InkDocument) { store.get(id)?.let(transform)?.let(store::save); refreshSelection() }

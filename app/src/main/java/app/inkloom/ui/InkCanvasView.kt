@@ -47,6 +47,7 @@ import app.inkloom.engine.v5.history.EngineTransactionJournal
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.android.PixelTileCanvasRenderer
 import app.inkloom.engine.v5.android.MaskTileCanvasRenderer
+import app.inkloom.engine.v5.android.LayerContentProjectionCache
 import app.inkloom.engine.v5.composite.PixelGroupProjectionCache
 import app.inkloom.engine.v5.composite.PixelProjectionNode
 import app.inkloom.document.LayerCompositingTree
@@ -687,26 +688,26 @@ class InkCanvasView(context: Context) : View(context) {
             val normalized = value.mapValues { (_, opacity) -> opacity.coerceIn(0f, 1f) }
             if (field != normalized) {
                 field = normalized
-                resetStrokeTiles()
+                invalidate()
             }
         }
     var layerBlendModes: Map<String, LayerBlendMode> = emptyMap()
         set(value) {
             if (field != value) {
                 field = value
-                resetStrokeTiles()
+                invalidate()
             }
         }
     var alphaLockedLayers: Set<String> = emptySet()
-        set(value) { if (field != value) { field = value; resetStrokeTiles() } }
+        set(value) { if (field != value) { field = value; invalidate() } }
     var alphaLockBaseContentIds: Map<String, Set<String>> = emptyMap()
-        set(value) { if (field != value) { field = value; resetStrokeTiles() } }
+        set(value) { if (field != value) { field = value; invalidate() } }
     var clippedLayers: Set<String> = emptySet()
-        set(value) { if (field != value) { field = value; resetStrokeTiles() } }
+        set(value) { if (field != value) { field = value; invalidate() } }
     var layerMasks: Map<String, LayerMask> = emptyMap()
-        set(value) { if (field != value) { field = value; resetStrokeTiles() } }
+        set(value) { if (field != value) { field = value; invalidate() } }
     var layerMaskSurfaces: Map<String, MaskTileSurfaceSnapshot> = emptyMap()
-        set(value) { if (field != value) { field = value; resetStrokeTiles() } }
+        set(value) { if (field != value) { field = value; invalidate() } }
     private var editingLayerMaskId: String? = null
     private var editingLayerMaskSurface: MaskTileSurface? = null
     private var layerMaskGesture: MaskTileWriteTransaction? = null
@@ -1053,6 +1054,7 @@ class InkCanvasView(context: Context) : View(context) {
     fun setDocumentLayers(layers: List<app.inkloom.document.InkLayer>) {
         if (boundDocumentLayers == layers) return
         boundDocumentLayers = layers
+        invalidate()
         val targets = layers.associate { it.id to app.inkloom.document.LayerEditingTarget.rejection(layers, it.id) }
         if (documentLayerTargets == targets) return
         documentLayerTargets = targets
@@ -1124,6 +1126,9 @@ class InkCanvasView(context: Context) : View(context) {
     private val rasterTileRenderer = PixelTileCanvasRenderer()
     private var rasterLayerProjectionCache: PixelGroupProjectionCache? = null
     private var rasterLayerProjectionGeometry: RasterProjectionGeometry? = null
+    private var retainedContentProjectionCache: LayerContentProjectionCache? = null
+    private var retainedContentProjectionGeometry: RasterProjectionGeometry? = null
+    @VisibleForTesting internal val retainedBitmapConversionCount: Int get() = retainedContentProjectionCache?.bitmapConversionCount ?: 0
     @VisibleForTesting internal var v5RasterProjectionDrawCount: Int = 0
     @VisibleForTesting internal var lastRasterProjectionRecomposedTileCount: Int = 0
 
@@ -1579,6 +1584,8 @@ class InkCanvasView(context: Context) : View(context) {
         editHistory.clear()
         v5BrushTipMasks.clear()
         releaseRasterLayerProjection()
+        retainedContentProjectionCache = null
+        retainedContentProjectionGeometry = null
         rasterTileRenderer.close()
         protectionBitmap?.recycle(); protectionBitmap = null; protectionCacheKey = null
         softwareProtectionBitmap?.recycle(); softwareProtectionBitmap = null; softwareProtectionKey = null
@@ -1655,8 +1662,9 @@ class InkCanvasView(context: Context) : View(context) {
                 if (node.layer.id !in clippedLayers) previous = node
             }
         }
-        drawNode = { node, lower ->
+        drawNode = draw@{ node, lower ->
             val layer = node.layer
+            if (!layer.visible) return@draw
             if (layer.role != app.inkloom.document.LayerRole.FOLDER) {
                 if (layer.id in availableLayerIds) drawLeaf(layer.id, lower)
             } else {
@@ -1694,16 +1702,16 @@ class InkCanvasView(context: Context) : View(context) {
         layerFilter: Set<String>?,
     ): Boolean {
         if (!includeElements || layerFilter != null) return false
-        if (layerElementBitmaps.isNotEmpty()) return false
-        if (rasterLayerTileSurfaces.isEmpty()) return false
+        val through = boundDocumentLayers?.any { it.role == app.inkloom.document.LayerRole.FOLDER && it.passThrough } == true
+        val hasElements = layerElementBitmaps.isNotEmpty() || mixedElementOverrides.values.any { it != null }
+        if (hasElements && !through) return false
+        if (rasterLayerTileSurfaces.isEmpty() && (!through || !hasElements)) return false
         if (layerMasks.any { (layerId, mask) ->
                 layerId in rasterLayerTileSurfaces && mask.enabled && layerMaskSurfaces[layerId] == null
             }) return false
 
-        val orderedIds = (
-            layerOrder.filter(rasterLayerTileSurfaces::containsKey) +
-                rasterLayerTileSurfaces.keys.filterNot(layerOrder::contains)
-            ).distinct()
+        val contentIds = rasterLayerTileSurfaces.keys + if (through) (layerElementBitmaps.keys + mixedElementOverrides.keys) else emptySet()
+        val orderedIds = (layerOrder.filter(contentIds::contains) + contentIds.filterNot(layerOrder::contains)).distinct()
         if (orderedIds.isEmpty()) return false
         val directSourceOverStack = boundDocumentLayers?.none { it.role == app.inkloom.document.LayerRole.FOLDER } != false && orderedIds.all { layerId ->
             (layerOpacities[layerId] ?: 1f) >= .999f &&
@@ -1725,15 +1733,15 @@ class InkCanvasView(context: Context) : View(context) {
             v5RasterProjectionDrawCount++
             return true
         }
-        val firstSurface = rasterLayerTileSurfaces.getValue(orderedIds.first())
+        val firstSurface = orderedIds.firstNotNullOfOrNull { rasterLayerTileSurfaces[it] }
         val geometry = RasterProjectionGeometry(
-            firstSurface.logicalWidth,
-            firstSurface.logicalHeight,
-            firstSurface.tileSize,
-            firstSurface.pixelFormat,
+            firstSurface?.logicalWidth ?: width,
+            firstSurface?.logicalHeight ?: height,
+            firstSurface?.tileSize ?: PixelTileSurface.DEFAULT_TILE_SIZE,
+            firstSurface?.pixelFormat ?: app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_SRGB_8888,
         )
         if (orderedIds.any { layerId ->
-                val surface = rasterLayerTileSurfaces.getValue(layerId)
+                val surface = rasterLayerTileSurfaces[layerId] ?: return@any false
                 surface.logicalWidth != geometry.width || surface.logicalHeight != geometry.height ||
                     surface.tileSize != geometry.tileSize || surface.pixelFormat != geometry.pixelFormat
             }) return false
@@ -1751,31 +1759,43 @@ class InkCanvasView(context: Context) : View(context) {
             rasterLayerProjectionCache = cache
             rasterLayerProjectionGeometry = geometry
         }
-        val inputs = orderedIds.map { layerId ->
+        val contentCache = if (hasElements) {
+            if (retainedContentProjectionCache == null || retainedContentProjectionGeometry != geometry) {
+                retainedContentProjectionCache = LayerContentProjectionCache(geometry.width, geometry.height, geometry.tileSize, geometry.pixelFormat)
+                retainedContentProjectionGeometry = geometry
+            }
+            retainedContentProjectionCache
+        } else null
+        contentCache?.beginFrame()
+        val inputs = try { orderedIds.associateWith { layerId ->
             val active = activeV5PaintPresentation(layerId)
-            PixelLayerProjectionInput(
-                layerId = layerId,
-                pixels = active?.backdrop ?: liveRasterPreviewSnapshot(layerId)
-                    ?: rasterLayerTileSurfaces.getValue(layerId).snapshot(),
-                opacity = layerOpacities[layerId] ?: 1f,
-                blendMode = (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL).toPixelBlendMode(),
-                mask = layerMasks[layerId]?.takeIf(LayerMask::enabled)?.let { layerMaskSurfaces[layerId] },
-                clipToBaseBelow = layerId in clippedLayers,
+            val raw = rasterLayerTileSurfaces[layerId]?.let { surface -> PixelLayerProjectionInput(
+                layerId, active?.backdrop ?: liveRasterPreviewSnapshot(layerId) ?: surface.snapshot(),
                 activeDelta = active?.delta,
                 activeDeltaBlend = when (active?.blend) {
                     ActiveStrokePresentationBlend.DESTINATION_OUT -> PixelActiveDeltaBlend.DESTINATION_OUT
                     ActiveStrokePresentationBlend.SOURCE_ATOP -> PixelActiveDeltaBlend.SOURCE_ATOP
                     else -> PixelActiveDeltaBlend.SOURCE_OVER
-                },
-            )
-        }.associateBy { it.layerId }
+                }) }
+            val elements = if (mixedElementOverrides.containsKey(layerId)) mixedElementOverrides[layerId] else layerElementBitmaps[layerId]
+            val composed = contentCache?.resolve(layerId, raw, elements?.base, elements?.additions,
+                layerId in alphaLockedLayers && alphaLockBaseContentIds[layerId].orEmpty().isNotEmpty())
+            val content = if (composed != null) PixelLayerProjectionInput(layerId, composed)
+                else raw ?: PixelLayerProjectionInput(layerId, cache.emptySnapshot)
+            content.copy(opacity = layerOpacities[layerId] ?: 1f,
+                blendMode = (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL).toPixelBlendMode(),
+                mask = layerMasks[layerId]?.takeIf(LayerMask::enabled)?.let { layerMaskSurfaces[layerId] },
+                clipToBaseBelow = layerId in clippedLayers)
+        } } finally { contentCache?.endFrame() }
         val nodes = boundDocumentLayers?.let { layers -> LayerCompositingTree.project<PixelProjectionNode>(layers,
-            paint = { layer -> inputs[layer.id]?.let(PixelProjectionNode::Paint) },
+            paint = { layer -> PixelProjectionNode.Paint((inputs[layer.id] ?: PixelLayerProjectionInput(layer.id,
+                cache.emptySnapshot, opacity = layer.opacity, blendMode = layer.blendMode.toPixelBlendMode(),
+                clipToBaseBelow = layer.clippedToBelow)).copy(visible = layer.visible)) },
             group = { layer, children -> PixelProjectionNode.Group(layer.id, children,
                 layerOpacities[layer.id] ?: layer.opacity,
                 (layerBlendModes[layer.id] ?: layer.blendMode).toPixelBlendMode(),
                 layerMasks[layer.id]?.takeIf { it.enabled }?.let { layerMaskSurfaces[layer.id] },
-                layer.id in clippedLayers) }) }
+                layer.id in clippedLayers, visible = layer.visible, passThrough = layer.passThrough) }) }
             ?: inputs.values.map(PixelProjectionNode::Paint)
         val update = cache.update(nodes)
         lastRasterProjectionRecomposedTileCount = update.recomposedTileCount
