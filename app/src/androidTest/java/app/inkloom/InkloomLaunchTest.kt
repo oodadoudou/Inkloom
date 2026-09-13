@@ -1106,11 +1106,10 @@ class InkloomLaunchTest {
 
         composeRule.onNodeWithText("Folder 1").assertIsDisplayed()
         composeRule.onNodeWithText("Layer 1").assertIsDisplayed()
-        composeRule.onNodeWithText("Layer 1").performClick()
+        composeRule.onNode(hasContentDescription("Layer actions") and hasAnyAncestor(hasContentDescription("Layer actions Layer 1")), useUnmergedTree = true).performClick()
         composeRule.onNodeWithText("Move into Folder 1").performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Folder 1").performClick()
-        composeRule.onNodeWithText("Collapse folder").performClick()
+        composeRule.onNodeWithContentDescription("Toggle folder Folder 1").performClick()
         composeRule.waitForIdle()
 
         assertTrue(composeRule.onAllNodes(hasText("Layer 1")).fetchSemanticsNodes().isEmpty())

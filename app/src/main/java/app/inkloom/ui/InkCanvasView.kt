@@ -670,7 +670,13 @@ class InkCanvasView(context: Context) : View(context) {
     var brushRenderSeed: Int = brushId.hashCode()
     var activeLayerId: String = app.inkloom.document.LayerIds.INK
         set(value) {
-            if (field != value) { clearLiquifyReconstruction(); finishSelectionColorFill(true); finishSelectionTransform(apply = true) }
+            if (field != value) {
+                if (activeTool != null) cancelActiveGestureForNavigation()
+                stopLayerMaskEditing()
+                clearLiquifyReconstruction()
+                finishSelectionColorFill(true)
+                finishSelectionTransform(apply = true)
+            }
             field = value
         }
     var layerOpacities: Map<String, Float> = emptyMap()
@@ -1037,6 +1043,56 @@ class InkCanvasView(context: Context) : View(context) {
         rebuildSelectionDerivedState()
     }
 
+    private var boundDocumentLayers: List<app.inkloom.document.InkLayer>? = null
+    private var documentLayerTargets: Map<String, app.inkloom.document.LayerEditingTarget.Rejection?>? = null
+
+    /** A selected folder/hidden/locked node remains selected, with no substitute paint target. */
+    fun setDocumentLayers(layers: List<app.inkloom.document.InkLayer>) {
+        if (boundDocumentLayers == layers) return
+        boundDocumentLayers = layers
+        val targets = layers.associate { it.id to app.inkloom.document.LayerEditingTarget.rejection(layers, it.id) }
+        if (documentLayerTargets == targets) return
+        documentLayerTargets = targets
+        if (layerContentRejection() != null) {
+            if (activeTool != null) cancelActiveGestureForNavigation()
+            cancelLayerMaskGesture()
+            finishSelectionColorFill(false)
+            finishSelectionTransform(false)
+        }
+    }
+
+    private fun layerContentRejection(layerId: String = activeLayerId): app.inkloom.document.LayerEditingTarget.Rejection? {
+        documentLayerTargets?.let { targets ->
+            return if (targets.containsKey(layerId)) targets[layerId] else app.inkloom.document.LayerEditingTarget.Rejection.MISSING
+        }
+        return if (layerId in protectedLayerIds) app.inkloom.document.LayerEditingTarget.Rejection.LOCKED else null
+    }
+
+    private fun rejectLayerContentEdit(layerId: String = activeLayerId): Boolean {
+        val reason = layerContentRejection(layerId) ?: return false
+        val chinese = feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE
+        onPaintCapabilityRejected(when (reason) {
+            app.inkloom.document.LayerEditingTarget.Rejection.MISSING -> if (chinese) "此图层已不存在，请选择图层" else "This layer no longer exists. Select a layer."
+            app.inkloom.document.LayerEditingTarget.Rejection.FOLDER -> if (chinese) "请选择文件夹内的图层进行绘画" else "Select a layer inside the folder to paint."
+            app.inkloom.document.LayerEditingTarget.Rejection.BACKGROUND -> if (chinese) "纸张不能直接绘画，请选择绘画图层" else "Select a paint layer instead of the paper."
+            app.inkloom.document.LayerEditingTarget.Rejection.LOCKED -> if (chinese) "请先解锁此图层或所属文件夹" else "Unlock this layer or its parent folder first."
+            app.inkloom.document.LayerEditingTarget.Rejection.HIDDEN -> if (chinese) "请先显示此图层及所属文件夹" else "Show this layer and its parent folder first."
+        })
+        return true
+    }
+
+    fun selectLayerContent(layerId: String) {
+        stopLayerMaskEditing()
+        activeLayerId = layerId
+        invalidate()
+    }
+
+    private fun stopLayerMaskEditing() {
+        cancelLayerMaskGesture()
+        editingLayerMaskId = null
+        editingLayerMaskSurface = null
+    }
+
     fun setProtectedLayerIds(value: Set<String>) {
         if (activeLayerId in value) clearLiquifyReconstruction()
         if (activeLayerId in value && selectionCanvasTransform != null) {
@@ -1128,9 +1184,9 @@ class InkCanvasView(context: Context) : View(context) {
             composeSurface(source, MaskComposeMode.REPLACE)
             commit().close()
         }
+        activeLayerId = layerId
         editingLayerMaskId = layerId
         editingLayerMaskSurface = editable
-        activeLayerId = layerId
         invalidate()
         return true
     }
@@ -1139,6 +1195,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun fillLayerMask(layerId: String, alpha: Int): Boolean {
         require(alpha in 0..255)
+        if (rejectLayerContentEdit(layerId)) return false
         if (editingLayerMaskId != layerId && !toggleLayerMaskEditing(layerId)) return false
         val surface = editingLayerMaskSurface ?: return false
         val record = surface.beginWrite(if (alpha == 0) "hide all layer mask" else "reveal all layer mask").run {
@@ -2205,19 +2262,21 @@ class InkCanvasView(context: Context) : View(context) {
                 // change an in-progress stroke/tool footprint halfway through the gesture.
                 gestureBrushSize = documentBrushSize()
                 gestureEraserSize = documentEraserSize()
-                if (beginLayerMaskGesture(activeTool ?: tool)) {
-                    extendLayerMaskGesture(normalizedX, normalizedY, event.getPressure(pointerIndex))
-                    return true
-                }
                 val motionCtrlPressed = event.metaState and KeyEvent.META_CTRL_ON != 0
                 val motionAltPressed = event.metaState and KeyEvent.META_ALT_ON != 0
                 if ((motionCtrlPressed || ctrlModifierHeld) && (motionAltPressed || altModifierHeld) && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) {
                     beginBrushSizeDrag(inputPoint.first, inputPoint.second, if (activeTool == EditorTool.ERASER) eraserWidth else baseWidth)
                     return true
                 }
-                if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) && activeLayerId in protectedLayerIds) {
+                if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER,
+                        EditorTool.SHAPE, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE,
+                        EditorTool.LIQUIFY, EditorTool.CORRECT_LINE) && rejectLayerContentEdit()) {
                     activeTool = null
                     parent?.requestDisallowInterceptTouchEvent(false)
+                    return true
+                }
+                if (beginLayerMaskGesture(activeTool ?: tool)) {
+                    extendLayerMaskGesture(normalizedX, normalizedY, event.getPressure(pointerIndex))
                     return true
                 }
                 if (activeTool == EditorTool.ERASER) {
@@ -2492,7 +2551,7 @@ class InkCanvasView(context: Context) : View(context) {
                         val end = shapeEnd
                         if (start != null && end != null) ShapeGeometry.create(shapeKind, start, end, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), gestureBrushSize) else null
                     }
-                    shape?.let(onShapeCommitted)
+                    shape?.copy(layerId = activeLayerId)?.let(onShapeCommitted)
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear(); shapeFreeformLastMoveAt = 0L
                 } else if (activeTool == EditorTool.LASER) {
                     laserTrail.append(normalizedX, normalizedY, event.eventTime)
@@ -3262,6 +3321,7 @@ class InkCanvasView(context: Context) : View(context) {
             val touchRadius = PERSPECTIVE_TOUCH_RADIUS_DP * resources.displayMetrics.density
             val hit = hitGradientHandle(element, canvasX, canvasY, touchRadius)
             if (hit < 0) return false
+            if (rejectLayerContentEdit(element.layerId)) return true
             gradientGestureHandle = hit
             gradientGestureStart = element
             parent?.requestDisallowInterceptTouchEvent(true)
@@ -3281,7 +3341,8 @@ class InkCanvasView(context: Context) : View(context) {
                 }
             }
             MotionEvent.ACTION_UP -> {
-                editableGradient?.let(onGradientHandleChanged)
+                if (!rejectLayerContentEdit(element.layerId)) editableGradient?.let(onGradientHandleChanged)
+                else editableGradient = start
                 gradientGestureHandle = -1
                 gradientGestureStart = null
                 parent?.requestDisallowInterceptTouchEvent(false)
@@ -4805,7 +4866,7 @@ class InkCanvasView(context: Context) : View(context) {
         // Opacity, blend, clipping and layer masks are projection properties. They must never
         // disable edits to the layer's own pixel surface. Paint on an alpha-locked layer publishes
         // with SOURCE_ATOP below; erasing is rejected because it cannot preserve destination alpha.
-        if (activeLayerId in protectedLayerIds ||
+        if (layerContentRejection() != null ||
             (activeLayerId in alphaLockedLayers && active == EditorTool.ERASER)
         ) return null
         val diameter = requestedDiameter ?: if (active == EditorTool.ERASER) gestureEraserSize else gestureBrushSize
@@ -5754,6 +5815,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun requestSelectionLayerTransfer(cut: Boolean) {
+        if (cut && rejectLayerContentEdit()) return
         if (rejectRetainedObjectPixelEdit()) return
         commitSelectionContour()
         finishSelectionColorFill(true)
@@ -5766,6 +5828,7 @@ class InkCanvasView(context: Context) : View(context) {
         onSelectionLayerTransferRequested(cut)
     }
     internal fun prepareSelectionLayerTransfer(cut: Boolean): app.inkloom.engine.v5.tools.SelectionLayerTransfer? {
+        if (cut && rejectLayerContentEdit()) return null
         v5StrokeController.awaitIdle()
         val source = rasterTileSurfaceFor(activeLayerId) ?: return null
         val mask = selectionMaskForRasterTools() ?: return null
@@ -5793,16 +5856,16 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun cutSelectionToClipboard(): Boolean {
+        if (rejectLayerContentEdit()) return false
         finishSelectionTransform(apply = true)
-        if (activeLayerId in protectedLayerIds) return false
         if (!copySelectionToClipboard()) return false
         deleteSelection()
         return true
     }
 
     fun pasteSelectionFromClipboard(): Boolean {
+        if (rejectLayerContentEdit()) return false
         finishSelectionTransform(apply = true)
-        if (activeLayerId in protectedLayerIds) return false
         val rasterSurface = rasterTileSurfaceFor(activeLayerId)
         val rasterClipboard = rasterSelectionClipboard
         if (rasterSurface != null && rasterClipboard != null && rasterClipboard.pixelFormat == rasterSurface.pixelFormat) {
@@ -5960,6 +6023,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun paintFillIntoActiveRaster(mask: MaskTileSurfaceSnapshot, colorArgb: Long, opacity: Float, edgeUnderpaintPixels: Int): Boolean {
+        if (rejectLayerContentEdit()) return false
         val layerId = activeLayerId
         val surface = rasterTileSurfaceFor(layerId)
         if (surface == null || layerId in protectedLayerIds || editingLayerMaskId != null) {
@@ -5991,6 +6055,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun setSelectionColorFill(enabled: Boolean): Boolean {
         if (!enabled) { finishSelectionColorFill(true); selectionColorFillEnabled = false; return true }
+        if (rejectLayerContentEdit()) return false
         if (activeLayerId in protectedLayerIds || editingLayerMaskId != null || rasterTileSurfaceFor(activeLayerId) == null) {
             onPaintCapabilityRejected("Select an unlocked paint layer before filling")
             return false
@@ -6005,7 +6070,7 @@ class InkCanvasView(context: Context) : View(context) {
         val mask = selectionMaskForRasterTools()?.takeUnless { it.isEmpty }
         if (mask == null) { finishSelectionColorFill(false); return }
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return
-        if (activeLayerId in protectedLayerIds || editingLayerMaskId != null) return
+        if (layerContentRejection() != null || editingLayerMaskId != null) return
         v5StrokeController.awaitIdle()
         if (selectionColorFillDraft?.surface?.let { it !== surface } == true) finishSelectionColorFill(true)
         val draft = selectionColorFillDraft ?: SelectionColorFillDraft(activeLayerId, surface).also { selectionColorFillDraft = it }
@@ -6090,6 +6155,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun validateRasterSelectionTransform(): Boolean {
+        if (rejectLayerContentEdit()) return false
         val surface = rasterTileSurfaceFor(activeLayerId)
         val rejection = when {
             activeLayerId in protectedLayerIds -> "Unlock the active layer before transforming its selection"
@@ -6291,9 +6357,9 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun deleteSelection() {
+        if (rejectLayerContentEdit()) return
         finishSelectionTransform(apply = true)
         if (!hasSelection()) return
-        if (activeLayerId in protectedLayerIds) return
         val selection = selectionMaskForRasterTools()
         val rasterSurface = rasterTileSurfaceFor(activeLayerId)
         if (selection != null && rasterSurface != null) {

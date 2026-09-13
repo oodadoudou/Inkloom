@@ -66,6 +66,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
@@ -1518,13 +1519,20 @@ private fun EditorScreen(
     var selectionActive by remember(document.id, selectedPage.id) { mutableStateOf(false) }
     var selectionTransformState by remember(document.id, selectedPage.id) { mutableStateOf<SelectionTransformUiState?>(null) }
     BackHandler(enabled = selectionTransformState != null) { canvasView?.finishSelectionTransform(apply = false) }
+    var activeLayerId by rememberSaveable(document.id, selectedPage.id) { mutableStateOf(LayerIds.INK) }
     fun performLayerMaskCommand(layerId: String, command: LayerMaskCommand) {
         if (command == LayerMaskCommand.EDIT) {
-            canvasView?.toggleLayerMaskEditing(layerId)
+            canvasView?.let { view ->
+                view.toggleLayerMaskEditing(layerId)
+                activeLayerId = view.activeLayerId
+            }
             return
         }
         if (command == LayerMaskCommand.FILL_WHITE || command == LayerMaskCommand.FILL_BLACK) {
-            canvasView?.fillLayerMask(layerId, if (command == LayerMaskCommand.FILL_WHITE) 255 else 0)
+            canvasView?.let { view ->
+                view.fillLayerMask(layerId, if (command == LayerMaskCommand.FILL_WHITE) 255 else 0)
+                activeLayerId = view.activeLayerId
+            }
             return
         }
         if (command == LayerMaskCommand.LOAD_AS_SELECTION) {
@@ -1791,7 +1799,6 @@ private fun EditorScreen(
             ))
         }
     }
-    var activeLayerId by remember(selectedPage.id) { mutableStateOf(LayerIds.INK) }
     fun syncCanvasInput(prepareAssets: Boolean = false) {
         canvasView?.let { view ->
             view.activeLayerId = activeLayerId
@@ -1854,7 +1861,6 @@ private fun EditorScreen(
                 ),
             )
         }
-        if (chosenTool == EditorTool.PEN && activeLayerId in setOf(LayerIds.HIGHLIGHT, LayerIds.OBJECTS)) activeLayerId = LayerIds.INK
         // Apply the complete descriptor synchronously. A panel click and the next pen-down can
         // occur before Compose's AndroidView update block; partial field assignment here used to
         // leave the input configuration in a stale state and made docked brush selection appear
@@ -1888,6 +1894,7 @@ private fun EditorScreen(
         activeLayerId = layerId
         tool = EditorTool.SELECT
         syncCanvasInput()
+        canvasView?.selectLayerContent(layerId)
         canvasView?.selectLayerContents(layerId)
         setLayersPanelOpen(false)
     }
@@ -1900,8 +1907,11 @@ private fun EditorScreen(
     var gridBeforeShortcut by remember { mutableStateOf(false) }
     var guidesBeforeShortcut by remember { mutableStateOf(false) }
     LaunchedEffect(selectedPage.layers) {
-        val active = selectedPage.layers.firstOrNull { it.id == activeLayerId }
-        if (active == null || LayerHierarchy.effectiveLocked(selectedPage.layers, active) || !LayerHierarchy.effectiveVisible(selectedPage.layers, active) || active.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) activeLayerId = selectedPage.layers.firstOrNull { LayerHierarchy.effectiveVisible(selectedPage.layers, it) && !LayerHierarchy.effectiveLocked(selectedPage.layers, it) && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) }?.id ?: LayerIds.INK
+        activeLayerId = app.inkloom.document.LayerEditingTarget.retainSelection(selectedPage.layers, activeLayerId)
+    }
+    fun selectLayerTarget(layerId: String) {
+        activeLayerId = layerId
+        canvasView?.selectLayerContent(layerId)
     }
     fun applyWorkspaceSettings(restored: AppSettings) {
         layersOpen = restored.showLayerPanel
@@ -2715,7 +2725,7 @@ private fun EditorScreen(
                 onDock = { changePanelDock(WorkspacePanelKind.LAYERS, it) },
                 onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
                 onColor = ::changeBrushColor,
-                onSelect = { activeLayerId = it },
+                onSelect = ::selectLayerTarget,
                 onSelectContents = ::selectLayerContents,
                 onAdd = { activeLayerId = onAddLayer(document.id, selectedPage.id, "Layer") },
                 onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
@@ -2955,7 +2965,6 @@ private fun EditorScreen(
                                         selectedBrushId = null
                                         activeBrush = null
                                         tool = EditorTool.PEN
-                                        activeLayerId = LayerIds.INK
                                     } else selected?.let { selectImportedBrush(it, persistent = !temporary) } ?: return
                                     brushSize = slot.size
                                     brushOpacity = slot.opacity
@@ -3002,7 +3011,6 @@ private fun EditorScreen(
                                 tool = EditorTool.HIGHLIGHTER
                                 brushSize = savedBrushSize(null, settings.highlighterSize, EditorTool.HIGHLIGHTER)
                                 brushOpacity = savedBrushOpacity(null, settings.highlighterOpacity, EditorTool.HIGHLIGHTER)
-                                activeLayerId = LayerIds.HIGHLIGHT
                                 syncCanvasInput()
                             }
                             ShortcutAction.SELECT_TOOL -> { exitCanvasNavigation(); if (tool != EditorTool.SELECT) rememberDrawingSelection(); tool = EditorTool.SELECT; syncCanvasInput() }
@@ -3318,9 +3326,8 @@ private fun EditorScreen(
                             selectedBrushId = remembered?.id
                             brushOpacity = savedBrushOpacity(remembered, remembered?.defaultOpacity ?: settings.penOpacity, EditorTool.PEN)
                             brushSize = savedBrushSize(remembered, remembered?.defaultSize ?: settings.penSize, EditorTool.PEN)
-                            if (activeLayerId == LayerIds.HIGHLIGHT || activeLayerId == LayerIds.OBJECTS) activeLayerId = LayerIds.INK
                         }
-                        EditorTool.HIGHLIGHTER -> { activeBrush = null; selectedBrushId = null; brushOpacity = savedBrushOpacity(null, settings.highlighterOpacity, EditorTool.HIGHLIGHTER); brushSize = savedBrushSize(null, settings.highlighterSize, EditorTool.HIGHLIGHTER); activeLayerId = LayerIds.HIGHLIGHT }
+                        EditorTool.HIGHLIGHTER -> { activeBrush = null; selectedBrushId = null; brushOpacity = savedBrushOpacity(null, settings.highlighterOpacity, EditorTool.HIGHLIGHTER); brushSize = savedBrushSize(null, settings.highlighterSize, EditorTool.HIGHLIGHTER) }
                         EditorTool.ERASER -> {
                             val remembered = activeBrush?.takeIf(BrushRoleClassifier::isEraser)
                                 ?: brushes.filter(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
@@ -3520,7 +3527,7 @@ private fun EditorScreen(
                 onDock = { changePanelDock(WorkspacePanelKind.LAYERS, it) },
                 onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
                 onColor = ::changeBrushColor,
-                onSelect = { activeLayerId = it },
+                onSelect = ::selectLayerTarget,
                 onSelectContents = ::selectLayerContents,
                 onAdd = { activeLayerId = onAddLayer(document.id, selectedPage.id, "Layer") },
                 onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
@@ -3598,7 +3605,7 @@ private fun EditorScreen(
                     onDock = { changePanelDock(WorkspacePanelKind.LAYERS, it) },
                     onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
                     onColor = ::changeBrushColor,
-                    onSelect = { activeLayerId = it },
+                    onSelect = ::selectLayerTarget,
                 onSelectContents = ::selectLayerContents,
                     onAdd = { activeLayerId = onAddLayer(document.id, selectedPage.id, "Layer") },
                     onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
@@ -3726,7 +3733,7 @@ private fun EditorScreen(
                 onDock = { changePanelDock(WorkspacePanelKind.LAYERS, it) },
                 onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
                 onColor = ::changeBrushColor,
-                onSelect = { activeLayerId = it },
+                onSelect = ::selectLayerTarget,
                 onSelectContents = ::selectLayerContents,
                 onAdd = { activeLayerId = onAddLayer(document.id, selectedPage.id, "Layer") },
                 onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
@@ -5292,14 +5299,13 @@ private fun PaperCanvas(onApplyRasterLayerMerge: (String, String, RasterLayerMer
         }
     }
     val gradientSaveFailure = tr("The gradient mask could not be saved", "渐变蒙版保存失败")
-    val commitGradient: (Float, Float, Float, Float, GradientDefinition, app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot?) -> Unit = commit@{ sx, sy, ex, ey, definition, selectionMask ->
+    val commitGradient: (String, Float, Float, Float, Float, GradientDefinition, app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot?) -> Unit = commit@{ capturedLayerId, sx, sy, ex, ey, definition, selectionMask ->
         if (gradientCommitScope.coroutineContext[Job]?.isActive != true) {
             return@commit
         }
         val stops = definition.normalized().stops
         val capturedPage = renderedPage
         val capturedCrop = page.crop
-        val capturedLayerId = activeLayerId
         // A completed gesture is durable work: page navigation may dispose this composition, but
         // must not leave a reserved mask behind or silently drop the committed gradient.
         gradientCommitScope.launch(NonCancellable) {
@@ -5591,7 +5597,7 @@ private fun PaperCanvas(onApplyRasterLayerMerge: (String, String, RasterLayerMer
                 view.viewportPanY = viewportState.panY
                 view.viewportRotationDegrees = viewportState.rotationDegrees
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
-                view.onGradientCommitted = commitGradient
+                view.onGradientCommitted = { sx, sy, ex, ey, definition, mask -> commitGradient(view.activeLayerId, sx, sy, ex, ey, definition, mask) }
                 installFillCommit(view)
                 installRasterCommit(view)
                 view.onViewportScale = onZoom
@@ -5652,6 +5658,7 @@ private fun PaperCanvas(onApplyRasterLayerMerge: (String, String, RasterLayerMer
                 view.viewportPanX = viewportState.panX
                 view.viewportPanY = viewportState.panY
                 view.viewportRotationDegrees = viewportState.rotationDegrees
+                view.setDocumentLayers(page.layers)
                 view.setProtectedLayerIds(lockedLayerIds)
                 view.setPageBackground(background)
                 view.setLayerElementBitmaps(layerElementBitmaps, page.elements)
@@ -5674,7 +5681,7 @@ private fun PaperCanvas(onApplyRasterLayerMerge: (String, String, RasterLayerMer
                 view.pageModelWidth = renderedPage.width
                 view.pageModelHeight = renderedPage.height
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
-                view.onGradientCommitted = commitGradient
+                view.onGradientCommitted = { sx, sy, ex, ey, definition, mask -> commitGradient(view.activeLayerId, sx, sy, ex, ey, definition, mask) }
                 installFillCommit(view)
                 installRasterCommit(view)
                 view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, colorPreview.foreground ?: brushColor, eraserPreset, colorPreview.secondary ?: secondaryBrushColor)
@@ -7418,12 +7425,12 @@ private fun PaintingLayerPanel(
                     val folderTargets = LayerHierarchy.availableFolders(page.layers, layer.id)
                     val selected = layer.id == activeLayerId || layer.id in selectedLayerIds
                     val depth = LayerHierarchy.depth(page.layers, layer)
-                    val canSelect = layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && !LayerHierarchy.effectiveLocked(page.layers, layer)
                     val swipeActions = buildList<Pair<String, () -> Unit>> {
                         add((if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) to { onLock(layer.id) })
                         if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) add(tr("Duplicate", "复制") to { onDuplicate(layer.id) })
                         if (layer.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER)) add(tr("Delete", "删除") to { onDelete(layer.id) })
                     }
+                    val layerRowDescription = tr("Select layer", "选择图层")
                     val rowInk = if (layer.id == activeLayerId) Color.White else Ink
                     LayerRowActions(swipeActions, destructiveLabel = tr("Delete", "删除"), onSelectSecondary = {
                         if (layer.id != activeLayerId && layer.role != LayerRole.BACKGROUND) {
@@ -7431,15 +7438,16 @@ private fun PaintingLayerPanel(
                         }
                     }) {
                     Row(
-                        Modifier.fillMaxWidth().onGloballyPositioned { rowBounds[layer.id] = it.boundsInRoot() }.padding(start = (8 + depth * 24).dp, end = 8.dp).height(64.dp).clip(RoundedCornerShape(7.dp)).background(if (dropLayerId == layer.id) SageContainer else if (layer.id == activeLayerId) Sage else if (selected) SageContainer else Paper).combinedClickable(
+                        Modifier.fillMaxWidth().semantics { contentDescription = "${layerRowDescription} ${layer.name}"; this.selected = layer.id == activeLayerId }.onGloballyPositioned { rowBounds[layer.id] = it.boundsInRoot() }.padding(start = (8 + depth * 24).dp, end = 8.dp).height(64.dp).clip(RoundedCornerShape(7.dp)).background(if (dropLayerId == layer.id) SageContainer else if (layer.id == activeLayerId) Sage else if (selected) SageContainer else Paper).combinedClickable(
                             onClick = {
-                                if (layer.id == activeLayerId || layer.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) menu = true
-                                else if (canSelect) { selectedLayerIds = emptySet(); onSelect(layer.id) }
+                                selectedLayerIds = emptySet()
+                                onSelect(layer.id)
                             },
                         ).padding(horizontal = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Surface(Modifier.size(42.dp).clickable { if (layer.role == LayerRole.FOLDER) onToggleFolderCollapsed(layer.id) else menu = true }, shape = RoundedCornerShape(5.dp), color = Paper) {
+                        val thumbnailDescription = if (layer.role == LayerRole.FOLDER) "${tr("Toggle folder", "折叠或展开文件夹")} ${layer.name}" else "${tr("Layer content", "图层内容")} ${layer.name}"
+                        Surface(Modifier.size(42.dp).semantics { contentDescription = thumbnailDescription }.clickable { if (layer.role == LayerRole.FOLDER) onToggleFolderCollapsed(layer.id) else { selectedLayerIds = emptySet(); onSelect(layer.id) } }, shape = RoundedCornerShape(5.dp), color = Paper) {
                             if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) LayerContentPreview(page, layer, Modifier.fillMaxSize())
                             else Box(contentAlignment = Alignment.Center) {
                                 Icon(if (layer.role == LayerRole.FOLDER) { if (layer.collapsed) Icons.Outlined.Folder else Icons.Outlined.FolderOpen } else Icons.Outlined.Image, null, Modifier.size(22.dp), tint = Ink)
