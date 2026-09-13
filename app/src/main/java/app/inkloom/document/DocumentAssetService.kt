@@ -44,7 +44,7 @@ class DocumentAssetService(private val context: Context) {
     private val directory = File(context.filesDir, "document-assets").apply { mkdirs() }
     private val pixelTileDirectory = File(directory, "pixel-tiles")
     private val pixelTileStore = PixelTileArchiveStore(pixelTileDirectory)
-    private val assetLifecycle = DocumentAssetLifecycle(directory, pixelTileStore)
+    private val assetLifecycle = DocumentAssetLifecycles.forDirectory(directory, pixelTileStore)
     private val brushAssetDirectory = File(context.filesDir, "brush-assets").apply { mkdirs() }
     @androidx.annotation.VisibleForTesting
     internal var v5RasterProjectionExportCount: Int = 0

@@ -9,9 +9,6 @@ import app.inkloom.model.ImportedBrush
 import app.inkloom.settings.DrawingColorStore
 import app.inkloom.engine.v5.selection.DocumentSelectionRuntime
 import app.inkloom.engine.v5.storage.RecoveryJournalEntry
-import app.inkloom.engine.v5.selection.LayerMaskRuntime
-import app.inkloom.engine.v5.surface.MaskTileSurface
-import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -442,82 +439,6 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
 
     fun toggleLayerDraft(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
         page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(draft = !it.draft) else it })
-    }
-
-    fun updateLayerMask(
-        documentId: String,
-        pageId: String,
-        layerId: String,
-        command: LayerMaskCommand,
-        selection: MaskTileSurfaceSnapshot?,
-    ) = updatePage(documentId, pageId) { page ->
-        val layer = page.layers.firstOrNull { it.id == layerId } ?: return@updatePage page
-        if (layer.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) return@updatePage page
-        if (command in setOf(LayerMaskCommand.EDIT, LayerMaskCommand.FILL_WHITE, LayerMaskCommand.FILL_BLACK)) return@updatePage page
-        if (command == LayerMaskCommand.REPLACE_SURFACE) {
-            val snapshot = selection ?: return@updatePage page
-            val reference = assets.saveMaskTileSurface(snapshot)
-            val updated = (layer.mask ?: LayerMask()).copy(
-                baseVisible = reference.defaultAlpha > 0,
-                surface = reference,
-            )
-            return@updatePage page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(mask = updated) else it })
-        }
-        if (command == LayerMaskCommand.LOAD_AS_SELECTION) return@updatePage page
-        if (command == LayerMaskCommand.DELETE) {
-            return@updatePage page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(mask = null) else it })
-        }
-        if (command == LayerMaskCommand.TOGGLE_ENABLED || command == LayerMaskCommand.TOGGLE_LINKED) {
-            val mask = layer.mask ?: return@updatePage page
-            val changed = if (command == LayerMaskCommand.TOGGLE_ENABLED) mask.copy(enabled = !mask.enabled)
-                else mask.copy(linked = !mask.linked)
-            return@updatePage page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(mask = changed) else it })
-        }
-        if (command == LayerMaskCommand.APPLY) return@updatePage page
-
-        fun revealAll(): MaskTileSurface {
-            val size = SelectionMaskCompositor.maskSize(page.width, page.height)
-                ?: error("Invalid page geometry for layer mask")
-            return MaskTileSurface(size.width, size.height, initialDefaultAlpha = 255)
-        }
-        val current = layer.mask?.surface?.let { runCatching { assets.loadMaskTileSurface(it) }.getOrNull() }
-        val runtimeSurface = when (command) {
-            LayerMaskCommand.CREATE_MASK_SELECTION,
-            LayerMaskCommand.CREATE_MASK_OUTSIDE_SELECTION -> selection?.let { snapshot ->
-                MaskTileSurface(snapshot.logicalWidth, snapshot.logicalHeight, snapshot.tileSize)
-            } ?: revealAll()
-            else -> current ?: revealAll()
-        }
-        val result = LayerMaskRuntime(runtimeSurface).use { runtime ->
-            when (command) {
-                LayerMaskCommand.CREATE_MASK_SELECTION -> {
-                    if (selection == null) runtime.fill(255) else runtime.replaceFromSelection(selection)
-                }
-                LayerMaskCommand.CREATE_MASK_OUTSIDE_SELECTION -> {
-                    if (selection == null) runtime.fill(255) else runtime.replaceFromSelection(selection)
-                    runtime.invert()
-                }
-                LayerMaskCommand.HIDE_SELECTION -> runtime.hideSelection(selection ?: return@updatePage page)
-                LayerMaskCommand.REVEAL_SELECTION -> runtime.revealSelection(selection ?: return@updatePage page)
-                LayerMaskCommand.INVERT -> runtime.invert()
-                LayerMaskCommand.DELETE,
-                LayerMaskCommand.EDIT,
-                LayerMaskCommand.REPLACE_SURFACE,
-                LayerMaskCommand.FILL_WHITE,
-                LayerMaskCommand.FILL_BLACK,
-                LayerMaskCommand.TOGGLE_ENABLED,
-                LayerMaskCommand.TOGGLE_LINKED,
-                LayerMaskCommand.LOAD_AS_SELECTION,
-                LayerMaskCommand.APPLY -> error("handled above")
-            }
-            runtime.snapshot
-        }
-        val reference = assets.saveMaskTileSurface(result)
-        val updatedMask = (layer.mask ?: LayerMask()).copy(
-            baseVisible = reference.defaultAlpha > 0,
-            surface = reference,
-        )
-        page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(mask = updatedMask) else it })
     }
 
     fun moveLayerToFolder(documentId: String, pageId: String, layerId: String, folderId: String?) = updateLayerStructure(documentId, pageId) { page ->

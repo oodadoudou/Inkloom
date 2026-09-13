@@ -854,7 +854,6 @@ fun InkloomApp(initialIntent: Intent?) {
             },
             onToggleLayerReference = viewModel::toggleLayerReference,
             onToggleLayerDraft = viewModel::toggleLayerDraft,
-            onLayerMaskCommand = viewModel::updateLayerMask,
             onMoveLayerToFolder = { documentId, pageId, layerId, folderId ->
                 viewModel.moveLayerToFolder(documentId, pageId, layerId, folderId)?.let { rejection ->
                     val message = if (rejection == app.inkloom.document.LayerGroupRejection.THROUGH_CLIPPING)
@@ -1451,7 +1450,6 @@ private fun EditorScreen(
     onToggleLayerClippedToBelow: (String, String, String) -> Unit,
     onToggleLayerReference: (String, String, String) -> Unit,
     onToggleLayerDraft: (String, String, String) -> Unit,
-    onLayerMaskCommand: (String, String, String, LayerMaskCommand, app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot?) -> Unit,
     onMoveLayerToFolder: (String, String, String, String?) -> Unit,
     onToggleLayerFolderCollapsed: (String, String, String) -> Unit,
     onMoveLayer: (String, String, String, Int) -> Unit,
@@ -1548,29 +1546,19 @@ private fun EditorScreen(
     var selectionTransformState by remember(document.id, selectedPage.id) { mutableStateOf<SelectionTransformUiState?>(null) }
     BackHandler(enabled = selectionTransformState != null) { canvasView?.finishSelectionTransform(apply = false) }
     var activeLayerId by rememberSaveable(document.id, selectedPage.id) { mutableStateOf(LayerIds.INK) }
+    var editingMaskId by remember(document.id, selectedPage.id) { mutableStateOf<String?>(null) }
+    val maskAssets = remember(context) { DocumentAssetService(context) }
+    val maskFailurePrefix by rememberUpdatedState(tr("Could not edit mask", "无法编辑蒙版"))
+    val maskEditor = remember(document.id, storedPage.id) {
+        LayerMaskEditor(document.id, storedPage.id, { currentAppearancePage }, { currentAppearanceCanvas }, maskAssets,
+            { edit, undo -> currentAppearanceApply(document.id, storedPage.id, edit, undo) }, appearanceScope,
+            { reason -> Toast.makeText(context, "$maskFailurePrefix: ${layerMaskFailureLabel(reason, settings.language)}", Toast.LENGTH_LONG).show() },
+            { activeLayerId = it })
+    }
+    DisposableEffect(maskEditor) { onDispose { maskEditor.close() } }
     fun createLayer(folder: Boolean) { canvasView?.onLayerCreationRequested?.invoke(activeLayerId, folder) }
     fun performLayerMaskCommand(layerId: String, command: LayerMaskCommand) {
-        if (command == LayerMaskCommand.EDIT) {
-            canvasView?.let { view ->
-                view.toggleLayerMaskEditing(layerId)
-                activeLayerId = view.activeLayerId
-            }
-            return
-        }
-        if (command == LayerMaskCommand.FILL_WHITE || command == LayerMaskCommand.FILL_BLACK) {
-            canvasView?.let { view ->
-                view.fillLayerMask(layerId, if (command == LayerMaskCommand.FILL_WHITE) 255 else 0)
-                activeLayerId = view.activeLayerId
-            }
-            return
-        }
-        if (command == LayerMaskCommand.LOAD_AS_SELECTION) {
-            val reference = selectedPage.layers.firstOrNull { it.id == layerId }?.mask?.surface ?: return
-            val snapshot = runCatching { DocumentAssetService(context).loadMaskTileSurface(reference).snapshot() }.getOrNull() ?: return
-            canvasView?.replaceSelectionFromMask(snapshot)
-            return
-        }
-        onLayerMaskCommand(document.id, selectedPage.id, layerId, command, canvasView?.selectionMaskSurfaceSnapshot())
+        maskEditor.execute(layerId, command)
     }
     fun brushMasterKey(brush: ImportedBrush?, selectedTool: EditorTool = tool): String = brush?.id ?: "system:${selectedTool.name.lowercase()}"
     fun savedBrushSize(brush: ImportedBrush?, fallback: Float, selectedTool: EditorTool = tool): Float =
@@ -2769,6 +2757,7 @@ private fun EditorScreen(
                 onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
                 onToggleDraft = { onToggleLayerDraft(document.id, selectedPage.id, it) },
                 onMaskCommand = ::performLayerMaskCommand,
+                editingMaskId = editingMaskId,
                 onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
@@ -2814,9 +2803,9 @@ private fun EditorScreen(
                     onView = { view ->
                         canvasView = view
                         view.onSelectionTransformChanged = { selectionTransformState = it }
-                        view.onLayerMaskSurfaceCommitted = { layerId, snapshot ->
-                            onLayerMaskCommand(document.id, selectedPage.id, layerId, LayerMaskCommand.REPLACE_SURFACE, snapshot)
-                        }
+                        view.onLayerMaskEditingChanged = { editingMaskId = it }
+                        maskEditor.attach(view)
+                        view.onLayerMaskStrokeCommitted = maskEditor::publishStroke
                     },
                     page = paintingPage,
                     documentId = document.id,
@@ -3573,6 +3562,7 @@ private fun EditorScreen(
                 onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
                 onToggleDraft = { onToggleLayerDraft(document.id, selectedPage.id, it) },
                 onMaskCommand = ::performLayerMaskCommand,
+                editingMaskId = editingMaskId,
                 onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
@@ -3652,6 +3642,7 @@ private fun EditorScreen(
                     onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
                     onToggleDraft = { onToggleLayerDraft(document.id, selectedPage.id, it) },
                     onMaskCommand = ::performLayerMaskCommand,
+                editingMaskId = editingMaskId,
                 onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
                     onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                     onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
@@ -3781,6 +3772,7 @@ private fun EditorScreen(
                 onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
                 onToggleDraft = { onToggleLayerDraft(document.id, selectedPage.id, it) },
                 onMaskCommand = ::performLayerMaskCommand,
+                editingMaskId = editingMaskId,
                 onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
@@ -5715,7 +5707,7 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.referenceLayerIds = page.layers.filter { it.reference }.mapTo(mutableSetOf()) { it.id }
                 view.draftLayerIds = page.layers.filter { it.draft }.mapTo(mutableSetOf()) { it.id }
                 view.layerMasks = page.layers.mapNotNull { layer -> layer.mask?.let { layer.id to it } }.toMap()
-                view.layerMaskSurfaces = layerMaskSurfaces
+                view.bindLayerMaskSurfaces(layerMaskSurfaces)
                 view.layerOrder = page.layers.filter { it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && LayerHierarchy.effectiveVisible(page.layers, it) }.map(InkLayer::id)
                 view.pagePaperColor = if (renderedPage.background is PageBackground.Paper) (if (backgroundVisible) renderedPage.background.colorArgb.toInt() else AndroidColor.WHITE) else null
                 view.pagePaperDensity = (renderedPage.background as? PageBackground.Paper)?.density ?: PaperDensity.DENSE
@@ -7157,7 +7149,7 @@ private fun BrushPresetToolButton(
 
 @Composable
 private fun LayerMaskMenuItems(layer: InkLayer, onCommand: (LayerMaskCommand) -> Unit) {
-    if (layer.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) return
+    if (layer.role == LayerRole.BACKGROUND) return
     val mask = layer.mask
     if (mask == null) {
         DropdownMenuItem(
@@ -7253,6 +7245,7 @@ private fun LayerPanel(
     onToggleReference: (String) -> Unit,
     onToggleDraft: (String) -> Unit,
     onMaskCommand: (String, LayerMaskCommand) -> Unit,
+    editingMaskId: String? = null,
     onMoveToFolder: (String, String?) -> Unit,
     onToggleFolderCollapsed: (String) -> Unit,
     onMove: (String, Int) -> Unit,
@@ -7307,7 +7300,7 @@ private fun LayerPanel(
             onToggleClippedToBelow = onToggleClippedToBelow,
             onToggleReference = onToggleReference,
             onToggleDraft = onToggleDraft,
-            onMaskCommand = onMaskCommand,
+            onMaskCommand = onMaskCommand, editingMaskId = editingMaskId,
             onMoveToFolder = onMoveToFolder,
             onToggleFolderCollapsed = onToggleFolderCollapsed,
             onMove = onMove,
@@ -7366,6 +7359,7 @@ private fun PaintingLayerPanel(
     onToggleReference: (String) -> Unit,
     onToggleDraft: (String) -> Unit,
     onMaskCommand: (String, LayerMaskCommand) -> Unit,
+    editingMaskId: String? = null,
     onMoveToFolder: (String, String?) -> Unit,
     onToggleFolderCollapsed: (String) -> Unit,
     onMove: (String, Int) -> Unit,
@@ -7552,7 +7546,15 @@ private fun PaintingLayerPanel(
                         if (layer.locked) Icon(Icons.Outlined.Lock, tr("Locked", "已锁定"), Modifier.size(15.dp), tint = MutedInk)
                         if (layer.reference) Icon(Icons.Outlined.Lightbulb, tr("Reference layer", "参考图层"), Modifier.size(15.dp), tint = MutedInk)
                         if (layer.draft) Icon(Icons.Outlined.EditNote, tr("Draft layer", "草稿图层"), Modifier.size(15.dp), tint = MutedInk)
-                        layer.mask?.let { mask -> LayerMaskThumbnailView(mask, Modifier.size(24.dp)) }
+                        layer.mask?.let { mask ->
+                            val maskDescription = "${tr("Edit layer mask", "编辑图层蒙版")} ${layer.name}"
+                            Box(Modifier.size(40.dp).semantics { contentDescription = maskDescription }
+                                .clickable { onMaskCommand(layer.id, LayerMaskCommand.EDIT) }, contentAlignment = Alignment.Center) {
+                                LayerMaskThumbnailView(mask, Modifier.size(28.dp).border(
+                                    if (editingMaskId == layer.id) 2.dp else 1.dp,
+                                    if (editingMaskId == layer.id) Ink else MutedInk.copy(alpha = .45f), RoundedCornerShape(2.dp)))
+                            }
+                        }
                         IconButton(onClick = { onVisibility(layer.id) }, modifier = Modifier.size(40.dp)) { Icon(if (layer.visible) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, tr("Toggle layer visibility", "切换图层可见性"), Modifier.size(19.dp), tint = rowInk) }
                         val layerActionsDescription = "${tr("Layer actions", "图层操作")} ${layer.name}"
                         Box(Modifier.semantics { contentDescription = layerActionsDescription }) {
@@ -7567,7 +7569,7 @@ private fun PaintingLayerPanel(
                                 if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(if (layer.reference) tr("Unset reference layer", "取消参考图层") else tr("Set as reference layer", "设为参考图层")) }, onClick = { menu = false; onToggleReference(layer.id) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.draft) tr("Unset draft layer", "取消草稿图层") else tr("Set as draft layer", "设为草稿图层")) }, onClick = { menu = false; onToggleDraft(layer.id) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Select contents", "选取内容")) }, onClick = { menu = false; onSelectContents(layer.id) })
-                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Mask", "蒙版")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; maskMenu = true })
+                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Mask", "蒙版")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; maskMenu = true })
                                 DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
                                 if (layer.role == LayerRole.FOLDER) DropdownMenuItem(text = { Text(if (layer.collapsed) tr("Expand folder", "展开文件夹") else tr("Collapse folder", "折叠文件夹")) }, onClick = { menu = false; onToggleFolderCollapsed(layer.id) })
                                 if (layer.parentId != null) DropdownMenuItem(text = { Text(tr("Move out of folder", "移出文件夹")) }, onClick = { menu = false; onMoveToFolder(layer.id, null) })

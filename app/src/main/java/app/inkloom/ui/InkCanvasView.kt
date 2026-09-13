@@ -335,11 +335,30 @@ class InkCanvasView(context: Context) : View(context) {
     private var smudgeDirtyBounds: Rect? = null
     private var rasterTileBlendSession: RasterTileBlendSession? = null
     private val v5MainHandler = Handler(Looper.getMainLooper())
-    private val v5StrokeController = RealtimeStrokeDispatcher(
-        onDamageReady = { surface, result ->
-            v5MainHandler.post { invalidateV5Damage(surface, result) }
-        },
-    )
+    private data class MaskBrushContact(val layerId: String, val mask: MaskTileSurface,
+        val coverage: PixelTileSurface, val projection: app.inkloom.engine.v5.selection.LayerMaskBrushCoverage,
+        @Volatile var cancelled: Boolean = false, @Volatile var finished: Boolean = false)
+    private val maskBrushContacts = java.util.concurrent.ConcurrentHashMap<String, MaskBrushContact>()
+    private var pendingMaskPublications = 0
+    private val pendingMaskCompletions = java.util.concurrent.ConcurrentLinkedQueue<() -> Unit>()
+    internal fun flushPendingMaskPublications() {
+        if (pendingMaskPublications == 0) return
+        v5StrokeController.awaitIdle()
+        drainMaskCompletions()
+    }
+    private fun drainMaskCompletions() { while (true) (pendingMaskCompletions.poll() ?: break).invoke() }
+    private val v5StrokeController = RealtimeStrokeDispatcher(onDamageReady = ::onV5DamageReady)
+    private fun onV5DamageReady(surface: PixelTileSurface, result: app.inkloom.engine.v5.raster.PaintResult) {
+        val mask = maskBrushContacts[surface.surfaceId]
+        if (mask == null) v5MainHandler.post { invalidateV5Damage(surface, result) }
+        else {
+            mask.projection.project(v5StrokeController.previewSnapshot(surface.surfaceId), result.dirtyBounds)
+            val preview = mask.projection.preview
+            v5MainHandler.post {
+                if (!mask.cancelled && !mask.finished) { layerMaskSurfaces = layerMaskSurfaces + (mask.layerId to preview); invalidate() }
+            }
+        }
+    }
     private val v5FrameInvalidationScheduler = FrameInvalidationScheduler()
     private val v5PresentationBarrier = PresentationGenerationBarrier()
     @VisibleForTesting internal var lastV5FrameInvalidation: InvalidationRequest? = null
@@ -708,10 +727,30 @@ class InkCanvasView(context: Context) : View(context) {
         set(value) { if (field != value) { field = value; invalidate() } }
     var layerMaskSurfaces: Map<String, MaskTileSurfaceSnapshot> = emptyMap()
         set(value) { if (field != value) { field = value; invalidate() } }
+    var onLayerMaskEditingChanged: (String?) -> Unit = {}
     private var editingLayerMaskId: String? = null
+        set(value) { if (field != value) { field = value; onLayerMaskEditingChanged(value) } }
+    private var boundMaskSurfaceValues: Map<String, MaskTileSurfaceSnapshot>? = null
+    fun bindLayerMaskSurfaces(value: Map<String, MaskTileSurfaceSnapshot>) {
+        if (boundMaskSurfaceValues == value) return
+        boundMaskSurfaceValues = value
+        layerMaskSurfaces = value
+    }
+
+    internal fun installLayerMaskAttachment(layerId: String, attachment: LayerMask?, assets: app.inkloom.document.DocumentAssetService) {
+        if (editingLayerMaskId == layerId) {
+            cancelLayerMaskGesture()
+            editingLayerMaskSurface = null
+            if (attachment == null) editingLayerMaskId = null
+        }
+        layerMasks = if (attachment == null) layerMasks - layerId else layerMasks + (layerId to attachment)
+        val snapshot = attachment?.surface?.let { assets.loadMaskTileSurface(it).snapshot() }
+        layerMaskSurfaces = if (snapshot == null) layerMaskSurfaces - layerId else layerMaskSurfaces + (layerId to snapshot)
+        invalidate()
+    }
     private var editingLayerMaskSurface: MaskTileSurface? = null
-    private var layerMaskGesture: MaskTileWriteTransaction? = null
-    private var layerMaskGestureErasing = false
+    private var maskWorkingAssetPath: String? = null
+    private var layerMaskGesture: MaskBrushContact? = null
     var layerOrder: List<String> = emptyList()
         set(value) { if (field != value) { field = value; resetStrokeTiles() } }
     private var layerElementBitmaps: Map<String, LayerElementBitmaps> = emptyMap()
@@ -814,6 +853,7 @@ class InkCanvasView(context: Context) : View(context) {
     var onSparseFillCommitted: ((mask: MaskTileSurfaceSnapshot, colorArgb: Long, opacity: Float, edgeUnderpaintPixels: Int) -> Unit)? = null
     /** Immutable generation handoff; bitmap materialization belongs on a persistence worker. */
     var onRasterLayerCommitted: ((RasterLayerCommit) -> Unit)? = null
+    internal var onLayerMaskStrokeCommitted: ((String, MaskTileSurfaceSnapshot) -> LayerMaskStrokeHistory?)? = null
     var onLayerMaskSurfaceCommitted: (layerId: String, mask: MaskTileSurfaceSnapshot) -> Unit = { _, _ -> }
 
     private fun mergeDirtyBounds(current: Rect?, changed: Rect): Rect =
@@ -1033,6 +1073,8 @@ class InkCanvasView(context: Context) : View(context) {
     /** Binds selection alpha to the document runtime before any page content is installed. */
     internal fun bindDocumentSelectionState(state: DocumentSelectionState) {
         if (documentSelectionState === state) return
+        if (layerMaskGesture != null) cancelActiveGestureForNavigation()
+        flushPendingMaskPublications()
         clearLiquifyReconstruction()
         finishSelectionColorFill(true)
         finishAutomaticSelection(false)
@@ -1056,9 +1098,10 @@ class InkCanvasView(context: Context) : View(context) {
         boundDocumentLayers = layers
         invalidate()
         val targets = layers.associate { it.id to app.inkloom.document.LayerEditingTarget.rejection(layers, it.id) }
-        if (documentLayerTargets == targets) return
+        // A folder's content rejection remains FOLDER even when its lock/visibility changes;
+        // the selected mask still needs its ancestor permissions rechecked.
         documentLayerTargets = targets
-        if (layerContentRejection() != null) {
+        if (currentPaintTargetRejection() != null) {
             if (activeTool != null) cancelActiveGestureForNavigation()
             cancelLayerMaskGesture()
             finishSelectionColorFill(false)
@@ -1073,8 +1116,19 @@ class InkCanvasView(context: Context) : View(context) {
         return if (layerId in protectedLayerIds) app.inkloom.document.LayerEditingTarget.Rejection.LOCKED else null
     }
 
+    private fun currentPaintTargetRejection(layerId: String = activeLayerId): app.inkloom.document.LayerEditingTarget.Rejection? =
+        if (editingLayerMaskId == layerId) maskTargetRejection(layerId) else layerContentRejection(layerId)
+
+    private fun maskTargetRejection(layerId: String): app.inkloom.document.LayerEditingTarget.Rejection? =
+        boundDocumentLayers?.let { app.inkloom.document.LayerEditingTarget.maskRejection(it, layerId) }
+            ?: if (boundDocumentLayers == null) layerContentRejection(layerId) else null
+
     private fun rejectLayerContentEdit(layerId: String = activeLayerId): Boolean {
-        val reason = layerContentRejection(layerId) ?: return false
+        val reason = currentPaintTargetRejection(layerId) ?: return false
+        return reportLayerEditRejection(reason)
+    }
+
+    private fun reportLayerEditRejection(reason: app.inkloom.document.LayerEditingTarget.Rejection): Boolean {
         val chinese = feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE
         onPaintCapabilityRejected(when (reason) {
             app.inkloom.document.LayerEditingTarget.Rejection.MISSING -> if (chinese) "此图层已不存在，请选择图层" else "This layer no longer exists. Select a layer."
@@ -1174,6 +1228,7 @@ class InkCanvasView(context: Context) : View(context) {
     /** Toggles direct grayscale mask editing. The layer pixels remain untouched. */
     fun toggleLayerMaskEditing(layerId: String): Boolean {
         require(layerId.isNotBlank())
+        if (hasActivePaintContact() || selectionLayerTransferPending || maskTargetRejection(layerId) != null) return false
         cancelLayerMaskGesture()
         if (editingLayerMaskId == layerId) {
             editingLayerMaskId = null
@@ -1195,6 +1250,7 @@ class InkCanvasView(context: Context) : View(context) {
         activeLayerId = layerId
         editingLayerMaskId = layerId
         editingLayerMaskSurface = editable
+        maskWorkingAssetPath = layerMasks[layerId]?.surface?.assetPath
         invalidate()
         return true
     }
@@ -1203,9 +1259,17 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun fillLayerMask(layerId: String, alpha: Int): Boolean {
         require(alpha in 0..255)
-        if (rejectLayerContentEdit(layerId)) return false
+        if (hasActivePaintContact() || selectionLayerTransferPending) {
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                "请先抬笔并完成当前操作" else "Lift the pen and finish the current operation")
+            return false
+        }
+        maskTargetRejection(layerId)?.let { reportLayerEditRejection(it); return false }
         if (editingLayerMaskId != layerId && !toggleLayerMaskEditing(layerId)) return false
-        val surface = editingLayerMaskSurface ?: return false
+        val source = layerMaskSurfaces[layerId] ?: return false
+        val surface = MaskTileSurface(source.logicalWidth, source.logicalHeight, source.tileSize, initialDefaultAlpha = source.defaultAlpha)
+        if (source.tileCount > 0) surface.beginWrite("open mask fill").run { composeSurface(source, MaskComposeMode.REPLACE); commit().close() }
+        editingLayerMaskSurface = surface
         val record = surface.beginWrite(if (alpha == 0) "hide all layer mask" else "reveal all layer mask").run {
             fill(alpha)
             commit()
@@ -1213,82 +1277,133 @@ class InkCanvasView(context: Context) : View(context) {
         return recordLayerMaskEdit(layerId, surface, record)
     }
 
-    private fun beginLayerMaskGesture(tool: EditorTool): Boolean {
-        val surface = editingLayerMaskSurface ?: return false
-        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) return false
+    private fun beginLayerMaskGesture(event: MotionEvent, pointerIndex: Int, x: Float, y: Float): Boolean {
+        val layerId = editingLayerMaskId ?: return false
+        if (activeTool in setOf(EditorTool.EYEDROPPER, EditorTool.LASER)) return false
+        if (activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) {
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                "蒙版编辑请使用画笔或橡皮；点击图层缩略图可返回内容编辑" else "Use a brush or eraser on the mask. Select the layer thumbnail to edit its contents.")
+            activeTool = null
+            return true
+        }
         cancelLayerMaskGesture()
-        layerMaskGesture = surface.beginWrite(if (tool == EditorTool.ERASER) "erase layer mask gesture" else "paint layer mask gesture")
-        layerMaskGestureErasing = tool == EditorTool.ERASER
+        val source = layerMaskSurfaces[layerId]
+        if (source == null) {
+            stopLayerMaskEditing()
+            activeTool = null
+            onPaintCapabilityRejected("UNSUPPORTED_WITH_EXPLICIT_REASON: MASK_SURFACE_REQUIRED")
+            return true
+        }
+        // Commands and history can replace an attachment while this target stays selected.
+        val surface = if (editingLayerMaskSurface != null &&
+            (pendingMaskPublications > 0 || maskWorkingAssetPath == layerMasks[layerId]?.surface?.assetPath)) requireNotNull(editingLayerMaskSurface)
+            else MaskTileSurface(source.logicalWidth, source.logicalHeight, source.tileSize,
+                initialDefaultAlpha = source.defaultAlpha).also { editable ->
+                if (source.tileCount > 0) editable.beginWrite("open mask stroke").run {
+                    composeSurface(source, MaskComposeMode.REPLACE); commit().close()
+                }
+            }
+        editingLayerMaskSurface = surface
+        maskWorkingAssetPath = layerMasks[layerId]?.surface?.assetPath
+        val coverage = PixelTileSurface(source.logicalWidth, source.logicalHeight, tileSize = source.tileSize)
+        val capability = compiledBrushProgramV5?.let(BrushExecutionCapabilityResolver::resolve)
+        if (capability is BrushExecutionCapabilityResolution.Unsupported) {
+            onPaintCapabilityRejected("UNSUPPORTED_WITH_EXPLICIT_REASON: " + capability.reasons.joinToString(",") { it.name })
+            activeTool = null
+            return true
+        }
+        val configuration = v5PaintConfiguration(maskCoverageSurface = coverage)
+        if (configuration == null) {
+            onPaintCapabilityRejected("UNSUPPORTED_WITH_EXPLICIT_REASON: MASK_BRUSH_CONFIGURATION")
+            activeTool = null
+            return true
+        }
+        v5GestureStartNormalized = x to y
+        activeCanvasSnapConstraint = CanvasGuides.constraintAt(canvasGuideState, x, y, pageModelWidth,
+            pageModelHeight, width.toFloat(), height.toFloat(), GUIDE_SNAP_TOLERANCE_DP * resources.displayMetrics.density)
+        val gesture = MaskBrushContact(layerId, surface, coverage,
+            app.inkloom.engine.v5.selection.LayerMaskBrushCoverage(surface,
+                activeTool == EditorTool.ERASER || compiledBrushProgramV5?.output == BrushOutputV5.ERASE))
+        layerMaskGesture = gesture
+        maskBrushContacts[coverage.surfaceId] = gesture
+        val accepted = v5StrokeController.begin(coverage.surfaceId, coverage, configuration.paintOp,
+            configuration.maximumRadius, configuration.runtimeId,
+            v5DocumentSample(event, pointerIndex, x, y, null, coverage), configuration.smoothing,
+            globalStrokeStabilization, globalMotionFiltering, brushMotionFiltering())
+        if (!accepted) {
+            maskBrushContacts.remove(coverage.surfaceId)
+            layerMaskGesture = null
+            activeTool = null
+            onPaintCapabilityRejected("UNSUPPORTED_WITH_EXPLICIT_REASON: MASK_CONTACT_ALREADY_ACTIVE")
+        }
+        invalidate()
         return true
     }
 
-    private fun extendLayerMaskGesture(normalizedX: Float, normalizedY: Float, pressure: Float) {
-        val transaction = layerMaskGesture ?: return
-        val surface = editingLayerMaskSurface ?: return
-        val modelSize = if (layerMaskGestureErasing) gestureEraserSize else gestureBrushSize
-        val scale = ((surface.logicalWidth / pageModelWidth.coerceAtLeast(1f)) +
-            (surface.logicalHeight / pageModelHeight.coerceAtLeast(1f))) * .5f
-        val radius = (modelSize * scale * .5f).coerceAtLeast(1f)
-        val centerX = normalizedX * surface.logicalWidth
-        val centerY = normalizedY * surface.logicalHeight
-        val bounds = PixelRect(
-            kotlin.math.floor(centerX - radius - 1f).toInt().coerceAtLeast(0),
-            kotlin.math.floor(centerY - radius - 1f).toInt().coerceAtLeast(0),
-            kotlin.math.ceil(centerX + radius + 1f).toInt().coerceAtMost(surface.logicalWidth),
-            kotlin.math.ceil(centerY + radius + 1f).toInt().coerceAtMost(surface.logicalHeight),
-        )
-        if (bounds.isEmpty) return
-        val alpha = ByteArray(bounds.width * bounds.height)
-        val strength = (pressure.coerceIn(.05f, 1f) * 255f).toInt()
-        for (y in bounds.top until bounds.bottom) for (x in bounds.left until bounds.right) {
-            val distance = hypot((x + .5f - centerX).toDouble(), (y + .5f - centerY).toDouble()).toFloat()
-            if (distance <= radius) alpha[(y - bounds.top) * bounds.width + x - bounds.left] = strength.toByte()
+    private fun appendLayerMaskGesture(event: MotionEvent, pointerIndex: Int, x: Float, y: Float) {
+        val gesture = layerMaskGesture ?: return
+        val samples = buildList {
+            for (i in 0 until event.historySize) {
+                val point = historicalCanvasPoint(event, pointerIndex, i)
+                add(v5DocumentSample(event, pointerIndex, point.first / width.coerceAtLeast(1),
+                    point.second / height.coerceAtLeast(1), i, gesture.coverage))
+            }
+            add(v5DocumentSample(event, pointerIndex, x, y, null, gesture.coverage))
         }
-        transaction.composeAlpha(
-            bounds,
-            alpha,
-            mode = if (layerMaskGestureErasing) MaskComposeMode.SUBTRACT else MaskComposeMode.ADD,
-        )
-        editingLayerMaskId?.let { layerId ->
-            layerMaskSurfaces = layerMaskSurfaces + (layerId to transaction.previewSnapshot())
-        }
-        invalidate()
+        if (!v5StrokeController.append(samples)) onPaintCapabilityRejected("UNSUPPORTED_WITH_EXPLICIT_REASON: MASK_INPUT_QUEUE_LIMIT")
     }
 
-    private fun finishLayerMaskGesture() {
-        val transaction = layerMaskGesture ?: return
+    private fun finishLayerMaskGesture(event: MotionEvent, pointerIndex: Int, x: Float, y: Float) {
+        val gesture = layerMaskGesture ?: return
         val surface = editingLayerMaskSurface ?: return cancelLayerMaskGesture()
         val layerId = editingLayerMaskId ?: return cancelLayerMaskGesture()
-        layerMaskGesture = null
-        val record = transaction.commit()
-        if (record.changedTileCount == 0 && record.beforeDefaultAlpha == record.afterDefaultAlpha) {
-            record.close()
-            layerMaskSurfaces = layerMaskSurfaces + (layerId to surface.snapshot())
-            return
+        val accepted = v5StrokeController.finish(v5DocumentSample(event, pointerIndex, x, y, null, gesture.coverage)) { published ->
+            val record = try { gesture.projection.finish(published.snapshot, published.dirtyBounds) }
+                finally { published.record.close() }
+            val snapshot = surface.snapshot()
+            gesture.finished = true
+            maskBrushContacts.remove(gesture.coverage.surfaceId)
+            pendingMaskCompletions.add {
+                try { recordLayerMaskEdit(layerId, surface, record, snapshot) }
+                finally { pendingMaskPublications-- }
+            }
+            v5MainHandler.post { drainMaskCompletions() }
         }
-        recordLayerMaskEdit(layerId, surface, record)
+        if (accepted) pendingMaskPublications++
+        layerMaskGesture = null
     }
 
     private fun recordLayerMaskEdit(
         layerId: String,
         surface: MaskTileSurface,
         record: MaskTileTransactionRecord,
+        committedSnapshot: MaskTileSurfaceSnapshot = surface.snapshot(),
     ): Boolean {
         if (record.changedTileCount == 0 && record.beforeDefaultAlpha == record.afterDefaultAlpha) {
             record.close()
             return false
         }
-        fun publish() {
-            val snapshot = surface.snapshot()
+        val persistent = onLayerMaskStrokeCommitted?.invoke(layerId, committedSnapshot)
+        if (onLayerMaskStrokeCommitted != null && persistent == null) {
+            surface.apply(record, MaskTileSurface.HistoryDirection.UNDO)
+            layerMaskSurfaces = layerMaskSurfaces + (layerId to surface.snapshot())
+            record.close()
+            return false
+        }
+        fun publishPreview(snapshot: MaskTileSurfaceSnapshot = surface.snapshot()) {
+            if (editingLayerMaskId == layerId) {
+                editingLayerMaskSurface = surface
+                maskWorkingAssetPath = layerMasks[layerId]?.surface?.assetPath
+            }
             layerMaskSurfaces = layerMaskSurfaces + (layerId to snapshot)
-            onLayerMaskSurfaceCommitted(layerId, snapshot)
+            if (persistent == null) onLayerMaskSurfaceCommitted(layerId, snapshot)
             invalidate()
         }
-        publish()
+        publishPreview(committedSnapshot)
         recordExternalEdit(
-            undo = { surface.apply(record, MaskTileSurface.HistoryDirection.UNDO); publish() },
-            redo = { surface.apply(record, MaskTileSurface.HistoryDirection.REDO); publish() },
-            dispose = record::close,
+            undo = { surface.apply(record, MaskTileSurface.HistoryDirection.UNDO); persistent?.undo?.invoke(); publishPreview() },
+            redo = { surface.apply(record, MaskTileSurface.HistoryDirection.REDO); persistent?.redo?.invoke(); publishPreview() },
+            dispose = { record.close(); persistent?.dispose?.invoke() },
         )
         return true
     }
@@ -1296,7 +1411,10 @@ class InkCanvasView(context: Context) : View(context) {
     private fun cancelLayerMaskGesture() {
         val transaction = layerMaskGesture ?: return
         layerMaskGesture = null
-        transaction.cancel()
+        transaction.cancelled = true
+        v5StrokeController.cancel()
+        transaction.projection.cancel()
+        maskBrushContacts.remove(transaction.coverage.surfaceId)
         val surface = editingLayerMaskSurface ?: return
         editingLayerMaskId?.let { layerId -> layerMaskSurfaces = layerMaskSurfaces + (layerId to surface.snapshot()) }
         invalidate()
@@ -1575,6 +1693,7 @@ class InkCanvasView(context: Context) : View(context) {
         finishSelectionTransform(apply = false)
         resetDrawAndHold()
         if (activeTool != null) cancelActiveGestureForNavigation()
+        flushPendingMaskPublications()
         releaseHeldStylusButtons()
         lastStylusButtonState = 0
         stopContinuousPlot()
@@ -2348,10 +2467,7 @@ class InkCanvasView(context: Context) : View(context) {
                     parent?.requestDisallowInterceptTouchEvent(false)
                     return true
                 }
-                if (beginLayerMaskGesture(activeTool ?: tool)) {
-                    extendLayerMaskGesture(normalizedX, normalizedY, event.getPressure(pointerIndex))
-                    return true
-                }
+                if (beginLayerMaskGesture(event, pointerIndex, normalizedX, normalizedY)) return true
                 if (activeTool == EditorTool.ERASER) {
                     if (beginV5PaintGesture(event, pointerIndex, normalizedX, normalizedY)) return true
                     onPaintCapabilityRejected("This eraser configuration is not available in Paint Engine V5")
@@ -2445,19 +2561,11 @@ class InkCanvasView(context: Context) : View(context) {
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                if (appendV5PaintGesture(event, pointerIndex)) return true
                 if (layerMaskGesture != null) {
-                    for (i in 0 until event.historySize) {
-                        val point = historicalCanvasPoint(event, pointerIndex, i)
-                        extendLayerMaskGesture(
-                            point.first / width.coerceAtLeast(1),
-                            point.second / height.coerceAtLeast(1),
-                            event.getHistoricalPressure(pointerIndex, i),
-                        )
-                    }
-                    extendLayerMaskGesture(normalizedX, normalizedY, event.getPressure(pointerIndex))
+                    appendLayerMaskGesture(event, pointerIndex, normalizedX, normalizedY)
                     return true
                 }
+                if (appendV5PaintGesture(event, pointerIndex)) return true
                 if (activeTool == EditorTool.FILL) {
                     if (fillSubTool == FillSubTool.BUCKET) adjustFillSensitivity(event.x)
                     else {
@@ -2533,8 +2641,7 @@ class InkCanvasView(context: Context) : View(context) {
                     if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
                         cancelLayerMaskGesture()
                     } else {
-                        extendLayerMaskGesture(normalizedX, normalizedY, event.getPressure(pointerIndex))
-                        finishLayerMaskGesture()
+                        finishLayerMaskGesture(event, pointerIndex, normalizedX, normalizedY)
                     }
                     activeTool = null
                     flushDeferredStylusButtonReleases()
@@ -2990,6 +3097,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun cancelActiveGestureForNavigation() {
+        cancelLayerMaskGesture()
         stopContinuousPlot()
         if (activeTool == EditorTool.ERASER && v5StrokeController.isActive) {
             EraserLifecycleTrace.record(
@@ -4931,16 +5039,19 @@ class InkCanvasView(context: Context) : View(context) {
     private fun v5PaintConfiguration(
         requestedTool: EditorTool? = activeTool,
         requestedDiameter: Float? = null,
+        maskCoverageSurface: PixelTileSurface? = null,
     ): V5PaintConfiguration? {
         val active = requestedTool ?: return null
         if (active !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) return null
-        val surface = rasterTileSurfaceFor(activeLayerId) ?: return null
+        val surface = maskCoverageSurface ?: rasterTileSurfaceFor(activeLayerId) ?: return null
+        val maskCoverage = maskCoverageSurface != null
+        val inkColor = if (maskCoverage) Color.WHITE else this.inkColor
         if (surface.pixelFormat != PixelTileFormat.PREMULTIPLIED_SRGB_8888) return null
         // Opacity, blend, clipping and layer masks are projection properties. They must never
         // disable edits to the layer's own pixel surface. Paint on an alpha-locked layer publishes
         // with SOURCE_ATOP below; erasing is rejected because it cannot preserve destination alpha.
-        if (layerContentRejection() != null ||
-            (activeLayerId in alphaLockedLayers && active == EditorTool.ERASER)
+        if ((if (maskCoverage) maskTargetRejection(activeLayerId) else layerContentRejection()) != null ||
+            (!maskCoverage && activeLayerId in alphaLockedLayers && active == EditorTool.ERASER)
         ) return null
         val diameter = requestedDiameter ?: if (active == EditorTool.ERASER) gestureEraserSize else gestureBrushSize
         val diameterPixels = (diameter.coerceIn(.01f, 800f) / REFERENCE_WIDTH * surface.logicalWidth)
@@ -4988,10 +5099,10 @@ class InkCanvasView(context: Context) : View(context) {
                 program.pressure.flowMinimum,
                 program.pressure.flowCurve.map { it.x to it.y },
             )
-            val erase = program.output == BrushOutputV5.ERASE
+            val erase = !maskCoverage && program.output == BrushOutputV5.ERASE
             val paintBlend = when {
                 erase -> DryBlend.DESTINATION_OUT
-                activeLayerId in alphaLockedLayers -> DryBlend.SOURCE_ATOP
+                !maskCoverage && activeLayerId in alphaLockedLayers -> DryBlend.SOURCE_ATOP
                 else -> DryBlend.SOURCE_OVER
             }
             val stampProgram = program.stamp
@@ -5389,12 +5500,12 @@ class InkCanvasView(context: Context) : View(context) {
                 ) ?: return null
                 val definition = StampBrushDefinition(
                     diameterPixels = diameterPixels,
-                    colorArgb = Color.TRANSPARENT,
+                    colorArgb = if (maskCoverage) Color.WHITE else Color.TRANSPARENT,
                     opacity = eraserOpacity.coerceIn(0f, 1f),
                     spacingRatio = CspBrushGap.ratio(brushSpacingMode, brushSpacing),
                     tips = listOf(mask),
                     sizePressure = PressureResponse(eraserPressureSize, .15f),
-                    blend = DryBlend.DESTINATION_OUT,
+                    blend = if (maskCoverage) DryBlend.SOURCE_OVER else DryBlend.DESTINATION_OUT,
                 )
                 return V5PaintConfiguration(
                     StampPaintOp(surface, definition, selection, sampleTransforms = sampleTransforms),
@@ -5404,11 +5515,11 @@ class InkCanvasView(context: Context) : View(context) {
             }
             val definition = DryInkDefinition(
                     diameterPixels = diameterPixels,
-                    colorArgb = Color.TRANSPARENT,
+                    colorArgb = if (maskCoverage) Color.WHITE else Color.TRANSPARENT,
                     opacity = eraserOpacity.coerceIn(0f, 1f),
                     minimumPressureScale = if (eraserPressureSize) .15f else 1f,
                     hardness = eraserHardness.coerceIn(0f, 1f),
-                    blend = DryBlend.DESTINATION_OUT,
+                    blend = if (maskCoverage) DryBlend.SOURCE_OVER else DryBlend.DESTINATION_OUT,
                 )
             return V5PaintConfiguration(
                 DryInkPaintOp(surface, definition, selection, sampleTransforms),
@@ -5712,8 +5823,9 @@ class InkCanvasView(context: Context) : View(context) {
         normalizedX: Float,
         normalizedY: Float,
         historicalIndex: Int?,
+        targetSurface: PixelTileSurface? = null,
     ): RawDocumentSample {
-        val surface = requireNotNull(rasterTileSurfaceFor(activeLayerId))
+        val surface = targetSurface ?: requireNotNull(rasterTileSurfaceFor(activeLayerId))
         val pressure = if (historicalIndex == null) event.getPressure(pointerIndex)
             else event.getHistoricalPressure(pointerIndex, historicalIndex)
         val timeMillis = if (historicalIndex == null) event.eventTime else event.getHistoricalEventTime(historicalIndex)
@@ -5816,6 +5928,8 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun undo() {
         if (selectionLayerTransferPending) return
+        if (layerMaskGesture != null) { cancelActiveGestureForNavigation(); return }
+        flushPendingMaskPublications()
         clearLiquifyReconstruction()
         finishSelectionColorFill(true)
         v5LassoSession?.let { if (it.undoContact()) { syncLassoPreview(it.preview()); invalidate(); return } }
@@ -5826,6 +5940,8 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun redo() {
         if (selectionLayerTransferPending) return
+        if (layerMaskGesture != null) { cancelActiveGestureForNavigation(); return }
+        flushPendingMaskPublications()
         clearLiquifyReconstruction()
         v5LassoSession?.let { if (it.redoContact()) { syncLassoPreview(it.preview()); invalidate(); return } }
         finishSelectionTransform(apply = true)
@@ -5864,11 +5980,11 @@ class InkCanvasView(context: Context) : View(context) {
     var onLayerCreationRequested: ((String, Boolean) -> Unit)? = null
     var onLayerMergeRequested: (String) -> Unit = {}
     private var pendingPaintPublicationsForMerge = 0
-    internal fun hasPendingPaintPublicationForMerge() = pendingPaintPublicationsForMerge > 0 || v5StrokeController.isActive
-    internal fun hasActivePaintContact() = v5StrokeController.isActive
+    internal fun hasPendingPaintPublicationForMerge() = pendingPaintPublicationsForMerge > 0 || pendingMaskPublications > 0 || hasActivePaintContact()
+    internal fun hasActivePaintContact() = v5StrokeController.isActive || layerMaskGesture != null
     fun requestLayerMerge(layerId: String) {
         if (selectionLayerTransferPending) return
-        if (v5StrokeController.isActive) {
+        if (hasActivePaintContact()) {
             onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "请先抬笔，再合并图层" else "Lift the pen before merging layers")
             return
         }

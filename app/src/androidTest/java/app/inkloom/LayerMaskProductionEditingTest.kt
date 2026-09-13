@@ -39,7 +39,8 @@ class LayerMaskProductionEditingTest {
                 pageModelHeight = 64f
                 activeLayerId = "paint"
                 tool = EditorTool.PEN
-                baseWidth = 12f
+                installV5TestInk(size = 150f)
+                eraserWidth = 300f
                 setRasterLayerSurfaces(mapOf("paint" to raster))
                 layerMasks = mapOf("paint" to LayerMask(enabled = true))
                 layerMaskSurfaces = mapOf("paint" to mask.snapshot())
@@ -85,7 +86,8 @@ class LayerMaskProductionEditingTest {
                 pageModelHeight = size.toFloat()
                 activeLayerId = "paint"
                 tool = EditorTool.PEN
-                baseWidth = 64f
+                // Canonical brush size is expressed against the 800-unit reference width.
+                installV5TestInk(size = 64f * 800f / size)
                 layerMasks = mapOf("paint" to LayerMask(enabled = true))
                 layerMaskSurfaces = mapOf("paint" to mask.snapshot())
                 onLayerMaskSurfaceCommitted = { _, snapshot -> committed = snapshot }
@@ -134,6 +136,10 @@ class LayerMaskProductionEditingTest {
         )
         try {
             InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(event) }
+            if (action == MotionEvent.ACTION_UP) {
+                view.awaitV5StrokeWorkerIdleForTest()
+                InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            }
         } finally {
             event.recycle()
         }

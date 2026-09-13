@@ -15,6 +15,17 @@ object LayerEditingTarget {
         }
     }
 
+    /** A folder mask is paintable; folder content itself remains a structural target. */
+    fun maskRejection(layers: List<InkLayer>, layerId: String): Rejection? {
+        val layer = layers.firstOrNull { it.id == layerId } ?: return Rejection.MISSING
+        return when {
+            layer.role == LayerRole.BACKGROUND -> Rejection.BACKGROUND
+            LayerHierarchy.effectiveLocked(layers, layer) -> Rejection.LOCKED
+            !LayerHierarchy.effectiveVisible(layers, layer) -> Rejection.HIDDEN
+            else -> null
+        }
+    }
+
     /** Only a removed node may change the selection without an explicit user selection. */
     fun retainSelection(layers: List<InkLayer>, selectedId: String): String =
         selectedId.takeIf { id -> layers.any { it.id == id } }
