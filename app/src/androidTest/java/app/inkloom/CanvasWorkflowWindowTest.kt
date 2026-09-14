@@ -29,6 +29,7 @@ class CanvasWorkflowWindowTest {
     private val clean = TestRule { base, _ -> object : Statement() {
         override fun evaluate() {
             val context = ApplicationProvider.getApplicationContext<Context>()
+            context.getSharedPreferences("inkloom_editor_panels", Context.MODE_PRIVATE).edit().clear().commit()
             context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE).edit().clear()
                 .putString("language", "ENGLISH").putInt("studioWorkspaceVersion", 2)
                 .putBoolean("showBrushPanel", false).putBoolean("showLayerPanel", false)
@@ -100,6 +101,32 @@ class CanvasWorkflowWindowTest {
         tap("Brushes"); tap("Close brushes panel")
         SystemClock.sleep(1500)
         assertEquals("Checkpoint and brush panel must not restore erased pixels", erased, inkCount())
+    }
+
+    @Test fun panelDragReturnsKeyboardHoverZoomAndDrawingToCanvas() {
+        tap("New Note"); tap("Create"); val view = canvas()
+        tap("Layers")
+        val start = center("Drag layers panel")
+        val end = start + Offset(-160f, 90f)
+        val down = SystemClock.uptimeMillis()
+        event(MotionEvent.ACTION_DOWN, start, down, MotionEvent.TOOL_TYPE_FINGER)
+        for (index in 1..24) {
+            event(MotionEvent.ACTION_MOVE, start + (end-start)*(index/24f), down, MotionEvent.TOOL_TYPE_FINGER)
+            SystemClock.sleep(16)
+        }
+        event(MotionEvent.ACTION_UP, end, down, MotionEvent.TOOL_TYPE_FINGER)
+        compose.waitForIdle()
+        tap("Close layers panel")
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_E); compose.waitForIdle()
+        assertEquals(EditorTool.ERASER, view.tool)
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_B); compose.waitForIdle()
+        assertEquals(EditorTool.PEN, view.tool)
+        hoverThenTap(pagePoint(view, .25f, .3f))
+        val scale = view.viewportScale
+        pinch(view); compose.waitForIdle()
+        assertTrue(view.viewportScale > scale)
+        stroke(pagePoint(view, .3f, .4f), pagePoint(view, .5f, .4f))
+        compose.waitUntil(10_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 }
     }
 
     private fun colorDrop(view: InkCanvasView) {

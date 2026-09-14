@@ -7,6 +7,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
@@ -29,6 +30,7 @@ class BrushQuickPropertiesWindowTest {
     private val clean = TestRule { base, _ -> object : Statement() {
         override fun evaluate() {
             val context = ApplicationProvider.getApplicationContext<Context>()
+            context.getSharedPreferences("inkloom_editor_panels", Context.MODE_PRIVATE).edit().clear().commit()
             context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE).edit().clear()
                 .putString("language", "ENGLISH").putInt("studioWorkspaceVersion", 2)
                 .putBoolean("showBrushPanel", false).putBoolean("showLayerPanel", false)
@@ -66,7 +68,10 @@ class BrushQuickPropertiesWindowTest {
         tap("Brushes")
         assertEquals("Opening the library must retain live brush settings", masters,
             Triple(canvas.baseWidth, canvas.inkOpacity, canvas.inkColor))
-        tap("Quick brush properties")
+        compose.onNodeWithContentDescription("Quick brush properties").fetchSemanticsNode().let { node ->
+            tapAt(node.boundsInWindow.center + node.positionOnScreen - node.positionInWindow)
+        }
+        compose.waitForIdle()
         val preferences = context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE)
         var writes = 0
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -112,7 +117,10 @@ class BrushQuickPropertiesWindowTest {
 
     @Test fun userPressureEditKeepsItsIdAndChangesActualPressureWidth() {
         openPencil()
-        tap("Quick brush properties")
+        compose.onNodeWithContentDescription("Quick brush properties").fetchSemanticsNode().let { node ->
+            tapAt(node.boundsInWindow.center + node.positionOnScreen - node.positionInWindow)
+        }
+        compose.waitForIdle()
         dragFlow(cancel = false) {}
         val user = savedBrushes().single()
         // Restore a substantial flow so the measured footprint is not near alpha quantization.
@@ -127,7 +135,10 @@ class BrushQuickPropertiesWindowTest {
         val wide = drawWidthAt(.38f, .9f)
         assertTrue("Enabled pressure must change footprint width: $narrow / $wide", wide > narrow + 1)
         tap("Brushes")
-        tap("Quick brush properties")
+        compose.onNodeWithContentDescription("Quick brush properties").fetchSemanticsNode().let { node ->
+            tapAt(node.boundsInWindow.center + node.positionOnScreen - node.positionInWindow)
+        }
+        compose.waitForIdle()
         tap("Pressure controls size")
         val saved = savedBrushes().single()
         assertEquals(user.id, saved.id)
@@ -145,7 +156,10 @@ class BrushQuickPropertiesWindowTest {
 
     @Test fun quickEntryCanOpenFactoryFullEditorAndCancelWithoutSaving() {
         openPencil()
-        tap("Quick brush properties")
+        compose.onNodeWithContentDescription("Quick brush properties").fetchSemanticsNode().let { node ->
+            tapAt(node.boundsInWindow.center + node.positionOnScreen - node.positionInWindow)
+        }
+        compose.waitForIdle()
         tap("Open full brush editor")
         tap("Cancel")
         assertTrue(savedBrushes().isEmpty())
@@ -154,7 +168,10 @@ class BrushQuickPropertiesWindowTest {
 
     @Test fun accessibilityCommitsOnceAndUserCancelAndNoOpDoNotSave() {
         openPencil()
-        tap("Quick brush properties")
+        compose.onNodeWithContentDescription("Quick brush properties").fetchSemanticsNode().let { node ->
+            tapAt(node.boundsInWindow.center + node.positionOnScreen - node.positionInWindow)
+        }
+        compose.waitForIdle()
         val preferences = context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE)
         var writes = 0
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->

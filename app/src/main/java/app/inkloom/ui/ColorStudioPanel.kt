@@ -46,22 +46,30 @@ internal fun ColorStudioPanel(
     onColorCommit: (Int) -> Unit,
     onResizeWidth: (Float) -> Unit,
     colorPair: ColorPairControls? = null,
+    fixedTab: Int? = null,
+    onSwapColors: (() -> Unit)? = null,
+    availableHeight: androidx.compose.ui.unit.Dp? = null,
 ) {
     val context = LocalContext.current
-    RelayoutPaletteOnWindowResize()
+    if (fixedTab == null) RelayoutPaletteOnWindowResize()
     val state = LocalColorStudioState.current
-    val mixingView = remember(context, state) { ColorMixingView(context, state.mixing) }
-    val contentHeight = (LocalConfiguration.current.screenHeightDp - 200).coerceIn(160, 420).dp
+    val contentHeight = availableHeight?.let { (it - 22.dp).coerceAtLeast(100.dp) } ?: (LocalConfiguration.current.screenHeightDp - 200).coerceIn(160, 420).dp
     val density = LocalDensity.current
     var visibleContentHeight by remember { mutableStateOf(contentHeight) }
-    var draft by remember { mutableStateOf(ColorPickerDraft.fromColor(color)) }
+    var draft by if (fixedTab != null) state.draftState(colorPair?.secondarySelected == true, color) else remember { mutableStateOf(ColorPickerDraft.fromColor(color)) }
     LaunchedEffect(color) { draft = draft.withColor(color) }
     val currentColorCommit by rememberUpdatedState(onColorCommit)
     fun pick(value: Int) { draft = draft.withColor(value); currentColorCommit(value) }
-    val tab = state.tab
+    val tab = fixedTab ?: state.tab
     fun tr(en: String, zh: String) = language.text(en, zh)
     Column(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
+        if (fixedTab != null) Row(Modifier.fillMaxWidth().height(22.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (colorPair?.secondarySelected == true) tr("Secondary color", "副色") else tr("Primary color", "主色"), color = MutedInk, fontSize = 11.sp, modifier = Modifier.weight(1f))
+            onSwapColors?.let { swap -> IconButton(swap, Modifier.size(22.dp)) {
+                Icon(Icons.Outlined.SwapHoriz, tr("Swap foreground and background colors", "交换前景色和背景色"), Modifier.size(16.dp), tint = Ink)
+            } }
+        }
+        if (fixedTab == null) Row(Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
             listOf(tr("Wheel", "色环"), tr("Palettes", "色板"), tr("Mix", "混色"), tr("Nearby", "近似色")).forEachIndexed { index, label ->
                 Box(Modifier.weight(1f).height(40.dp)
                     .background(if (tab == index) SageContainer else Color.Transparent)
@@ -79,7 +87,10 @@ internal fun ColorStudioPanel(
                     when (tab) {
                         0 -> CspColorPanel(color, onColorPreview, ::pick, onResizeWidth = onResizeWidth, showHeader = false, initialDraft = draft, onDraftChange = { draft = it }, maximumHeight = visibleContentHeight, colorPair = colorPair, language = language)
                         1 -> ColorSetPanel(color, language, visibleContentHeight, ::pick)
-                        2 -> MixingPalette(color, language, ::pick, mixingView, state.mixingTool, state::selectTool, state.mixingRadius, state::setRadius)
+                        2 -> {
+                            val mixingView = remember(context, state) { ColorMixingView(context, state.mixing) }
+                            MixingPalette(color, language, ::pick, mixingView, state.mixingTool, state::selectTool, state.mixingRadius, state::setRadius)
+                        }
                         3 -> NearbyColorPalette(draft, language, ::pick)
                     }
                 }
