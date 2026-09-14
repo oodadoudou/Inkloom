@@ -20,6 +20,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import app.inkloom.ui.theme.Paper
+import app.inkloom.ui.theme.Ink
 import app.inkloom.document.*
 import app.inkloom.settings.text
 import kotlinx.coroutines.*
@@ -68,8 +73,8 @@ internal fun rememberImagePaperImporter(
         }
     }
     draft?.let { current ->
-        ImagePaperPreviewDialog(current.template,
-            onDismiss = { current.close(); draft = null },
+        ImagePaperPreviewDialog(current.template, saveFailed = failed,
+            onDismiss = { failed = false; current.close(); draft = null },
             onSave = { template ->
                 try { val saved = save(template); onSaved(saved); current.close(); draft = null }
                 catch (_: Exception) { failed = true }
@@ -79,7 +84,7 @@ internal fun rememberImagePaperImporter(
 }
 
 @Composable
-internal fun ImagePaperPreviewDialog(template: PageTemplate, onDismiss: () -> Unit, onSave: (PageTemplate) -> Unit) {
+internal fun ImagePaperPreviewDialog(template: PageTemplate, saveFailed: Boolean = false, onDismiss: () -> Unit, onSave: (PageTemplate) -> Unit) {
     val language = LocalUiLanguage.current
     fun tr(en: String, zh: String) = language.text(en, zh)
     var name by remember(template.id) { mutableStateOf(template.name) }
@@ -94,22 +99,24 @@ internal fun ImagePaperPreviewDialog(template: PageTemplate, onDismiss: () -> Un
         paperAspectRatio = if (valid) w!!.toFloat() / h!! else template.width / template.height, cropToFill = crop, paperColorArgb = paperColor)
     val focus = remember { FocusRequester() }
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-    AlertDialog(onDismissRequest = onDismiss, title = {
-        LaunchedEffect(Unit) { focus.requestFocus(); keyboard?.hide() }
-        Text(tr("Image paper", "图片纸张"), Modifier.focusRequester(focus).focusable())
-    },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    val finishEditing = { focus.requestFocus(); keyboard?.hide(); Unit }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        LaunchedEffect(Unit) { finishEditing() }
+        Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp), contentAlignment = Alignment.Center) {
+            Surface(Modifier.widthIn(max = 480.dp), color = Paper, contentColor = Ink, shape = MaterialTheme.shapes.extraLarge) {
+                Column(Modifier.focusRequester(focus).focusable().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(tr("Image paper", "图片纸张"), style = MaterialTheme.typography.headlineSmall)
+            Column(Modifier.weight(1f, fill = false).heightIn(max = 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ImagePaperThumbnail(background, Modifier.fillMaxWidth().height(180.dp))
                 OutlinedTextField(name, { name = it.take(80) }, label = { Text(tr("Template name", "模板名称")) }, singleLine = true)
                 OutlinedTextField(width, { input ->
                     width = input.filter(Char::isDigit).take(5)
                     if (locked) width.toIntOrNull()?.let { height = (it * template.height / template.width).toInt().coerceAtLeast(1).toString() }
-                }, label = { Text(tr("Width (px)", "宽度 (px)")) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                }, label = { Text(tr("Width (px)", "宽度 (px)")) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = androidx.compose.ui.text.input.ImeAction.Done), keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { finishEditing() }))
                 OutlinedTextField(height, { input ->
                     height = input.filter(Char::isDigit).take(5)
                     if (locked) height.toIntOrNull()?.let { width = (it * template.width / template.height).toInt().coerceAtLeast(1).toString() }
-                }, label = { Text(tr("Height (px)", "高度 (px)")) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                }, label = { Text(tr("Height (px)", "高度 (px)")) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = androidx.compose.ui.text.input.ImeAction.Done), keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { finishEditing() }))
                 Row { Checkbox(locked, { locked = it }); Text(tr("Keep proportions", "保持比例"), Modifier.padding(top = 12.dp)) }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(PaperColorCatalog.WHITE to tr("White", "白色"),
@@ -123,6 +130,14 @@ internal fun ImagePaperPreviewDialog(template: PageTemplate, onDismiss: () -> Un
                     FilterChip(crop, { crop = true }, label = { Text(tr("Fill and crop", "铺满裁切")) })
                 }
             }
-        }, confirmButton = { TextButton(enabled = valid, onClick = { onSave(template.copy(name = name.trim(), width = w!!.toFloat(), height = h!!.toFloat(), background = background)) }) { Text(tr("Save template", "保存模板")) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) } })
+
+                    if (saveFailed) Text(tr("Could not save this template. Please try again.", "无法保存此模板，请重试。"), color = MaterialTheme.colorScheme.error)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) }
+                        TextButton(enabled = valid, onClick = { finishEditing(); onSave(template.copy(name = name.trim(), width = w!!.toFloat(), height = h!!.toFloat(), background = background)) }) { Text(tr("Save template", "保存模板")) }
+                    }
+                }
+            }
+        }
+    }
 }

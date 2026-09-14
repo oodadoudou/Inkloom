@@ -66,4 +66,30 @@ class ImagePaperTemplateTest {
             finally { result.recycle() }
         } finally { file.delete() }
     }
+    @Test fun cameraPaperOrientationIsAppliedOnceInPreviewAndExport() {
+        val file = File.createTempFile("rotated-paper", ".jpg", context.cacheDir)
+        val image = Bitmap.createBitmap(96, 32, Bitmap.Config.ARGB_8888)
+        android.graphics.Canvas(image).apply {
+            drawColor(Color.RED)
+            drawRect(48f, 0f, 96f, 32f, android.graphics.Paint().apply { color = Color.BLUE })
+        }
+        file.outputStream().use { image.compress(Bitmap.CompressFormat.JPEG, 100, it) }; image.recycle()
+        try {
+            android.media.ExifInterface(file.absolutePath).apply {
+                setAttribute(android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_ROTATE_90.toString())
+                saveAttributes()
+            }
+            assertEquals(32 to 96, ImagePaperRenderer.dimensions(file))
+            assets.prepareImagePaper(Uri.fromFile(file), "Camera paper").use { draft ->
+                assertEquals(32f, draft.template.width); assertEquals(96f, draft.template.height)
+                val preview = ImagePaperRenderer.render(draft.template.background as PageBackground.Image, 96)
+                try {
+                    assertEquals(288, preview.height)
+                    assertTrue(Color.red(preview.getPixel(48, 30)) > 220)
+                    assertTrue(Color.blue(preview.getPixel(48, 250)) > 220)
+                } finally { preview.recycle() }
+            }
+        } finally { file.delete() }
+    }
+
 }
