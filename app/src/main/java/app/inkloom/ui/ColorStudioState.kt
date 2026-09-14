@@ -19,6 +19,10 @@ internal class ColorStudioState(application: Application) : AndroidViewModel(app
     var mixingRadius by mutableFloatStateOf(preferences.getFloat("mixRadius", 12f).coerceIn(2f, 48f))
         private set
 
+    private val channelDrafts = mutableMapOf<Boolean, MutableState<ColorPickerDraft>>()
+    fun draftState(secondary: Boolean, color: Int): MutableState<ColorPickerDraft> =
+        channelDrafts.getOrPut(secondary) { mutableStateOf(ColorPickerDraft.fromColor(color)) }
+
     fun selectTab(value: Int) { tab = value.coerceIn(0, 3); preferences.edit { putInt("studioTab", tab) } }
     fun selectTool(value: MixingBoard.Tool) { mixingTool = value; preferences.edit { putInt("mixTool", value.ordinal) } }
     fun setRadius(value: Float) { mixingRadius = value.coerceIn(2f, 48f); preferences.edit { putFloat("mixRadius", mixingRadius) } }

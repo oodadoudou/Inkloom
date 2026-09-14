@@ -23,6 +23,7 @@ class BrushStudioWindowTest {
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
     private val clean = TestRule { base, _ -> object : Statement() {
         override fun evaluate() {
+            context.getSharedPreferences("inkloom_editor_panels", Context.MODE_PRIVATE).edit().clear().commit()
             context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE).edit().clear()
                 .putString("language", "SIMPLIFIED_CHINESE").putInt("studioWorkspaceVersion", 2)
                 .putBoolean("showBrushPanel", false).putBoolean("showLayerPanel", false).putBoolean("showPageRail", false).commit()

@@ -32,6 +32,7 @@ class ColorWindowInputContractTest {
     private val clean = TestRule { base, _ -> object : Statement() {
         override fun evaluate() {
             val context = ApplicationProvider.getApplicationContext<Context>()
+            context.getSharedPreferences("inkloom_editor_panels", Context.MODE_PRIVATE).edit().clear().commit()
             context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE).edit().clear()
                 .putString("language", "ENGLISH").putInt("studioWorkspaceVersion", 2)
                 .putBoolean("showBrushPanel", false).putBoolean("showLayerPanel", false)
@@ -519,11 +520,12 @@ class ColorWindowInputContractTest {
         val area = bounds("Color mixing board")
         val point = Offset(area.exactCenterX(), area.exactCenterY())
         stroke(Offset(area.left + area.width() * .2f, point.y), point)
+        val control = bounds("Mixing brush size")
         val screenshot = instrumentation.uiAutomation.takeScreenshot()
         try {
             assertEquals("The native mixing background must not paint over the color bar or command icons",
                 screenshot.getPixel(area.right - 8, area.top - 10),
-                screenshot.getPixel(area.right - 8, area.bottom + 32))
+                screenshot.getPixel(control.left + 1, control.top + 1))
         } finally { screenshot.recycle() }
         tap("Blend on mixing board")
         repeat(3) {
@@ -592,6 +594,35 @@ class ColorWindowInputContractTest {
         screenshot.recycle()
         tap("Pick from mixing board"); tapAt(point); compose.waitForIdle()
         for (shift in listOf(0, 8, 16)) assertTrue("Picker must sample the displayed pigment/background composite", kotlin.math.abs((displayed ushr shift and 255) - (view.inkColor ushr shift and 255)) <= 2)
+    }
+
+    @Test fun detachedMixAndWheelShareColorsWithoutLosingTheMixingSession() {
+        tap("New Note"); tap("Create"); val canvas=canvas()
+        tap("Colors"); tap("Mix"); SystemClock.sleep(500)
+        val before=bounds("Color mixing board")
+        stroke(Offset(before.left+before.width()*.2f,before.exactCenterY()),Offset(before.exactCenterX(),before.exactCenterY()))
+        val grip=center("Drag mix panel")
+        val close=bounds("Close mix panel")
+        val end=Offset(close.right-3f,close.bottom+80f)
+        val down=SystemClock.uptimeMillis()
+        event(MotionEvent.ACTION_DOWN,grip,down,MotionEvent.TOOL_TYPE_FINGER)
+        SystemClock.sleep(500)
+        for(i in 1..30) { event(MotionEvent.ACTION_MOVE,grip+(end-grip)*(i/30f),down,MotionEvent.TOOL_TYPE_FINGER); SystemClock.sleep(16) }
+        event(MotionEvent.ACTION_UP,end,down,MotionEvent.TOOL_TYPE_FINGER);compose.waitForIdle()
+        compose.onNodeWithContentDescription("Hue ring").assertExists()
+        compose.onNodeWithContentDescription("Color mixing board").assertExists()
+        val ring=bounds("Hue ring")
+        tapAt(huePoint(ring,270f));compose.waitForIdle()
+        tapAt(trianglePoint(bounds("Saturation and brightness field"),.8f,.7f));compose.waitForIdle()
+        val hsv=FloatArray(3);android.graphics.Color.colorToHSV(canvas.inkColor,hsv)
+        assertEquals(270f,hsv[0],1f)
+        tap("Undo mixing");tap("Redo mixing");tap("Pick from mixing board")
+        val area=bounds("Color mixing board")
+        tapAt(Offset(area.exactCenterX(),area.exactCenterY()));compose.waitForIdle()
+        assertTrue("Reparenting the native mixing view retains its pigment",android.graphics.Color.red(canvas.inkColor)<80)
+        instrumentation.uiAutomation.executeShellCommand("screencap -p /data/local/tmp/inkloom-detached-colors.png").use {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(it).use { stream -> stream.readBytes() }
+        }
     }
 
     private fun hasText(text: String): Boolean {

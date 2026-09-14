@@ -34,6 +34,7 @@ class ColorSetWindowTest {
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
     private val clean = TestRule { base, _ -> object : Statement() {
         override fun evaluate() {
+            context.getSharedPreferences("inkloom_editor_panels", Context.MODE_PRIVATE).edit().clear().commit()
             context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE).edit().clear()
                 .putString("language", "ENGLISH").putInt("studioWorkspaceVersion", 2)
                 .putBoolean("showBrushPanel", false).putBoolean("showLayerPanel", false)
@@ -185,7 +186,8 @@ class ColorSetWindowTest {
 
     private fun closeColorPanel() {
         instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
-        compose.waitUntil(5_000) { findBounds("Choose color set") == null }
+        try { compose.waitUntil(5_000) { findBounds("Choose color set") == null } }
+        catch (failure: Throwable) { captureFailureScreenshot(); throw AssertionError(visibleLabels(), failure) }
     }
 
     private fun longPressDrag(source: String, destination: String) {
