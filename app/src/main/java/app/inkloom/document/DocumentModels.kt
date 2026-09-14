@@ -238,7 +238,12 @@ sealed interface PageBackground {
     @Serializable @SerialName("pdf")
     data class Pdf(val assetPath: String, val pageIndex: Int) : PageBackground
     @Serializable @SerialName("image")
-    data class Image(val assetPath: String) : PageBackground
+    data class Image(
+        val assetPath: String,
+        val paperAspectRatio: Float = 0f,
+        val cropToFill: Boolean = false,
+        val paperColorArgb: Long = 0xFFFFFFFF,
+    ) : PageBackground
 }
 
 @Serializable

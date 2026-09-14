@@ -140,11 +140,18 @@ class DocumentAssetService(private val context: Context) {
 
     fun importImage(uri: Uri, title: String): InkDocument {
         val asset = copyAsset(uri, title.substringAfterLast('.', "image"))
-        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(asset.absolutePath, options)
-        val width = options.outWidth.takeIf { it > 0 } ?: 1600
-        val height = options.outHeight.takeIf { it > 0 } ?: 2263
+        val (width, height) = ImagePaperRenderer.dimensions(asset)
         return InkDocument(title = title.substringBeforeLast('.').ifBlank { "Imported Image" }, pages = listOf(InkPage(width = width.toFloat(), height = height.toFloat(), background = PageBackground.Image(asset.absolutePath))))
+    }
+
+    fun prepareImagePaper(uri: Uri, name: String): ImagePaperDraft {
+        val asset = copyAsset(uri, "paper")
+        val release = retainHistoryAssets(listOf(asset.absolutePath))
+        try {
+            val (width, height) = ImagePaperRenderer.dimensions(asset)
+            return ImagePaperDraft(PageTemplate(name = name.trim().take(80).ifBlank { "Image paper" },
+                width = width.toFloat(), height = height.toFloat(), background = PageBackground.Image(asset.absolutePath)), release)
+        } catch (failure: Throwable) { release(); throw failure }
     }
 
     /** Copies the selected file into private app storage and exposes every PDF page as a reusable template. */
@@ -277,11 +284,7 @@ class DocumentAssetService(private val context: Context) {
     fun renderBackground(background: PageBackground, targetWidth: Int, rotationQuarterTurns: Int = 0, crop: PageCrop = PageCrop()): Bitmap? {
         val sourceBitmap = when (background) {
         is PageBackground.Paper -> null
-        is PageBackground.Image -> BitmapFactory.decodeFile(background.assetPath)?.let { source ->
-            val result = Bitmap.createScaledBitmap(source, targetWidth, (source.height * targetWidth.toFloat() / source.width).toInt().coerceAtLeast(1), true)
-            if (result !== source) source.recycle()
-            result
-        }
+        is PageBackground.Image -> ImagePaperRenderer.render(background, targetWidth)
         is PageBackground.Pdf -> {
             val descriptor = ParcelFileDescriptor.open(File(background.assetPath), ParcelFileDescriptor.MODE_READ_ONLY)
             val renderer = PdfRenderer(descriptor)

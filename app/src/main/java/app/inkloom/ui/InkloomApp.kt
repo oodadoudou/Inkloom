@@ -208,7 +208,7 @@ import java.util.UUID
 private enum class AppDestination { LIBRARY, EDITOR }
 private enum class BrushBatchGroupOperation { MOVE, COPY }
 private const val UNGROUPED_BRUSH_FILTER = "\u0000ungrouped"
-private val LocalUiLanguage = staticCompositionLocalOf { UiLanguage.ENGLISH }
+internal val LocalUiLanguage = staticCompositionLocalOf { UiLanguage.ENGLISH }
 
 private class ColorDropDragShadow(private val color: Int) : View.DragShadowBuilder() {
     private val diameter = 56
@@ -756,6 +756,8 @@ fun InkloomApp(initialIntent: Intent?) {
                     android.util.Log.e("Inkloom", "Could not create notebook", it)
                 }.isSuccess
             },
+            onPrepareImagePaper = { uri, name -> viewModel.assets.prepareImagePaper(uri, name) },
+            onSaveImagePaper = viewModel::saveImagePaperTemplate,
             onImportCover = viewModel::importNotebookCover,
             onDeleteCover = viewModel::deleteNotebookCover,
             onImport = { documentPicker.launch(arrayOf("application/pdf", "image/*", "application/zip")) },
@@ -919,7 +921,7 @@ fun InkloomApp(initialIntent: Intent?) {
 }
 
 @Composable
-private fun LibraryScreen(onCreateCustomTemplate: (String, Int, Int, PageBackground.Paper) -> PageTemplate?, documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long, String?) -> Boolean, onImportCover: (Uri, String) -> NotebookCoverTemplate, onDeleteCover: (String) -> Unit, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
+private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkloom.document.ImagePaperDraft, onSaveImagePaper: (PageTemplate) -> PageTemplate, onCreateCustomTemplate: (String, Int, Int, PageBackground.Paper) -> PageTemplate?, documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long, String?) -> Boolean, onImportCover: (Uri, String) -> NotebookCoverTemplate, onDeleteCover: (String) -> Unit, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
     var filter by remember { mutableStateOf(LibraryFilter.ALL) }
     var search by remember { mutableStateOf("") }
     var folderId by remember { mutableStateOf<String?>(null) }
@@ -960,6 +962,10 @@ private fun LibraryScreen(onCreateCustomTemplate: (String, Int, Int, PageBackgro
     var customNoteTemplatesSelected by remember { mutableStateOf(false) }
     var newNoteTemplateId by remember { mutableStateOf(PageTemplateCatalog.blank.id) }
     var newNotePaperColor by remember { mutableLongStateOf(PaperColorCatalog.WHITE) }
+    val imagePaperImporter = if (newNoteOpen) rememberImagePaperImporter(onPrepareImagePaper, onSaveImagePaper) { saved ->
+        newNoteTemplateId = saved.id
+        customNoteTemplatesSelected = true
+    } else null
     val visible = remember(documents, filter, folderId, search) {
         LibraryDocumentQuery.visible(documents, filter, folderId, search)
     }
@@ -1100,7 +1106,7 @@ private fun LibraryScreen(onCreateCustomTemplate: (String, Int, Int, PageBackgro
             customNoteTemplatesSelected = true; customNoteTemplateOpen = false
         },
     )
-    if (newNoteOpen) Dialog(
+    if (newNoteOpen && imagePaperImporter?.previewOpen != true) Dialog(
         onDismissRequest = { newNoteOpen = false },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
@@ -1134,6 +1140,12 @@ private fun LibraryScreen(onCreateCustomTemplate: (String, Int, Int, PageBackgro
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(!customNoteTemplatesSelected, { finishName(); customNoteTemplatesSelected = false }, label = { Text(tr("Presets", "预设")) })
                     FilterChip(customNoteTemplatesSelected, { finishName(); customNoteTemplatesSelected = true }, label = { Text(tr("My templates", "我的模板")) })
+                }
+                if (customNoteTemplatesSelected && imagePaperImporter != null) {
+                    TextButton(enabled = !imagePaperImporter.loading, onClick = { finishName(); imagePaperImporter.launch() }) {
+                        Text(if (imagePaperImporter.loading) tr("Importing…", "正在导入…") else tr("Import paper image", "导入纸张图片"))
+                    }
+                    if (imagePaperImporter.failed) Text(tr("Could not import this paper image", "无法导入纸张图片，请检查格式与尺寸"), color = MaterialTheme.colorScheme.error)
                 }
                 if (customNoteTemplatesSelected && pageTemplates.customTemplates.isEmpty()) Text(tr("Save a custom paper to see it here", "保存自定义纸张后会显示在这里"), color = MutedInk, fontSize = 12.sp)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -5239,7 +5251,7 @@ private fun PageTemplatePreview(template: PageTemplate, selected: Boolean) {
             is PageBackground.Paper -> Canvas(Modifier.fillMaxSize().padding(4.dp)) {
                 drawIntoCanvas { canvas -> PaperPatternRenderer.draw(canvas.nativeCanvas, background.pattern, background.density, size.width, size.height) }
             }
-            is PageBackground.Image -> Icon(Icons.Outlined.Image, null, tint = MutedInk)
+            is PageBackground.Image -> ImagePaperThumbnail(background, Modifier.fillMaxSize())
             is PageBackground.Pdf -> Text("PDF", color = Color(0xFF111111), fontSize = 9.sp, fontWeight = FontWeight.Bold)
         }
     }

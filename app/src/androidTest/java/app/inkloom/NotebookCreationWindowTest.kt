@@ -40,6 +40,7 @@ class NotebookCreationWindowTest {
     private val clean = TestRule { base, _ -> object : Statement() {
         override fun evaluate() {
             val context = ApplicationProvider.getApplicationContext<Context>()
+            context.getSharedPreferences("inkloom_editor_panels", Context.MODE_PRIVATE).edit().clear().commit()
             context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE).edit().clear()
                 .putString("language", "ENGLISH").putInt("studioWorkspaceVersion", 2)
                 .putBoolean("showBrushPanel", false).putBoolean("showLayerPanel", false)
@@ -216,6 +217,71 @@ class NotebookCreationWindowTest {
         } catch (failure: Throwable) {
             android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand("screencap -p /data/local/tmp/inkloom-cover-failed.png")).use { it.readBytes() }
             throw failure
+        } finally { resolver.delete(uri, null, null) }
+    }
+
+    @Test fun imagePaperCanBeImportedFromNewNotebookPreviewedCancelledAndReused() {
+        val context = compose.activity
+        val resolver = context.contentResolver
+        val name = "Inkloom-paper-${SystemClock.uptimeMillis()}"
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "$name.png")
+            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/png")
+            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+            put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val uri = requireNotNull(resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values))
+        val bitmap = android.graphics.Bitmap.createBitmap(64, 96, android.graphics.Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(0xffbc7856.toInt())
+        requireNotNull(resolver.openOutputStream(uri)).use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
+        resolver.update(uri, android.content.ContentValues().apply { put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+        val templates = PageTemplateStore(context.filesDir)
+        val documents = FileDocumentStore(context.filesDir)
+        val before = documents.list().map { it.id }.toSet()
+        fun selectImage() {
+            val importButton = compose.onNodeWithText("Import paper image")
+            importButton.performScrollTo().assertIsDisplayed()
+            tapAt(screenCenter(importButton.fetchSemanticsNode())); compose.waitForIdle()
+            nativeNode { it.contentDescription?.toString() == "Show roots" && clickNative(it) }
+            nativeNode { it.text?.toString() == "Downloads" && it.isVisibleToUser && clickNative(it) }
+            nativeNode { it.contentDescription?.toString() == "Search" && clickNative(it) }
+            instrumentation.sendStringSync(name); instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_ENTER)
+            nativeNode { (it.contentDescription?.toString() == "List view" && clickNative(it)) || it.contentDescription?.toString() == "Grid view" }
+            nativeNode { it.text?.toString() == "$name.png" && clickNative(it) }
+            nativeNode { (it.text?.toString()?.equals("Open", ignoreCase = true) == true && clickNative(it)) || it.packageName?.toString() == "app.inkloom" }
+            compose.waitUntil(10_000) { hasText("Image paper") }
+        }
+        try {
+            tap("New Note"); compose.onNodeWithText("My templates").performScrollTo(); tap("My templates")
+            selectImage()
+            assertTrue(templates.load().customTemplates.isEmpty())
+            notebookTap("Cancel")
+            compose.waitUntil(5_000) { hasText("Create notebook") }
+            assertTrue(templates.load().customTemplates.isEmpty())
+            selectImage(); fill("Width (px)", "128"); tap("Save template")
+            compose.waitUntil(5_000) { templates.load().customTemplates.size == 1 }
+            val template = templates.load().customTemplates.single()
+            assertEquals(128f, template.width); assertEquals(192f, template.height)
+            assertTrue(template.background is PageBackground.Image)
+            assertTrue(documents.list().none { it.id !in before })
+            tap("Create"); canvas()
+            tap("Add page using current template")
+            compose.waitUntil(5_000) { documents.list().single { it.id !in before }.pages.size == 2 }
+            documents.list().single { it.id !in before }.pages.forEach {
+                assertEquals(template.background, it.background); assertEquals(128f, it.width)
+            }
+            compose.activityRule.scenario.recreate(); compose.waitForIdle()
+            assertEquals(template, templates.load().template(template.id))
+        } catch (failure: Throwable) {
+            val labels = mutableListOf<String>()
+            fun inspect(node: android.view.accessibility.AccessibilityNodeInfo?) {
+                if (node == null) return
+                node.text?.toString()?.let(labels::add)
+                repeat(node.childCount) { inspect(node.getChild(it)) }
+            }
+            inspect(windowRoot())
+            instrumentation.uiAutomation.executeShellCommand("screencap -p /data/local/tmp/image-paper-window.png").close()
+            throw AssertionError("Image paper window: $labels", failure)
         } finally { resolver.delete(uri, null, null) }
     }
 
