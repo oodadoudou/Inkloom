@@ -21,7 +21,9 @@ internal class DocumentAssetLifecycle(
     }
 
     private val pendingDocumentAssets = linkedSetOf<String>()
-    private val pendingRasterTileManifests = linkedSetOf<String>()
+    // A content-addressed manifest may be reserved by more than one transaction.
+    // Releasing one owner must not expose another owner's copy to collection.
+    private val pendingRasterTileManifests = mutableMapOf<String, Int>()
 
     fun saveBytes(bytes: ByteArray, kind: String): String {
         require(bytes.isNotEmpty()) { "Could not encode $kind" }
@@ -52,7 +54,8 @@ internal class DocumentAssetLifecycle(
             previousReference?.manifestAssetPath?.let(::File),
         )
         val metadata = pixelTileStore.inspect(manifest)
-        pendingRasterTileManifests += manifest.canonicalPath
+        val path = manifest.canonicalPath
+        pendingRasterTileManifests[path] = (pendingRasterTileManifests[path] ?: 0) + 1
         RasterTileSurfaceRef(
             manifestAssetPath = manifest.absolutePath,
             surfaceId = metadata.surfaceId,
@@ -69,7 +72,8 @@ internal class DocumentAssetLifecycle(
         blobLoader: (String) -> ByteArray?,
     ): File = synchronized(lock) {
         pixelTileStore.import(manifest, blobLoader).also { imported ->
-            pendingRasterTileManifests += imported.canonicalPath
+            val path = imported.canonicalPath
+            pendingRasterTileManifests[path] = (pendingRasterTileManifests[path] ?: 0) + 1
         }
     }
 
@@ -83,8 +87,11 @@ internal class DocumentAssetLifecycle(
     fun releaseRasterTileReservation(reference: RasterTileSurfaceRef?) {
         if (reference == null) return
         synchronized(lock) {
-            runCatching { File(reference.manifestAssetPath).canonicalPath }.getOrNull()
-                ?.let(pendingRasterTileManifests::remove)
+            runCatching { File(reference.manifestAssetPath).canonicalPath }.getOrNull()?.let { path ->
+                val count = pendingRasterTileManifests[path] ?: return@let
+                if (count == 1) pendingRasterTileManifests.remove(path)
+                else pendingRasterTileManifests[path] = count - 1
+            }
         }
     }
 
@@ -102,7 +109,10 @@ internal class DocumentAssetLifecycle(
             document.pages.flatMap { page ->
                 page.layers.mapNotNull { layer -> layer.rasterTileSurface?.manifestAssetPath }
             }
-        }.map(::File) + pendingRasterTileManifests.map(::File)
+        }.map(::File) + pendingRasterTileManifests.keys.map(::File) +
+            historyAssets.keys.map(::File).filter {
+                it.parentFile == File(directory, "pixel-tiles/manifests").canonicalFile
+            }
         val tileResult = pixelTileStore.garbageCollect(retainedManifests)
         documentAssetsDeleted + tileResult.manifestsDeleted + tileResult.blobsDeleted
     }

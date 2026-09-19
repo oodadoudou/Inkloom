@@ -46,4 +46,27 @@ class DocumentAssetLifecycleTest {
             root.deleteRecursively()
         }
     }
+
+    @Test fun `two owners and undo history retain the same raster manifest independently`() {
+        val root = Files.createTempDirectory("inkloom-shared-raster-history").toFile()
+        try {
+            val assets = root.resolve("document-assets").apply(File::mkdirs)
+            val lifecycle = DocumentAssetLifecycle(assets, PixelTileArchiveStore(assets.resolve("pixel-tiles")))
+            val surface = PixelTileSurface(512, 512)
+            val first = lifecycle.saveRasterTileSurface(surface, null)
+            val second = lifecycle.saveRasterTileSurface(surface, null)
+            assertEquals(first.manifestAssetPath, second.manifestAssetPath)
+            val manifest = File(first.manifestAssetPath)
+            val releaseHistory = lifecycle.retainHistoryAssets(listOf(manifest.path))
+            lifecycle.releaseRasterTileReservation(first)
+            assertEquals(0, lifecycle.garbageCollect(emptyList(), PageTemplateLibrary()))
+            assertTrue(manifest.isFile)
+            lifecycle.releaseRasterTileReservation(second)
+            assertEquals(0, lifecycle.garbageCollect(emptyList(), PageTemplateLibrary()))
+            assertTrue(manifest.isFile)
+            releaseHistory()
+            assertTrue(lifecycle.garbageCollect(emptyList(), PageTemplateLibrary()) >= 1)
+            assertFalse(manifest.exists())
+        } finally { root.deleteRecursively() }
+    }
 }
