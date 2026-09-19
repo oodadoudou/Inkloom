@@ -1,0 +1,9 @@
+# Layer tree commands — implementation contract
+
+Checked 2026-09-19 against [CSP layer folders](https://help.clip-studio.com/en-us/manual_en/180_layers/Layer_folders.htm), [CSP layer operations](https://help.clip-studio.com/en-us/manual_en/180_layers/Basic_operations.htm), [Photoshop groups](https://helpx.adobe.com/photoshop/desktop/create-manage-layers/get-started-layers/organize-layers-with-layer-groups.html), and [Photoshop layer merging](https://helpx.adobe.com/photoshop/using/layers.html).
+
+CSP distinguishes deleting a folder and its contents from ungrouping while keeping the contents. Photoshop has a separate Group from Layers command, plus group duplication, ungroup, merge selected, merge visible, stamp visible, and flatten. Inkloom uses original neutral-gray UI, and separates these commands rather than making Delete silently ungroup.
+
+Current structure transaction: grouping accepts roots sharing one parent; children keep their own pixels and object IDs. Ungroup raises direct children one level; it refuses a group mask, nondefault opacity/blend, or Through rather than silently changing their appearance. Duplicate creates fresh IDs for every descendant and retained object, while immutable raster/mask assets can be shared until the first edit. Delete removes the whole subtree and its elements. Locked and protected layers reject with an explicit reason. One history entry owns each action; undo changes membership/parent references while preserving the live pixels of surviving layers.
+
+The existing Merge Down remains restricted to compatible Normal, unclipped pairs. It is **not** evidence that selected/visible/flatten or arbitrary clipping/blend/mask merges are complete. Those need a compositor-backed merge transaction with image comparisons, full asset retention, and native-resolution policy.
