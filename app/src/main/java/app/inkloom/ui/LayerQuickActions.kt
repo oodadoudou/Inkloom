@@ -54,7 +54,7 @@ internal fun LayerQuickActions(
         horizontalArrangement = Arrangement.SpaceEvenly) {
         LayerQuickIcon(Icons.Outlined.NoteAdd, tr("Add layer", "添加图层"), true, false, onAdd)
         LayerQuickIcon(Icons.Outlined.CreateNewFolder, tr("Add layer group", "添加图层组"), true, false, onFolder)
-        LayerQuickIcon(Icons.Outlined.ContentCopy, tr("Duplicate active layer", "复制当前图层"), editable && content, false, onDuplicate)
+        LayerQuickIcon(Icons.Outlined.ContentCopy, tr("Duplicate active layer", "复制当前图层"), editable, false, onDuplicate)
         LayerQuickIcon(Icons.Outlined.MergeType, tr("Merge active layer down", "当前图层向下合并"), editable && content, false, onMerge)
         Box {
             LayerQuickIcon(Icons.Outlined.Brightness4, tr("Active layer mask", "当前图层蒙版"), editable, layer?.mask != null) { maskOpen = true }
@@ -62,9 +62,7 @@ internal fun LayerQuickActions(
                 layer?.let { LayerMaskMenuItems(it) { command -> maskOpen = false; onMask(command) } }
             }
         }
-        // Folder deletion still has legacy ungroup semantics. Keep it out of this direct shortcut
-        // until the separate subtree-delete history operation replaces that behavior.
-        LayerQuickIcon(Icons.Outlined.Delete, tr("Delete active layer", "删除当前图层"), editable && layer?.role == LayerRole.CUSTOM, false, onDelete)
+        LayerQuickIcon(Icons.Outlined.Delete, tr("Delete active layer", "删除当前图层"), editable && layer?.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER), false, onDelete)
     }
 }
 

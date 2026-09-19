@@ -90,7 +90,7 @@ data class LayerTreeEdit(
                 LayerTreeAction.DUPLICATE -> {
                     if (target.role == LayerRole.BACKGROUND) reject(LayerTreeRejection.BACKGROUND)
                     val subtree = descendants(targetId)
-                    val mapping = subtree.associateWith { nextId() }
+                    val mapping = original.filter { it.id in subtree }.associate { it.id to nextId() }
                     if (mapping.values.toSet().size != mapping.size || mapping.values.any { it in ids }) reject(LayerTreeRejection.INVALID_STRUCTURE)
                     val copies = original.filter { it.id in subtree }.map { source ->
                         source.copy(id = mapping.getValue(source.id),

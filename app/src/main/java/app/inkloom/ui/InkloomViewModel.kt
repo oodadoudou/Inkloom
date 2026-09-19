@@ -467,6 +467,15 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         return true
     }
 
+    fun applyLayerTreeEdit(documentId: String, pageId: String, edit: LayerTreeEdit, undo: Boolean,
+        expected: InkPage?): Boolean {
+        val current = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return false
+        if (expected != null && current != expected) return false
+        val changed = edit.apply(current, undo) ?: return false
+        updatePage(documentId, pageId) { changed }
+        return true
+    }
+
     fun deleteLayer(documentId: String, pageId: String, layerId: String) = updateLayerStructure(documentId, pageId) { page ->
         val layer = page.layers.firstOrNull { it.id == layerId } ?: return@updateLayerStructure page
         when (layer.role) {

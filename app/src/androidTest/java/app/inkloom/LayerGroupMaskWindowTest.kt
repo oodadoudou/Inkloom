@@ -49,6 +49,36 @@ class LayerGroupMaskWindowTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    @Test fun groupCopyDeleteUngroupAndUndoKeepNestedPaintOnTheRealWindow() {
+        tap("New Note"); tap("Create"); val view = canvas()
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync { model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java] }
+        fun layers() = requireNotNull(model.currentPage()).layers
+        tap("Layers"); tap("Add layer group"); val originalGroupId = view.activeLayerId
+        tap("Add layer"); val childId = view.activeLayerId
+        tap("Close layers panel")
+        stroke(pagePoint(view, .2f, .35f), pagePoint(view, .65f, .35f))
+        compose.waitUntil(10_000) { layers().first { it.id == childId }.rasterTileSurface != null }
+        val painted = pixels(view)
+        tap("Layers"); tap("Layer actions Folder 1"); tap("Duplicate")
+        compose.waitUntil(10_000) { layers().any { it.name == "Folder 1 copy" } }
+        val copy = layers().single { it.name == "Folder 1 copy" }
+        val copiedChild = layers().single { it.parentId == copy.id }
+        assertTrue(copiedChild.id != childId)
+        assertEquals(layers().single { it.id == childId }.rasterTileSurface, copiedChild.rasterTileSurface)
+        tap("Undo"); compose.waitUntil(10_000) { layers().none { it.id == copy.id } }
+        tap("Redo"); compose.waitUntil(10_000) { layers().any { it.id == copy.id } }
+        tap("Layer actions Folder 1 copy"); tap("Delete")
+        compose.waitUntil(10_000) { layers().none { it.id == copy.id || it.id == copiedChild.id } }
+        tap("Undo"); compose.waitUntil(10_000) { layers().any { it.id == copiedChild.id } }
+        tap("Layer actions Folder 1"); tap("Ungroup layer folder")
+        compose.waitUntil(10_000) { layers().none { it.id == originalGroupId } }
+        assertEquals(null, layers().single { it.id == childId }.parentId)
+        tap("Undo"); compose.waitUntil(10_000) { layers().single { it.id == childId }.parentId == originalGroupId }
+        tap("Select layer Layer 1")
+        assertTrue("One structural history entry must preserve the prior stroke", painted.contentEquals(pixels(view)))
+    }
+
     @Test fun folderMaskCommandsPaintHistoryAndReopenUseActualWindow() {
         tap("New Note"); tap("Create"); val view = canvas()
         lateinit var model: app.inkloom.ui.InkloomViewModel

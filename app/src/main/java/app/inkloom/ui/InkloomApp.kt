@@ -862,6 +862,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onToggleLayerFolderCollapsed = viewModel::toggleLayerFolderCollapsed,
             onDuplicateLayer = viewModel::duplicateLayer,
             onApplyRasterLayerMerge = viewModel::applyRasterLayerMerge,
+            onApplyLayerTreeEdit = viewModel::applyLayerTreeEdit,
             onDeleteLayer = { documentId, pageId, layerId ->
                 viewModel.deleteLayer(documentId, pageId, layerId)?.let { rejection ->
                     val message = if (rejection == app.inkloom.document.LayerGroupRejection.THROUGH_CLIPPING)
@@ -1452,6 +1453,7 @@ private fun EditorScreen(
     onToggleLayerFolderCollapsed: (String, String, String) -> Unit,
     onDuplicateLayer: (String, String, String) -> String?,
     onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean,
+    onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean,
     onDeleteLayer: (String, String, String) -> Unit,
     onElement: (String, String, PageElement) -> Unit,
     onRemoveElement: (String, String, String) -> Unit,
@@ -2762,9 +2764,11 @@ private fun EditorScreen(
                 secondarySelection = secondaryLayers, onSecondarySelection = { secondaryLayers = it },
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
 
-                onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
+                onDuplicate = { layerId -> canvasView?.requestLayerTree(LayerTreeAction.DUPLICATE, layerId) },
                 onMergeDown = { layerId -> canvasView?.requestLayerMerge(layerId) },
-                onDelete = { onDeleteLayer(document.id, selectedPage.id, it) },
+                onDelete = { canvasView?.requestLayerTree(LayerTreeAction.DELETE, it) },
+                onGroupSelected = { primary, selected -> canvasView?.requestLayerTree(LayerTreeAction.GROUP_SELECTED, primary, selected) },
+                onUngroup = { canvasView?.requestLayerTree(LayerTreeAction.UNGROUP, it) },
                 panelMode = settings.layerPanelMode,
                 panelLocked = settings.layerPanelLocked,
                 onPanelMode = { onSettingsChange(settings.copy(layerPanelMode = it)) },
@@ -2797,6 +2801,7 @@ private fun EditorScreen(
                 PaperCanvas(
                     onApplyRasterLayerMerge = onApplyRasterLayerMerge,
                     onApplyLayerInsertion = onApplyLayerInsertion,
+                    onApplyLayerTreeEdit = onApplyLayerTreeEdit,
                     onApplySelectionLayerTransfer = onApplySelectionLayerTransfer,
                     onSelectionTransferLayerChosen = { activeLayerId = it; canvasView?.activeLayerId = it },
                     modifier = Modifier.sizeIn(maxWidth = toolbarAreaWidth * .88f, maxHeight = toolbarAreaHeight * .88f).aspectRatio(PageCropTransform.visibleWidth(selectedPage) / PageCropTransform.visibleHeight(selectedPage).coerceAtLeast(1f)),
@@ -3568,9 +3573,11 @@ private fun EditorScreen(
                 secondarySelection = secondaryLayers, onSecondarySelection = { secondaryLayers = it },
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
 
-                onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
+                onDuplicate = { layerId -> canvasView?.requestLayerTree(LayerTreeAction.DUPLICATE, layerId) },
                 onMergeDown = { layerId -> canvasView?.requestLayerMerge(layerId) },
-                onDelete = { onDeleteLayer(document.id, selectedPage.id, it) },
+                onDelete = { canvasView?.requestLayerTree(LayerTreeAction.DELETE, it) },
+                onGroupSelected = { primary, selected -> canvasView?.requestLayerTree(LayerTreeAction.GROUP_SELECTED, primary, selected) },
+                onUngroup = { canvasView?.requestLayerTree(LayerTreeAction.UNGROUP, it) },
                 panelMode = settings.layerPanelMode,
                 panelLocked = settings.layerPanelLocked,
                 onPanelMode = { onSettingsChange(settings.copy(layerPanelMode = it)) },
@@ -3649,9 +3656,11 @@ private fun EditorScreen(
                 secondarySelection = secondaryLayers, onSecondarySelection = { secondaryLayers = it },
                     onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
 
-                    onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
+                    onDuplicate = { layerId -> canvasView?.requestLayerTree(LayerTreeAction.DUPLICATE, layerId) },
                     onMergeDown = { layerId -> canvasView?.requestLayerMerge(layerId) },
-                    onDelete = { onDeleteLayer(document.id, selectedPage.id, it) },
+                    onDelete = { canvasView?.requestLayerTree(LayerTreeAction.DELETE, it) },
+                onGroupSelected = { primary, selected -> canvasView?.requestLayerTree(LayerTreeAction.GROUP_SELECTED, primary, selected) },
+                onUngroup = { canvasView?.requestLayerTree(LayerTreeAction.UNGROUP, it) },
                     panelMode = settings.layerPanelMode,
                     panelLocked = settings.layerPanelLocked,
                     onPanelMode = { onSettingsChange(settings.copy(layerPanelMode = it)) },
@@ -3780,9 +3789,11 @@ private fun EditorScreen(
                 secondarySelection = secondaryLayers, onSecondarySelection = { secondaryLayers = it },
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
 
-                onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
+                onDuplicate = { layerId -> canvasView?.requestLayerTree(LayerTreeAction.DUPLICATE, layerId) },
                 onMergeDown = { layerId -> canvasView?.requestLayerMerge(layerId) },
-                onDelete = { onDeleteLayer(document.id, selectedPage.id, it) },
+                onDelete = { canvasView?.requestLayerTree(LayerTreeAction.DELETE, it) },
+                onGroupSelected = { primary, selected -> canvasView?.requestLayerTree(LayerTreeAction.GROUP_SELECTED, primary, selected) },
+                onUngroup = { canvasView?.requestLayerTree(LayerTreeAction.UNGROUP, it) },
                 panelMode = settings.layerPanelMode,
                 panelLocked = settings.layerPanelLocked,
                 onPanelMode = { onSettingsChange(settings.copy(layerPanelMode = it)) },
@@ -5294,7 +5305,7 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
+private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val selectionMaskSize = remember(renderedPage.width, renderedPage.height) {
         requireNotNull(SelectionMaskCompositor.maskSize(renderedPage.width, renderedPage.height))
@@ -5486,6 +5497,13 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 latestRasterAssets, pendingRasterSaves, gradientCommitScope, { currentMergePage },
                 { edit, undo, expected -> onApplyRasterLayerMerge(documentId, page.id, edit, undo, expected) },
                 onSelectionTransferLayerChosen, settings.language).merge(view, sourceId)
+        }
+        view.onLayerTreeRequested = { action, targetId, selectedIds ->
+            LayerTreeController(context, documentId, page.id, assets, rasterSurfaceRuntime, rasterCommitMutex,
+                latestRasterAssets, pendingRasterSaves, gradientCommitScope, { currentMergePage },
+                { edit, undo, expected -> onApplyLayerTreeEdit(documentId, page.id, edit, undo, expected) },
+                { id -> onSelectionTransferLayerChosen(id); view.selectLayerContent(id) }, settings.language)
+                .execute(view, action, targetId, selectedIds)
         }
 
         view.onRasterLayerCommitted = commit@{ commit ->
@@ -6230,8 +6248,8 @@ private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onS
         onDismissRequest = onDismiss,
         title = { Text(if (element is PageElement.Image) tr("Transform image", "变换图片") else tr("Object properties", "对象属性")) },
         text = { LazyColumn(Modifier.widthIn(min = 340.dp, max = 520.dp).heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (draft is PageElement.Image) {
-                val image = draft as PageElement.Image
+            val image = draft as? PageElement.Image
+            if (image != null) {
                 item { ImageTransformPreview(image) }
                 item { BrushSettingSlider("Width", image.width, 40f..3200f) { draft = image.copy(width = it) } }
                 item { BrushSettingSlider("Height", image.height, 40f..4526f) { draft = image.copy(height = it) } }
@@ -7257,6 +7275,8 @@ private fun LayerPanel(
     onDuplicate: (String) -> Unit,
     onMergeDown: (String) -> Unit,
     onDelete: (String) -> Unit,
+    onGroupSelected: (String, Set<String>) -> Unit,
+    onUngroup: (String) -> Unit,
     panelMode: WorkspacePanelMode = WorkspacePanelMode.EXPANDED,
     panelLocked: Boolean = false,
     onPanelMode: (WorkspacePanelMode) -> Unit = {},
@@ -7311,6 +7331,8 @@ private fun LayerPanel(
             onDuplicate = onDuplicate,
             onMergeDown = onMergeDown,
             onDelete = onDelete,
+            onGroupSelected = onGroupSelected,
+            onUngroup = onUngroup,
             modifier = modifier,
             onPanelDragStart = onPanelDragStart,
             onPanelDrag = onPanelDrag,
@@ -7371,6 +7393,8 @@ private fun PaintingLayerPanel(
     onDuplicate: (String) -> Unit,
     onMergeDown: (String) -> Unit,
     onDelete: (String) -> Unit,
+    onGroupSelected: (String, Set<String>) -> Unit,
+    onUngroup: (String) -> Unit,
     modifier: Modifier,
     onPanelDragStart: () -> Unit,
     onPanelDrag: (Float, Float) -> Unit,
@@ -7467,6 +7491,9 @@ private fun PaintingLayerPanel(
                     Text("${selectedLayerIds.size} ${tr("selected", "项已选")}", Modifier.weight(1f), fontSize = 10.sp)
                     IconButton({ selectedLayerIds.forEach(onVisibility) }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Visibility, tr("Toggle selected layer visibility", "切换所选图层可见性"), Modifier.size(17.dp)) }
                     IconButton({ selectedLayerIds.forEach(onLock) }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Lock, tr("Toggle selected layer lock", "切换所选图层锁定"), Modifier.size(17.dp)) }
+                    IconButton({ onGroupSelected(activeLayerId, selectedLayerIds + activeLayerId); onSecondarySelection(emptySet()) }, Modifier.size(32.dp)) {
+                        Icon(Icons.Outlined.CreateNewFolder, tr("Group selected layers", "将所选图层编组"), Modifier.size(17.dp))
+                    }
                     IconButton({ selectedLayerIds.mapNotNull { id -> page.layers.firstOrNull { it.id == id } }.filter { it.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER) }.forEach { onDelete(it.id) }; onSecondarySelection(emptySet()) }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Delete, tr("Delete selected custom layers", "删除所选自定义图层"), Modifier.size(17.dp)) }
                     IconButton({ onSecondarySelection(emptySet()) }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Close, tr("Exit layer selection", "退出图层多选"), Modifier.size(17.dp)) }
                 }
@@ -7481,7 +7508,7 @@ private fun PaintingLayerPanel(
                     val depth = LayerHierarchy.depth(page.layers, layer)
                     val swipeActions = buildList<Pair<String, () -> Unit>> {
                         add((if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) to { onLock(layer.id) })
-                        if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) add(tr("Duplicate", "复制") to { onDuplicate(layer.id) })
+                        if (layer.role != LayerRole.BACKGROUND) add(tr("Duplicate", "复制") to { onDuplicate(layer.id) })
                         if (layer.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER)) add(tr("Delete", "删除") to { onDelete(layer.id) })
                     }
                     val layerRowDescription = tr("Select layer", "选择图层")
@@ -7519,7 +7546,7 @@ private fun PaintingLayerPanel(
                         }, modifier = Modifier.width(28.dp).fillMaxHeight().background(Paper).semantics {
                             contentDescription = secondaryDescription
                         }, enabled = layer.id == activeLayerId || layer.role != LayerRole.BACKGROUND) {
-                            Icon(if (layer.id == activeLayerId) Icons.Outlined.Edit else if (layer.id in selectedLayerIds) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank,
+                            Icon(if (layer.id == activeLayerId || layer.id in selectedLayerIds) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank,
                                 null, Modifier.size(18.dp), tint = if (selected) Ink else MutedInk)
                         }
                         Spacer(Modifier.width((4 + depth * 16).dp))
@@ -7572,11 +7599,13 @@ private fun PaintingLayerPanel(
                                 if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Mask", "蒙版")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; maskMenu = true })
                                 DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
                                 if (layer.role == LayerRole.FOLDER) DropdownMenuItem(text = { Text(if (layer.collapsed) tr("Expand folder", "展开文件夹") else tr("Collapse folder", "折叠文件夹")) }, onClick = { menu = false; onToggleFolderCollapsed(layer.id) })
+                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Group layer", "编组图层")) }, onClick = { menu = false; onGroupSelected(layer.id, setOf(layer.id)) })
+                                if (layer.role == LayerRole.FOLDER) DropdownMenuItem(text = { Text(tr("Ungroup layer folder", "解除图层分组")) }, onClick = { menu = false; onUngroup(layer.id) })
                                 if (layer.parentId != null) DropdownMenuItem(text = { Text(tr("Move out of folder", "移出文件夹")) }, onClick = { menu = false; moveInto(layer, null) })
                                 folderTargets.forEach { folder -> DropdownMenuItem(text = { Text("${tr("Move into", "移入")} ${folder.name}") }, onClick = { menu = false; moveInto(layer, folder) }) }
                                 DropdownMenuItem(text = { Text(tr("Move up", "上移")) }, enabled = siblingDrop(layer, 1) != null, onClick = { menu = false; siblingDrop(layer, 1)?.let { onRelocate(layer.id, setOf(layer.id), it) } })
                                 DropdownMenuItem(text = { Text(tr("Move down", "下移")) }, enabled = siblingDrop(layer, -1) != null, onClick = { menu = false; siblingDrop(layer, -1)?.let { onRelocate(layer.id, setOf(layer.id), it) } })
-                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(layer.id) })
+                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(layer.id) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Merge down", "向下合并")) }, onClick = { menu = false; onMergeDown(layer.id) })
                                 if (layer.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Delete", "删除")) }, onClick = { menu = false; onDelete(layer.id) })
                             }

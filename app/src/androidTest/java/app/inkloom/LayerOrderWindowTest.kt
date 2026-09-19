@@ -90,6 +90,23 @@ class LayerOrderWindowTest {
         compose.waitForIdle()
     }
 
+    @Test fun selectedLayersBecomeOneGroupAndOneUndoRestoresTheirParents() {
+        tap("New Note"); tap("Create"); canvas(); val model = model()
+        tap("Layers"); tap("Add layer"); tap("Add layer")
+        fun layers() = requireNotNull(model.currentPage()).layers
+        val before = layers().map { it.id to it.parentId }
+        secondary("Layer 1")
+        tap("Group selected layers")
+        compose.waitUntil(10_000) {
+            val folder = layers().firstOrNull { it.name == "Folder 1" }
+            folder != null && layers().filter { it.name in setOf("Layer 1", "Layer 2") }.all { it.parentId == folder.id }
+        }
+        val folderId = layers().single { it.name == "Folder 1" }.id
+        history()
+        compose.waitUntil(10_000) { layers().none { it.id == folderId } }
+        assertEquals(before, layers().map { it.id to it.parentId })
+    }
+
     @Test fun nativeMultiLayerDropPreservesOrderPixelsSelectionAndOneHistoryEntry() {
         tap("New Note"); tap("Create"); val view = canvas(); val model = model()
         tap("Layers"); tap("Add layer group"); tap("Select layer Notes")
