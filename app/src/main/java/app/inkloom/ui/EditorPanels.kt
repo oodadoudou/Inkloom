@@ -350,14 +350,16 @@ internal fun EditorPanels(
                             }, tint=MutedInk)
                         Row(Modifier.weight(1f).horizontalScroll(tabScroll)) {
                             tabs.panels.forEachIndexed { index,panel ->
-                                Text(title(panel),fontSize=11.sp,color=Ink,modifier=Modifier
+                                Box(Modifier
                                     .width(if(tabs.panels.size==1) (rect.width-60f).coerceAtLeast(55f).dp else EditorPanelLayouts.tabWidth(panel).dp)
                                     .fillMaxHeight().graphicsLayer { alpha=if(individual && panel==d?.panel) 0f else 1f }.background(if(panel==active) SageContainer else Color.Transparent)
                                     .semantics { contentDescription=language.text("Drag ${title(panel).lowercase()} panel","拖动${title(panel)}面板") }
                                     .clickable { state.commit(EditorPanelLayouts.select(state.layout,panel)) }
                                     .pointerInput(tabs.id,panel) {
                                         detectDragGestures(onDragStart={ begin(currentSlot,panel) },onDragEnd={ finish() },onDragCancel={ cancel() }) { change,delta->change.consume() }
-                                    }.padding(horizontal=7.dp,vertical=8.dp))
+                                    }.padding(horizontal=7.dp), contentAlignment=androidx.compose.ui.Alignment.CenterStart) {
+                                    Text(title(panel),fontSize=11.sp,lineHeight=14.sp,color=Ink,maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                }
                             }
                         }
                         IconButton(onClick={ closeCurrent(tabs) },modifier=Modifier.size(30.dp)) {
@@ -377,7 +379,9 @@ internal fun EditorPanels(
             // Move the one visible instance instead of mounting a second saveable body.
             if(d.panel != null && source != null && source.panels.size > 1 && visibleSource != null && visibleSource.panels.size > 1) {
                 Column(geometry(d.start.moved(d.dx,d.dy)).zIndex(100f).background(Paper).border(1.dp,OutlineSoft)) {
-                    Text(title(d.panel), fontSize=11.sp, color=Ink, modifier=Modifier.fillMaxWidth().height(32.dp).padding(8.dp))
+                    Box(Modifier.fillMaxWidth().height(32.dp).padding(horizontal=8.dp), contentAlignment=androidx.compose.ui.Alignment.CenterStart) {
+                        Text(title(d.panel), fontSize=11.sp,lineHeight=14.sp,color=Ink,maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
                     Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) { bodies.getValue(d.panel).invoke() }
                 }
             }
