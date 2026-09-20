@@ -130,7 +130,7 @@ class CanvasWorkflowWindowTest {
         val scale = view.viewportScale
         pinch(view); compose.waitForIdle()
         assertTrue(view.viewportScale > scale)
-        stroke(pagePoint(view, .3f, .4f), pagePoint(view, .5f, .4f))
+        stroke(visibleCanvasPoint(view, .35f, .5f), visibleCanvasPoint(view, .6f, .5f))
         compose.waitUntil(10_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 }
     }
 
@@ -177,6 +177,12 @@ class CanvasWorkflowWindowTest {
         val location = IntArray(2)
         instrumentation.runOnMainSync { view.getLocationOnScreen(location) }
         return Offset(location[0] + x * view.width, location[1] + y * view.height)
+    }
+
+    private fun visibleCanvasPoint(view: InkCanvasView, x: Float, y: Float): Offset {
+        val visible = android.graphics.Rect()
+        instrumentation.runOnMainSync { assertTrue(view.getGlobalVisibleRect(visible)) }
+        return Offset(visible.left + x * visible.width(), visible.top + y * visible.height())
     }
 
     private fun hoverThenTap(point: Offset) {
