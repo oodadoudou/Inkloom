@@ -7,16 +7,21 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.inkloom.document.FillSubTool
+import app.inkloom.document.CorrectLineMode
+import app.inkloom.document.GradientEdgeMode
+import app.inkloom.document.GradientKind
 import app.inkloom.importer.BrushRoleClassifier
 import app.inkloom.model.EditorTool
 import app.inkloom.model.ImportedBrush
@@ -37,6 +42,8 @@ internal fun WorkspaceSubtoolsPanel(
     onBrush: (ImportedBrush) -> Unit,
     onSelectionShape: (SelectionShape) -> Unit,
     onFillSubTool: (FillSubTool) -> Unit,
+    onGradientKind: (GradientKind) -> Unit,
+    onCorrectLineMode: (CorrectLineMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val language = settings.language
@@ -67,6 +74,14 @@ internal fun WorkspaceSubtoolsPanel(
             } else if (tool == EditorTool.FILL) {
                 items(FillSubTool.entries) { subtool ->
                     WorkspaceSubtoolRow(fillSubtoolLabel(subtool, settings), subtool == settings.fillSubTool) { onFillSubTool(subtool) }
+                }
+            } else if (tool == EditorTool.GRADIENT) {
+                items(GradientKind.entries) { kind ->
+                    WorkspaceSubtoolRow(gradientKindLabel(kind, settings), kind == settings.gradientKind) { onGradientKind(kind) }
+                }
+            } else if (tool == EditorTool.CORRECT_LINE) {
+                items(CorrectLineMode.entries) { mode ->
+                    WorkspaceSubtoolRow(correctLineModeLabel(mode, settings), mode == settings.correctLineMode) { onCorrectLineMode(mode) }
                 }
             } else {
                 item {
@@ -99,6 +114,24 @@ private fun fillSubtoolLabel(subtool: FillSubTool, settings: AppSettings): Strin
     FillSubTool.ENCLOSE_AND_FILL -> settings.language.text("Enclose and fill", "包围并填充")
     FillSubTool.LASSO_FILL -> settings.language.text("Lasso fill", "套索填充")
     FillSubTool.LEFTOVER_PEN -> settings.language.text("Leftover pen", "漏涂笔")
+}
+
+private fun gradientKindLabel(kind: GradientKind, settings: AppSettings): String = when (kind) {
+    GradientKind.LINEAR -> settings.language.text("Linear", "线性")
+    GradientKind.RADIAL -> settings.language.text("Radial", "圆形")
+    GradientKind.ELLIPSE -> settings.language.text("Ellipse", "椭圆")
+    GradientKind.ANGULAR -> settings.language.text("Angular", "角度")
+    GradientKind.REFLECTED -> settings.language.text("Reflected", "对称")
+    GradientKind.DIAMOND -> settings.language.text("Diamond", "菱形")
+}
+
+private fun correctLineModeLabel(mode: CorrectLineMode, settings: AppSettings): String = when (mode) {
+    CorrectLineMode.SMOOTH -> settings.language.text("Smooth", "平滑")
+    CorrectLineMode.SIMPLIFY -> settings.language.text("Simplify", "简化")
+    CorrectLineMode.ADJUST_WIDTH -> settings.language.text("Width", "线宽")
+    CorrectLineMode.REDRAW_WIDTH -> settings.language.text("Redraw width", "重绘线宽")
+    CorrectLineMode.CONNECT -> settings.language.text("Connect", "连接")
+    CorrectLineMode.CONTROL_POINTS -> settings.language.text("Control points", "控制点")
 }
 
 /** Current tool controls follow the selected tool while their panel can dock independently. */
@@ -140,10 +173,46 @@ internal fun WorkspaceToolPropertiesPanel(
                     WorkspacePropertySlider(language.text("Area scaling", "区域缩放"), "${settings.fillAreaScalingPixels.toInt()} px",
                         settings.fillAreaScalingPixels, -64f..64f, { onSettings(settings.copy(fillAreaScalingPixels = it)) })
                 }
+                EditorTool.GRADIENT -> {
+                    Text(language.text("Edge process", "边缘处理"), color = Ink, fontSize = 11.sp)
+                    GradientEdgeMode.entries.forEach { edge ->
+                        WorkspaceSubtoolRow(when (edge) {
+                            GradientEdgeMode.CLAMP -> language.text("No repeat", "不重复")
+                            GradientEdgeMode.REPEAT -> language.text("Repeat", "重复")
+                            GradientEdgeMode.MIRROR -> language.text("Reverse repeat", "反向重复")
+                            GradientEdgeMode.TRANSPARENT -> language.text("Do not draw", "不绘制")
+                        }, edge == settings.gradientEdgeMode) { onSettings(settings.copy(gradientEdgeMode = edge)) }
+                    }
+                    WorkspacePropertySwitch(language.text("Reverse", "反转"), settings.gradientReverse) {
+                        onSettings(settings.copy(gradientReverse = it))
+                    }
+                    WorkspacePropertySwitch(language.text("Dither", "抖动"), settings.gradientDither,
+                        Modifier.testTag("workspace-gradient-dither")) {
+                        onSettings(settings.copy(gradientDither = it))
+                    }
+                    WorkspacePropertySwitch(language.text("Angle snap", "角度吸附"), settings.gradientAngleSnapEnabled) {
+                        onSettings(settings.copy(gradientAngleSnapEnabled = it))
+                    }
+                    if (settings.gradientKind == GradientKind.ELLIPSE) WorkspacePropertySlider(
+                        language.text("Ellipse thickness", "椭圆厚度"), "${(settings.gradientEllipseRatio * 100).toInt()}%",
+                        settings.gradientEllipseRatio, .1f..1f, { onSettings(settings.copy(gradientEllipseRatio = it)) })
+                }
+                EditorTool.CORRECT_LINE -> WorkspacePropertySlider(
+                    language.text("Correction strength", "修正强度"), "${(settings.correctLineAmount * 100).toInt()}%",
+                    settings.correctLineAmount, 0f..1f, { onSettings(settings.copy(correctLineAmount = it)) })
                 else -> Text(language.text("Select a drawing tool to adjust its properties.", "选择绘画工具后调整其属性。"),
                     Modifier.padding(vertical = 8.dp), color = MutedInk, fontSize = 12.sp)
             }
         }
+    }
+}
+
+@Composable
+private fun WorkspacePropertySwitch(label: String, checked: Boolean, modifier: Modifier = Modifier,
+                                    onCheckedChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f), color = Ink, fontSize = 11.sp)
+        Switch(checked = checked, onCheckedChange = onCheckedChange, modifier = modifier)
     }
 }
 

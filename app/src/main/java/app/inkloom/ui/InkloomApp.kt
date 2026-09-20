@@ -3283,6 +3283,8 @@ private fun EditorScreen(
                             onSettingsChange(settings.copy(selectionShape = shape))
                         },
                         onFillSubTool = { onSettingsChange(settings.copy(fillSubTool = it)) },
+                        onGradientKind = { onSettingsChange(settings.copy(gradientKind = it)) },
+                        onCorrectLineMode = { onSettingsChange(settings.copy(correctLineMode = it)) },
                     )
                     EditorPanel.PROPERTIES -> WorkspaceToolPropertiesPanel(
                         tool = tool, brushSize = brushSize, brushOpacity = brushOpacity,

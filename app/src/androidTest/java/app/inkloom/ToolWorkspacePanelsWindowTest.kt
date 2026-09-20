@@ -8,6 +8,8 @@ import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsStore
 import app.inkloom.settings.EditorPanel
 import app.inkloom.settings.SelectionShape
+import app.inkloom.document.CorrectLineMode
+import app.inkloom.document.GradientKind
 import app.inkloom.ui.EditorPanelState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -56,5 +58,31 @@ class ToolWorkspacePanelsWindowTest {
         val closed = EditorPanelState(compose.activity, AppSettings()).layout
         assertTrue(EditorPanel.BRUSHES !in closed.open)
         assertTrue(EditorPanel.SUBTOOLS in closed.open)
+    }
+
+    @Test fun subtoolPaletteChangesGradientAndLineCorrectionModes() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithText("Sub tools").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Gradient").performClick()
+        compose.onNodeWithText("Diamond").performClick()
+        compose.waitForIdle()
+        assertEquals(GradientKind.DIAMOND, AppSettingsStore(compose.activity).load().gradientKind)
+        compose.onNodeWithContentDescription("Correct line").performClick()
+        compose.onNodeWithText("Simplify").performClick()
+        compose.waitForIdle()
+        assertEquals(CorrectLineMode.SIMPLIFY, AppSettingsStore(compose.activity).load().correctLineMode)
+    }
+
+    @Test fun toolPropertiesPaletteChangesActiveGradientSetting() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithText("Tool property").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Gradient").performClick()
+        compose.onNodeWithTag("workspace-gradient-dither").performClick()
+        compose.waitForIdle()
+        assertEquals(false, AppSettingsStore(compose.activity).load().gradientDither)
     }
 }
