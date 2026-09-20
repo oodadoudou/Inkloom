@@ -54,6 +54,13 @@ data class PanelSlot(val node: PanelNode, val rect: PanelRect, val rootId: Strin
 
 /** Small immutable layout transactions: a panel has one owner, preview never edits the document. */
 object EditorPanelLayouts {
+    fun isValid(layout: EditorPanelLayout): Boolean {
+        val panels = members(layout.dock) + layout.floating.flatMap { members(it.node) }
+        return layout.version == 1 && containsCanvas(layout.dock) &&
+            layout.floating.none { containsCanvas(it.node) } &&
+            panels.size == EditorPanel.entries.size && panels.toSet().size == panels.size &&
+            layout.open.all { it in panels } && layout.placed.all { it in panels }
+    }
     fun members(node: PanelNode): List<EditorPanel> = when (node) {
         is PanelNode.Canvas -> emptyList()
         is PanelNode.Tabs -> node.panels

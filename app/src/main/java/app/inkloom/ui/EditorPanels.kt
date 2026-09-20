@@ -47,8 +47,7 @@ internal class EditorPanelState(context: Context, settings: AppSettings) {
         val raw = preferences.getString("layout", null) ?: error("New layout")
         require(raw.length < 64*1024)
         val decoded = json.decodeFromString<EditorPanelLayout>(raw)
-        val panels = EditorPanelLayouts.members(decoded.dock) + decoded.floating.flatMap { EditorPanelLayouts.members(it.node) }
-        require(decoded.version == 1 && panels.size == EditorPanel.entries.size && panels.toSet().size == panels.size)
+        require(EditorPanelLayouts.isValid(decoded))
         decoded
     }.getOrElse {
         EditorPanelLayout().let { defaults -> defaults.copy(floating = defaults.floating.map { root ->
@@ -59,8 +58,34 @@ internal class EditorPanelState(context: Context, settings: AppSettings) {
                 else -> root.rect
             }
             root.copy(rect=rect)
+        }).copy(open = buildSet {
+            if (settings.showPageRail) add(EditorPanel.PAGES)
+            if (settings.showBrushPanel) add(EditorPanel.BRUSHES)
+            if (settings.showLayerPanel) add(EditorPanel.LAYERS)
         }) }
     })
+    var namedLayouts by mutableStateOf(runCatching {
+        val raw = preferences.getString("named_layouts", null) ?: return@runCatching NamedPanelLayouts()
+        require(raw.length < 1024*1024)
+        val decoded = json.decodeFromString<NamedPanelLayouts>(raw)
+        decoded.copy(entries = decoded.entries.filter { EditorPanelLayouts.isValid(it.layout) }.takeLast(20))
+    }.getOrDefault(NamedPanelLayouts()))
+        private set
+
+    private fun updateNamedLayouts(next: NamedPanelLayouts) {
+        if (next == namedLayouts) return
+        namedLayouts = next
+        preferences.edit().putString("named_layouts", json.encodeToString(NamedPanelLayouts.serializer(), next)).apply()
+    }
+
+    fun saveNamedLayout(name: String) = updateNamedLayouts(namedLayouts.save(name, layout))
+    fun renameNamedLayout(oldName: String, newName: String) = updateNamedLayouts(namedLayouts.rename(oldName, newName))
+    fun deleteNamedLayout(name: String) = updateNamedLayouts(namedLayouts.delete(name))
+    fun restoreNamedLayout(name: String): EditorPanelLayout? {
+        val saved = namedLayouts.entries.firstOrNull { it.name == name }?.layout ?: return null
+        commit(saved)
+        return saved
+    }
     fun commit(next: EditorPanelLayout) {
         layout=next
         preferences.edit().putString("layout",json.encodeToString(EditorPanelLayout.serializer(),next)).apply()

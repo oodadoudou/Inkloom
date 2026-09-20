@@ -185,6 +185,11 @@ import app.inkloom.settings.captureToolboxWorkspace
 import app.inkloom.settings.UiLanguage
 import app.inkloom.settings.WorkspacePanelDock
 import app.inkloom.settings.EditorPanel
+import app.inkloom.settings.EditorPanelLayout
+import app.inkloom.settings.EditorPanelLayouts
+import app.inkloom.settings.PanelDropTarget
+import app.inkloom.settings.PanelEdge
+import app.inkloom.settings.PanelRect
 import app.inkloom.settings.WorkspacePanelDocking
 import app.inkloom.settings.WorkspacePanelGrouping
 import app.inkloom.settings.WorkspacePanelKind
@@ -1640,6 +1645,11 @@ private fun EditorScreen(
     var quickZoomMenu by remember { mutableStateOf(false) }
     var workspaceMenu by remember { mutableStateOf(false) }
     val panelState = rememberEditorPanelState(settings)
+    var savePanelLayoutOpen by remember { mutableStateOf(false) }
+    var managePanelLayoutsOpen by remember { mutableStateOf(false) }
+    var panelLayoutName by remember { mutableStateOf("") }
+    var renamingPanelLayout by remember { mutableStateOf<String?>(null) }
+    var deletingPanelLayout by remember { mutableStateOf<String?>(null) }
     var colorPanelOpen by remember { mutableStateOf(panelState.layout.open.any { it.ordinal >= EditorPanel.WHEEL.ordinal }) }
     var editSecondaryColor by remember { mutableStateOf(false) }
     fun showColors() { colorPanelOpen = true; panelState.colors(true) }
@@ -1888,12 +1898,31 @@ private fun EditorScreen(
     }
     fun applyWorkspaceSettings(restored: AppSettings) {
         layersOpen = restored.showLayerPanel
+        panelState.show(EditorPanel.PAGES, restored.showPageRail)
+        panelState.show(EditorPanel.BRUSHES, restored.showBrushPanel)
+        panelState.show(EditorPanel.LAYERS, restored.showLayerPanel)
         onSettingsChange(restored)
+    }
+    fun syncRestoredPanelSettings(layout: EditorPanelLayout) {
+        layersOpen = EditorPanel.LAYERS in layout.open
+        colorPanelOpen = layout.open.any { it.ordinal >= EditorPanel.WHEEL.ordinal }
+        onSettingsChange(settings.copy(
+            showPageRail = EditorPanel.PAGES in layout.open,
+            showBrushPanel = EditorPanel.BRUSHES in layout.open,
+            showLayerPanel = EditorPanel.LAYERS in layout.open,
+        ))
     }
     fun applyWorkspaceSnapshot(snapshot: app.inkloom.settings.ToolboxWorkspaceSnapshot) =
         applyWorkspaceSettings(settings.applyToolboxWorkspace(snapshot))
     fun applyBuiltInWorkspace(workspace: BuiltInWorkspace) {
         workspaceMenu = false
+        val defaultLayout = EditorPanelLayout()
+        val layout = if (workspace == BuiltInWorkspace.READING) {
+            EditorPanelLayouts.move(defaultLayout, "pages", null,
+                PanelDropTarget("canvas", PanelEdge.LEFT), PanelRect(0f, 0f, 220f, 700f))
+                .copy(open = setOf(EditorPanel.PAGES))
+        } else defaultLayout
+        panelState.commit(layout)
         applyWorkspaceSnapshot(BuiltInWorkspaces.snapshot(workspace))
     }
     val allChangesSavedMessage = tr("All changes are saved.", "所有更改均已保存。")
@@ -1954,6 +1983,22 @@ private fun EditorScreen(
                         text = { Column { Text(tr("Reading workspace", "阅读工作区")); Text(tr("Pages with drawing controls hidden", "保留页面并隐藏绘画控制"), fontSize = 10.sp, color = MutedInk) } },
                         leadingIcon = { Icon(Icons.Outlined.Visibility, null) },
                         onClick = { applyBuiltInWorkspace(BuiltInWorkspace.READING) },
+                    )
+                    HorizontalDivider()
+                    DropdownMenuItem(text = { Text(tr("Save panel layout…", "保存面板布局…")) },
+                        leadingIcon = { Icon(Icons.Outlined.Save, null) }, onClick = {
+                            workspaceMenu = false; renamingPanelLayout = null; panelLayoutName = ""; savePanelLayoutOpen = true
+                        })
+                    panelState.namedLayouts.entries.forEach { saved ->
+                        DropdownMenuItem(text = { Text(saved.name) },
+                            leadingIcon = { Icon(Icons.Outlined.DashboardCustomize, null) }, onClick = {
+                                workspaceMenu = false
+                                panelState.restoreNamedLayout(saved.name)?.let(::syncRestoredPanelSettings)
+                            })
+                    }
+                    if (panelState.namedLayouts.entries.isNotEmpty()) DropdownMenuItem(
+                        text = { Text(tr("Manage panel layouts…", "管理面板布局…")) },
+                        onClick = { workspaceMenu = false; managePanelLayoutsOpen = true },
                     )
 
                     HorizontalDivider()
@@ -2255,6 +2300,54 @@ private fun EditorScreen(
                 }
             }
         }
+        if (savePanelLayoutOpen) AlertDialog(
+            onDismissRequest = { savePanelLayoutOpen = false },
+            title = { Text(if (renamingPanelLayout == null) tr("Save panel layout", "保存面板布局") else tr("Rename panel layout", "重命名面板布局")) },
+            text = {
+                Column {
+                    OutlinedTextField(panelLayoutName, { panelLayoutName = it.take(40) },
+                        label = { Text(tr("Name", "名称")) }, singleLine = true)
+                    if (renamingPanelLayout == null && panelState.namedLayouts.entries.any { it.name.equals(panelLayoutName.trim(), ignoreCase = true) })
+                        Text(tr("Saving will replace this layout", "保存后将替换同名布局"), color = MutedInk, fontSize = 11.sp)
+                }
+            },
+            confirmButton = { TextButton(enabled = panelLayoutName.isNotBlank(), onClick = {
+                val old = renamingPanelLayout
+                if (old == null) panelState.saveNamedLayout(panelLayoutName)
+                else panelState.renameNamedLayout(old, panelLayoutName)
+                savePanelLayoutOpen = false; renamingPanelLayout = null
+            }) { Text(if (renamingPanelLayout == null) tr("Save", "保存") else tr("Rename", "重命名")) } },
+            dismissButton = { TextButton(onClick = { savePanelLayoutOpen = false; renamingPanelLayout = null }) { Text(tr("Cancel", "取消")) } },
+        )
+        if (managePanelLayoutsOpen) AlertDialog(
+            onDismissRequest = { managePanelLayoutsOpen = false },
+            title = { Text(tr("Panel layouts", "面板布局")) },
+            text = { Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                panelState.namedLayouts.entries.forEach { saved ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(modifier = Modifier.weight(1f), onClick = {
+                            panelState.restoreNamedLayout(saved.name)?.let(::syncRestoredPanelSettings)
+                            managePanelLayoutsOpen = false
+                        }) { Text(saved.name) }
+                        IconButton(onClick = {
+                            managePanelLayoutsOpen = false; renamingPanelLayout = saved.name
+                            panelLayoutName = saved.name; savePanelLayoutOpen = true
+                        }) { Icon(Icons.Outlined.Edit, tr("Rename ${saved.name}", "重命名${saved.name}")) }
+                        IconButton(onClick = { deletingPanelLayout = saved.name; managePanelLayoutsOpen = false }) {
+                            Icon(Icons.Outlined.DeleteOutline, tr("Delete ${saved.name}", "删除${saved.name}"))
+                        }
+                    }
+                }
+            } },
+            confirmButton = { TextButton(onClick = { managePanelLayoutsOpen = false }) { Text(tr("Done", "完成")) } },
+        )
+        deletingPanelLayout?.let { name -> AlertDialog(
+            onDismissRequest = { deletingPanelLayout = null },
+            title = { Text(tr("Delete panel layout?", "删除面板布局？")) },
+            text = { Text(name) },
+            confirmButton = { TextButton(onClick = { panelState.deleteNamedLayout(name); deletingPanelLayout = null }) { Text(tr("Delete", "删除")) } },
+            dismissButton = { TextButton(onClick = { deletingPanelLayout = null }) { Text(tr("Cancel", "取消")) } },
+        ) }
         HorizontalDivider(color = OutlineSoft)
     Box(Modifier.weight(1f).clipToBounds()) {
         fun closeEditorPanel(panel: EditorPanel) {
