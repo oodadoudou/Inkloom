@@ -178,6 +178,8 @@ class InkCanvasGradientTest {
             pageModelWidth = 1_000f
             pageModelHeight = 1_000f
             selectionShape = SelectionShape.RECTANGLE
+            // The outside-selection protection tint is presentation, not gradient leakage.
+            selectionMaskVisibility = 0f
         }
         val rendered = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888)
         InstrumentationRegistry.getInstrumentation().runOnMainSync {

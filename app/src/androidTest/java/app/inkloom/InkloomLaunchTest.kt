@@ -737,6 +737,7 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Brushes").performClick()
 
+        composeRule.onNodeWithText("Pen").performClick()
         composeRule.onNodeWithText("G Pen").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Pencil").performClick()
         composeRule.onNodeWithText("6B Pencil").performScrollTo().assertIsDisplayed()

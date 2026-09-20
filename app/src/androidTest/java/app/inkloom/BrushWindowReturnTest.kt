@@ -11,6 +11,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithText
@@ -52,9 +53,11 @@ class BrushWindowReturnTest {
         val title = "Switcher ${System.nanoTime()}"
         tap("New Note")
         compose.onNodeWithText("Title").performTextReplacement(title)
-        instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
         compose.waitForIdle()
         tap("Create")
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithContentDescription("Switch notebook").fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithContentDescription("Switch notebook").performTouchInput { click() }
         compose.waitForIdle()
         compose.onNodeWithText("Distributed Systems").performScrollTo().performTouchInput { click() }
