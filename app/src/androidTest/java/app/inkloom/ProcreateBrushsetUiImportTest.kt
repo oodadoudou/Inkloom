@@ -1,9 +1,12 @@
 package app.inkloom
 
 import android.content.Context
+import android.content.ContentValues
 import android.graphics.Bitmap
+import android.os.Environment
 import android.os.SystemClock
 import android.os.ParcelFileDescriptor
+import android.provider.MediaStore
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.ViewGroup
@@ -35,6 +38,7 @@ import java.io.File
 /** Real file picker -> import ledger -> visible card -> production raster black-box gate. */
 class ProcreateBrushsetUiImportTest {
     private val composeRule = createAndroidComposeRule<MainActivity>()
+    private var fixtureGroupName = "Inkloom-P0-Test"
     private val cleanRule = TestRule { base, _ ->
         object : Statement() {
             override fun evaluate() {
@@ -49,7 +53,24 @@ class ProcreateBrushsetUiImportTest {
                     .commit()
                 context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE).edit().clear().commit()
                 context.filesDir.resolve("library.json").delete()
-                base.evaluate()
+                val source = File("/data/local/tmp/inkloom-ui-brushset/Inkloom-P0-Test.brushset")
+                check(source.isFile && source.length() > 0L) { "LOCAL_FIXTURE_REQUIRED: stage 吹石笔刷2025.brushset before this UI import test" }
+                fixtureGroupName = "Inkloom-P0-Test-${System.nanoTime()}"
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, "$fixtureGroupName.brushset")
+                    put(MediaStore.Downloads.MIME_TYPE, "application/octet-stream")
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                }
+                val fixture = requireNotNull(context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values))
+                try {
+                    context.contentResolver.openOutputStream(fixture)?.use { output -> source.inputStream().use { it.copyTo(output) } }
+                        ?: error("Could not publish the real brushset to Android Downloads")
+                    context.contentResolver.update(fixture, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
+                    base.evaluate()
+                } finally {
+                    context.contentResolver.delete(fixture, null, null)
+                }
             }
         }
     }
@@ -134,7 +155,7 @@ class ProcreateBrushsetUiImportTest {
                 it.isVisibleToUser && clickNodeOrAncestor(it)
         }
         assertTrue("Downloads root did not accept a click", downloads != null)
-        val fileNode = waitForAccessibilityNode(10_000) { it.text?.contains("Inkloom-P0-Test") == true }
+        val fileNode = waitForAccessibilityNode(10_000) { it.text?.contains(fixtureGroupName) == true }
         assertTrue("System picker did not show staged real brushset", fileNode != null)
         assertTrue("Staged brushset row was not clickable", clickNodeOrAncestor(fileNode!!))
         waitForAccessibilityNode(3_000) { it.text?.toString()?.equals("Open", ignoreCase = true) == true }
@@ -146,7 +167,7 @@ class ProcreateBrushsetUiImportTest {
 
         composeRule.waitUntil(120_000) {
             composeRule.onAllNodesWithText("OK").fetchSemanticsNodes().isNotEmpty() ||
-                composeRule.onAllNodesWithContentDescription("Brush group Inkloom-P0-Test")
+                composeRule.onAllNodesWithContentDescription("Brush group $fixtureGroupName")
                     .fetchSemanticsNodes().isNotEmpty()
         }
         if (composeRule.onAllNodesWithText("OK").fetchSemanticsNodes().isNotEmpty()) {
@@ -161,13 +182,13 @@ class ProcreateBrushsetUiImportTest {
             composeRule.onNodeWithText("OK").performClick()
         }
         composeRule.waitUntil(10_000) {
-            composeRule.onAllNodesWithContentDescription("Brush group Inkloom-P0-Test")
+            composeRule.onAllNodesWithContentDescription("Brush group $fixtureGroupName")
                 .fetchSemanticsNodes().isNotEmpty()
         }
         if (composeRule.onAllNodesWithContentDescription("Close brushes panel").fetchSemanticsNodes().isEmpty()) {
             composeRule.onNodeWithContentDescription("Brushes").performClick()
         }
-        composeRule.onNodeWithContentDescription("Brush group Inkloom-P0-Test").performClick()
+        composeRule.onNodeWithContentDescription("Brush group $fixtureGroupName").performClick()
 
         val sketch = selectAndDraw(view, "吹石-速写笔", "56640da5-113d-3a6c-98bb-8a8ba2032c7a", .32f)
         val ink = selectAndDraw(view, "吹石-飞墨签字笔", "67744578-f755-31d2-9ce3-4c778a681998", .54f)

@@ -47,3 +47,14 @@ stage_smallest brush 100
 stage_smallest brushset 100
 stage_smallest abr 100
 stage_smallest sut 100
+
+# The picker-to-raster UI gate asserts three known presets from this user-owned set.
+# Publish the bytes as a named shell fixture; the instrumentation test registers its own
+# temporary Downloads item through MediaStore so Android's picker can enumerate it.
+INKLOOM_UI_BRUSHSET="$(find "$INKLOOM_BRUSH_ROOT" -type f -name '吹石笔刷2025.brushset' -print -quit)"
+if [[ -n "$INKLOOM_UI_BRUSHSET" ]]; then
+  "$INKLOOM_ADB" shell mkdir -p /data/local/tmp/inkloom-ui-brushset
+  "$INKLOOM_ADB" push "$INKLOOM_UI_BRUSHSET" /data/local/tmp/inkloom-ui-brushset/Inkloom-P0-Test.brushset
+else
+  echo "LOCAL_FIXTURE_REQUIRED: 吹石笔刷2025.brushset is missing under $INKLOOM_BRUSH_ROOT"
+fi
