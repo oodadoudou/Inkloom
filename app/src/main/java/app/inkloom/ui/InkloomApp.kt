@@ -2928,7 +2928,7 @@ private fun EditorScreen(
                         onSettingsChange(settings.copy(toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY))
                     }
                 }
-                if (settings.showToolbar) key(tool, selectedBrushId) { ToolDock(tool = tool, onTool = { chosen ->
+                if (settings.showToolbar) ToolDock(tool = tool, onTool = { chosen ->
                     exitCanvasNavigation()
                     if (chosen == EditorTool.SELECT) rememberSelectionReturnTarget()
                     if (chosen == EditorTool.EYEDROPPER && tool != EditorTool.EYEDROPPER) {
@@ -2977,12 +2977,7 @@ private fun EditorScreen(
                     val next = FloatingToolbarPlacement.clamp(toolbarX + dx / editorDensity.density, toolbarY + dy / editorDensity.density, toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical)
                     toolbarX = next.xDp
                     toolbarY = next.yDp
-                }, onDragEnd = { onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY, verticalToolbar = dockVertical)) }, vertical = dockVertical, onToggleOrientation = { onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, verticalToolbar = !dockVertical)) }, onResetPosition = {
-                    val reset = FloatingToolbarPlacement.defaultPosition(toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical)
-                    toolbarX = reset.xDp
-                    toolbarY = reset.yDp
-                    onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY))
-                }, onDock = { dock -> onSettingsChange(settings.copy(toolbarDock = dock, verticalToolbar = when (dock) { ToolbarDock.LEFT, ToolbarDock.RIGHT -> true; ToolbarDock.TOP, ToolbarDock.BOTTOM -> false; ToolbarDock.FREE -> dockVertical })) }, brushSize = brushSize, brushOpacity = brushOpacity, brushColor = brushColor, brushes = brushes, selectedBrushId = selectedBrushId, onSystemPreset = { presetTool ->
+                }, onDragEnd = { onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY, verticalToolbar = dockVertical)) }, vertical = dockVertical, brushSize = brushSize, brushOpacity = brushOpacity, brushColor = brushColor, brushes = brushes, selectedBrushId = selectedBrushId, onSystemPreset = { presetTool ->
                     exitCanvasNavigation()
                     val presetId = if (presetTool == EditorTool.ERASER) "system-hard-eraser" else "system-g-pen"
                     selectWorkspaceBrush(requireNotNull(SystemBrushCatalog.byId(presetId)))
@@ -2990,7 +2985,7 @@ private fun EditorScreen(
                     changeCurrentBrushSize(raw)
                 }, onOpacity = { raw ->
                     changeCurrentBrushOpacity(raw)
-                }, onColor = ::changeBrushColor, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, ::changeBrushColor, onSettingsChange) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f)) }
+                }, onColor = ::changeBrushColor, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, ::changeBrushColor, onSettingsChange) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f))
                 if (savedSelectionsOpen) SavedSelectionsPanel(
                     selectedPage.savedSelections, assets, settings.language, selectionActive,
                     onSave = {
@@ -5205,7 +5200,7 @@ private fun ProcreateTopButton(
 }
 
 @Composable
-private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit, modifier: Modifier = Modifier) {
+private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit, modifier: Modifier = Modifier) {
     var moreToolsOpen by remember { mutableStateOf(false) }
     var controlsOpen by remember { mutableStateOf(false) }
     val dragToolbarDescription = tr("Drag toolbar", "拖动工具栏")
@@ -5272,9 +5267,6 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
                 onMoreToolsOpen = { moreToolsOpen = it },
                 controlsOpen = controlsOpen,
                 onControlsOpen = { controlsOpen = it },
-                onToggleOrientation = onToggleOrientation,
-                onResetPosition = onResetPosition,
-                onDock = onDock,
                 brushSize = brushSize,
                 brushOpacity = brushOpacity,
                 brushColor = brushColor,
@@ -5290,18 +5282,25 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
                 gradientControls = gradientControls,
             )
         }
-        if (vertical) ProcreateSidebar(
-            brushSize = brushSize,
-            brushOpacity = brushOpacity,
-            onSize = onSize,
-            onOpacity = onOpacity,
-            onModify = { onTool(EditorTool.EYEDROPPER) },
-            onUndo = onUndo,
-            onRedo = onRedo,
-            showGradientControls = tool == EditorTool.GRADIENT,
-            gradientControls = gradientControls,
-            dragModifier = dragModifier.semantics { contentDescription = dragToolbarDescription },
-        ) else Row(verticalAlignment = Alignment.CenterVertically) { content() }
+        if (vertical) Row(verticalAlignment = Alignment.Top) {
+            Column(
+                Modifier.width(40.dp).heightIn(max = 600.dp).verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) { content() }
+            VerticalDivider(Modifier.height(600.dp), color = OutlineSoft)
+            ProcreateSidebar(
+                brushSize = brushSize,
+                brushOpacity = brushOpacity,
+                onSize = onSize,
+                onOpacity = onOpacity,
+                onModify = { onTool(EditorTool.EYEDROPPER) },
+                onUndo = onUndo,
+                onRedo = onRedo,
+                showGradientControls = tool == EditorTool.GRADIENT,
+                gradientControls = gradientControls,
+                dragModifier = dragModifier.semantics { contentDescription = dragToolbarDescription },
+            )
+        } else Row(verticalAlignment = Alignment.CenterVertically) { content() }
     }
 }
 
@@ -5365,7 +5364,7 @@ private fun ProcreateSidebar(
 }
 
 @Composable
-private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit) {
+private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit) {
     val dragToolbarDescription = tr("Drag toolbar", "拖动工具栏")
     var toolLibraryLayout by rememberSaveable { mutableStateOf(ToolLibraryLayout.LIST) }
     var toolLibrarySort by rememberSaveable { mutableStateOf(ToolLibrarySort.DEFAULT) }
@@ -5389,14 +5388,20 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
     }
     BrushPresetToolButton(EditorTool.PEN, Icons.Outlined.Brush, tr("Brush", "笔刷"), tool, libraryPresets.filterNot(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
     ToolButton(EditorTool.HIGHLIGHTER, Icons.Outlined.BorderColor, tr("Marker", "标记笔"), tool, onTool)
-    BrushPresetToolButton(EditorTool.ERASER, InkloomIcons.Eraser, tr("Eraser", "橡皮"), tool, libraryPresets.filter(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
+    BrushPresetToolButton(EditorTool.ERASER, InkloomIcons.Eraser, if (vertical) tr("Eraser tool", "橡皮工具") else tr("Eraser", "橡皮"), tool, libraryPresets.filter(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
     ToolButton(EditorTool.SELECT, Icons.Outlined.Gesture, tr("Select", "选择"), tool, onTool)
     if (vertical) {
         HorizontalDivider(Modifier.width(30.dp).padding(vertical = 2.dp), color = OutlineSoft)
         ToolButton(EditorTool.EYEDROPPER, Icons.Outlined.Colorize, tr("Eyedropper", "吸管"), tool, onTool)
+        ToolButton(EditorTool.FILL, Icons.Outlined.FormatColorFill, tr("Paint bucket", "油漆桶"), tool, onTool)
+        ToolButton(EditorTool.GRADIENT, Icons.Outlined.Gradient, tr("Gradient", "渐变"), tool, onTool)
+        ToolButton(EditorTool.SMUDGE, Icons.Outlined.BlurOn, tr("Blend", "混色"), tool, onTool)
+        ToolButton(EditorTool.LIQUIFY, Icons.Outlined.Waves, tr("Liquify", "液化"), tool, onTool)
+        ToolButton(EditorTool.CORRECT_LINE, Icons.Outlined.AutoFixHigh, tr("Correct line", "线条修正"), tool, onTool)
         ToolButton(EditorTool.SHAPE, Icons.Outlined.Category, tr("Shape", "形状"), tool, onTool)
         ToolButton(EditorTool.TEXT, Icons.Outlined.Title, tr("Text", "文字"), tool, onTool)
         ToolButton(EditorTool.NOTE, Icons.Outlined.StickyNote2, tr("Note", "便笺"), tool, onTool)
+        ToolButton(EditorTool.LINK, Icons.Outlined.Link, tr("Link", "链接"), tool, onTool)
         ToolButton(EditorTool.IMAGE, Icons.Outlined.Image, tr("Image", "图片"), tool, onTool)
         ToolButton(EditorTool.LASER, Icons.Outlined.TrackChanges, tr("Laser pointer", "激光笔"), tool, onTool)
         HorizontalDivider(Modifier.width(30.dp).padding(vertical = 2.dp), color = OutlineSoft)
@@ -5651,15 +5656,6 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
                         color = MutedInk,
                         fontSize = 10.sp,
                     )
-                }
-                HorizontalDivider()
-                Text(tr("Palette position", "工具栏位置"), color = MutedInk, fontSize = 12.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    ToolbarDock.entries.forEach { dock -> AssistChip(onClick = { onDock(dock) }, label = { Text(when (dock) { ToolbarDock.FREE -> tr("Free", "自由"); ToolbarDock.TOP -> tr("Top", "顶部"); ToolbarDock.BOTTOM -> tr("Bottom", "底部"); ToolbarDock.LEFT -> tr("Left", "左侧"); ToolbarDock.RIGHT -> tr("Right", "右侧") }, fontSize = 10.sp) }) }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onToggleOrientation, modifier = Modifier.weight(1f)) { Icon(if (vertical) Icons.Outlined.SwapHoriz else Icons.Outlined.SwapVert, null); Spacer(Modifier.width(5.dp)); Text(if (vertical) tr("Horizontal", "水平") else tr("Vertical", "垂直")) }
-                    OutlinedButton(onClick = onResetPosition, modifier = Modifier.weight(1f)) { Icon(Icons.Outlined.CenterFocusStrong, null); Spacer(Modifier.width(5.dp)); Text(tr("Reset", "重置")) }
                 }
             }
         }
