@@ -1656,9 +1656,10 @@ private fun EditorScreen(
     fun showColors() { colorPanelOpen = true; panelState.colors(true) }
     fun setBrushPanelOpen(open: Boolean) {
         panelState.show(EditorPanel.BRUSHES, open)
+        if (open) panelState.focus(EditorPanel.BRUSHES)
         if (brushesOpen != open) onSettingsChange(settings.copy(showBrushPanel = open))
     }
-    fun toggleBrushPanel() = setBrushPanelOpen(EditorPanel.BRUSHES !in panelState.layout.open)
+    fun toggleBrushPanel() = setBrushPanelOpen(!panelState.isActive(EditorPanel.BRUSHES))
     LaunchedEffect(settings.showPageRail) { panelState.show(EditorPanel.PAGES, settings.showPageRail) }
     var zoom by remember(document.id) { mutableFloatStateOf(1f) }
     var panX by remember(document.id) { mutableFloatStateOf(0f) }
@@ -1873,6 +1874,7 @@ private fun EditorScreen(
     fun setLayersPanelOpen(open: Boolean, pageId: String? = null) {
         pageId?.let(::selectPageWithViewport)
         layersOpen = open; panelState.show(EditorPanel.LAYERS, open)
+        if (open) panelState.focus(EditorPanel.LAYERS)
         onSettingsChange(settings.copy(showLayerPanel = open))
     }
     fun selectLayerContents(layerId: String) {
@@ -2015,7 +2017,7 @@ private fun EditorScreen(
                             workspaceMenu = false
                             val open = EditorPanel.SUBTOOLS !in panelState.layout.open
                             panelState.show(EditorPanel.SUBTOOLS, open)
-                            if (open) panelState.commit(EditorPanelLayouts.select(panelState.layout, EditorPanel.SUBTOOLS))
+                            if (open) panelState.focus(EditorPanel.SUBTOOLS)
                         })
                     DropdownMenuItem(text = { Text(tr("Tool property", "工具属性")) },
                         trailingIcon = { if (EditorPanel.PROPERTIES in panelState.layout.open) Icon(Icons.Outlined.Check, null) },
@@ -2023,7 +2025,7 @@ private fun EditorScreen(
                             workspaceMenu = false
                             val open = EditorPanel.PROPERTIES !in panelState.layout.open
                             panelState.show(EditorPanel.PROPERTIES, open)
-                            if (open) panelState.commit(EditorPanelLayouts.select(panelState.layout, EditorPanel.PROPERTIES))
+                            if (open) panelState.focus(EditorPanel.PROPERTIES)
                         })
                 }
             }
@@ -2063,7 +2065,12 @@ private fun EditorScreen(
                 if (settings.showPageRail) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows,
                 tr("Toggle pages", "显示或隐藏页面栏"),
                 selected = settings.showPageRail,
-                onClick = { onSettingsChange(settings.copy(showPageRail = !settings.showPageRail)) },
+                onClick = {
+                    val open = !settings.showPageRail
+                    panelState.show(EditorPanel.PAGES, open)
+                    if (open) panelState.focus(EditorPanel.PAGES)
+                    onSettingsChange(settings.copy(showPageRail = open))
+                },
             )
             Spacer(Modifier.weight(1f))
             offeredContinueFillColor?.let { fillColor ->
@@ -2115,7 +2122,7 @@ private fun EditorScreen(
                 if (EditorPanel.BRUSHES !in panelState.layout.open) setBrushPanelOpen(true)
             })
             ProcreateTopButton(Icons.Outlined.Layers, tr("Layers", "图层"), selected = layersOpen, onClick = {
-                setLayersPanelOpen(!layersOpen)
+                setLayersPanelOpen(!panelState.isActive(EditorPanel.LAYERS))
             })
             ProcreateTopButton(Icons.Outlined.SwapHoriz, tr("Quick swap foreground and background colors", "快捷交换前景色和背景色"),
                 onClick = ::swapDrawingColors)

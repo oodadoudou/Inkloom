@@ -42,4 +42,19 @@ class ToolWorkspacePanelsWindowTest {
         compose.waitForIdle()
         assertEquals(SelectionShape.MAGIC_WAND, AppSettingsStore(compose.activity).load().selectionShape)
     }
+
+    @Test fun toolbarReactivatesBrushTabBeforeClosingItAndLeavesSiblingOpen() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithText("Sub tools").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Brushes").performClick()
+        val focused = EditorPanelState(compose.activity, AppSettings()).layout
+        assertTrue(EditorPanel.BRUSHES in focused.open)
+        assertTrue(EditorPanel.SUBTOOLS in focused.open)
+        compose.onNodeWithContentDescription("Brushes").performClick()
+        val closed = EditorPanelState(compose.activity, AppSettings()).layout
+        assertTrue(EditorPanel.BRUSHES !in closed.open)
+        assertTrue(EditorPanel.SUBTOOLS in closed.open)
+    }
 }

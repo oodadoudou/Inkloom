@@ -101,10 +101,40 @@ internal class EditorPanelState(context: Context, settings: AppSettings) {
         val next = if(open) layout.open+panel else layout.open-panel
         if(next != layout.open) commit(layout.copy(open=next))
     }
+    private fun owner(panel: EditorPanel): PanelNode.Tabs? {
+        fun find(node: PanelNode): PanelNode.Tabs? = when (node) {
+            is PanelNode.Tabs -> node.takeIf { panel in it.panels }
+            is PanelNode.Split -> find(node.first) ?: find(node.second)
+            is PanelNode.Canvas -> null
+        }
+        return find(layout.dock) ?: layout.floating.firstNotNullOfOrNull { find(it.node) }
+    }
+    fun isActive(panel: EditorPanel): Boolean = panel in layout.open && owner(panel)?.let {
+        it.active == panel && it.id == activeTabId
+    } == true
+    fun focus(panel: EditorPanel) {
+        if (panel !in layout.open) return
+        val tabId = owner(panel)?.id ?: return
+        activeTabId = tabId
+        val selected = EditorPanelLayouts.select(layout, panel)
+        val root = selected.floating.firstOrNull { EditorPanelLayouts.find(it.node, tabId) != null }
+        commit(if (root == null || selected.floating.lastOrNull() == root) selected
+            else selected.copy(floating = selected.floating - root + root))
+    }
     fun colors(open: Boolean) {
         val colors=EditorPanel.entries.filter { it.ordinal >= EditorPanel.WHEEL.ordinal }.toSet()
         if(!open) commit(layout.copy(open=layout.open-colors))
-        else if(layout.open.intersect(colors).isEmpty()) commit(layout.copy(open=layout.open+colors))
+        else {
+            fun activeColor(node: PanelNode): EditorPanel? = when (node) {
+                is PanelNode.Tabs -> node.active.takeIf { it in colors }
+                is PanelNode.Split -> activeColor(node.first) ?: activeColor(node.second)
+                is PanelNode.Canvas -> null
+            }
+            val last = layout.floating.asReversed().firstNotNullOfOrNull { activeColor(it.node) }
+                ?: activeColor(layout.dock) ?: EditorPanel.WHEEL
+            if(layout.open.intersect(colors).isEmpty()) commit(layout.copy(open=layout.open+colors))
+            focus(last.takeIf { it in layout.open } ?: layout.open.first { it in colors })
+        }
     }
     fun closeTopPanel(onClose: (EditorPanel) -> Unit): Boolean {
         val slots = EditorPanelLayouts.slots(layout, 1000f, 800f)
