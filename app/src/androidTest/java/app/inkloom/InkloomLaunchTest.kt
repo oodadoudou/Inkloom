@@ -78,6 +78,7 @@ class InkloomLaunchTest {
                 // Live masters now survive editor sessions; this fixture requires default brushes.
                 context.getSharedPreferences("inkloom_color_palette", android.content.Context.MODE_PRIVATE).edit().remove("studioTab").putBoolean("wheelHlsTriangle", true).putBoolean("wheelRgbValues", false).commit()
                 context.getSharedPreferences("brush_preset_sizes", android.content.Context.MODE_PRIVATE).edit().clear().commit()
+                context.getSharedPreferences("inkloom_editor_panels", android.content.Context.MODE_PRIVATE).edit().clear().commit()
                 java.io.File(context.filesDir, "page-templates.json").delete()
                 java.io.File(context.filesDir, "library.json").delete()
                 context
@@ -101,7 +102,7 @@ class InkloomLaunchTest {
                     .putString("toolbarDock", "LEFT")
                     .putFloat("toolbarOffsetXDp", 16f)
                     .putFloat("toolbarOffsetYDp", 16f)
-                    .putFloat("pagePanelXDp", 16f)
+                    .putFloat("pagePanelXDp", 88f)
                     .putFloat("pagePanelYDp", 16f)
                     .putFloat("pagePanelWidthDp", 160f)
                     .putFloat("pagePanelHeightDp", 640f)
@@ -747,7 +748,7 @@ class InkloomLaunchTest {
             click(Offset(width / 2f, height * .95f))
         }
 
-        assertTrue("The canvas must not wait for another panel or tool event", canvas.inkOpacity < .12f)
+        assertTrue("The canvas must not wait for another panel or tool event: opacity=${canvas.inkOpacity}", canvas.inkOpacity < .12f)
     }
 
     @Test fun brushPopoverNeverChangesTheUsableCanvasInPortrait() {
@@ -774,11 +775,14 @@ class InkloomLaunchTest {
 
     @Test fun brushPanelCanFloatMoveResizeAndReopenInPlace() {
         createNotebookAndOpenEditor()
-        val preferences = composeRule.activity.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
-        val beforeX = preferences.getFloat("brushPanelXDp", 720f)
-        val beforeWidth = preferences.getFloat("brushPanelWidthDp", 330f)
-
+        val preferences = composeRule.activity.getSharedPreferences("inkloom_editor_panels", android.content.Context.MODE_PRIVATE)
+        fun brushRect(): app.inkloom.settings.PanelRect {
+            val raw = requireNotNull(preferences.getString("layout", null))
+            val layout = kotlinx.serialization.json.Json.decodeFromString(app.inkloom.settings.EditorPanelLayout.serializer(), raw)
+            return layout.floating.first { app.inkloom.settings.EditorPanel.BRUSHES in app.inkloom.settings.EditorPanelLayouts.members(it.node) }.rect
+        }
         composeRule.onNodeWithContentDescription("Brushes").performClick()
+        val before = brushRect()
         composeRule.onNodeWithContentDescription("Drag brushes panel").assertIsDisplayed().performTouchInput {
             swipe(center, center + Offset(-120f, 90f), durationMillis = 500)
         }
@@ -786,19 +790,14 @@ class InkloomLaunchTest {
             swipe(center, center + Offset(-36f, 0f), durationMillis = 350)
         }
         composeRule.onNodeWithContentDescription("Resize brushes panel · top edge").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Resize brushes panel").assertIsDisplayed().performTouchInput {
-            swipe(center, center + Offset(70f, -60f), durationMillis = 500)
-        }
         composeRule.waitForIdle()
-
-        assertTrue(preferences.getString("brushPanelDock", null) == "FREE")
-        assertTrue(preferences.getFloat("brushPanelXDp", beforeX) != beforeX)
-        assertTrue(preferences.getFloat("brushPanelWidthDp", beforeWidth) != beforeWidth)
-
+        val adjusted = brushRect()
+        assertTrue(adjusted.x != before.x)
+        assertTrue(adjusted.width > before.width)
         composeRule.onNodeWithContentDescription("Close brushes panel").performClick()
         composeRule.onNodeWithContentDescription("Brushes").performClick()
-        composeRule.onNodeWithContentDescription("Resize brushes panel").assertIsDisplayed()
-        assertEquals("FREE", preferences.getString("brushPanelDock", null))
+        composeRule.onNodeWithContentDescription("Resize brushes panel · left edge").assertIsDisplayed()
+        assertEquals(adjusted, brushRect())
     }
 
     @Test fun openingLayersAutomaticallyDismissesBrushes() {
