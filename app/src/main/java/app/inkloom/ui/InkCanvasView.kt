@@ -4782,6 +4782,7 @@ class InkCanvasView(context: Context) : View(context) {
             v5StrokeController.awaitIdle()
             if (!mixedElementOverrides.containsKey(activeLayerId) || mixedElementOverrides[activeLayerId] != null) {
                 val prepared=onPrepareMixedSelection(activeLayerId,surface.logicalWidth)
+                if (prepared == null && rejectRetainedObjectPixelEdit()) return false
                 if(prepared != null) {
                     mixedSelectionDraft=try { MixedSelectionDraft(prepared,surface) } catch(failure: Throwable) { prepared.bitmap.recycle(); prepared.release(); throw failure }
                     mixedElementOverrides[activeLayerId]=null
@@ -6377,7 +6378,6 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun validateRasterSelectionTransform(): Boolean {
         if (rejectLayerContentEdit()) return false
-        if (rejectRetainedObjectPixelEdit()) return false
         val surface = rasterTileSurfaceFor(activeLayerId)
         val rejection = when {
             activeLayerId in protectedLayerIds -> "Unlock the active layer before transforming its selection"
