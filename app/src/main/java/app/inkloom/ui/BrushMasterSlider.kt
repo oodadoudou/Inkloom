@@ -44,6 +44,7 @@ import app.inkloom.ui.theme.Ink
 internal fun BrushMasterSlider(
     progress: Float,
     description: String,
+    gestureOwnerKey: String,
     display: (Float) -> String,
     onProgress: (Float) -> Unit,
 ) {
@@ -79,7 +80,7 @@ internal fun BrushMasterSlider(
                     true
                 }
                 .focusable()
-                .pointerInput(description) {
+                .pointerInput(description, gestureOwnerKey) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = true)
                         down.consume()

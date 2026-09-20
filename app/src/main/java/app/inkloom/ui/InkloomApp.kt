@@ -5391,6 +5391,7 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
             ProcreateSidebar(
                 brushSize = brushSize,
                 brushOpacity = brushOpacity,
+                gestureOwnerKey = "${tool.name}:${selectedBrushId ?: "default"}",
                 onSize = onSize,
                 onOpacity = onOpacity,
                 onModify = { onTool(EditorTool.EYEDROPPER) },
@@ -5408,6 +5409,7 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
 private fun ProcreateSidebar(
     brushSize: Float,
     brushOpacity: Float,
+    gestureOwnerKey: String,
     onSize: (Float) -> Unit,
     onOpacity: (Float) -> Unit,
     onModify: () -> Unit,
@@ -5432,6 +5434,7 @@ private fun ProcreateSidebar(
         BrushMasterSlider(
             progress = sizeProgress,
             description = tr("Brush size", "笔刷大小"),
+            gestureOwnerKey = gestureOwnerKey,
             display = { progress ->
                 val value = .5f + progress * progress * 399.5f
                 (if (value < 10f) "%.1f".format(value) else value.toInt().toString()) + " px"
@@ -5455,6 +5458,7 @@ private fun ProcreateSidebar(
         BrushMasterSlider(
             progress = ((brushOpacity.coerceIn(.05f, 1f) - .05f) / .95f),
             description = tr("Brush opacity", "笔刷不透明度"),
+            gestureOwnerKey = gestureOwnerKey,
             display = { "${((.05f + it * .95f) * 100).toInt()}%" },
             onProgress = { onOpacity(.05f + it * .95f) },
         )
