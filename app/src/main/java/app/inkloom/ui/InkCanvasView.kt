@@ -307,6 +307,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
     private val lassoPoints = mutableListOf<StrokePoint>()
     private var v5LassoSession: LassoSession? = null
+    private var lassoLastContactWasStylus: Boolean? = null
     private var shapeStart: ShapePoint? = null
     private var shapeEnd: ShapePoint? = null
     private val shapeFreeformPoints = mutableListOf<ShapePoint>()
@@ -2502,8 +2503,12 @@ class InkCanvasView(context: Context) : View(context) {
                             parent?.requestDisallowInterceptTouchEvent(false)
                             return true
                         }
+                        if (v5LassoSession?.preview()?.points?.size == 1 &&
+                            lassoLastContactWasStylus != null && lassoLastContactWasStylus != isStylus
+                        ) clearLassoInput()
                         if (v5LassoSession == null) v5LassoSession = LassoSession(pageModelWidth.coerceAtLeast(1f), pageModelHeight.coerceAtLeast(1f))
                         v5LassoSession?.beginContact()
+                        lassoLastContactWasStylus = isStylus
                     } else clearLassoInput()
                     appendSelectionPoint(normalizedX, normalizedY)
                     lastX = normalizedX; lastY = normalizedY
@@ -3951,6 +3956,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun clearLassoInput() {
         v5LassoSession?.cancel()
         v5LassoSession = null
+        lassoLastContactWasStylus = null
         lassoPoints.clear()
     }
 
@@ -6371,6 +6377,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun validateRasterSelectionTransform(): Boolean {
         if (rejectLayerContentEdit()) return false
+        if (rejectRetainedObjectPixelEdit()) return false
         val surface = rasterTileSurfaceFor(activeLayerId)
         val rejection = when {
             activeLayerId in protectedLayerIds -> "Unlock the active layer before transforming its selection"
