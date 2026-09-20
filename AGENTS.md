@@ -1,5 +1,12 @@
 # Inkloom engineering rules
 
+## Current documentation
+
+- Read `CURRENT_REQUIREMENTS.md` for current status and user priorities; `REQUESTED_FEATURE_CATALOG.md` retains requested leaf items without completion claims.
+- Use `INTERACTION_CONTRACTS.md` for interaction constraints and `DOCUMENTATION.md` for document ownership. Update the current status file instead of creating a competing versioned gap matrix.
+- Historical plans are archived outside the repository. Old reports, branches, stashes and test artifacts are not evidence that a feature is currently shipped.
+- Usage thresholds belong only to the task round specified by the user; do not embed old limits in long-lived product plans.
+
 ## Product boundary
 
 - Inkloom is a professional painting engine inside a lightweight, reliable notebook container. It is not a general-purpose SaaS notebook platform.
@@ -42,7 +49,7 @@
 - Before implementing or changing a drawing, selection, brush-library, layer, canvas-navigation, or stylus interaction, research the equivalent behavior in at least two current mainstream drawing or handwriting products.
 - Prefer official manuals, platform documentation, and reproducible device behavior. Record the sources and the chosen interaction contract in the task notes or commit message before coding.
 - Match established user expectations (including thresholds, drag targets, cancellation, visual feedback, and accessibility) instead of inventing a substitute interaction.
-- Do not copy proprietary artwork, icons, names, or source code. Reproduce behavior with Inkloom's white visual system and original implementation.
+- Do not copy proprietary artwork, icons, names, or source code. Reproduce behavior with Inkloom's user-requested deep-gray background, neutral black/white controls, original icons and original implementation.
 
 ## Regression requirements
 

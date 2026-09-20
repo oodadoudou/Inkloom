@@ -1,6 +1,10 @@
 # Inkloom Android
 
-Offline-first Android handwriting, note-taking, PDF annotation, and brush-import application for Android 10 and later.
+An offline professional painting engine inside a lightweight Android notebook, with PDF annotation and brush import. Android 10 and later; the primary device is Wacom MovinkPad Pro 14 on Android 15.
+
+## Current requirements
+
+Use [CURRENT_REQUIREMENTS.md](CURRENT_REQUIREMENTS.md) for current feature status and user priorities. [DOCUMENTATION.md](DOCUMENTATION.md) lists the active documents and the legacy-document cleanup. Historical plans are not current completion evidence.
 
 ## Requirements
 
@@ -34,4 +38,4 @@ The helper scripts keep their downloaded SDK, JDK, and AVD data in ignored proje
 
 Use `./scripts/start_android15_emulator.sh --headless` for CI-style local testing.
 
-Product/UI source material is kept locally under the ignored `design/` directory. Agent task records and generated validation artifacts are kept under the ignored `tasks/` directory; neither belongs in source control.
+Private brush manifests and scoped local records are kept under the ignored `tasks/` directory; generated validation evidence is kept under `.codex-artifacts/`. Current requirements are tracked in source control. Superseded plans and design documents have been archived outside the project.
