@@ -206,10 +206,11 @@ private fun MixingPalette(
                 it.onHistory = { undo, redo -> canUndo = undo; canRedo = redo }
                 it.onStorageError = { storageError = true }
             })
-        if (showColors) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-            library.activeSet?.swatches.orEmpty().forEach { swatch ->
-                val label = tr("Mixing color #%06X".format(swatch.color and 0xffffff), "混色色块 #%06X".format(swatch.color and 0xffffff))
-                Box(Modifier.size(32.dp).padding(horizontal = 3.dp, vertical = 7.dp)
+        if (showColors) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                library.activeSet?.swatches.orEmpty().forEach { swatch ->
+                    val label = tr("Mixing color #%06X".format(swatch.color and 0xffffff), "混色色块 #%06X".format(swatch.color and 0xffffff))
+                    Box(Modifier.size(32.dp).padding(horizontal = 3.dp, vertical = 7.dp)
                     .background(Color(swatch.color), RoundedCornerShape(2.dp)).border(if (library.activeSet?.selectedSwatchId == swatch.id) 1.5.dp else .5.dp, if (library.activeSet?.selectedSwatchId == swatch.id) Ink else OutlineSoft)
                     .semantics { contentDescription = label }
                     .combinedClickable(onClick = {
@@ -223,6 +224,7 @@ private fun MixingPalette(
                         DropdownMenuItem(text = { Text(tr("Delete color", "删除颜色")) }, onClick = {
                             runCatching { paletteStore.update { it.removeSwatch(MixingColorBarStore.SET_ID, swatch.id) } }.onSuccess { library = it }.onFailure { storageError = true }; swatchMenu = null
                         })
+                    }
                     }
                 }
             }

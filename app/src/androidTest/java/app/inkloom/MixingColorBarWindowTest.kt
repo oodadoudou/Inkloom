@@ -14,6 +14,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
@@ -264,6 +266,9 @@ class MixingColorBarWindowTest {
     }
 
     private fun bounds(label: String): Rect {
+        if (label.startsWith("Mixing color #")) {
+            compose.onNodeWithContentDescription(label).performScrollTo()
+        }
         var result: Rect? = null
         try {
             compose.waitUntil(5_000) { result = findBounds(label); result != null }
