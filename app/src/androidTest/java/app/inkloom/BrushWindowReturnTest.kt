@@ -164,7 +164,9 @@ class BrushWindowReturnTest {
         }
         tap("Eraser")
         rows.forEach { y -> stroke(pagePoint(view, .35f, y), pagePoint(view, .45f, y)) }
-        tap("Brushes"); tap("Close brushes panel")
+        // Eraser selection opens the brush library; a canvas contact may dismiss it.
+        if (!hasLabel("Close brushes panel")) tap("Brushes")
+        tap("Close brushes panel")
         val context = instrumentation.targetContext
         val assets = app.inkloom.document.DocumentAssetService(context)
         fun erased(snapshot: app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot): Boolean = rows.all { y ->
