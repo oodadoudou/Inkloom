@@ -1,0 +1,33 @@
+{
+  "version": "0.202.0",
+  "versionCode": 202,
+  "variant": "debug",
+  "commit": "4e1cfa4127fefc92e9bb143407d09428c9933f07",
+  "sha256": "c4143ad0e990c9f00a6b6164eb6f58d588c39e21e63655f439e748f7ae6c2ae8",
+  "bytes": 99961945,
+  "generatedUtc": "2026-09-20T04:20:35.029534+00:00",
+  "verification": {
+    "JVM": {
+      "tests": 834,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 8
+    },
+    "Android15Full": {
+      "tests": 646,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "Android15SelectionAfterMixedTransformFix": {
+      "tests": 27,
+      "failures": 0
+    },
+    "lint": "PASS",
+    "diffCheck": "PASS",
+    "signature": "PASS v2",
+    "ordinaryDebugSmoke": "Android 15 install, cold start and editor open PASS, version 0.202.0"
+  },
+  "deviceStatus": "DEVICE_PENDING",
+  "evidenceRoot": ".codex-artifacts/workspace-csp-0.202.0"
+}
