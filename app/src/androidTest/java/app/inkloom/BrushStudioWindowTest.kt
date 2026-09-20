@@ -38,13 +38,9 @@ class BrushStudioWindowTest {
     @Test fun appLanguageOwnsStudioAndCustomCurveSurvivesSave() {
         tap("新建笔记"); tap("创建"); tap("笔刷")
         tap("笔刷类别 铅笔")
-        val brush = bounds("笔刷预设 HB Pencil")
-        val down = SystemClock.uptimeMillis()
-        event(MotionEvent.ACTION_DOWN, brush.exactCenterX(), brush.exactCenterY(), down)
-        SystemClock.sleep(700)
-        compose.mainClock.advanceTimeBy(750)
-        compose.waitForIdle()
-        event(MotionEvent.ACTION_UP, brush.exactCenterX(), brush.exactCenterY(), down)
+        // A long press now lifts a brush for grouping; the selected brush opens Studio on tap.
+        tap("笔刷预设 HB Pencil")
+        if (find("笔刷工作室").isEmpty()) tap("笔刷预设 HB Pencil")
         bounds("笔刷工作室"); val pad = bounds("试笔板")
         tap("试笔板设置")
         bounds("预览大小滑块")
