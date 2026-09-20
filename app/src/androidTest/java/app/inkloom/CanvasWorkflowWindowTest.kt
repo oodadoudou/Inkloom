@@ -108,11 +108,15 @@ class CanvasWorkflowWindowTest {
         assertEquals("Checkpoint and brush panel must not restore erased pixels", erased, inkCount())
     }
 
-    @Test fun panelDragReturnsKeyboardHoverZoomAndDrawingToCanvas() {
+    @Test fun panelResizeReturnsKeyboardHoverZoomAndDrawingToCanvas() = panelGeometryThenInput(resize = true)
+
+    @Test fun panelDragReturnsKeyboardHoverZoomAndDrawingToCanvas() = panelGeometryThenInput(resize = false)
+
+    private fun panelGeometryThenInput(resize: Boolean) {
         tap("New Note"); tap("Create"); val view = canvas()
         tap("Layers")
-        val start = center("Drag layers panel")
-        val end = start + Offset(-160f, 90f)
+        val start = center(if (resize) "Resize layers panel · bottom-left corner" else "Drag layers panel")
+        val end = start + if (resize) Offset(-100f, -100f) else Offset(-160f, 90f)
         val down = SystemClock.uptimeMillis()
         event(MotionEvent.ACTION_DOWN, start, down, MotionEvent.TOOL_TYPE_FINGER)
         for (index in 1..24) {

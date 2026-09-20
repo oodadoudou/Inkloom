@@ -45,3 +45,16 @@
 - [Goodnotes 模板](https://support.goodnotes.com/hc/en-us/articles/7353728093199-Import-and-manage-custom-notebook-templates)、[Procreate 新建画布](https://help.procreate.com/procreate/handbook/gallery/gallery-create)。
 
 第三方笔刷／色板仅用于用户授权的本地使用和测试，授权不明或禁止再分发的资源不提交 GitHub、不打进 APK。完整旧研究链接与素材候选保存在项目外归档内。
+
+## 面板 layout 修复合同（2026-09-20）
+
+本轮按用户最新指示只完成 layout，笔刷保真暂缓，图层合并在途代码单独保存。
+重新核查 [CSP 面板宽高与停靠](https://help.clip-studio.com/en-us/manual_en/690_interface/Palettes.htm) 与 [Photoshop 浮动面板尺寸](https://helpx.adobe.com/photoshop/desktop/get-started/learn-the-basics/stack-floating-panels.html)。
+
+- 浮窗四边调单轴、四角调双轴；拖动固定相对边，达到最小尺寸／屏幕边缘后不漂移。命中区域加宽，视觉仍是中性单线。
+- 停靠组靠画布侧及组间分隔线可连续调节；左右停靠可调各面板高度，上下停靠可调宽度。独占一列／行时允许缩短面板并保留空白停靠区，不强制占满整条边。
+- 从按下时的几何与根坐标计算拖动，不从正在移动的边缘累加局部位移。预览不写盘，松手一次保存；系统取消、第二指、Escape／返回与屏幕旋转取消并恢复。
+- 关闭重开／进程重启／命名布局保留尺寸；键盘／窄屏仅暂时约束可见范围，不覆盖保存的大尺寸。锁定布局阻止拖动、缩放、拆分、标签排序与工具条移位，面板开关／内容操作仍可用。
+- 不新增缩成图标、最小化或方向停靠菜单；仍以边缘拖放决定位置。
+
+验收：浮窗四边四角；左／右／上／下停靠；嵌套分隔线；面板内容滚动无误触；取消恢复；锁定；命名布局与重启；绘画／悬停／橡皮／切笔／缩放后绘画回归。模拟器通过后仍标记 DEVICE_PENDING。

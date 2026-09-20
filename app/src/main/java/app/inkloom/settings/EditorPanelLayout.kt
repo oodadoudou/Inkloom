@@ -24,6 +24,7 @@ data class PanelRect(val x: Float, val y: Float, val width: Float, val height: F
 @Serializable
 sealed interface PanelNode {
     val id: String
+    @Serializable data class Space(override val id: String) : PanelNode
     @Serializable data class Canvas(override val id: String = "canvas") : PanelNode
     @Serializable data class Tabs(override val id: String, val panels: List<EditorPanel>, val active: EditorPanel = panels.first()) : PanelNode
     @Serializable data class Split(override val id: String, val horizontal: Boolean, val fraction: Float,
@@ -46,6 +47,7 @@ data class EditorPanelLayout(
     val open: Set<EditorPanel> = emptySet(),
     val placed: Set<EditorPanel> = emptySet(),
     val nextId: Int = 1,
+    val locked: Boolean = false,
 )
 
 enum class PanelEdge { LEFT, RIGHT, TOP, BOTTOM, TAB }
@@ -85,7 +87,7 @@ object EditorPanelLayouts {
             layout.open.all { it in panels } && layout.placed.all { it in panels }
     }
     fun members(node: PanelNode): List<EditorPanel> = when (node) {
-        is PanelNode.Canvas -> emptyList()
+        is PanelNode.Canvas, is PanelNode.Space -> emptyList()
         is PanelNode.Tabs -> node.panels
         is PanelNode.Split -> members(node.first) + members(node.second)
     }
@@ -101,7 +103,11 @@ object EditorPanelLayouts {
         if (node !is PanelNode.Split) return node
         val first = replace(node.first, id, replacement)
         val second = replace(node.second, id, replacement)
-        return when { first == null -> second; second == null -> first; else -> node.copy(first = first, second = second) }
+        return when {
+            first == null -> second?.takeUnless { it is PanelNode.Space }
+            second == null -> first.takeUnless { it is PanelNode.Space }
+            else -> node.copy(first = first, second = second)
+        }
     }
     fun update(layout: EditorPanelLayout, id: String, replacement: (PanelNode) -> PanelNode?): EditorPanelLayout = layout.copy(
         dock = replace(layout.dock, id, replacement) ?: PanelNode.Canvas(),
@@ -116,21 +122,23 @@ object EditorPanelLayouts {
         return layout.copy(dock = selected(layout.dock), floating = layout.floating.map { it.copy(node = selected(it.node)) })
     }
     fun visible(node: PanelNode, open: Set<EditorPanel>): PanelNode? = when(node) {
-        is PanelNode.Canvas -> node
+        is PanelNode.Canvas, is PanelNode.Space -> node
         is PanelNode.Tabs -> node.panels.filter { it in open }.takeIf { it.isNotEmpty() }?.let {
             node.copy(panels = it, active = node.active.takeIf(it::contains) ?: it.first())
         }
         is PanelNode.Split -> {
             val a = visible(node.first,open); val b = visible(node.second,open)
-            when { a == null -> b; b == null -> a; else -> node.copy(first=a, second=b) }
+            when { a == null -> b?.takeUnless { it is PanelNode.Space }; b == null -> a.takeUnless { it is PanelNode.Space }; else -> node.copy(first=a, second=b) }
         }
     }
     fun minimumWidth(node: PanelNode): Float = when(node) {
+        is PanelNode.Space -> 24f
         is PanelNode.Canvas -> 200f
         is PanelNode.Tabs -> node.panels.maxOf { when(it) { EditorPanel.PAGES -> 160f; EditorPanel.BRUSHES -> 320f; else -> 240f } }
         is PanelNode.Split -> if(node.horizontal) minimumWidth(node.first)+minimumWidth(node.second)+4f else maxOf(minimumWidth(node.first),minimumWidth(node.second))
     }
     fun minimumHeight(node: PanelNode): Float = when(node) {
+        is PanelNode.Space -> 24f
         is PanelNode.Canvas -> 160f
         is PanelNode.Tabs -> 160f
         is PanelNode.Split -> if(!node.horizontal) minimumHeight(node.first)+minimumHeight(node.second)+4f else maxOf(minimumHeight(node.first),minimumHeight(node.second))
@@ -142,7 +150,7 @@ object EditorPanelLayouts {
         fun place(node: PanelNode, rect: PanelRect, rootId: String, floating: Boolean) {
             add(PanelSlot(node,rect,rootId,floating))
             if(node is PanelNode.Split) {
-                val f = node.fraction.coerceIn(.15f,.85f)
+                val f = node.fraction.coerceIn(0f,1f)
                 if(node.horizontal) {
                     val cut = cut(rect.width,f,minimumWidth(node.first),minimumWidth(node.second))
                     place(node.first,rect.copy(width=cut-2f),rootId,floating)
@@ -160,6 +168,7 @@ object EditorPanelLayouts {
 
     /** Null target means float. Empty source tabs/splits collapse, other groups remain untouched. */
     fun move(layout: EditorPanelLayout, sourceId: String, panel: EditorPanel?, target: PanelDropTarget?, floatingRect: PanelRect): EditorPanelLayout {
+        if (layout.locked) return layout
         val source = node(layout,sourceId) ?: return layout
         if(panel != null && (source !is PanelNode.Tabs || panel !in source.panels)) return layout
         val payload = if(panel == null) source else PanelNode.Tabs(if(source is PanelNode.Tabs && source.panels.size == 1) source.id else "moved-${layout.nextId}",listOf(panel))
@@ -181,6 +190,8 @@ object EditorPanelLayouts {
         val destination = target?.let { node(result,it.nodeId) }
         if(destination == null || target == null) {
             result = result.copy(floating=result.floating+FloatingPanels(payload,floatingRect))
+        } else if(destination is PanelNode.Space) {
+            result = update(result, destination.id) { payload }
         } else if(target.edge == PanelEdge.TAB && destination is PanelNode.Tabs && payload is PanelNode.Tabs) {
             result=update(result,destination.id) {
                 val panels=destination.panels.toMutableList().apply { addAll(target.tabIndex.coerceIn(0,size),payload.panels) }.distinct()
@@ -228,6 +239,7 @@ object EditorPanelLayouts {
         val edgeCandidates=buildList {
             if(dx < 0 && abs(dragged.x-r.x)<=tolerance && dragged.bottom>r.y && dragged.y<r.bottom) add(PanelEdge.LEFT to abs(dragged.x-r.x))
             if(dx > 0 && abs(dragged.right-r.right)<=tolerance && dragged.bottom>r.y && dragged.y<r.bottom) add(PanelEdge.RIGHT to abs(dragged.right-r.right))
+            if(dy < 0 && abs(dragged.y-r.y)<=tolerance && dragged.right>r.x && dragged.x<r.right) add(PanelEdge.TOP to abs(dragged.y-r.y))
             if(dy > 0 && abs(dragged.bottom-r.bottom)<=tolerance && dragged.right>r.x && dragged.x<r.right) add(PanelEdge.BOTTOM to abs(dragged.bottom-r.bottom))
         }
         return edgeCandidates.minByOrNull { it.second }?.let { PanelDropTarget(canvas.node.id,it.first) }

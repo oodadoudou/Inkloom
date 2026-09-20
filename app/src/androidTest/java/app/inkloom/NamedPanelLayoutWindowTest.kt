@@ -28,6 +28,27 @@ class NamedPanelLayoutWindowTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    @Test fun layoutLockCanBeSavedRestoredAndUnlockedWithoutClosingPanels() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        compose.onNodeWithContentDescription("Layers").performClick()
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithText("Lock layout").performClick()
+        assertTrue(EditorPanelState(compose.activity, AppSettings()).layout.locked)
+        compose.onNodeWithContentDescription("Resize layers panel · bottom edge").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Close layers panel").assertExists()
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithText("Save panel layout…").performScrollTo().performClick()
+        compose.onNode(hasSetTextAction()).performTextInput("Locked drawing")
+        compose.onNodeWithText("Save").performClick()
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithText("Unlock layout").performClick()
+        org.junit.Assert.assertFalse(EditorPanelState(compose.activity, AppSettings()).layout.locked)
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithText("Locked drawing").performScrollTo().performClick()
+        assertTrue(EditorPanelState(compose.activity, AppSettings()).layout.locked)
+    }
+
     @Test fun saveCloseAndRestoreNamedLayoutThroughActionsMenu() {
         compose.onNodeWithText("New Note").performClick()
         compose.onNodeWithText("Create").performClick()
