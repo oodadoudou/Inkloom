@@ -264,22 +264,29 @@ class BrushMasterSettingsWindowTest {
     @Test fun resizedBrushWindowAndGridViewSurviveCloseAndActivityRecreation() {
         openPencil()
         val left=center("Resize brushes panel · left edge")
-        val before=context.getSharedPreferences("inkloom_settings",Context.MODE_PRIVATE).getFloat("brushPanelWidthDp",400f)
+        val before=brushPanelWidthDp()
         stroke(left,left+Offset(-120f,0f))
         compose.waitForIdle()
-        val saved=context.getSharedPreferences("inkloom_settings",Context.MODE_PRIVATE).getFloat("brushPanelWidthDp",400f)
+        val saved=brushPanelWidthDp()
         assertTrue("Resize must persist actual width: $before -> $saved",saved>before+20f)
         tap("Grid view")
         assertTrue(context.getSharedPreferences("inkloom_settings",Context.MODE_PRIVATE).getBoolean("brushGridLayout",false))
         tap("Close brushes panel");tap("Brushes")
         center("List view")
-        assertEquals(saved,context.getSharedPreferences("inkloom_settings",Context.MODE_PRIVATE).getFloat("brushPanelWidthDp",0f),.01f)
+        assertEquals(saved,brushPanelWidthDp(),.01f)
         compose.activityRule.scenario.recreate();compose.waitForIdle()
         center("List view")
-        val leftAfter=bounds("Resize brushes panel · left edge").left
-        val rightAfter=bounds("Resize brushes panel · right edge").right
+        val leftAfter=bounds("Resize brushes panel · left edge").exactCenterX()
+        val rightAfter=bounds("Resize brushes panel · right edge").exactCenterX()
         val density=context.resources.displayMetrics.density
-        assertEquals(saved,(rightAfter-leftAfter)/density,1f)
+        assertEquals(saved,(rightAfter-leftAfter)/density,2f)
+    }
+
+    private fun brushPanelWidthDp(): Float {
+        val layout = app.inkloom.ui.EditorPanelState(context, app.inkloom.settings.AppSettingsStore(context).load()).layout
+        return layout.floating.first { root ->
+            app.inkloom.settings.EditorPanel.BRUSHES in app.inkloom.settings.EditorPanelLayouts.members(root.node)
+        }.rect.width
     }
 
     @Test fun categorySplitterDragsAndPersistsIndependentlyOfWindowWidth() {

@@ -317,7 +317,15 @@ internal fun EditorPanels(
                         PanelEdge.TOP->PanelRect(rect.x+8,rect.y-3,(rect.width-16).coerceAtLeast(1f),6f)
                         else->PanelRect(rect.x+8,rect.bottom-3,(rect.width-16).coerceAtLeast(1f),6f)
                     }
-                    Box(geometry(r).zIndex(5.5f + layout.floating.indexOf(root)).semantics { contentDescription=language.text("Resize ${title(resizePanel).lowercase()} panel","调整${title(resizePanel)}面板大小") }.pointerInput(root.node.id,edge,w,h) {
+                    val edgeLabel = language.text("${edge.name.lowercase()} edge", when (edge) {
+                        PanelEdge.LEFT -> "左边缘"; PanelEdge.RIGHT -> "右边缘"
+                        PanelEdge.TOP -> "上边缘"; PanelEdge.BOTTOM -> "下边缘"
+                        PanelEdge.TAB -> "标签"
+                    })
+                    Box(geometry(r).zIndex(5.5f + layout.floating.indexOf(root)).semantics {
+                        contentDescription=language.text("Resize ${title(resizePanel).lowercase()} panel · $edgeLabel",
+                            "调整${title(resizePanel)}面板大小 · $edgeLabel")
+                    }.pointerInput(root.node.id,edge,w,h) {
                         var original:EditorPanelLayout?=null
                         detectDragGestures(onDragStart={ original=state.layout },onDragEnd={ state.commit(state.layout) },onDragCancel={ original?.let { state.layout=it } }) { change,delta->
                             change.consume()
