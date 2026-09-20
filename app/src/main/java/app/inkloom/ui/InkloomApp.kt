@@ -2002,6 +2002,22 @@ private fun EditorScreen(
                     )
 
                     HorizontalDivider()
+                    DropdownMenuItem(text = { Text(tr("Sub tools", "子工具")) },
+                        trailingIcon = { if (EditorPanel.SUBTOOLS in panelState.layout.open) Icon(Icons.Outlined.Check, null) },
+                        onClick = {
+                            workspaceMenu = false
+                            val open = EditorPanel.SUBTOOLS !in panelState.layout.open
+                            panelState.show(EditorPanel.SUBTOOLS, open)
+                            if (open) panelState.commit(EditorPanelLayouts.select(panelState.layout, EditorPanel.SUBTOOLS))
+                        })
+                    DropdownMenuItem(text = { Text(tr("Tool property", "工具属性")) },
+                        trailingIcon = { if (EditorPanel.PROPERTIES in panelState.layout.open) Icon(Icons.Outlined.Check, null) },
+                        onClick = {
+                            workspaceMenu = false
+                            val open = EditorPanel.PROPERTIES !in panelState.layout.open
+                            panelState.show(EditorPanel.PROPERTIES, open)
+                            if (open) panelState.commit(EditorPanelLayouts.select(panelState.layout, EditorPanel.PROPERTIES))
+                        })
                 }
             }
             ProcreateTopButton(Icons.Outlined.Settings, tr("Settings", "设置"), onClick = onSettings)
@@ -2355,6 +2371,7 @@ private fun EditorScreen(
                 EditorPanel.PAGES -> onSettingsChange(settings.copy(showPageRail = false))
                 EditorPanel.LAYERS -> { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) }
                 EditorPanel.BRUSHES -> setBrushPanelOpen(false)
+                EditorPanel.SUBTOOLS, EditorPanel.PROPERTIES -> Unit
                 else -> if (panelState.layout.open.none { it.ordinal >= EditorPanel.WHEEL.ordinal }) {
                     colorPanelOpen = false; colorPreview.clear()
                     canvasView?.inkColor = brushColor; canvasView?.secondaryInkColor = backgroundColor
@@ -3196,6 +3213,20 @@ private fun EditorScreen(
                 modifier = Modifier.fillMaxSize(),
             )
                     }
+                    EditorPanel.SUBTOOLS -> WorkspaceSubtoolsPanel(
+                        tool = tool, brushes = availableBrushes, selectedBrushId = selectedBrushId,
+                        settings = settings, onBrush = ::selectWorkspaceBrush,
+                        onSelectionShape = { shape ->
+                            canvasView?.beginSelectionInput(shape)
+                            onSettingsChange(settings.copy(selectionShape = shape))
+                        },
+                        onFillSubTool = { onSettingsChange(settings.copy(fillSubTool = it)) },
+                    )
+                    EditorPanel.PROPERTIES -> WorkspaceToolPropertiesPanel(
+                        tool = tool, brushSize = brushSize, brushOpacity = brushOpacity,
+                        settings = settings, onBrushSize = ::changeCurrentBrushSize,
+                        onBrushOpacity = ::changeCurrentBrushOpacity, onSettings = onSettingsChange,
+                    )
                     else -> BoxWithConstraints(Modifier.fillMaxSize().padding(6.dp)) {
                     ColorStudioPanel(
                         language = LocalUiLanguage.current,

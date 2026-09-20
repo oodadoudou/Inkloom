@@ -63,7 +63,7 @@ class EditorPanelsWindowTest {
         drag(point("Drag brushes panel"),canvasCorner)
         assertEquals("After individual detach: ${state.layout}", 1,EditorPanelLayouts.members(state.layout.floating.last().node).size)
         val all=EditorPanelLayouts.members(state.layout.dock)+state.layout.floating.flatMap { EditorPanelLayouts.members(it.node) }
-        assertEquals(7,all.size);assertEquals(7,all.toSet().size)
+        assertEquals(EditorPanel.entries.size,all.size);assertEquals(EditorPanel.entries.size,all.toSet().size)
         compose.runOnUiThread { state.commit(state.layout) }
         assertEquals(state.layout,EditorPanelState(compose.activity,AppSettings()).layout)
         val brush = point("Drag brushes panel")

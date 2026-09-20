@@ -142,9 +142,11 @@ internal fun EditorPanels(
     val language=LocalUiLanguage.current
     fun title(panel: EditorPanel)=language.text(when(panel) {
         EditorPanel.PAGES->"Pages"; EditorPanel.BRUSHES->"Brushes"; EditorPanel.LAYERS->"Layers"
+        EditorPanel.SUBTOOLS->"Sub tools"; EditorPanel.PROPERTIES->"Tool property"
         EditorPanel.WHEEL->"Wheel"; EditorPanel.PALETTES->"Palettes"; EditorPanel.MIX->"Mix"; EditorPanel.NEARBY->"Nearby"
     },when(panel) {
         EditorPanel.PAGES->"页面"; EditorPanel.BRUSHES->"笔刷"; EditorPanel.LAYERS->"图层"
+        EditorPanel.SUBTOOLS->"子工具"; EditorPanel.PROPERTIES->"工具属性"
         EditorPanel.WHEEL->"色环"; EditorPanel.PALETTES->"色板"; EditorPanel.MIX->"混色"; EditorPanel.NEARBY->"近似色"
     })
     var drag by remember { mutableStateOf<PanelDrag?>(null) }

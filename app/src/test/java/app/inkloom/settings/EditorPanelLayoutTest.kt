@@ -9,7 +9,7 @@ class EditorPanelLayoutTest {
     private val initial = EditorPanelLayout(open=EditorPanel.entries.toSet())
     private fun valid(layout: EditorPanelLayout) {
         val all=EditorPanelLayouts.members(layout.dock)+layout.floating.flatMap { EditorPanelLayouts.members(it.node) }
-        assertEquals(EditorPanel.entries.toSet(),all.toSet()); assertEquals(7,all.size)
+        assertEquals(EditorPanel.entries.toSet(),all.toSet()); assertEquals(EditorPanel.entries.size,all.size)
         assertTrue(EditorPanelLayouts.containsCanvas(layout.dock))
         assertFalse(layout.floating.any { EditorPanelLayouts.containsCanvas(it.node) })
     }
@@ -18,8 +18,8 @@ class EditorPanelLayoutTest {
         valid(docked)
         val combined=EditorPanelLayouts.move(docked,"brushes",EditorPanel.BRUSHES,PanelDropTarget("layers",PanelEdge.TAB),rect)
         valid(combined)
-        assertEquals(listOf(EditorPanel.BRUSHES,EditorPanel.LAYERS),(EditorPanelLayouts.node(combined,"layers") as PanelNode.Tabs).panels)
-        val hidden=combined.copy(open=combined.open-setOf(EditorPanel.LAYERS,EditorPanel.BRUSHES))
+        assertEquals(listOf(EditorPanel.BRUSHES,EditorPanel.LAYERS,EditorPanel.PROPERTIES),(EditorPanelLayouts.node(combined,"layers") as PanelNode.Tabs).panels)
+        val hidden=combined.copy(open=combined.open-setOf(EditorPanel.LAYERS,EditorPanel.BRUSHES,EditorPanel.PROPERTIES))
         assertEquals(1000f,EditorPanelLayouts.slots(hidden,1000f,800f).first { it.node is PanelNode.Canvas }.rect.width)
         val restored=Json.decodeFromString(EditorPanelLayout.serializer(),Json.encodeToString(EditorPanelLayout.serializer(),combined))
         assertEquals(combined,restored)

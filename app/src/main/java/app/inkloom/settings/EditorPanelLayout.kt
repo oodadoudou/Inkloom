@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 import kotlin.math.abs
 
 @Serializable
-enum class EditorPanel { PAGES, BRUSHES, LAYERS, WHEEL, PALETTES, MIX, NEARBY }
+enum class EditorPanel { PAGES, BRUSHES, LAYERS, SUBTOOLS, PROPERTIES, WHEEL, PALETTES, MIX, NEARBY }
 
 @Serializable
 data class PanelRect(val x: Float, val y: Float, val width: Float, val height: Float) {
@@ -35,12 +35,12 @@ data class FloatingPanels(val node: PanelNode, val rect: PanelRect)
 
 @Serializable
 data class EditorPanelLayout(
-    val version: Int = 1,
+    val version: Int = 2,
     val dock: PanelNode = PanelNode.Canvas(),
     val floating: List<FloatingPanels> = listOf(
         FloatingPanels(PanelNode.Tabs("pages", listOf(EditorPanel.PAGES)), PanelRect(12f, 12f, 180f, 560f)),
-        FloatingPanels(PanelNode.Tabs("brushes", listOf(EditorPanel.BRUSHES)), PanelRect(720f, 12f, 400f, 600f)),
-        FloatingPanels(PanelNode.Tabs("layers", listOf(EditorPanel.LAYERS)), PanelRect(800f, 80f, 310f, 500f)),
+        FloatingPanels(PanelNode.Tabs("brushes", listOf(EditorPanel.BRUSHES, EditorPanel.SUBTOOLS)), PanelRect(720f, 12f, 400f, 600f)),
+        FloatingPanels(PanelNode.Tabs("layers", listOf(EditorPanel.LAYERS, EditorPanel.PROPERTIES)), PanelRect(800f, 80f, 310f, 500f)),
         FloatingPanels(PanelNode.Tabs("colors", listOf(EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY)), PanelRect(850f, 12f, 280f, 340f)),
     ),
     val open: Set<EditorPanel> = emptySet(),
@@ -56,7 +56,7 @@ data class PanelSlot(val node: PanelNode, val rect: PanelRect, val rootId: Strin
 object EditorPanelLayouts {
     fun isValid(layout: EditorPanelLayout): Boolean {
         val panels = members(layout.dock) + layout.floating.flatMap { members(it.node) }
-        return layout.version == 1 && containsCanvas(layout.dock) &&
+        return layout.version == 2 && containsCanvas(layout.dock) &&
             layout.floating.none { containsCanvas(it.node) } &&
             panels.size == EditorPanel.entries.size && panels.toSet().size == panels.size &&
             layout.open.all { it in panels } && layout.placed.all { it in panels }
