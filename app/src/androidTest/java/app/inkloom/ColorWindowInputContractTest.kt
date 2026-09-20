@@ -652,7 +652,8 @@ class ColorWindowInputContractTest {
         var result: android.graphics.Rect? = null
         compose.waitUntil(5_000) {
             fun visit(node: android.view.accessibility.AccessibilityNodeInfo?) {
-                if (node == null) return
+                // Movable panel contents can reparent between snapshots; discard cached nodes.
+                if (node == null || !node.refresh()) return
                 if (node.contentDescription?.toString() == label) {
                     result = android.graphics.Rect().also { node.getBoundsInScreen(it) }
                 } else repeat(node.childCount) { visit(node.getChild(it)) }
@@ -670,9 +671,10 @@ class ColorWindowInputContractTest {
 
     private fun center(label: String): Offset {
         var result: Offset? = null
-        compose.waitUntil(5_000) {
+        try { compose.waitUntil(5_000) {
             fun visit(node: android.view.accessibility.AccessibilityNodeInfo?) {
-                if (node == null) return
+                // Movable panel contents can reparent between snapshots; discard cached nodes.
+                if (node == null || !node.refresh()) return
                 if (node.text?.toString() == label || node.contentDescription?.toString() == label) {
                     val rect = android.graphics.Rect()
                     node.getBoundsInScreen(rect)
@@ -681,6 +683,12 @@ class ColorWindowInputContractTest {
             }
             visit(instrumentation.uiAutomation.rootInActiveWindow)
             result != null
+        }
+        } catch (failure: Throwable) {
+            instrumentation.uiAutomation.executeShellCommand("screencap -p /data/local/tmp/color-window-failure.png").use {
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(it).use { stream -> stream.readBytes() }
+            }
+            throw AssertionError("Missing window target: $label", failure)
         }
         return requireNotNull(result)
     }
