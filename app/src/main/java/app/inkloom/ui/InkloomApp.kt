@@ -800,6 +800,15 @@ fun InkloomApp(initialIntent: Intent?) {
             },
             onImportBrushFolder = { brushFolderPicker.launch(null) },
             onBrushGridLayout = { updateSettings(settings.copy(brushGridLayout = it)) },
+            onPanelVisibilityChange = { panel, visible ->
+                val next = when (panel) {
+                    EditorPanel.PAGES -> settings.copy(showPageRail = visible)
+                    EditorPanel.BRUSHES -> settings.copy(showBrushPanel = visible)
+                    EditorPanel.LAYERS -> settings.copy(showLayerPanel = visible)
+                    else -> settings
+                }
+                if (next != settings) updateSettings(next)
+            },
             onBrushCategoryWidth = { updateSettings(settings.copy(brushCategoryWidthDp = it)) },
             onExportBrush = { brush ->
                 pendingBrushExport = brush
@@ -1412,6 +1421,7 @@ private fun EditorScreen(
     onImportBrushes: (String?) -> Unit,
     onImportBrushFolder: () -> Unit,
     onBrushGridLayout: (Boolean) -> Unit,
+    onPanelVisibilityChange: (EditorPanel, Boolean) -> Unit,
     onBrushCategoryWidth: (Float) -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
@@ -1657,7 +1667,7 @@ private fun EditorScreen(
     fun setBrushPanelOpen(open: Boolean) {
         panelState.show(EditorPanel.BRUSHES, open)
         if (open) panelState.focus(EditorPanel.BRUSHES)
-        if (brushesOpen != open) onSettingsChange(settings.copy(showBrushPanel = open))
+        onPanelVisibilityChange(EditorPanel.BRUSHES, open)
     }
     fun toggleBrushPanel() = setBrushPanelOpen(!panelState.isActive(EditorPanel.BRUSHES))
     LaunchedEffect(settings.showPageRail) { panelState.show(EditorPanel.PAGES, settings.showPageRail) }
@@ -1875,7 +1885,7 @@ private fun EditorScreen(
         pageId?.let(::selectPageWithViewport)
         layersOpen = open; panelState.show(EditorPanel.LAYERS, open)
         if (open) panelState.focus(EditorPanel.LAYERS)
-        onSettingsChange(settings.copy(showLayerPanel = open))
+        onPanelVisibilityChange(EditorPanel.LAYERS, open)
     }
     fun selectLayerContents(layerId: String) {
         exitCanvasNavigation()
@@ -2069,7 +2079,7 @@ private fun EditorScreen(
                     val open = !settings.showPageRail
                     panelState.show(EditorPanel.PAGES, open)
                     if (open) panelState.focus(EditorPanel.PAGES)
-                    onSettingsChange(settings.copy(showPageRail = open))
+                    onPanelVisibilityChange(EditorPanel.PAGES, open)
                 },
             )
             Spacer(Modifier.weight(1f))
@@ -2382,8 +2392,8 @@ private fun EditorScreen(
     Box(Modifier.weight(1f).clipToBounds()) {
         fun closeEditorPanel(panel: EditorPanel) {
             when (panel) {
-                EditorPanel.PAGES -> onSettingsChange(settings.copy(showPageRail = false))
-                EditorPanel.LAYERS -> { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) }
+                EditorPanel.PAGES -> onPanelVisibilityChange(EditorPanel.PAGES, false)
+                EditorPanel.LAYERS -> { layersOpen = false; onPanelVisibilityChange(EditorPanel.LAYERS, false) }
                 EditorPanel.BRUSHES -> setBrushPanelOpen(false)
                 EditorPanel.SUBTOOLS, EditorPanel.PROPERTIES -> Unit
                 else -> if (panelState.layout.open.none { it.ordinal >= EditorPanel.WHEEL.ordinal }) {
@@ -3176,7 +3186,7 @@ private fun EditorScreen(
                 when(panel) {
                     EditorPanel.PAGES -> {            PageRail(
                 document, documents, selectedPage.id, assets,
-                onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
+                onClose = { onPanelVisibilityChange(EditorPanel.PAGES, false) },
                 pageTemplates = pageTemplates,
                 onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage,
                 onApplyTemplate = onApplyPageTemplate, onApplyTemplates = onApplyPageTemplates, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
@@ -3191,7 +3201,7 @@ private fun EditorScreen(
                 page = selectedPage,
                 activeLayerId = activeLayerId,
                 brushColor = brushColor,
-                onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
+                onClose = { layersOpen = false; onPanelVisibilityChange(EditorPanel.LAYERS, false) },
                 onColor = ::changeBrushColor,
                 onSelect = ::selectLayerTarget,
                 onSelectContents = ::selectLayerContents,
