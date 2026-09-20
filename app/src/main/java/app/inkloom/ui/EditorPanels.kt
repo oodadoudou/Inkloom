@@ -310,31 +310,31 @@ internal fun EditorPanels(
             if (visible != null) {
                 val rect = root.rect.bounded(w,h)
                 val resizePanel = EditorPanelLayouts.members(visible).first()
-                        listOf(PanelEdge.LEFT,PanelEdge.RIGHT,PanelEdge.TOP,PanelEdge.BOTTOM).forEach { edge ->
-                            val r=when(edge) {
-                                PanelEdge.LEFT->PanelRect(rect.x-3,rect.y+32,6f,(rect.height-32).coerceAtLeast(1f))
-                                PanelEdge.RIGHT->PanelRect(rect.right-3,rect.y+32,6f,(rect.height-32).coerceAtLeast(1f))
-                                PanelEdge.TOP->PanelRect(rect.x+8,rect.y-3,(rect.width-16).coerceAtLeast(1f),6f)
-                                else->PanelRect(rect.x+8,rect.bottom-3,(rect.width-16).coerceAtLeast(1f),6f)
-                            }
-                            Box(geometry(r).zIndex(5.5f + layout.floating.indexOf(root)).semantics { contentDescription=language.text("Resize ${title(resizePanel).lowercase()} panel","调整${title(resizePanel)}面板大小") }.pointerInput(root.node.id,edge,w,h) {
-                                var original:EditorPanelLayout?=null
-                                detectDragGestures(onDragStart={ original=state.layout },onDragEnd={ state.commit(state.layout) },onDragCancel={ original?.let { state.layout=it } }) { change,delta->
-                                    change.consume()
-                                    val current=state.layout.floating.first { it.node.id==root.node.id }
-                                    val b=current.rect.bounded(w,h); val dx=delta.x/density; val dy=delta.y/density
-                                    val minWidth=EditorPanelLayouts.minimumWidth(root.node).coerceAtMost(w)
-                                    val minHeight=EditorPanelLayouts.minimumHeight(root.node).coerceAtMost(h)
-                                    val next=when(edge) {
-                                        PanelEdge.LEFT->b.copy(x=(b.x+dx).coerceAtMost(b.right-minWidth),width=(b.width-dx).coerceAtLeast(minWidth))
-                                        PanelEdge.RIGHT->b.copy(width=(b.width+dx).coerceAtLeast(minWidth))
-                                        PanelEdge.TOP->b.copy(y=(b.y+dy).coerceAtMost(b.bottom-minHeight),height=(b.height-dy).coerceAtLeast(minHeight))
-                                        else->b.copy(height=(b.height+dy).coerceAtLeast(minHeight))
-                                    }.bounded(w,h)
-                                    state.layout=state.layout.copy(floating=state.layout.floating.map { if(it.node.id==root.node.id) it.copy(rect=next) else it })
-                                }
-                            })
+                listOf(PanelEdge.LEFT,PanelEdge.RIGHT,PanelEdge.TOP,PanelEdge.BOTTOM).forEach { edge ->
+                    val r=when(edge) {
+                        PanelEdge.LEFT->PanelRect(rect.x-3,rect.y+32,6f,(rect.height-32).coerceAtLeast(1f))
+                        PanelEdge.RIGHT->PanelRect(rect.right-3,rect.y+32,6f,(rect.height-32).coerceAtLeast(1f))
+                        PanelEdge.TOP->PanelRect(rect.x+8,rect.y-3,(rect.width-16).coerceAtLeast(1f),6f)
+                        else->PanelRect(rect.x+8,rect.bottom-3,(rect.width-16).coerceAtLeast(1f),6f)
+                    }
+                    Box(geometry(r).zIndex(5.5f + layout.floating.indexOf(root)).semantics { contentDescription=language.text("Resize ${title(resizePanel).lowercase()} panel","调整${title(resizePanel)}面板大小") }.pointerInput(root.node.id,edge,w,h) {
+                        var original:EditorPanelLayout?=null
+                        detectDragGestures(onDragStart={ original=state.layout },onDragEnd={ state.commit(state.layout) },onDragCancel={ original?.let { state.layout=it } }) { change,delta->
+                            change.consume()
+                            val current=state.layout.floating.first { it.node.id==root.node.id }
+                            val b=current.rect.bounded(w,h); val dx=delta.x/density; val dy=delta.y/density
+                            val minWidth=EditorPanelLayouts.minimumWidth(root.node).coerceAtMost(w)
+                            val minHeight=EditorPanelLayouts.minimumHeight(root.node).coerceAtMost(h)
+                            val next=when(edge) {
+                                PanelEdge.LEFT->b.copy(x=(b.x+dx).coerceAtMost(b.right-minWidth),width=(b.width-dx).coerceAtLeast(minWidth))
+                                PanelEdge.RIGHT->b.copy(width=(b.width+dx).coerceAtLeast(minWidth))
+                                PanelEdge.TOP->b.copy(y=(b.y+dy).coerceAtMost(b.bottom-minHeight),height=(b.height-dy).coerceAtLeast(minHeight))
+                                else->b.copy(height=(b.height+dy).coerceAtLeast(minHeight))
+                            }.bounded(w,h)
+                            state.layout=state.layout.copy(floating=state.layout.floating.map { if(it.node.id==root.node.id) it.copy(rect=next) else it })
                         }
+                    })
+                }
             }
         }
         slots.filter { it.node is PanelNode.Split }.forEach { slot ->
