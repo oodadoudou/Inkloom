@@ -105,12 +105,12 @@ internal class EditorPanelState(context: Context, settings: AppSettings) {
         if(!open) commit(layout.copy(open=layout.open-colors))
         else if(layout.open.intersect(colors).isEmpty()) commit(layout.copy(open=layout.open+colors))
     }
-    fun closeTopGroup(onClose: (EditorPanel) -> Unit): Boolean {
+    fun closeTopPanel(onClose: (EditorPanel) -> Unit): Boolean {
         val slots = EditorPanelLayouts.slots(layout, 1000f, 800f)
         val tabs = (slots.firstOrNull { it.node.id == activeTabId && it.node is PanelNode.Tabs }
             ?: slots.lastOrNull { it.node is PanelNode.Tabs })?.node as? PanelNode.Tabs ?: return false
-        tabs.panels.forEach { show(it, false) }
-        tabs.panels.forEach(onClose)
+        show(tabs.active, false)
+        onClose(tabs.active)
         return true
     }
 }
@@ -162,13 +162,13 @@ internal fun EditorPanels(
     }
     val releaseInput by rememberUpdatedState(onReleaseInput)
     fun cancel() { val original=drag?.original ?: return; state.commit(original); drag=null; releaseInput() }
-    fun closeGroup(tabs: PanelNode.Tabs) {
-        tabs.panels.forEach { state.show(it,false) }
-        tabs.panels.forEach { currentClose(it) }; releaseInput()
+    fun closeCurrent(tabs: PanelNode.Tabs) {
+        state.show(tabs.active,false)
+        currentClose(tabs.active); releaseInput()
     }
     BackHandler(backDismissEnabled && drag == null && state.layout.open.isNotEmpty()) {
         if (!onBackBeforePanels()) {
-            if (state.closeTopGroup(currentClose)) releaseInput()
+            if (state.closeTopPanel(currentClose)) releaseInput()
         }
     }
     BackHandler(drag != null) { cancel() }
@@ -255,7 +255,7 @@ internal fun EditorPanels(
                                     }.padding(horizontal=7.dp,vertical=8.dp))
                             }
                         }
-                        IconButton(onClick={ closeGroup(tabs) },modifier=Modifier.size(30.dp)) {
+                        IconButton(onClick={ closeCurrent(tabs) },modifier=Modifier.size(30.dp)) {
                             Icon(Icons.Outlined.Close,language.text("Close ${title(active).lowercase()} panel","关闭${title(active)}面板"),Modifier.size(16.dp),tint=Ink)
                         }
                     }

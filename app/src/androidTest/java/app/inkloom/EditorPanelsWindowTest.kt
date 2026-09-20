@@ -21,6 +21,22 @@ import org.junit.Test
 class EditorPanelsWindowTest {
     @get:Rule val compose=createAndroidComposeRule<MainActivity>()
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
+    @Test fun closingOneTabKeepsTheOtherPaletteInItsGroup() {
+        lateinit var state: EditorPanelState
+        compose.runOnUiThread {
+            state=EditorPanelState(compose.activity,AppSettings())
+            state.layout=EditorPanelLayout(open=setOf(EditorPanel.LAYERS,EditorPanel.PROPERTIES))
+            compose.activity.setContent { MaterialTheme {
+                EditorPanels(state,{},canvas={ Text("Canvas") },content={ Text("Body ${it.name}") })
+            } }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("Body LAYERS").assertExists()
+        tap(point("Close layers panel"))
+        compose.onNodeWithText("Body LAYERS").assertDoesNotExist()
+        compose.onNodeWithText("Body PROPERTIES").assertExists()
+        assertEquals(setOf(EditorPanel.PROPERTIES), state.layout.open)
+    }
     @Test fun dragDockSplitCloseAndReopenKeepOneOwnerAndPosition() {
         lateinit var state:EditorPanelState
         compose.runOnUiThread {

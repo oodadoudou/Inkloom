@@ -2488,7 +2488,7 @@ private fun EditorScreen(
                     onBackKey = {
                         when {
                             imageCanvasTransform != null && imageTransformId == null -> { finishImageTransform(false); true }
-                            panelState.closeTopGroup(::closeEditorPanel) -> true
+                            panelState.closeTopPanel(::closeEditorPanel) -> true
                             selectionActive -> { finishSelectionTool(deselect = true); true }
                             else -> false
                         }
