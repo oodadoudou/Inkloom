@@ -31,4 +31,16 @@ class FloatingToolbarPlacementTest {
         assertEquals(8f, position.xDp, .001f)
         assertEquals(8f, position.yDp, .001f)
     }
+
+    @Test fun measuredRailBoundsAndReleasePositionChooseOnlyItsOwnEdges() {
+        val position = FloatingToolbarPlacement.clamp(4_000f, 1_000f, 1_200f, 800f,
+            vertical = true, measuredWidthDp = 88f, measuredHeightDp = 600f)
+        assertEquals(1_104f, position.xDp, .001f)
+        assertEquals(192f, position.yDp, .001f)
+        assertEquals(ToolbarDock.RIGHT, FloatingToolbarPlacement.snapTarget(position, 1_200f, 800f,
+            vertical = true, measuredWidthDp = 88f, measuredHeightDp = 600f))
+        assertEquals(ToolbarDock.FREE, FloatingToolbarPlacement.snapTarget(
+            FloatingToolbarPosition(300f, 8f), 1_200f, 800f,
+            vertical = true, measuredWidthDp = 88f, measuredHeightDp = 600f))
+    }
 }

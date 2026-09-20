@@ -2923,6 +2923,8 @@ private fun EditorScreen(
                     }
                 }
                 val dockVertical = settings.toolbarDock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT) || (settings.toolbarDock == ToolbarDock.FREE && settings.verticalToolbar)
+                var measuredToolbarWidth by remember(dockVertical) { mutableFloatStateOf(if (dockVertical) 88f else FloatingToolbarPlacement.LONG_EDGE_DP) }
+                var measuredToolbarHeight by remember(dockVertical) { mutableFloatStateOf(if (dockVertical) 600f else FloatingToolbarPlacement.SHORT_EDGE_DP) }
                 val dockAlignment = when (settings.toolbarDock) {
                     ToolbarDock.TOP -> Alignment.TopCenter
                     ToolbarDock.BOTTOM -> Alignment.BottomCenter
@@ -2937,7 +2939,9 @@ private fun EditorScreen(
                     ToolbarDock.RIGHT -> PaddingValues(end = 16.dp)
                     ToolbarDock.FREE -> PaddingValues(0.dp)
                 }
-                val boundedToolbarPosition = FloatingToolbarPlacement.clamp(toolbarX, toolbarY, toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical)
+                val boundedToolbarPosition = FloatingToolbarPlacement.clamp(toolbarX, toolbarY,
+                    toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical,
+                    measuredToolbarWidth, measuredToolbarHeight)
                 LaunchedEffect(toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical, settings.toolbarDock) {
                     if (settings.toolbarDock == ToolbarDock.FREE && (toolbarX != boundedToolbarPosition.xDp || toolbarY != boundedToolbarPosition.yDp)) {
                         toolbarX = boundedToolbarPosition.xDp
@@ -2991,7 +2995,8 @@ private fun EditorScreen(
                     }
                     syncCanvasInput(prepareAssets = activeBrush != null)
                 }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, onScale = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, resizeElement(it, 1.15f)) } } ?: canvasView?.scaleSelection(1.15f) }, onRotate = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, rotateElement(it, 15f)) } } ?: canvasView?.rotateSelection(15f) }, onCopy = { selectedElementId?.let { onDuplicateElement(document.id, selectedPage.id, it) } ?: canvasView?.copySelection() }, onCut = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.cutSelectionToClipboard() != true) Toast.makeText(context, selectBeforeCutMessage, Toast.LENGTH_SHORT).show() }, onClipboardCopy = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.copySelectionToClipboard() != true) Toast.makeText(context, selectBeforeCopyMessage, Toast.LENGTH_SHORT).show() }, onPaste = { selectedElementId = null; if (canvasView?.pasteSelectionFromClipboard() != true) Toast.makeText(context, noInkClipboardMessage, Toast.LENGTH_SHORT).show() }, onDelete = { selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection() }, onSelectAll = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.selectAllEditableStrokes() }, onInvertSelection = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.invertSelection() }, onDeselect = { finishSelectionTool(deselect = true) }, onFreeTransform = { tool = EditorTool.SELECT; canvasView?.enterFreeTransform() }, selectionShape = settings.selectionShape, selectionMode = settings.selectionMode, selectionFilter = settings.selectionFilter, onSelectionShape = { shape -> canvasView?.beginSelectionInput(shape); onSettingsChange(settings.copy(selectionShape = shape)) }, onSelectionMode = { onSettingsChange(settings.copy(selectionMode = it)) }, onSelectionFilter = { onSettingsChange(settings.copy(selectionFilter = it)) }, referenceTarget = settings.referenceTarget, onReferenceTarget = { onSettingsChange(settings.copy(referenceTarget = it)) }, correctLineMode = settings.correctLineMode, correctLineAmount = settings.correctLineAmount, onCorrectLineMode = { onSettingsChange(settings.copy(correctLineMode = it)) }, onCorrectLineAmount = { onSettingsChange(settings.copy(correctLineAmount = it.coerceIn(0f, 1f))) }, eraserPreset = settings.eraserPreset, onEraserPreset = { preset -> onSettingsChange(settings.copy(eraserPreset = preset, nonDestructiveEraser = preset.usesMask)) }, rulerEnabled = settings.rulerEnabled, rulerSnapDegrees = settings.rulerSnapDegrees, onToggleRuler = { onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) }, onRulerSnap = { onSettingsChange(settings.copy(rulerSnapDegrees = it)) }, onResetRuler = { onSettingsChange(settings.copy(rulerCenterX = .5f, rulerCenterY = .5f, rulerAngleDegrees = 0f)) }, gridSnapEnabled = settings.gridSnapEnabled, gridSpacing = settings.gridSpacing, alignmentGuidesEnabled = settings.alignmentGuidesEnabled, onToggleGridSnap = { onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) }, onGridSpacing = { onSettingsChange(settings.copy(gridSpacing = it)) }, onToggleAlignmentGuides = { onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) }, onResetAlignmentGuides = { onSettingsChange(settings.copy(verticalGuideX = .5f, horizontalGuideY = .5f)) }, onDrag = { dx, dy ->
-                    val next = FloatingToolbarPlacement.clamp(toolbarX + dx / editorDensity.density, toolbarY + dy / editorDensity.density, toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical)
+                    val next = FloatingToolbarPlacement.clamp(toolbarX + dx / editorDensity.density, toolbarY + dy / editorDensity.density,
+                        toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical, measuredToolbarWidth, measuredToolbarHeight)
                     toolbarX = next.xDp
                     toolbarY = next.yDp
                 }, onDragEnd = { onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY, verticalToolbar = dockVertical)) }, vertical = dockVertical, brushSize = brushSize, brushOpacity = brushOpacity, brushColor = brushColor, brushes = brushes, selectedBrushId = selectedBrushId, onSystemPreset = { presetTool ->
@@ -3002,7 +3007,12 @@ private fun EditorScreen(
                     changeCurrentBrushSize(raw)
                 }, onOpacity = { raw ->
                     changeCurrentBrushOpacity(raw)
-                }, onColor = ::changeBrushColor, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, ::changeBrushColor, onSettingsChange) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f))
+                }, onColor = ::changeBrushColor, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, ::changeBrushColor, onSettingsChange) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f).onGloballyPositioned {
+                    val width = it.size.width / editorDensity.density
+                    val height = it.size.height / editorDensity.density
+                    if (kotlin.math.abs(measuredToolbarWidth - width) > .5f) measuredToolbarWidth = width
+                    if (kotlin.math.abs(measuredToolbarHeight - height) > .5f) measuredToolbarHeight = height
+                })
                 if (savedSelectionsOpen) SavedSelectionsPanel(
                     selectedPage.savedSelections, assets, settings.language, selectionActive,
                     onSave = {
