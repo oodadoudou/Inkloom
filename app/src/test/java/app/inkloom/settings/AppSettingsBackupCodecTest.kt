@@ -13,6 +13,26 @@ import app.inkloom.document.GradientEdgeMode
 import app.inkloom.document.GradientKind
 
 class AppSettingsBackupCodecTest {
+    @Test fun `backup preserves dock extents tabs lock named layouts and tool rail`() {
+        val start = EditorPanelLayout(open = setOf(EditorPanel.PAGES, EditorPanel.LAYERS))
+        val dock = EditorPanelLayouts.move(start, "layers", null, PanelDropTarget("canvas", PanelEdge.LEFT), start.floating[2].rect)
+        val resized = PanelResizing.dock(dock, "layers", PanelGrip.BOTTOM, 0f, -220f, 1280f, 900f).copy(locked = true)
+        val workspace = PanelWorkspaceBackup(resized, NamedPanelLayouts().save("Inking", resized, ToolRailLayout.capture(AppSettings())))
+        val restored = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(AppSettings(), panelWorkspace = workspace)).getOrThrow()
+        assertEquals(workspace, restored.panelWorkspace)
+        assertNull(AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(AppSettings())).getOrThrow().panelWorkspace)
+    }
+
+    @Test fun `invalid workspace backup is rejected before any restore`() {
+        val workspace = PanelWorkspaceBackup(EditorPanelLayout(locked = true), NamedPanelLayouts())
+        val text = AppSettingsBackupCodec.encode(AppSettings(), panelWorkspace = workspace).decodeToString()
+        val malformed = text.replaceFirst("\"layout\": {", "\"layout\": {\"version\": 999,")
+        org.junit.Assert.assertNotEquals(text, malformed)
+        assertTrue(AppSettingsBackupCodec.decode(malformed.encodeToByteArray()).isFailure)
+        val negativeSize = workspace.layout.copy(floating = workspace.layout.floating.map { it.copy(rect = it.rect.copy(width = -1f)) })
+        assertFalse(EditorPanelLayouts.isValid(negativeSize))
+    }
+
     @Test fun `round trip preserves input tools workspace shortcuts quick slots and palette`() {
         val settings = AppSettings(
             language = UiLanguage.SIMPLIFIED_CHINESE,

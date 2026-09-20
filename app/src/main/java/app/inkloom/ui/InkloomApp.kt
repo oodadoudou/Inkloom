@@ -461,6 +461,7 @@ fun InkloomApp(initialIntent: Intent?) {
     val settingsStore = remember { AppSettingsStore(context) }
     val colorPaletteStore = remember { ColorSetLibraryStore(context) }
     var settings by remember { mutableStateOf(settingsStore.load()) }
+    val panelState = rememberEditorPanelState(settings)
     // The persisted setting is the single source of truth. Keeping a second mutable flag here
     // allowed workspace changes and the toolbar click to observe different open states in the
     // same frame, so a click could close an invisible panel instead of opening Brushes.
@@ -612,7 +613,7 @@ fun InkloomApp(initialIntent: Intent?) {
     val bundleExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) runCatching { viewModel.exportCurrentBundle(uri) }.onFailure { importError = it.message } }
     val libraryBackupExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) {
-            val preferences = runCatching { AppSettingsBackupCodec.encode(settings, colorSetLibrary = colorPaletteStore.load(settings.language.text("Saved colors", "已存颜色"))) }
+            val preferences = runCatching { AppSettingsBackupCodec.encode(settings, colorSetLibrary = colorPaletteStore.load(settings.language.text("Saved colors", "已存颜色")), panelWorkspace = panelState.backup()) }
                 .getOrElse { error -> importError = error.message; return@rememberLauncherForActivityResult }
             viewModel.exportLibraryBackup(uri, importedBrushes, brushGroups, preferences) { result ->
                 result.onSuccess { Toast.makeText(context, settings.language.text("Library backup saved.", "资料库备份已保存。"), Toast.LENGTH_LONG).show() }
@@ -632,7 +633,13 @@ fun InkloomApp(initialIntent: Intent?) {
                         val restoredSettings = preferences.settings.copy(
                             toolboxQuickSlots = ToolboxQuickSlots.remapBrushIds(preferences.settings.toolboxQuickSlots, restored.brushIdMappings),
                         )
-                        updateSettings(restoredSettings)
+                        val workspace = preferences.panelWorkspace
+                        workspace?.let(panelState::restoreBackup)
+                        updateSettings(restoredSettings.copy(
+                            showPageRail = EditorPanel.PAGES in panelState.layout.open,
+                            showBrushPanel = EditorPanel.BRUSHES in panelState.layout.open,
+                            showLayerPanel = EditorPanel.LAYERS in panelState.layout.open,
+                        ))
                         colorPaletteStore.replace(preferences.colorSetLibrary ?: ColorSetLibrary.fromLegacy(preferences.colorPalette, settings.language.text("Saved colors", "已存颜色")))
                     }.onFailure { error ->
                         importError = settings.language.text(
@@ -783,6 +790,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onSettings = { settingsOpen = true },
         )
         AppDestination.EDITOR -> EditorScreen(
+            panelState = panelState,
             document = libraryState.documents.firstOrNull { it.id == libraryState.selectedDocumentId } ?: viewModel.currentDocument(),
             documents = libraryState.documents,
             selectedPageId = libraryState.selectedPageId,
@@ -1409,6 +1417,7 @@ internal fun NotebookCover(document: InkDocument, modifier: Modifier = Modifier)
 
 @Composable
 private fun EditorScreen(
+    panelState: EditorPanelState,
     document: InkDocument?,
     documents: List<InkDocument>,
     selectedPageId: String?,
@@ -1655,7 +1664,6 @@ private fun EditorScreen(
     var viewMenu by remember { mutableStateOf(false) }
     var quickZoomMenu by remember { mutableStateOf(false) }
     var workspaceMenu by remember { mutableStateOf(false) }
-    val panelState = rememberEditorPanelState(settings)
     var savePanelLayoutOpen by remember { mutableStateOf(false) }
     var managePanelLayoutsOpen by remember { mutableStateOf(false) }
     var panelLayoutName by remember { mutableStateOf("") }

@@ -17,6 +17,7 @@ data class AppPreferencesBackup(
     val settings: AppSettings,
     val colorPalette: List<Int>,
     val colorSetLibrary: ColorSetLibrary? = null,
+    val panelWorkspace: PanelWorkspaceBackup? = null,
 )
 
 object AppSettingsBackupCodec {
@@ -26,11 +27,13 @@ object AppSettingsBackupCodec {
     private const val VERSION = 1
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
 
-    fun encode(settings: AppSettings, colorPalette: List<Int> = emptyList(), colorSetLibrary: ColorSetLibrary? = null): ByteArray {
+    fun encode(settings: AppSettings, colorPalette: List<Int> = emptyList(), colorSetLibrary: ColorSetLibrary? = null, panelWorkspace: PanelWorkspaceBackup? = null): ByteArray {
+        panelWorkspace?.validate()
         val value = buildJsonObject {
             put("format", FORMAT)
             put("version", VERSION)
             put("settings", settings.toJson())
+            panelWorkspace?.let { put("panelWorkspace", json.encodeToJsonElement(PanelWorkspaceBackup.serializer(), it)) }
             put("shortcutProfile", json.parseToJsonElement(ShortcutProfileCodec.encode(ShortcutProfile(settings.shortcutBindings, settings.shortcutBrushGroupTargets, settings.toolboxQuickSlots, settings.shortcutAxisBindings, settings.shortcutButtonBindings)).toString(Charsets.UTF_8)))
             if (colorSetLibrary != null) {
                 put("colorSetLibrary", json.parseToJsonElement(ColorSetLibraryCodec.encode(colorSetLibrary)))
@@ -52,6 +55,9 @@ object AppSettingsBackupCodec {
             ?: ShortcutProfile(base.shortcutBindings)
         val palette = root["colorPalette"]?.jsonArray?.mapNotNull { runCatching { it.jsonPrimitive.int }.getOrNull() }?.distinct()?.take(32).orEmpty()
         val colorSets = root["colorSetLibrary"]?.let { ColorSetLibraryCodec.decode(it.toString()) }
+        val workspace = root["panelWorkspace"]?.let {
+            json.decodeFromJsonElement(PanelWorkspaceBackup.serializer(), it).also(PanelWorkspaceBackup::validate)
+        }
         AppPreferencesBackup(
             base.copy(
                 shortcutBindings = profile.bindings,
@@ -62,6 +68,7 @@ object AppSettingsBackupCodec {
             ),
             palette,
             colorSets,
+            workspace,
         )
     }
 

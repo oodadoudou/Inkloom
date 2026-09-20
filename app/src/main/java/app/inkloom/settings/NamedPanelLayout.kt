@@ -46,3 +46,21 @@ data class NamedPanelLayouts(val entries: List<NamedPanelLayout> = emptyList()) 
 
     fun delete(name: String): NamedPanelLayouts = copy(entries = entries.filterNot { it.name == name })
 }
+
+/** The same layout tree is used for current state, named layouts and library backup. */
+@Serializable
+data class PanelWorkspaceBackup(val layout: EditorPanelLayout, val namedLayouts: NamedPanelLayouts) {
+    fun validate() {
+        require(EditorPanelLayouts.isValid(layout)) { "Invalid current panel layout" }
+        require(namedLayouts.entries.size <= 20) { "Too many named panel layouts" }
+        require(namedLayouts.entries.map { it.name.lowercase(java.util.Locale.ROOT) }.distinct().size == namedLayouts.entries.size) {
+            "Duplicate named panel layouts"
+        }
+        namedLayouts.entries.forEach {
+            require(it.name.isNotBlank() && it.name.length <= 40 && EditorPanelLayouts.isValid(it.layout)) { "Invalid named panel layout" }
+            it.toolRail?.let { rail ->
+                require(rail.xDp.isFinite() && rail.yDp.isFinite() && ToolbarDock.entries.any { dock -> dock.name == rail.dock }) { "Invalid toolbar layout" }
+            }
+        }
+    }
+}

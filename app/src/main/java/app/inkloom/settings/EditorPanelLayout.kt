@@ -80,6 +80,20 @@ object EditorPanelLayouts {
         }.toFloat()
 
     fun isValid(layout: EditorPanelLayout): Boolean {
+        val ids = mutableSetOf<String>()
+        var canvases = 0
+        fun valid(node: PanelNode, depth: Int): Boolean {
+            if (depth > 24 || node.id.isBlank() || !ids.add(node.id)) return false
+            return when (node) {
+                is PanelNode.Canvas -> { canvases++; true }
+                is PanelNode.Space -> true
+                is PanelNode.Tabs -> node.panels.isNotEmpty() && node.active in node.panels
+                is PanelNode.Split -> node.fraction.isFinite() && node.fraction in 0f..1f && valid(node.first, depth + 1) && valid(node.second, depth + 1)
+            }
+        }
+        if (!valid(layout.dock, 0) || layout.nextId < 1 || layout.floating.any {
+            !valid(it.node, 0) || with(it.rect) { !x.isFinite() || !y.isFinite() || !width.isFinite() || !height.isFinite() || width <= 0 || height <= 0 }
+        } || canvases != 1) return false
         val panels = members(layout.dock) + layout.floating.flatMap { members(it.node) }
         return layout.version == 2 && containsCanvas(layout.dock) &&
             layout.floating.none { containsCanvas(it.node) } &&

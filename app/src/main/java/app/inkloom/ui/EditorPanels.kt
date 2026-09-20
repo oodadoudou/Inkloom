@@ -83,6 +83,13 @@ internal class EditorPanelState(context: Context, settings: AppSettings) {
         preferences.edit().putString("named_layouts", json.encodeToString(NamedPanelLayouts.serializer(), next)).apply()
     }
 
+    fun backup() = PanelWorkspaceBackup(layout, namedLayouts)
+    fun restoreBackup(backup: PanelWorkspaceBackup) {
+        backup.validate()
+        commit(backup.layout)
+        updateNamedLayouts(backup.namedLayouts)
+    }
+
     fun saveNamedLayout(name: String, settings: AppSettings) =
         updateNamedLayouts(namedLayouts.save(name, layout, ToolRailLayout.capture(settings)))
     fun renameNamedLayout(oldName: String, newName: String) = updateNamedLayouts(namedLayouts.rename(oldName, newName))

@@ -28,6 +28,27 @@ class NamedPanelLayoutWindowTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    @Test fun workspaceBackupRestoresPersistentDockTreeAndNamedLayouts() {
+        val state = EditorPanelState(compose.activity, AppSettings())
+        val start = state.layout.copy(open = setOf(EditorPanel.LAYERS))
+        val dock = app.inkloom.settings.EditorPanelLayouts.move(start, "layers", null,
+            app.inkloom.settings.PanelDropTarget("canvas", app.inkloom.settings.PanelEdge.RIGHT), start.floating[2].rect)
+        compose.runOnIdle {
+            state.commit(dock.copy(locked = true))
+            state.saveNamedLayout("Docked drawing", AppSettings())
+        }
+        val bytes = app.inkloom.settings.AppSettingsBackupCodec.encode(AppSettings(), panelWorkspace = state.backup())
+        compose.runOnIdle {
+            state.commit(app.inkloom.settings.EditorPanelLayout())
+            state.deleteNamedLayout("Docked drawing")
+            state.restoreBackup(requireNotNull(app.inkloom.settings.AppSettingsBackupCodec.decode(bytes).getOrThrow().panelWorkspace))
+        }
+        val reopened = EditorPanelState(compose.activity, AppSettings())
+        org.junit.Assert.assertEquals(dock.copy(locked = true), reopened.layout)
+        org.junit.Assert.assertEquals(state.namedLayouts, reopened.namedLayouts)
+        assertTrue(reopened.namedLayouts.entries.any { it.name == "Docked drawing" })
+    }
+
     @Test fun layoutLockCanBeSavedRestoredAndUnlockedWithoutClosingPanels() {
         compose.onNodeWithText("New Note").performClick()
         compose.onNodeWithText("Create").performClick()
