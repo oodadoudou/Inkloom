@@ -18,6 +18,8 @@ class PanelResizingTest {
             assertTrue(handle.y >= panel.y && handle.bottom <= panel.bottom)
         }
         assertTrue(PanelResizing.handle(panel, PanelGrip.TOP, width, height).bottom < panel.y + 16f)
+        // Color panels begin at a 6 dp inset, including accessibility-expanded swatches.
+        assertTrue(PanelResizing.handle(panel, PanelGrip.LEFT, width, height).right <= panel.x + 6f)
         // Layer visibility and search controls are centered 15/14 dp from the frame.
         assertTrue(PanelResizing.handle(panel, PanelGrip.LEFT, width, height).right < panel.x + 15f)
         assertTrue(PanelResizing.handle(panel, PanelGrip.RIGHT, width, height).x > panel.right - 14f)

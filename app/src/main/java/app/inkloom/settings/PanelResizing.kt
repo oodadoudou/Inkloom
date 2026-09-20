@@ -84,9 +84,9 @@ object PanelResizing {
         }.copy(nextId = layout.nextId + 1)
     }
 
-    /** Wide invisible hit bands with separate corners; the visible border remains one pixel. */
+    /** Keep edge strips within the content inset; corners provide large pen/finger targets. */
     fun handle(b: PanelRect, grip: PanelGrip, width: Float, height: Float): PanelRect {
-        val thickness = if (grip.corner) 24f else 12f
+        val thickness = if (grip.corner) 24f else 6f
         val x = when { grip.x < 0 -> b.x - if (grip.corner) thickness / 2 else 0f
             grip.x > 0 -> b.right - if (grip.corner) thickness / 2 else thickness
             else -> b.x + 24f }
@@ -96,7 +96,7 @@ object PanelResizing {
         val w = if (grip.x == 0) (b.width - 48f).coerceAtLeast(1f) else thickness
         // A top edge flush with the workspace must leave the title's center available for dragging.
         val h = if (grip.y == 0) (b.height - 56f).coerceAtLeast(1f)
-            else if (grip.y < 0 && (!grip.corner || b.y < thickness / 2)) 12f else thickness
+            else if (grip.corner && grip.y < 0 && b.y < thickness / 2) 12f else thickness
         // Side bands stay inside their panel so adjacent canvas tools keep their clicks.
         // Shift screen-edge corners inward instead of losing half of their hit area.
         return PanelRect(x.coerceIn(0f, (width - w).coerceAtLeast(0f)),
