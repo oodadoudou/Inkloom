@@ -54,5 +54,15 @@ class EditorPanelLayoutTest {
         assertEquals(18f,compact.y); assertEquals(282f,compact.height)
         assertEquals(saved,saved.bounded(1280f,900f))
     }
+    @Test fun mixedWidthTabsUseTheSameGeometryForHitTestingAndDropPreview() {
+        val tabs = PanelNode.Tabs("tools", listOf(EditorPanel.BRUSHES, EditorPanel.SUBTOOLS, EditorPanel.PROPERTIES))
+        val secondStart = EditorPanelLayouts.tabInsertionX(tabs, 1, 100f, 330f)
+        val thirdStart = EditorPanelLayouts.tabInsertionX(tabs, 2, 100f, 330f)
+        assertEquals(188f, secondStart)
+        assertEquals(266f, thirdStart)
+        assertEquals(1, EditorPanelLayouts.tabInsertionIndex(tabs, secondStart + 20f, 100f, 330f))
+        assertEquals(2, EditorPanelLayouts.tabInsertionIndex(tabs, thirdStart + 20f, 100f, 330f))
+        assertEquals(3, EditorPanelLayouts.tabInsertionIndex(tabs, 360f, 100f, 330f))
+    }
 
 }

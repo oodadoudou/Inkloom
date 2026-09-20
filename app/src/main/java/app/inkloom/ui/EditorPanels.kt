@@ -246,12 +246,12 @@ internal fun EditorPanels(
                         Row(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
                             tabs.panels.forEachIndexed { index,panel ->
                                 Text(title(panel),fontSize=11.sp,color=Ink,modifier=Modifier
-                                    .width(if(tabs.panels.size==1) (rect.width-60f).coerceAtLeast(55f).dp else 55.dp)
+                                    .width(if(tabs.panels.size==1) (rect.width-60f).coerceAtLeast(55f).dp else EditorPanelLayouts.tabWidth(panel).dp)
                                     .fillMaxHeight().graphicsLayer { alpha=if(individual && panel==d?.panel) 0f else 1f }.background(if(panel==active) SageContainer else Color.Transparent)
                                     .semantics { contentDescription=language.text("Drag ${title(panel).lowercase()} panel","拖动${title(panel)}面板") }
                                     .clickable { state.commit(EditorPanelLayouts.select(state.layout,panel)) }
                                     .pointerInput(tabs.id,panel) {
-                                        detectDragGestures(onDragStart={ begin(currentSlot,panel,it+Offset((22f+index*55f)*density,0f)) },onDragEnd={ finish() },onDragCancel={ cancel() }) { change,delta->change.consume() }
+                                        detectDragGestures(onDragStart={ begin(currentSlot,panel,it+Offset(EditorPanelLayouts.tabInsertionX(tabs,index,0f,rect.width)*density,0f)) },onDragEnd={ finish() },onDragCancel={ cancel() }) { change,delta->change.consume() }
                                     }.padding(horizontal=7.dp,vertical=8.dp))
                             }
                         }
@@ -330,7 +330,8 @@ internal fun EditorPanels(
                     PanelEdge.RIGHT->PanelRect(r.right-2,r.y,2f,r.height)
                     PanelEdge.TOP->PanelRect(r.x,r.y,r.width,2f)
                     PanelEdge.BOTTOM->PanelRect(r.x,r.bottom-2,r.width,2f)
-                    PanelEdge.TAB->PanelRect((r.x+22f+target.tabIndex*55f).coerceAtMost(r.right-2),r.y,2f,32f)
+                    PanelEdge.TAB->PanelRect(EditorPanelLayouts.tabInsertionX(slot.node as PanelNode.Tabs,
+                        target.tabIndex,r.x,r.width).coerceAtMost(r.right-2),r.y,2f,32f)
                 }
                 Box(geometry(preview).zIndex(200f).background(Ink).semantics { contentDescription=language.text("Release to place panel","松开以放置面板") })
             }

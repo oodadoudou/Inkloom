@@ -54,6 +54,29 @@ data class PanelSlot(val node: PanelNode, val rect: PanelRect, val rootId: Strin
 
 /** Small immutable layout transactions: a panel has one owner, preview never edits the document. */
 object EditorPanelLayouts {
+    /** Stable width keeps tab hit targets and drop insertion aligned in both UI languages. */
+    fun tabWidth(panel: EditorPanel): Float = when (panel) {
+        EditorPanel.SUBTOOLS -> 78f
+        EditorPanel.PROPERTIES -> 100f
+        EditorPanel.PALETTES -> 74f
+        EditorPanel.NEARBY -> 68f
+        EditorPanel.BRUSHES -> 66f
+        else -> 60f
+    }
+    fun tabInsertionIndex(tabs: PanelNode.Tabs, pointerX: Float, panelX: Float, panelWidth: Float): Int {
+        var cursor = panelX + 22f
+        tabs.panels.forEachIndexed { index, panel ->
+            val width = if (tabs.panels.size == 1) (panelWidth - 60f).coerceAtLeast(55f) else tabWidth(panel)
+            if (pointerX < cursor + width / 2f) return index
+            cursor += width
+        }
+        return tabs.panels.size
+    }
+    fun tabInsertionX(tabs: PanelNode.Tabs, index: Int, panelX: Float, panelWidth: Float): Float =
+        panelX + 22f + tabs.panels.take(index.coerceIn(0, tabs.panels.size)).sumOf {
+            (if (tabs.panels.size == 1) (panelWidth - 60f).coerceAtLeast(55f) else tabWidth(it)).toDouble()
+        }.toFloat()
+
     fun isValid(layout: EditorPanelLayout): Boolean {
         val panels = members(layout.dock) + layout.floating.flatMap { members(it.node) }
         return layout.version == 2 && containsCanvas(layout.dock) &&
@@ -190,7 +213,7 @@ object EditorPanelLayouts {
             val r=slot.rect
             if(!r.contains(pointerX,pointerY) || slot.node is PanelNode.Split) continue
             if(slot.node is PanelNode.Tabs && pointerY <= r.y+32f) {
-                val index=((pointerX-r.x)/55f).toInt().coerceIn(0,slot.node.panels.size)
+                val index=tabInsertionIndex(slot.node,pointerX,r.x,r.width)
                 return PanelDropTarget(slot.node.id,PanelEdge.TAB,index)
             }
             val edges=listOf(PanelEdge.LEFT to abs(pointerX-r.x), PanelEdge.RIGHT to abs(pointerX-r.right),
