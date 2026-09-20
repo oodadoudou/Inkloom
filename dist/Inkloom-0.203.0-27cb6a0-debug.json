@@ -1,0 +1,29 @@
+{
+  "version": "0.203.0",
+  "versionCode": 203,
+  "variant": "debug",
+  "commit": "27cb6a0eb033b3faf4796ae0c7ff477bb23aca43",
+  "sha256": "dab43e474f7ca7bddffee26791298fe510e8889590af46754075a86f0e63fe56",
+  "bytes": 100589697,
+  "generatedUtc": "2026-09-20T23:36:08.233907+00:00",
+  "verification": {
+    "JVM": {
+      "tests": 844,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 8
+    },
+    "Android15Full": {
+      "tests": 654,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "lint": "PASS; 0 errors, 98 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS v2",
+    "ordinaryDebugSmoke": "Android 15 install, cold start (1185 ms), editor open, portrait at 130% font scale, return to landscape with saved geometry unchanged: PASS"
+  },
+  "deviceStatus": "DEVICE_PENDING",
+  "evidenceRoot": ".codex-artifacts/layout-0.203.0"
+}
