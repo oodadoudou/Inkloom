@@ -46,12 +46,14 @@ class ColorWindowInputContractTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
-    private fun huePoint(ring: android.graphics.Rect, hue: Float): Offset {
+    private fun huePoint(ring: android.graphics.Rect, hue: Float): Offset = huePoint(android.graphics.RectF(ring), hue)
+    private fun huePoint(ring: android.graphics.RectF, hue: Float): Offset {
         val radians = Math.toRadians((hue + 210f).toDouble())
-        return Offset(ring.exactCenterX() + kotlin.math.cos(radians).toFloat() * ring.width() * .43f,
-            ring.exactCenterY() + kotlin.math.sin(radians).toFloat() * ring.height() * .43f)
+        return Offset(ring.centerX() + kotlin.math.cos(radians).toFloat() * ring.width() * .43f,
+            ring.centerY() + kotlin.math.sin(radians).toFloat() * ring.height() * .43f)
     }
-    private fun trianglePoint(field: android.graphics.Rect, saturation: Float, value: Float): Offset =
+    private fun trianglePoint(field: android.graphics.Rect, saturation: Float, value: Float): Offset = trianglePoint(android.graphics.RectF(field), saturation, value)
+    private fun trianglePoint(field: android.graphics.RectF, saturation: Float, value: Float): Offset =
         Offset(field.left + field.width() * saturation * value,
             field.top + field.height() * (1f - value + saturation * value * .5f))
 
@@ -615,9 +617,16 @@ class ColorWindowInputContractTest {
         event(MotionEvent.ACTION_UP,end,down,MotionEvent.TOOL_TYPE_FINGER);compose.waitForIdle()
         compose.onNodeWithContentDescription("Hue ring").assertExists()
         compose.onNodeWithContentDescription("Color mixing board").assertExists()
-        val ring=bounds("Hue ring")
+        // Accessibility bounds may be clipped by the adjacent floating panel. Target the
+        // real rendered circle/triangle geometry, preserving sub-pixel screen coordinates.
+        fun fullBounds(label: String): android.graphics.RectF {
+            val node = compose.onNodeWithContentDescription(label).fetchSemanticsNode()
+            val p = node.positionOnScreen
+            return android.graphics.RectF(p.x, p.y, p.x + node.size.width, p.y + node.size.height)
+        }
+        val ring=fullBounds("Hue ring")
         tapAt(huePoint(ring,270f));compose.waitForIdle()
-        tapAt(trianglePoint(bounds("Saturation and brightness field"),.8f,.7f));compose.waitForIdle()
+        tapAt(trianglePoint(fullBounds("Saturation and brightness field"),.8f,.7f));compose.waitForIdle()
         val hsv=FloatArray(3);android.graphics.Color.colorToHSV(canvas.inkColor,hsv)
         assertEquals(270f,hsv[0],1f)
         tap("Undo mixing");tap("Redo mixing");tap("Pick from mixing board")

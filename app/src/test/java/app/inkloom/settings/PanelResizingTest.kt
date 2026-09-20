@@ -10,6 +10,19 @@ class PanelResizingTest {
     private val original = EditorPanelLayout(open = setOf(EditorPanel.PAGES, EditorPanel.BRUSHES, EditorPanel.LAYERS))
         .let { layout -> layout.copy(floating = layout.floating.map { it.copy(rect = PanelRect(150f, 150f, 380f, 420f)) }) }
 
+    @Test fun sideHandlesDoNotStealClicksFromAdjacentToolbarOrCanvas() {
+        val panel = PanelRect(88f, 16f, 160f, 640f)
+        for (grip in listOf(PanelGrip.LEFT, PanelGrip.RIGHT, PanelGrip.TOP, PanelGrip.BOTTOM)) {
+            val handle = PanelResizing.handle(panel, grip, width, height)
+            assertTrue(handle.x >= panel.x && handle.right <= panel.right)
+            assertTrue(handle.y >= panel.y && handle.bottom <= panel.bottom)
+        }
+        assertTrue(PanelResizing.handle(panel, PanelGrip.TOP, width, height).bottom < panel.y + 16f)
+        // Layer visibility and search controls are centered 15/14 dp from the frame.
+        assertTrue(PanelResizing.handle(panel, PanelGrip.LEFT, width, height).right < panel.x + 15f)
+        assertTrue(PanelResizing.handle(panel, PanelGrip.RIGHT, width, height).x > panel.right - 14f)
+    }
+
     @Test fun everyEdgeAndCornerChangesOnlyItsAxesAndKeepsOppositeEdgesFixed() {
         for (id in listOf("pages", "brushes", "layers")) for (grip in PanelGrip.entries) {
             val result = PanelResizing.floating(original, id, grip, grip.x * 70f, grip.y * 60f, width, height)

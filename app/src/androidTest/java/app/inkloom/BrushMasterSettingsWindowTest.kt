@@ -15,6 +15,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.semantics.SemanticsActions
@@ -276,10 +277,11 @@ class BrushMasterSettingsWindowTest {
         assertEquals(saved,brushPanelWidthDp(),.01f)
         compose.activityRule.scenario.recreate();compose.waitForIdle()
         center("List view")
-        val leftAfter=bounds("Resize brushes panel · left edge").exactCenterX()
-        val rightAfter=bounds("Resize brushes panel · right edge").exactCenterX()
+        // Edge hit bands move inward at screen boundaries; measure the actual frame.
+        val frame = compose.onNodeWithTag("editor-panel-brushes").fetchSemanticsNode().boundsInRoot
         val density=context.resources.displayMetrics.density
-        assertEquals(saved,(rightAfter-leftAfter)/density,2f)
+        assertEquals(saved,frame.width/density,2f)
+        assertEquals(saved,brushPanelWidthDp(),.01f)
     }
 
     private fun brushPanelWidthDp(): Float {

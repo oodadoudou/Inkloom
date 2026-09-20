@@ -86,14 +86,19 @@ object PanelResizing {
 
     /** Wide invisible hit bands with separate corners; the visible border remains one pixel. */
     fun handle(b: PanelRect, grip: PanelGrip, width: Float, height: Float): PanelRect {
-        val thickness = if (grip.corner) 24f else 18f
-        val x = when { grip.x < 0 -> b.x - thickness / 2; grip.x > 0 -> b.right - thickness / 2; else -> b.x + 24f }
-        val y = when { grip.y < 0 -> b.y - thickness / 2; grip.y > 0 -> b.bottom - thickness / 2; else -> b.y + 32f }
+        val thickness = if (grip.corner) 24f else 12f
+        val x = when { grip.x < 0 -> b.x - if (grip.corner) thickness / 2 else 0f
+            grip.x > 0 -> b.right - if (grip.corner) thickness / 2 else thickness
+            else -> b.x + 24f }
+        val y = when { grip.y < 0 -> b.y - if (grip.corner) thickness / 2 else 0f
+            grip.y > 0 -> b.bottom - if (grip.corner) thickness / 2 else thickness
+            else -> b.y + 32f }
         val w = if (grip.x == 0) (b.width - 48f).coerceAtLeast(1f) else thickness
         // A top edge flush with the workspace must leave the title's center available for dragging.
         val h = if (grip.y == 0) (b.height - 56f).coerceAtLeast(1f)
-            else if (grip.y < 0 && b.y < thickness / 2) 12f else thickness
-        // Shift screen-edge handles inward instead of losing half of their hit area.
+            else if (grip.y < 0 && (!grip.corner || b.y < thickness / 2)) 12f else thickness
+        // Side bands stay inside their panel so adjacent canvas tools keep their clicks.
+        // Shift screen-edge corners inward instead of losing half of their hit area.
         return PanelRect(x.coerceIn(0f, (width - w).coerceAtLeast(0f)),
             y.coerceIn(0f, (height - h).coerceAtLeast(0f)), w, h)
     }

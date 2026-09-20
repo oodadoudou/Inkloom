@@ -35,6 +35,7 @@ import android.view.PointerIcon as AndroidPointerIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -338,7 +339,7 @@ internal fun EditorPanels(
                 val moving=!individual && d!=null && (d.sourceId==tabs.id || (d.panel==null && EditorPanelLayouts.find(EditorPanelLayouts.node(d.original,d.sourceId) ?: tabs,tabs.id)!=null))
                 val rect=if(moving) slot.rect.moved(d!!.dx,d.dy) else slot.rect
                 val active=if(individual && tabs.active==d?.panel) tabs.panels.first { it != d.panel } else tabs.active
-                Column(geometry(rect).zIndex(if(moving) 100f else if(slot.floating) 5f+layout.floating.indexOfFirst { it.node.id==slot.rootId } else 1f)
+                Column(geometry(rect).testTag("editor-panel-${tabs.id}").zIndex(if(moving) 100f else if(slot.floating) 5f+layout.floating.indexOfFirst { it.node.id==slot.rootId } else 1f)
                     .background(Paper).border(1.dp,OutlineSoft).pointerInput(slot.rootId) {
                         awaitEachGesture { awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial); state.raise(slot.rootId,tabs.id) }
                     }) {
