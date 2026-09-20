@@ -132,8 +132,9 @@ internal class EditorPanelState(context: Context, settings: AppSettings) {
             }
             val last = layout.floating.asReversed().firstNotNullOfOrNull { activeColor(it.node) }
                 ?: activeColor(layout.dock) ?: EditorPanel.WHEEL
-            if(layout.open.intersect(colors).isEmpty()) commit(layout.copy(open=layout.open+colors))
-            focus(last.takeIf { it in layout.open } ?: layout.open.first { it in colors })
+            val nextOpen = if (layout.open.intersect(colors).isEmpty()) layout.open + colors else layout.open + last
+            if (nextOpen != layout.open) commit(layout.copy(open = nextOpen))
+            focus(last)
         }
     }
     fun closeTopPanel(onClose: (EditorPanel) -> Unit): Boolean {
