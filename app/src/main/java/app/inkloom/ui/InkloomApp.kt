@@ -1908,10 +1908,12 @@ private fun EditorScreen(
         panelState.show(EditorPanel.LAYERS, restored.showLayerPanel)
         onSettingsChange(restored)
     }
-    fun syncRestoredPanelSettings(layout: EditorPanelLayout) {
+    fun syncRestoredPanelSettings(saved: app.inkloom.settings.NamedPanelLayout) {
+        val layout = saved.layout
         layersOpen = EditorPanel.LAYERS in layout.open
         colorPanelOpen = layout.open.any { it.ordinal >= EditorPanel.WHEEL.ordinal }
-        onSettingsChange(settings.copy(
+        val restoredSettings = saved.toolRail?.applyTo(settings) ?: settings
+        onSettingsChange(restoredSettings.copy(
             showPageRail = EditorPanel.PAGES in layout.open,
             showBrushPanel = EditorPanel.BRUSHES in layout.open,
             showLayerPanel = EditorPanel.LAYERS in layout.open,
@@ -2334,7 +2336,7 @@ private fun EditorScreen(
             },
             confirmButton = { TextButton(enabled = panelLayoutName.isNotBlank(), onClick = {
                 val old = renamingPanelLayout
-                if (old == null) panelState.saveNamedLayout(panelLayoutName)
+                if (old == null) panelState.saveNamedLayout(panelLayoutName, settings)
                 else panelState.renameNamedLayout(old, panelLayoutName)
                 savePanelLayoutOpen = false; renamingPanelLayout = null
             }) { Text(if (renamingPanelLayout == null) tr("Save", "保存") else tr("Rename", "重命名")) } },

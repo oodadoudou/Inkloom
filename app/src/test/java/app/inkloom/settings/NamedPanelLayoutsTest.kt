@@ -31,4 +31,17 @@ class NamedPanelLayoutsTest {
         assertEquals(saved, saved.save("Studio", valid.copy(floating = emptyList())))
         assertFalse(EditorPanelLayouts.isValid(valid.copy(floating = emptyList())))
     }
+
+    @Test fun namedWorkspaceRestoresToolRailWithItsPanels() {
+        val original = AppSettings(showToolbar = false, verticalToolbar = true,
+            toolbarDock = ToolbarDock.RIGHT, toolbarOffsetXDp = 900f, toolbarOffsetYDp = 70f)
+        val saved = NamedPanelLayouts().save("Reading", EditorPanelLayout(), ToolRailLayout.capture(original))
+        val decoded = Json.decodeFromString<NamedPanelLayouts>(Json.encodeToString(NamedPanelLayouts.serializer(), saved))
+        val restored = requireNotNull(decoded.entries.single().toolRail).applyTo(AppSettings())
+        assertEquals(original.showToolbar, restored.showToolbar)
+        assertEquals(original.verticalToolbar, restored.verticalToolbar)
+        assertEquals(original.toolbarDock, restored.toolbarDock)
+        assertEquals(original.toolbarOffsetXDp, restored.toolbarOffsetXDp)
+        assertEquals(original.toolbarOffsetYDp, restored.toolbarOffsetYDp)
+    }
 }

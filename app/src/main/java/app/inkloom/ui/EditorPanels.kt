@@ -78,12 +78,13 @@ internal class EditorPanelState(context: Context, settings: AppSettings) {
         preferences.edit().putString("named_layouts", json.encodeToString(NamedPanelLayouts.serializer(), next)).apply()
     }
 
-    fun saveNamedLayout(name: String) = updateNamedLayouts(namedLayouts.save(name, layout))
+    fun saveNamedLayout(name: String, settings: AppSettings) =
+        updateNamedLayouts(namedLayouts.save(name, layout, ToolRailLayout.capture(settings)))
     fun renameNamedLayout(oldName: String, newName: String) = updateNamedLayouts(namedLayouts.rename(oldName, newName))
     fun deleteNamedLayout(name: String) = updateNamedLayouts(namedLayouts.delete(name))
-    fun restoreNamedLayout(name: String): EditorPanelLayout? {
-        val saved = namedLayouts.entries.firstOrNull { it.name == name }?.layout ?: return null
-        commit(saved)
+    fun restoreNamedLayout(name: String): NamedPanelLayout? {
+        val saved = namedLayouts.entries.firstOrNull { it.name == name } ?: return null
+        commit(saved.layout)
         return saved
     }
     fun commit(next: EditorPanelLayout) {
