@@ -42,5 +42,8 @@ class FloatingToolbarPlacementTest {
         assertEquals(ToolbarDock.FREE, FloatingToolbarPlacement.snapTarget(
             FloatingToolbarPosition(300f, 8f), 1_200f, 800f,
             vertical = true, measuredWidthDp = 88f, measuredHeightDp = 600f))
+        val left = FloatingToolbarPlacement.dockOrigin(ToolbarDock.LEFT, 1_200f, 800f, 88f, 600f)
+        assertEquals(16f, left.xDp, .001f)
+        assertEquals(100f, left.yDp, .001f)
     }
 }

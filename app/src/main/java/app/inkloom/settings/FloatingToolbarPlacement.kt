@@ -45,6 +45,17 @@ object FloatingToolbarPlacement {
             closest.first else ToolbarDock.FREE
     }
 
+    fun dockOrigin(dock: ToolbarDock, containerWidthDp: Float, containerHeightDp: Float,
+                   measuredWidthDp: Float, measuredHeightDp: Float): FloatingToolbarPosition = when (dock) {
+        ToolbarDock.LEFT -> FloatingToolbarPosition(MARGIN_DP * 2f, (containerHeightDp - measuredHeightDp) / 2f)
+        ToolbarDock.RIGHT -> FloatingToolbarPosition(containerWidthDp - measuredWidthDp - MARGIN_DP * 2f,
+            (containerHeightDp - measuredHeightDp) / 2f)
+        ToolbarDock.TOP -> FloatingToolbarPosition((containerWidthDp - measuredWidthDp) / 2f, MARGIN_DP * 2f)
+        ToolbarDock.BOTTOM -> FloatingToolbarPosition((containerWidthDp - measuredWidthDp) / 2f,
+            containerHeightDp - measuredHeightDp - MARGIN_DP * 2f)
+        ToolbarDock.FREE -> FloatingToolbarPosition(MARGIN_DP, MARGIN_DP)
+    }
+
     fun defaultPosition(containerWidthDp: Float, containerHeightDp: Float, vertical: Boolean): FloatingToolbarPosition {
         val paletteWidth = if (vertical) SHORT_EDGE_DP else LONG_EDGE_DP
         val paletteHeight = if (vertical) LONG_EDGE_DP else SHORT_EDGE_DP

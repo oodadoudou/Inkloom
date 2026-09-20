@@ -147,6 +147,7 @@ import app.inkloom.settings.ColorSetLibraryStore
 import app.inkloom.settings.ColorSetLibrary
 import app.inkloom.settings.EraserPreset
 import app.inkloom.settings.FloatingToolbarPlacement
+import app.inkloom.settings.FloatingToolbarPosition
 import app.inkloom.settings.SelectionFilter
 import app.inkloom.settings.SelectionMode
 import app.inkloom.settings.SelectionShape
@@ -1706,9 +1707,13 @@ private fun EditorScreen(
     }
     var toolbarX by remember { mutableFloatStateOf(settings.toolbarOffsetXDp) }
     var toolbarY by remember { mutableFloatStateOf(settings.toolbarOffsetYDp) }
+    var toolbarDragOrigin by remember { mutableStateOf<Triple<ToolbarDock, Float, Float>?>(null) }
+    var toolbarDragTravel by remember { mutableFloatStateOf(0f) }
     val editorDensity = LocalDensity.current
     LaunchedEffect(settings.toolbarOffsetXDp, settings.toolbarOffsetYDp, settings.toolbarDock) {
-        toolbarX = settings.toolbarOffsetXDp; toolbarY = settings.toolbarOffsetYDp
+        if (toolbarDragOrigin == null) {
+            toolbarX = settings.toolbarOffsetXDp; toolbarY = settings.toolbarOffsetYDp
+        }
     }
     val waitingForInputText = tr("Waiting for input", "等待输入")
     val unknownInputDeviceText = tr("Unknown device", "未知设备")
@@ -2949,6 +2954,20 @@ private fun EditorScreen(
                         onSettingsChange(settings.copy(toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY))
                     }
                 }
+                val toolbarSnapPreview = if (toolbarDragOrigin != null && toolbarDragTravel >= 24f)
+                    FloatingToolbarPlacement.snapTarget(FloatingToolbarPosition(toolbarX, toolbarY),
+                        toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical,
+                        measuredToolbarWidth, measuredToolbarHeight) else ToolbarDock.FREE
+                if (toolbarSnapPreview != ToolbarDock.FREE) {
+                    val preview = when (toolbarSnapPreview) {
+                        ToolbarDock.LEFT -> Modifier.align(Alignment.CenterStart).width(2.dp).fillMaxHeight()
+                        ToolbarDock.RIGHT -> Modifier.align(Alignment.CenterEnd).width(2.dp).fillMaxHeight()
+                        ToolbarDock.TOP -> Modifier.align(Alignment.TopCenter).height(2.dp).fillMaxWidth()
+                        ToolbarDock.BOTTOM -> Modifier.align(Alignment.BottomCenter).height(2.dp).fillMaxWidth()
+                        ToolbarDock.FREE -> Modifier
+                    }
+                    Box(preview.zIndex(4f).background(Ink))
+                }
                 if (settings.showToolbar) ToolDock(tool = tool, onTool = { chosen ->
                     exitCanvasNavigation()
                     if (chosen == EditorTool.SELECT) rememberSelectionReturnTarget()
@@ -2994,12 +3013,36 @@ private fun EditorScreen(
                         else -> Unit
                     }
                     syncCanvasInput(prepareAssets = activeBrush != null)
-                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, onScale = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, resizeElement(it, 1.15f)) } } ?: canvasView?.scaleSelection(1.15f) }, onRotate = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, rotateElement(it, 15f)) } } ?: canvasView?.rotateSelection(15f) }, onCopy = { selectedElementId?.let { onDuplicateElement(document.id, selectedPage.id, it) } ?: canvasView?.copySelection() }, onCut = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.cutSelectionToClipboard() != true) Toast.makeText(context, selectBeforeCutMessage, Toast.LENGTH_SHORT).show() }, onClipboardCopy = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.copySelectionToClipboard() != true) Toast.makeText(context, selectBeforeCopyMessage, Toast.LENGTH_SHORT).show() }, onPaste = { selectedElementId = null; if (canvasView?.pasteSelectionFromClipboard() != true) Toast.makeText(context, noInkClipboardMessage, Toast.LENGTH_SHORT).show() }, onDelete = { selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection() }, onSelectAll = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.selectAllEditableStrokes() }, onInvertSelection = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.invertSelection() }, onDeselect = { finishSelectionTool(deselect = true) }, onFreeTransform = { tool = EditorTool.SELECT; canvasView?.enterFreeTransform() }, selectionShape = settings.selectionShape, selectionMode = settings.selectionMode, selectionFilter = settings.selectionFilter, onSelectionShape = { shape -> canvasView?.beginSelectionInput(shape); onSettingsChange(settings.copy(selectionShape = shape)) }, onSelectionMode = { onSettingsChange(settings.copy(selectionMode = it)) }, onSelectionFilter = { onSettingsChange(settings.copy(selectionFilter = it)) }, referenceTarget = settings.referenceTarget, onReferenceTarget = { onSettingsChange(settings.copy(referenceTarget = it)) }, correctLineMode = settings.correctLineMode, correctLineAmount = settings.correctLineAmount, onCorrectLineMode = { onSettingsChange(settings.copy(correctLineMode = it)) }, onCorrectLineAmount = { onSettingsChange(settings.copy(correctLineAmount = it.coerceIn(0f, 1f))) }, eraserPreset = settings.eraserPreset, onEraserPreset = { preset -> onSettingsChange(settings.copy(eraserPreset = preset, nonDestructiveEraser = preset.usesMask)) }, rulerEnabled = settings.rulerEnabled, rulerSnapDegrees = settings.rulerSnapDegrees, onToggleRuler = { onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) }, onRulerSnap = { onSettingsChange(settings.copy(rulerSnapDegrees = it)) }, onResetRuler = { onSettingsChange(settings.copy(rulerCenterX = .5f, rulerCenterY = .5f, rulerAngleDegrees = 0f)) }, gridSnapEnabled = settings.gridSnapEnabled, gridSpacing = settings.gridSpacing, alignmentGuidesEnabled = settings.alignmentGuidesEnabled, onToggleGridSnap = { onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) }, onGridSpacing = { onSettingsChange(settings.copy(gridSpacing = it)) }, onToggleAlignmentGuides = { onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) }, onResetAlignmentGuides = { onSettingsChange(settings.copy(verticalGuideX = .5f, horizontalGuideY = .5f)) }, onDrag = { dx, dy ->
+                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, onScale = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, resizeElement(it, 1.15f)) } } ?: canvasView?.scaleSelection(1.15f) }, onRotate = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, rotateElement(it, 15f)) } } ?: canvasView?.rotateSelection(15f) }, onCopy = { selectedElementId?.let { onDuplicateElement(document.id, selectedPage.id, it) } ?: canvasView?.copySelection() }, onCut = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.cutSelectionToClipboard() != true) Toast.makeText(context, selectBeforeCutMessage, Toast.LENGTH_SHORT).show() }, onClipboardCopy = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.copySelectionToClipboard() != true) Toast.makeText(context, selectBeforeCopyMessage, Toast.LENGTH_SHORT).show() }, onPaste = { selectedElementId = null; if (canvasView?.pasteSelectionFromClipboard() != true) Toast.makeText(context, noInkClipboardMessage, Toast.LENGTH_SHORT).show() }, onDelete = { selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection() }, onSelectAll = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.selectAllEditableStrokes() }, onInvertSelection = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.invertSelection() }, onDeselect = { finishSelectionTool(deselect = true) }, onFreeTransform = { tool = EditorTool.SELECT; canvasView?.enterFreeTransform() }, selectionShape = settings.selectionShape, selectionMode = settings.selectionMode, selectionFilter = settings.selectionFilter, onSelectionShape = { shape -> canvasView?.beginSelectionInput(shape); onSettingsChange(settings.copy(selectionShape = shape)) }, onSelectionMode = { onSettingsChange(settings.copy(selectionMode = it)) }, onSelectionFilter = { onSettingsChange(settings.copy(selectionFilter = it)) }, referenceTarget = settings.referenceTarget, onReferenceTarget = { onSettingsChange(settings.copy(referenceTarget = it)) }, correctLineMode = settings.correctLineMode, correctLineAmount = settings.correctLineAmount, onCorrectLineMode = { onSettingsChange(settings.copy(correctLineMode = it)) }, onCorrectLineAmount = { onSettingsChange(settings.copy(correctLineAmount = it.coerceIn(0f, 1f))) }, eraserPreset = settings.eraserPreset, onEraserPreset = { preset -> onSettingsChange(settings.copy(eraserPreset = preset, nonDestructiveEraser = preset.usesMask)) }, rulerEnabled = settings.rulerEnabled, rulerSnapDegrees = settings.rulerSnapDegrees, onToggleRuler = { onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) }, onRulerSnap = { onSettingsChange(settings.copy(rulerSnapDegrees = it)) }, onResetRuler = { onSettingsChange(settings.copy(rulerCenterX = .5f, rulerCenterY = .5f, rulerAngleDegrees = 0f)) }, gridSnapEnabled = settings.gridSnapEnabled, gridSpacing = settings.gridSpacing, alignmentGuidesEnabled = settings.alignmentGuidesEnabled, onToggleGridSnap = { onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) }, onGridSpacing = { onSettingsChange(settings.copy(gridSpacing = it)) }, onToggleAlignmentGuides = { onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) }, onResetAlignmentGuides = { onSettingsChange(settings.copy(verticalGuideX = .5f, horizontalGuideY = .5f)) }, onDragStart = {
+                    toolbarDragOrigin = Triple(settings.toolbarDock, toolbarX, toolbarY)
+                    toolbarDragTravel = 0f
+                    if (settings.toolbarDock != ToolbarDock.FREE) {
+                        val origin = FloatingToolbarPlacement.dockOrigin(settings.toolbarDock,
+                            toolbarAreaWidth.value, toolbarAreaHeight.value, measuredToolbarWidth, measuredToolbarHeight)
+                        toolbarX = origin.xDp; toolbarY = origin.yDp
+                        onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE,
+                            toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY))
+                    }
+                }, onDrag = { dx, dy ->
+                    toolbarDragTravel += kotlin.math.hypot(dx.toDouble(), dy.toDouble()).toFloat() / editorDensity.density
                     val next = FloatingToolbarPlacement.clamp(toolbarX + dx / editorDensity.density, toolbarY + dy / editorDensity.density,
                         toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical, measuredToolbarWidth, measuredToolbarHeight)
                     toolbarX = next.xDp
                     toolbarY = next.yDp
-                }, onDragEnd = { onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY, verticalToolbar = dockVertical)) }, vertical = dockVertical, brushSize = brushSize, brushOpacity = brushOpacity, brushColor = brushColor, brushes = brushes, selectedBrushId = selectedBrushId, onSystemPreset = { presetTool ->
+                }, onDragEnd = {
+                    val target = if (toolbarDragTravel >= 24f) FloatingToolbarPlacement.snapTarget(
+                        FloatingToolbarPosition(toolbarX, toolbarY), toolbarAreaWidth.value, toolbarAreaHeight.value,
+                        dockVertical, measuredToolbarWidth, measuredToolbarHeight) else ToolbarDock.FREE
+                    onSettingsChange(settings.copy(toolbarDock = target, toolbarOffsetXDp = toolbarX,
+                        toolbarOffsetYDp = toolbarY, verticalToolbar = dockVertical))
+                    toolbarDragOrigin = null; toolbarDragTravel = 0f
+                }, onDragCancel = {
+                    toolbarDragOrigin?.let { (dock, x, y) ->
+                        toolbarX = x; toolbarY = y
+                        onSettingsChange(settings.copy(toolbarDock = dock, toolbarOffsetXDp = x, toolbarOffsetYDp = y))
+                    }
+                    toolbarDragOrigin = null; toolbarDragTravel = 0f
+                }, vertical = dockVertical, brushSize = brushSize, brushOpacity = brushOpacity, brushColor = brushColor, brushes = brushes, selectedBrushId = selectedBrushId, onSystemPreset = { presetTool ->
                     exitCanvasNavigation()
                     val presetId = if (presetTool == EditorTool.ERASER) "system-hard-eraser" else "system-g-pen"
                     selectWorkspaceBrush(requireNotNull(SystemBrushCatalog.byId(presetId)))
@@ -5241,15 +5284,20 @@ private fun ProcreateTopButton(
 }
 
 @Composable
-private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit, modifier: Modifier = Modifier) {
+private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDragStart: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, onDragCancel: () -> Unit, vertical: Boolean, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit, modifier: Modifier = Modifier) {
     var moreToolsOpen by remember { mutableStateOf(false) }
     var controlsOpen by remember { mutableStateOf(false) }
+    val currentDragStart by rememberUpdatedState(onDragStart)
+    val currentDrag by rememberUpdatedState(onDrag)
+    val currentDragEnd by rememberUpdatedState(onDragEnd)
+    val currentDragCancel by rememberUpdatedState(onDragCancel)
     val dragToolbarDescription = tr("Drag toolbar", "拖动工具栏")
     val dragModifier = (if (vertical) Modifier.width(32.dp).height(10.dp) else Modifier.width(10.dp).height(32.dp)).pointerInput(vertical) {
         detectDragGestures(
-            onDragEnd = onDragEnd,
-            onDragCancel = onDragEnd,
-        ) { change, amount -> change.consume(); onDrag(amount.x, amount.y) }
+            onDragStart = { currentDragStart() },
+            onDragEnd = { currentDragEnd() },
+            onDragCancel = { currentDragCancel() },
+        ) { change, amount -> change.consume(); currentDrag(amount.x, amount.y) }
     }
     Surface(
         modifier.shadow(if (vertical) 5.dp else 1.dp, if (vertical) RoundedCornerShape(18.dp) else RoundedCornerShape(0.dp)),
@@ -7480,7 +7528,6 @@ private fun SettingsDialog(
                 item { Text(tr("INTERFACE", "界面"), color = MutedInk, fontSize = 12.sp) }
                 item { SettingSwitch(tr("Show page sidebar", "显示页面侧栏"), null, settings.showPageRail) { onChange(settings.copy(showPageRail = it)) } }
                 item { SettingSwitch(tr("Show floating toolbar", "显示浮动工具栏"), null, settings.showToolbar) { onChange(settings.copy(showToolbar = it)) } }
-                item { Text(tr("Toolbar docking", "工具栏停靠"), color = MutedInk, fontSize = 11.sp); LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ToolbarDock.entries.forEach { dock -> item { FilterChip(selected = settings.toolbarDock == dock, onClick = { onChange(settings.copy(toolbarDock = dock, verticalToolbar = if (dock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT)) true else if (dock in setOf(ToolbarDock.TOP, ToolbarDock.BOTTOM)) false else settings.verticalToolbar)) }, label = { Text(when (dock) { ToolbarDock.FREE -> tr("Free", "自由"); ToolbarDock.TOP -> tr("Top", "顶部"); ToolbarDock.BOTTOM -> tr("Bottom", "底部"); ToolbarDock.LEFT -> tr("Left", "左侧"); ToolbarDock.RIGHT -> tr("Right", "右侧") }) }) } } } }
                 if (settings.toolbarDock == ToolbarDock.FREE) item { SettingSwitch(tr("Vertical toolbar", "垂直工具栏"), tr("Useful on a wide tablet canvas.", "适合宽屏平板画布。"), settings.verticalToolbar) { onChange(settings.copy(verticalToolbar = it)) } }
                 item { OutlinedButton(onClick = { onChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = 16f, toolbarOffsetYDp = 16f)) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.CenterFocusStrong, null); Spacer(Modifier.width(8.dp)); Text(tr("Reset toolbar position", "重置工具栏位置")) } }
 
