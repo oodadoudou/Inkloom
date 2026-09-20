@@ -13,7 +13,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,8 +46,6 @@ internal fun WorkspaceSubtoolsPanel(
         else emptyList()
     }
     Column(modifier.fillMaxSize().background(Paper)) {
-        Text(language.text("Sub tools", "子工具"), Modifier.padding(start = 12.dp, top = 10.dp, bottom = 8.dp),
-            color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         HorizontalDivider(color = Color(0xFF595959))
         LazyColumn(contentPadding = PaddingValues(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             if (brushTool) {
@@ -118,8 +115,6 @@ internal fun WorkspaceToolPropertiesPanel(
 ) {
     val language = settings.language
     Column(modifier.fillMaxSize().background(Paper)) {
-        Text(language.text("Tool property", "工具属性"), Modifier.padding(start = 12.dp, top = 10.dp, bottom = 8.dp),
-            color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         HorizontalDivider(color = Color(0xFF595959))
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
             when (tool) {

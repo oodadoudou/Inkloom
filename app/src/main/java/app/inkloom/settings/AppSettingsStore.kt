@@ -59,13 +59,13 @@ data class AppSettings(
     val pagePanelHeightDp: Float = 620f,
     val brushPanelXDp: Float = 1180f,
     val brushPanelYDp: Float = 18f,
-    val brushPanelWidthDp: Float = 400f,
+    val brushPanelWidthDp: Float = 340f,
     val brushCategoryWidthDp: Float = 120f,
     val brushGridLayout: Boolean = false,
     val brushPanelHeightDp: Float = 620f,
     val layerPanelXDp: Float = 1440f,
     val layerPanelYDp: Float = 18f,
-    val layerPanelWidthDp: Float = 288f,
+    val layerPanelWidthDp: Float = 270f,
     val layerPanelHeightDp: Float = 620f,
     val showToolbar: Boolean = true,
     val toolbarOffsetXDp: Float = 16f,
@@ -185,8 +185,8 @@ class AppSettingsStore(context: Context) {
             preferences.edit {
                 for ((key, previous, compact) in listOf(
                     Triple("pagePanelWidthDp", setOf(224f, 300f), 176f),
-                    Triple("brushPanelWidthDp", setOf(620f), 400f),
-                    Triple("layerPanelWidthDp", setOf(420f), 288f),
+                    Triple("brushPanelWidthDp", setOf(620f), 340f),
+                    Triple("layerPanelWidthDp", setOf(420f), 270f),
                 )) {
                     if (!preferences.contains(key) || preferences.getFloat(key, compact) in previous) putFloat(key, compact)
                 }
@@ -246,12 +246,12 @@ class AppSettingsStore(context: Context) {
             brushPanelXDp = preferences.getFloat("brushPanelXDp", 1180f).coerceIn(-2400f, 2400f),
             brushPanelYDp = preferences.getFloat("brushPanelYDp", 18f).coerceIn(-2400f, 2400f),
             brushGridLayout = preferences.getBoolean("brushGridLayout", false),
-            brushPanelWidthDp = preferences.getFloat("brushPanelWidthDp", 400f).coerceIn(80f, 1200f),
+            brushPanelWidthDp = preferences.getFloat("brushPanelWidthDp", 340f).coerceIn(80f, 1200f),
             brushCategoryWidthDp = preferences.getFloat("brushCategoryWidthDp",120f).takeIf(Float::isFinite)?.coerceIn(80f,360f) ?: 120f,
             brushPanelHeightDp = preferences.getFloat("brushPanelHeightDp", 620f).coerceIn(120f, 1600f),
             layerPanelXDp = preferences.getFloat("layerPanelXDp", 1440f).coerceIn(-2400f, 2400f),
             layerPanelYDp = preferences.getFloat("layerPanelYDp", 18f).coerceIn(-2400f, 2400f),
-            layerPanelWidthDp = preferences.getFloat("layerPanelWidthDp", 288f).coerceIn(80f, 1200f),
+            layerPanelWidthDp = preferences.getFloat("layerPanelWidthDp", 270f).coerceIn(80f, 1200f),
             layerPanelHeightDp = preferences.getFloat("layerPanelHeightDp", 620f).coerceIn(120f, 1600f),
             showToolbar = preferences.getBoolean("showToolbar", true),
             toolbarOffsetXDp = preferences.getFloat("toolbarOffsetXDp", 16f).coerceIn(-1200f, 1200f),

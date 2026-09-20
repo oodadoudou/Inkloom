@@ -1977,19 +1977,19 @@ private fun EditorScreen(
             ProcreateTopButton(Icons.Outlined.Redo, tr("Redo", "重做"), onClick = { canvasView?.redo() })
             Box {
                 ProcreateTopButton(Icons.Outlined.Build, tr("Actions", "操作"), selected = workspaceMenu, onClick = { workspaceMenu = true })
-                DropdownMenu(expanded = workspaceMenu, onDismissRequest = { workspaceMenu = false }, modifier = Modifier.widthIn(min = 260.dp, max = 360.dp)) {
+                DropdownMenu(expanded = workspaceMenu, onDismissRequest = { workspaceMenu = false }, modifier = Modifier.width(280.dp)) {
                     DropdownMenuItem(text = { Text(tr("Search this notebook", "搜索当前笔记")) }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, onClick = { workspaceMenu = false; searchOpen = true })
                     DropdownMenuItem(text = { Text(tr("Notebook settings", "笔记设置")) }, leadingIcon = { Icon(Icons.Outlined.Settings, null) }, onClick = { workspaceMenu = false; onSettings() })
                     DropdownMenuItem(text = { Text(tr("Page outline", "页面大纲")) }, leadingIcon = { Icon(Icons.Outlined.FormatListBulleted, null) }, onClick = { workspaceMenu = false; outlineOpen = true })
                     DropdownMenuItem(text = { Text(tr("Export PDF", "导出 PDF")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { workspaceMenu = false; onExport() })
                     HorizontalDivider()
                     DropdownMenuItem(
-                        text = { Column { Text(tr("Drawing workspace", "绘画工作区")); Text(tr("Canvas with pop-over pages, brushes and layers", "画布与弹出式页面、笔刷和图层"), fontSize = 10.sp, color = MutedInk) } },
+                        text = { Text(tr("Drawing workspace", "绘画工作区")) },
                         leadingIcon = { Icon(Icons.Outlined.Palette, null) },
                         onClick = { applyBuiltInWorkspace(BuiltInWorkspace.STUDIO) },
                     )
                     DropdownMenuItem(
-                        text = { Column { Text(tr("Reading workspace", "阅读工作区")); Text(tr("Pages with drawing controls hidden", "保留页面并隐藏绘画控制"), fontSize = 10.sp, color = MutedInk) } },
+                        text = { Text(tr("Reading workspace", "阅读工作区")) },
                         leadingIcon = { Icon(Icons.Outlined.Visibility, null) },
                         onClick = { applyBuiltInWorkspace(BuiltInWorkspace.READING) },
                     )

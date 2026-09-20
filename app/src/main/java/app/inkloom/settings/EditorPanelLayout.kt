@@ -39,8 +39,8 @@ data class EditorPanelLayout(
     val dock: PanelNode = PanelNode.Canvas(),
     val floating: List<FloatingPanels> = listOf(
         FloatingPanels(PanelNode.Tabs("pages", listOf(EditorPanel.PAGES)), PanelRect(12f, 12f, 180f, 560f)),
-        FloatingPanels(PanelNode.Tabs("brushes", listOf(EditorPanel.BRUSHES, EditorPanel.SUBTOOLS)), PanelRect(720f, 12f, 400f, 600f)),
-        FloatingPanels(PanelNode.Tabs("layers", listOf(EditorPanel.LAYERS, EditorPanel.PROPERTIES)), PanelRect(800f, 80f, 310f, 500f)),
+        FloatingPanels(PanelNode.Tabs("brushes", listOf(EditorPanel.BRUSHES, EditorPanel.SUBTOOLS)), PanelRect(720f, 12f, 340f, 600f)),
+        FloatingPanels(PanelNode.Tabs("layers", listOf(EditorPanel.LAYERS, EditorPanel.PROPERTIES)), PanelRect(800f, 80f, 270f, 500f)),
         FloatingPanels(PanelNode.Tabs("colors", listOf(EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY)), PanelRect(850f, 12f, 280f, 340f)),
     ),
     val open: Set<EditorPanel> = emptySet(),
