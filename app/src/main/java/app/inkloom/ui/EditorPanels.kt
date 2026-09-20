@@ -299,7 +299,10 @@ internal fun EditorPanels(
         }
         drag?.let { d ->
             val source=EditorPanelLayouts.node(d.original,d.sourceId) as? PanelNode.Tabs
-            if(d.panel != null && source != null && source.panels.size > 1) {
+            val visibleSource = currentSlots.firstOrNull { it.node.id == d.sourceId }?.node as? PanelNode.Tabs
+            // A hidden sibling cannot replace the dragged tab in the render tree.
+            // Move the one visible instance instead of mounting a second saveable body.
+            if(d.panel != null && source != null && source.panels.size > 1 && visibleSource != null && visibleSource.panels.size > 1) {
                 Column(geometry(d.start.moved(d.dx,d.dy)).zIndex(100f).background(Paper).border(1.dp,OutlineSoft)) {
                     Text(title(d.panel), fontSize=11.sp, color=Ink, modifier=Modifier.fillMaxWidth().height(32.dp).padding(8.dp))
                     Box(Modifier.weight(1f).fillMaxWidth()) { bodies.getValue(d.panel).invoke() }
