@@ -31,6 +31,8 @@ class AppSettingsBackupCodecTest {
         assertTrue(AppSettingsBackupCodec.decode(malformed.encodeToByteArray()).isFailure)
         val negativeSize = workspace.layout.copy(floating = workspace.layout.floating.map { it.copy(rect = it.rect.copy(width = -1f)) })
         assertFalse(EditorPanelLayouts.isValid(negativeSize))
+        assertFalse(EditorPanelLayouts.isValid(workspace.layout.copy(floating = workspace.layout.floating +
+            FloatingPanels(PanelNode.Space("orphan"), PanelRect(0f, 0f, 200f, 200f)))))
     }
 
     @Test fun `round trip preserves input tools workspace shortcuts quick slots and palette`() {

@@ -96,7 +96,7 @@ object EditorPanelLayouts {
         } || canvases != 1) return false
         val panels = members(layout.dock) + layout.floating.flatMap { members(it.node) }
         return layout.version == 2 && containsCanvas(layout.dock) &&
-            layout.floating.none { containsCanvas(it.node) } &&
+            layout.floating.none { containsCanvas(it.node) || members(it.node).isEmpty() } &&
             panels.size == EditorPanel.entries.size && panels.toSet().size == panels.size &&
             layout.open.all { it in panels } && layout.placed.all { it in panels }
     }
