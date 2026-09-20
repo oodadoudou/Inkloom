@@ -492,7 +492,9 @@ class ColorWindowInputContractTest {
             Offset(area.exactCenterX(), area.exactCenterY()))
         tap("Blend on mixing board")
         instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
-        compose.waitUntil(5_000) { !hasText("Primary color") }
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithContentDescription("Color mixing board").fetchSemanticsNodes().isEmpty()
+        }
         tap("Colors")
         compose.onNodeWithContentDescription("Blend on mixing board").assertIsSelected()
         tap("Undo mixing")
@@ -551,7 +553,9 @@ class ColorWindowInputContractTest {
         assertTrue(android.graphics.Color.red(canvas.inkColor) < 80)
         assertEquals(revision, canvas.activeRasterSnapshotForTest()?.revision)
         instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
-        compose.waitUntil(5_000) { !hasText("Primary color") }
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithContentDescription("Color mixing board").fetchSemanticsNodes().isEmpty()
+        }
     }
 
     @Test fun mixingPinchAndBackgroundChangesDoNotAlterPaintHistory() {

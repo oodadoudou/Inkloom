@@ -197,7 +197,8 @@ private fun MixingPalette(
     fun tr(en: String, zh: String) = language.text(en, zh)
     Column {
         AndroidView(factory = { view },
-            modifier = Modifier.fillMaxWidth().aspectRatio(1.5f).clipToBounds().border(.5.dp, OutlineSoft),
+            modifier = Modifier.fillMaxWidth().aspectRatio(1.5f).clipToBounds().border(.5.dp, OutlineSoft)
+                .semantics { contentDescription = tr("Color mixing board", "混色画板") },
             update = {
                 it.ink = color; it.tool = tool; it.brushRadius = radius; it.onPick = onPick
                 it.backgroundTone = tones[background]
@@ -229,7 +230,7 @@ private fun MixingPalette(
                 runCatching { paletteStore.update { it.insertSwatch(MixingColorBarStore.SET_ID, color, beforeIndex = it.activeSet?.swatches?.size) } }.onSuccess { library = it }.onFailure { storageError = true }
             }
         }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+        FlowRow(Modifier.fillMaxWidth(), maxItemsInEachRow = 5) {
             Box(Modifier.size(32.dp).padding(7.dp).background(Color(color)).border(.5.dp, OutlineSoft))
             StudioIcon(Icons.Outlined.DeleteOutline, tr("Clear mixing board", "清空混色画板")) { view.clear() }
             StudioIcon(Icons.Outlined.Undo, tr("Undo mixing", "撤销混色"), enabled = canUndo) { view.undo() }
