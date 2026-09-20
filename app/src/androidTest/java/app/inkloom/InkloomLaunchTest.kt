@@ -350,33 +350,13 @@ class InkloomLaunchTest {
         }
     }
 
-    @Test fun pagesAndLayersCanShareTheBottomDockWhileBrushesStayAStablePopover() {
+    @Test fun pagesLayersAndBrushesCanRemainOpenTogether() {
         createNotebookAndOpenEditor()
-
-        composeRule.onNodeWithContentDescription("Change pages panel docking").performClick()
-        composeRule.onNodeWithText("Dock bottom").performClick()
         composeRule.onNodeWithContentDescription("Layers").performClick()
-        composeRule.onNodeWithContentDescription("Change layers panel docking").performClick()
-        composeRule.onNodeWithText("Dock bottom").performClick()
-
-        composeRule.onNodeWithContentDescription("Bottom workspace panels").assertIsDisplayed()
-        composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
-        val restored = AppSettingsStore(composeRule.activity).load()
-        assertEquals(WorkspacePanelDock.BOTTOM, restored.pagePanelDock)
-        assertEquals(WorkspacePanelDock.BOTTOM, restored.layerPanelDock)
-
-        composeRule.onNodeWithContentDescription("Stack panels in bottom dock").performClick()
-        composeRule.onNodeWithContentDescription("bottom panel tabs").assertIsDisplayed()
-        assertTrue(AppSettingsStore(composeRule.activity).load().bottomDockStacked)
-        composeRule.onNodeWithContentDescription("Layers tab. Drag to reorder.").performClick()
-        composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Separate bottom panel tabs").performClick()
-        assertEquals(false, AppSettingsStore(composeRule.activity).load().bottomDockStacked)
-
         composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.onNodeWithContentDescription("Close pages panel").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Close layers panel").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Close brushes panel").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Drag brushes panel").assertIsDisplayed()
-        assertEquals(WorkspacePanelDock.FREE, AppSettingsStore(composeRule.activity).load().brushPanelDock)
     }
 
     @Test fun drawingWorkspaceKeepsNotebookToolsAsPopovers() {
@@ -417,24 +397,15 @@ class InkloomLaunchTest {
         assertEquals(0, composeRule.onAllNodesWithText("Reset current workspace").fetchSemanticsNodes().size)
     }
 
-    @Test fun workspacePanelsCollapseToIconsAndLockTheirPlacement() {
+    @Test fun workspacePanelsOnlyCloseOrOpenWithoutCompactModes() {
         createNotebookAndOpenEditor()
-        composeRule.onNodeWithContentDescription("Collapse panel").performClick()
-        composeRule.onNodeWithContentDescription("Expand Pages panel").assertIsDisplayed()
-        assertEquals("ICON_ONLY", AppSettingsStore(composeRule.activity).load().pagePanelMode.name)
-        composeRule.onNodeWithText("Dock right").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription("Expand Pages panel").performClick()
-        composeRule.onNodeWithContentDescription("Change pages panel docking").performClick()
-        composeRule.onNodeWithText("Lock position and size").performClick()
-        assertTrue(AppSettingsStore(composeRule.activity).load().pagePanelLocked)
-        composeRule.onNodeWithContentDescription("Change pages panel docking").performClick()
-        composeRule.onNodeWithText("Dock right").assertIsNotEnabled()
-        composeRule.onNodeWithText("Expanded").performClick()
-        composeRule.onNodeWithContentDescription("Layers").performClick()
-        composeRule.onNodeWithContentDescription("Change layers panel docking").performClick()
-        composeRule.onNodeWithText("Collapsed").performClick()
-        composeRule.onNodeWithContentDescription("Expand Layers panel").assertIsDisplayed()
-        assertEquals("COLLAPSED", AppSettingsStore(composeRule.activity).load().layerPanelMode.name)
+        composeRule.onNodeWithContentDescription("Close pages panel").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Collapse panel").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Change pages panel docking").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Close pages panel").performClick()
+        composeRule.onNodeWithContentDescription("Close pages panel").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Toggle pages").performClick()
+        composeRule.onNodeWithContentDescription("Close pages panel").assertIsDisplayed()
     }
 
     @Test fun settingsExposeInputAndToolControls() {
@@ -714,7 +685,7 @@ class InkloomLaunchTest {
         val beforeX = preferences.getFloat("toolbarOffsetXDp", 16f)
         val beforeY = preferences.getFloat("toolbarOffsetYDp", 16f)
 
-        composeRule.onNodeWithContentDescription("Drag toolbar").performTouchInput {
+        composeRule.onAllNodesWithContentDescription("Drag toolbar").onFirst().performTouchInput {
             swipe(center, center + Offset(180f, 140f), durationMillis = 600)
         }
         composeRule.waitForIdle()
@@ -736,7 +707,7 @@ class InkloomLaunchTest {
         }
         composeRule.onNodeWithContentDescription("Brush size").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Brush opacity").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Drag toolbar").assertIsDisplayed()
+        composeRule.onAllNodesWithContentDescription("Drag toolbar").onFirst().assertIsDisplayed()
     }
 
     @Test fun procreateSidebarPublishesOpacityToTheCanvasImmediately() {
@@ -800,14 +771,14 @@ class InkloomLaunchTest {
         assertEquals(adjusted, brushRect())
     }
 
-    @Test fun openingLayersAutomaticallyDismissesBrushes() {
+    @Test fun openingLayersKeepsTheIndependentBrushPalette() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Brushes").performClick()
         composeRule.onNodeWithContentDescription("Close brushes panel").assertIsDisplayed()
 
         composeRule.onNodeWithContentDescription("Layers").performClick()
 
-        assertEquals(0, composeRule.onAllNodesWithContentDescription("Close brushes panel").fetchSemanticsNodes().size)
+        composeRule.onNodeWithContentDescription("Close brushes panel").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Close layers panel").assertIsDisplayed()
     }
 
@@ -1152,8 +1123,8 @@ class InkloomLaunchTest {
         composeRule.waitForIdle()
         assertTrue(composeRule.onNodeWithText("Layer 2").fetchSemanticsNode().boundsInRoot.top >
             composeRule.onNodeWithText("Layer 1").fetchSemanticsNode().boundsInRoot.top)
-        composeRule.onNodeWithContentDescription("Reorder layer Layer 2").performTouchInput {
-            swipe(centerRight, centerLeft, 250)
+        composeRule.onNodeWithContentDescription("Select layer Layer 2").performTouchInput {
+            swipe(Offset(width * .7f, height * .5f), Offset(width * .2f, height * .5f), 250)
         }
         composeRule.onNodeWithText("Duplicate").assertIsDisplayed()
         composeRule.onNodeWithText("Duplicate").performClick()
@@ -1176,10 +1147,14 @@ class InkloomLaunchTest {
         val active = FileDocumentStore(composeRule.activity.filesDir).list().flatMap { it.pages }
             .single { page -> page.layers.any { it.id == blendLayerId } }.layers.single { it.name == "Layer 2" }.id
         composeRule.waitUntil(5_000) { requireNotNull(findInkCanvasView()).activeLayerId == active }
-        composeRule.onNodeWithContentDescription("Reorder layer Layer 1").performTouchInput { swipe(centerLeft, centerRight, 250) }
+        composeRule.onNodeWithContentDescription("Select layer Layer 1").performTouchInput {
+            swipe(Offset(width * .35f, height * .5f), Offset(width * .75f, height * .5f), 250)
+        }
         composeRule.onNodeWithContentDescription("Exit layer selection").assertIsDisplayed()
         assertEquals("Secondary selection must not change the drawing target", active, requireNotNull(findInkCanvasView()).activeLayerId)
-        composeRule.onNodeWithContentDescription("Reorder layer Layer 1").performTouchInput { swipe(centerLeft, centerRight, 250) }
+        composeRule.onNodeWithContentDescription("Select layer Layer 1").performTouchInput {
+            swipe(Offset(width * .35f, height * .5f), Offset(width * .75f, height * .5f), 250)
+        }
         assertTrue(composeRule.onAllNodesWithContentDescription("Exit layer selection").fetchSemanticsNodes().isEmpty())
     }
 
