@@ -880,6 +880,8 @@ class InkCanvasView(context: Context) : View(context) {
         invalidate(displayLeft, displayTop, displayRight, displayBottom)
     }
     var onCanvasContact: () -> Unit = {}
+    var onBackKey: () -> Boolean = { false }
+    private var backKeyConsumed = false
     var onColorDropCommitted: (Int) -> Unit = {}
     var onSelectionActiveChanged: (Boolean) -> Unit = {}
         set(value) {
@@ -1006,7 +1008,12 @@ class InkCanvasView(context: Context) : View(context) {
                 KeyEvent.KEYCODE_DPAD_DOWN -> { nudgeSelection(0f,step); return true }
                 KeyEvent.KEYCODE_ENTER -> { finishSelectionTransform(true); return true }
                 KeyEvent.KEYCODE_ESCAPE -> { finishSelectionTransform(false); return true }
+                KeyEvent.KEYCODE_BACK -> { finishSelectionTransform(false); backKeyConsumed = true; return true }
             }
+        }
+        if (keyCode == KeyEvent.KEYCODE_BACK && onBackKey()) {
+            backKeyConsumed = true
+            return true
         }
         if (updateModifierState(keyCode, pressed = true)) {
             onKeyInputDiagnostic(event.toDiagnostic(ShortcutPhase.PRESS, null))
@@ -1030,6 +1037,10 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_BACK && backKeyConsumed) {
+            backKeyConsumed = false
+            return true
+        }
         if (updateModifierState(keyCode, pressed = false)) {
             onKeyInputDiagnostic(event.toDiagnostic(ShortcutPhase.RELEASE, null))
             return true

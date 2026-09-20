@@ -98,7 +98,12 @@ class CanvasWorkflowWindowTest {
         compose.waitUntil(10_000) { requireNotNull(view.activeRasterSnapshotForTest()).revision > initial.revision }
         val erased = inkCount()
         assertTrue("Eraser must remove ink", erased < before / 2)
-        tap("Brushes"); tap("Close brushes panel")
+        compose.waitUntil(5_000) {
+            app.inkloom.ui.EditorPanelState(instrumentation.targetContext, app.inkloom.settings.AppSettings())
+                .layout.open.none { it == app.inkloom.settings.EditorPanel.BRUSHES }
+        }
+        tapAt(centerTopmost("Brushes")); compose.waitForIdle()
+        tap("Close brushes panel")
         SystemClock.sleep(1500)
         assertEquals("Checkpoint and brush panel must not restore erased pixels", erased, inkCount())
     }
@@ -203,6 +208,24 @@ class CanvasWorkflowWindowTest {
             result != null
         }
         return requireNotNull(result)
+    }
+
+    private fun centerTopmost(label: String): Offset {
+        var result: android.graphics.Rect? = null
+        compose.waitUntil(5_000) {
+            fun visit(node: android.view.accessibility.AccessibilityNodeInfo?) {
+                if (node == null) return
+                if (node.text?.toString() == label || node.contentDescription?.toString() == label) {
+                    val bounds = android.graphics.Rect()
+                    node.getBoundsInScreen(bounds)
+                    if (result == null || bounds.top < requireNotNull(result).top) result = bounds
+                }
+                repeat(node.childCount) { visit(node.getChild(it)) }
+            }
+            visit(instrumentation.uiAutomation.rootInActiveWindow)
+            result != null
+        }
+        return requireNotNull(result).let { Offset(it.exactCenterX(), it.exactCenterY()) }
     }
 
     private fun tapAt(point: Offset) {

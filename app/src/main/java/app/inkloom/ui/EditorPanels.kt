@@ -80,6 +80,14 @@ internal class EditorPanelState(context: Context, settings: AppSettings) {
         if(!open) commit(layout.copy(open=layout.open-colors))
         else if(layout.open.intersect(colors).isEmpty()) commit(layout.copy(open=layout.open+colors))
     }
+    fun closeTopGroup(onClose: (EditorPanel) -> Unit): Boolean {
+        val slots = EditorPanelLayouts.slots(layout, 1000f, 800f)
+        val tabs = (slots.firstOrNull { it.node.id == activeTabId && it.node is PanelNode.Tabs }
+            ?: slots.lastOrNull { it.node is PanelNode.Tabs })?.node as? PanelNode.Tabs ?: return false
+        tabs.panels.forEach { show(it, false) }
+        tabs.panels.forEach(onClose)
+        return true
+    }
 }
 
 @Composable
@@ -101,6 +109,7 @@ internal fun EditorPanels(
     onClose: (EditorPanel) -> Unit,
     onReleaseInput: () -> Unit = {},
     backDismissEnabled: Boolean = true,
+    onBackBeforePanels: () -> Boolean = { false },
     canvas: @Composable () -> Unit,
     content: @Composable (EditorPanel) -> Unit,
 ) {
@@ -131,8 +140,9 @@ internal fun EditorPanels(
         tabs.panels.forEach { currentClose(it) }; releaseInput()
     }
     BackHandler(backDismissEnabled && drag == null && state.layout.open.isNotEmpty()) {
-        val slots = EditorPanelLayouts.slots(state.layout,1000f,800f)
-        ((slots.firstOrNull { it.node.id == state.activeTabId && it.node is PanelNode.Tabs } ?: slots.lastOrNull { it.node is PanelNode.Tabs })?.node as? PanelNode.Tabs)?.let(::closeGroup)
+        if (!onBackBeforePanels()) {
+            if (state.closeTopGroup(currentClose)) releaseInput()
+        }
     }
     BackHandler(drag != null) { cancel() }
     DisposableEffect(Unit) { onDispose { drag=null } }

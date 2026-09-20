@@ -1546,7 +1546,6 @@ private fun EditorScreen(
     val selectionLoadError = tr("Could not load this selection for the current page", "无法在当前页面载入此选区")
     var selectionActive by remember(document.id, selectedPage.id) { mutableStateOf(false) }
     var selectionTransformState by remember(document.id, selectedPage.id) { mutableStateOf<SelectionTransformUiState?>(null) }
-    BackHandler(enabled = selectionTransformState != null) { canvasView?.finishSelectionTransform(apply = false) }
     var activeLayerId by rememberSaveable(document.id, selectedPage.id) { mutableStateOf(LayerIds.INK) }
     var editingMaskId by remember(document.id, selectedPage.id) { mutableStateOf<String?>(null) }
     val maskAssets = remember(context) { DocumentAssetService(context) }
@@ -1640,18 +1639,16 @@ private fun EditorScreen(
     var viewMenu by remember { mutableStateOf(false) }
     var quickZoomMenu by remember { mutableStateOf(false) }
     var workspaceMenu by remember { mutableStateOf(false) }
-    var colorPanelOpen by remember { mutableStateOf(false) }
-    var editSecondaryColor by remember { mutableStateOf(false) }
     val panelState = rememberEditorPanelState(settings)
+    var colorPanelOpen by remember { mutableStateOf(panelState.layout.open.any { it.ordinal >= EditorPanel.WHEEL.ordinal }) }
+    var editSecondaryColor by remember { mutableStateOf(false) }
     fun showColors() { colorPanelOpen = true; panelState.colors(true) }
     fun setBrushPanelOpen(open: Boolean) {
         panelState.show(EditorPanel.BRUSHES, open)
-        if (brushesOpen != open) onToggleBrushes()
+        if (brushesOpen != open) onSettingsChange(settings.copy(showBrushPanel = open))
     }
     fun toggleBrushPanel() = setBrushPanelOpen(EditorPanel.BRUSHES !in panelState.layout.open)
     LaunchedEffect(settings.showPageRail) { panelState.show(EditorPanel.PAGES, settings.showPageRail) }
-    LaunchedEffect(brushesOpen) { panelState.show(EditorPanel.BRUSHES, brushesOpen) }
-    LaunchedEffect(colorPanelOpen) { panelState.colors(colorPanelOpen) }
     var zoom by remember(document.id) { mutableFloatStateOf(1f) }
     var panX by remember(document.id) { mutableFloatStateOf(0f) }
     var panY by remember(document.id) { mutableFloatStateOf(0f) }
@@ -1804,6 +1801,10 @@ private fun EditorScreen(
             if (canvasView?.clearSelection() == true) selectionFeather = 0f
         }
         restorePreviousDrawingTool(finishingSelection = true)
+    }
+    BackHandler(enabled = tool == EditorTool.SELECT || selectionTransformState != null) {
+        if (canvasView?.selectionTransformUiState != null) canvasView?.finishSelectionTransform(apply = false)
+        else finishSelectionTool(deselect = true)
     }
     fun activateWorkspaceBrush(brush: ImportedBrush, persistSelection: Boolean) {
         if (!brush.toolBinding.isSupported) {
@@ -2034,7 +2035,7 @@ private fun EditorScreen(
                     onSettingsChange(settings.copy(persistentDrawingTool = EditorTool.PEN, persistentBrushPresetId = selected.id))
                 }
                 syncCanvasInput(prepareAssets = remembered != null)
-                if (alreadySelected || !brushesOpen) toggleBrushPanel()
+                if (alreadySelected || EditorPanel.BRUSHES !in panelState.layout.open) toggleBrushPanel()
             })
             ProcreateTopButton(InkloomIcons.Eraser, tr("Eraser", "橡皮"), selected = tool == EditorTool.ERASER, onClick = {
                 exitCanvasNavigation()
@@ -2043,7 +2044,7 @@ private fun EditorScreen(
                     ?: brushes.filter(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
                     ?: systemBrushCatalog().first { BrushRoleClassifier.isEraser(it) }
                 selectWorkspaceBrush(eraser)
-                if (!brushesOpen) setBrushPanelOpen(true)
+                if (EditorPanel.BRUSHES !in panelState.layout.open) setBrushPanelOpen(true)
             })
             ProcreateTopButton(Icons.Outlined.Layers, tr("Layers", "图层"), selected = layersOpen, onClick = {
                 setLayersPanelOpen(!layersOpen)
@@ -2256,17 +2257,25 @@ private fun EditorScreen(
         }
         HorizontalDivider(color = OutlineSoft)
     Box(Modifier.weight(1f).clipToBounds()) {
-        EditorPanels(panelState, backDismissEnabled = selectionTransformState == null && imageCanvasTransform == null, onReleaseInput = { canvasView?.requestFocus() }, onClose = { panel ->
+        fun closeEditorPanel(panel: EditorPanel) {
             when (panel) {
                 EditorPanel.PAGES -> onSettingsChange(settings.copy(showPageRail = false))
                 EditorPanel.LAYERS -> { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) }
-                EditorPanel.BRUSHES -> if (brushesOpen) setBrushPanelOpen(false)
+                EditorPanel.BRUSHES -> setBrushPanelOpen(false)
                 else -> if (panelState.layout.open.none { it.ordinal >= EditorPanel.WHEEL.ordinal }) {
                     colorPanelOpen = false; colorPreview.clear()
                     canvasView?.inkColor = brushColor; canvasView?.secondaryInkColor = backgroundColor
                 }
             }
-        }, canvas = {            BoxWithConstraints(
+        }
+        EditorPanels(panelState, onBackBeforePanels = {
+            when {
+                canvasView?.selectionTransformUiState != null -> { canvasView?.finishSelectionTransform(apply = false); true }
+                imageCanvasTransform != null && imageTransformId == null -> { finishImageTransform(false); true }
+                selectionActive -> { finishSelectionTool(deselect = true); true }
+                else -> false
+            }
+        }, onReleaseInput = { canvasView?.requestFocus() }, onClose = ::closeEditorPanel, canvas = { BoxWithConstraints(
                 Modifier
                     .fillMaxSize()
                     .clipToBounds()
@@ -2365,7 +2374,15 @@ private fun EditorScreen(
                     },
                     onUndoGesture = { canvasView?.undo() },
                     onRedoGesture = { canvasView?.redo() },
-                    onCanvasContact = { if (brushesOpen && EditorPanel.BRUSHES !in panelState.layout.placed) setBrushPanelOpen(false) },
+                    onCanvasContact = { if (EditorPanel.BRUSHES in panelState.layout.open && EditorPanel.BRUSHES !in panelState.layout.placed) setBrushPanelOpen(false) },
+                    onBackKey = {
+                        when {
+                            imageCanvasTransform != null && imageTransformId == null -> { finishImageTransform(false); true }
+                            panelState.closeTopGroup(::closeEditorPanel) -> true
+                            selectionActive -> { finishSelectionTool(deselect = true); true }
+                            else -> false
+                        }
+                    },
                     onColorDropCommitted = { dropped ->
                         offeredContinueFillColor = dropped
                         continueFilling = false
@@ -3046,7 +3063,7 @@ private fun EditorScreen(
                 selectedBrushId = selectedBrushId,
                 requestedGroup = activeBrush?.groupName ?: if (tool == EditorTool.ERASER) "Erasers" else null,
                 settings = settings,
-                onClose = { if (brushesOpen) setBrushPanelOpen(false) },
+                onClose = { setBrushPanelOpen(false) },
                 onBrushSelected = ::selectWorkspaceBrush,
                 onImportBrushes = onImportBrushes,
                 onImportBrushFolder = onImportBrushFolder,
@@ -3879,7 +3896,7 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
+private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onBackKey: () -> Boolean, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val selectionMaskSize = remember(renderedPage.width, renderedPage.height) {
         requireNotNull(SelectionMaskCompositor.maskSize(renderedPage.width, renderedPage.height))
@@ -4240,6 +4257,7 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.onUndoGesture = onUndoGesture
                 view.onRedoGesture = onRedoGesture
                 view.onCanvasContact = onCanvasContact
+                view.onBackKey = onBackKey
                 view.onColorDropCommitted = onColorDropCommitted
                 view.onSelectionActiveChanged = onSelectionActiveChanged
                 view.singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
@@ -4325,6 +4343,7 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.onUndoGesture = onUndoGesture
                 view.onRedoGesture = onRedoGesture
                 view.onCanvasContact = onCanvasContact
+                view.onBackKey = onBackKey
                 view.onColorDropCommitted = onColorDropCommitted
                 view.onSelectionActiveChanged = onSelectionActiveChanged
                 view.singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
