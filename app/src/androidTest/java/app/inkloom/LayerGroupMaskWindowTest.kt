@@ -51,6 +51,29 @@ class LayerGroupMaskWindowTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    @Test fun dualLayerListsAndDisplayChoicesPersistFromTheRealPanel() {
+        tap("New Note"); tap("Create"); tap("Layers")
+        val store = app.inkloom.settings.AppSettingsStore(instrumentation.targetContext)
+
+        tap("Layer list display"); tap("Two layer lists"); tap("Compact rows")
+        compose.waitUntil(10_000) {
+            store.load().layerPanelDualList &&
+                store.load().layerRowDensity == app.inkloom.settings.LayerRowDensity.COMPACT
+        }
+        compose.onNodeWithContentDescription("Second layer list").assertExists()
+        val splitBefore = store.load().layerPanelSplitFraction
+        val divider = center("Resize layer lists")
+        dragFinger(divider, divider + Offset(0f, 72f))
+        compose.waitUntil(10_000) { store.load().layerPanelSplitFraction > splitBefore + .03f }
+
+        tap("Layer list display"); tap("Show thumbnails")
+        compose.waitUntil(10_000) { !store.load().layerShowThumbnails }
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        assertTrue(store.load().layerPanelDualList)
+        assertEquals(app.inkloom.settings.LayerRowDensity.COMPACT, store.load().layerRowDensity)
+        assertTrue(!store.load().layerShowThumbnails)
+    }
+
     @Test fun paletteColorMarkerUsesTheLayerMenuAndOneHistoryEntry() {
         tap("New Note"); tap("Create")
         lateinit var model: app.inkloom.ui.InkloomViewModel
@@ -233,6 +256,17 @@ class LayerGroupMaskWindowTest {
             event(MotionEvent.ACTION_MOVE, start + (end - start) * fraction, time, MotionEvent.TOOL_TYPE_STYLUS)
         }
         event(MotionEvent.ACTION_UP, end, time, MotionEvent.TOOL_TYPE_STYLUS)
+    }
+
+    private fun dragFinger(start: Offset, end: Offset) {
+        val time = SystemClock.uptimeMillis()
+        event(MotionEvent.ACTION_DOWN, start, time, MotionEvent.TOOL_TYPE_FINGER)
+        repeat(12) { index ->
+            SystemClock.sleep(8)
+            val fraction = (index + 1) / 12f
+            event(MotionEvent.ACTION_MOVE, start + (end - start) * fraction, time, MotionEvent.TOOL_TYPE_FINGER)
+        }
+        event(MotionEvent.ACTION_UP, end, time, MotionEvent.TOOL_TYPE_FINGER)
     }
 
     private fun event(action: Int, point: Offset, down: Long, type: Int) {

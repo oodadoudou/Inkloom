@@ -14,6 +14,8 @@ import app.inkloom.document.GradientKind
 import app.inkloom.document.GradientStopCodec
 import app.inkloom.model.EditorTool
 
+enum class LayerRowDensity { COMPACT, COMFORTABLE, LARGE }
+
 data class AppSettings(
     val language: UiLanguage = UiLanguage.ENGLISH,
     val libraryLayout: LibraryLayout = LibraryLayout.GRID,
@@ -67,6 +69,11 @@ data class AppSettings(
     val layerPanelYDp: Float = 18f,
     val layerPanelWidthDp: Float = 270f,
     val layerPanelHeightDp: Float = 620f,
+    val layerPanelDualList: Boolean = false,
+    val layerPanelSplitFraction: Float = .5f,
+    val layerRowDensity: LayerRowDensity = LayerRowDensity.COMFORTABLE,
+    val layerShowThumbnails: Boolean = true,
+    val layerShowDetails: Boolean = true,
     val showToolbar: Boolean = true,
     val toolbarOffsetXDp: Float = 16f,
     val toolbarOffsetYDp: Float = 16f,
@@ -256,6 +263,11 @@ class AppSettingsStore(context: Context) {
             layerPanelYDp = preferences.getFloat("layerPanelYDp", 18f).coerceIn(-2400f, 2400f),
             layerPanelWidthDp = preferences.getFloat("layerPanelWidthDp", 270f).coerceIn(80f, 1200f),
             layerPanelHeightDp = preferences.getFloat("layerPanelHeightDp", 620f).coerceIn(120f, 1600f),
+            layerPanelDualList = preferences.getBoolean("layerPanelDualList", false),
+            layerPanelSplitFraction = preferences.getFloat("layerPanelSplitFraction", .5f).takeIf(Float::isFinite)?.coerceIn(.2f, .8f) ?: .5f,
+            layerRowDensity = enumValue(preferences.getString("layerRowDensity", null), LayerRowDensity.COMFORTABLE),
+            layerShowThumbnails = preferences.getBoolean("layerShowThumbnails", true),
+            layerShowDetails = preferences.getBoolean("layerShowDetails", true),
             showToolbar = preferences.getBoolean("showToolbar", true),
             toolbarOffsetXDp = preferences.getFloat("toolbarOffsetXDp", 16f).coerceIn(-1200f, 1200f),
             toolbarOffsetYDp = preferences.getFloat("toolbarOffsetYDp", 16f).coerceIn(-1200f, 1200f),
@@ -420,6 +432,11 @@ class AppSettingsStore(context: Context) {
             .putFloat("layerPanelYDp", persisted.layerPanelYDp)
             .putFloat("layerPanelWidthDp", persisted.layerPanelWidthDp)
             .putFloat("layerPanelHeightDp", persisted.layerPanelHeightDp)
+            .putBoolean("layerPanelDualList", persisted.layerPanelDualList)
+            .putFloat("layerPanelSplitFraction", persisted.layerPanelSplitFraction.takeIf(Float::isFinite)?.coerceIn(.2f, .8f) ?: .5f)
+            .putString("layerRowDensity", persisted.layerRowDensity.name)
+            .putBoolean("layerShowThumbnails", persisted.layerShowThumbnails)
+            .putBoolean("layerShowDetails", persisted.layerShowDetails)
             .putBoolean("showToolbar", persisted.showToolbar)
             .putFloat("toolbarOffsetXDp", persisted.toolbarOffsetXDp)
             .putFloat("toolbarOffsetYDp", persisted.toolbarOffsetYDp)

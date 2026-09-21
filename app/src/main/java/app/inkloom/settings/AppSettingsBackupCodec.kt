@@ -88,6 +88,8 @@ object AppSettingsBackupCodec {
         put("brushGridLayout", brushGridLayout)
         put("brushPanelXDp", brushPanelXDp); put("brushPanelYDp", brushPanelYDp); put("brushPanelWidthDp", brushPanelWidthDp); put("brushCategoryWidthDp",brushCategoryWidthDp); put("brushPanelHeightDp", brushPanelHeightDp)
         put("layerPanelXDp", layerPanelXDp); put("layerPanelYDp", layerPanelYDp); put("layerPanelWidthDp", layerPanelWidthDp); put("layerPanelHeightDp", layerPanelHeightDp)
+        put("layerPanelDualList", layerPanelDualList); put("layerPanelSplitFraction", layerPanelSplitFraction); put("layerRowDensity", layerRowDensity.name)
+        put("layerShowThumbnails", layerShowThumbnails); put("layerShowDetails", layerShowDetails)
         put("toolbarOffsetXDp", toolbarOffsetXDp); put("toolbarOffsetYDp", toolbarOffsetYDp); put("selectionStudioXDp",selectionStudioXDp); put("selectionStudioYDp",selectionStudioYDp); put("verticalToolbar", verticalToolbar); put("toolbarDock", toolbarDock.name)
         put("toolPaletteLayout", ToolPaletteLayout.encode(ToolPaletteLayout.decode(toolPaletteLayout)))
         put("singleFingerDoubleTapUndo", singleFingerDoubleTapUndo); put("twoFingerDoubleTapUndo", twoFingerDoubleTapUndo); put("threeFingerTapRedo", threeFingerTapRedo); put("twoFingerRotation", twoFingerRotation)
@@ -138,6 +140,8 @@ object AppSettingsBackupCodec {
             brushPanelWidthDp = float("brushPanelWidthDp", defaults.brushPanelWidthDp).coerceIn(80f, 1200f), brushPanelHeightDp = float("brushPanelHeightDp", defaults.brushPanelHeightDp).coerceIn(120f, 1600f),
             layerPanelXDp = float("layerPanelXDp", defaults.layerPanelXDp).coerceIn(-2400f, 2400f), layerPanelYDp = float("layerPanelYDp", defaults.layerPanelYDp).coerceIn(-2400f, 2400f),
             layerPanelWidthDp = float("layerPanelWidthDp", defaults.layerPanelWidthDp).coerceIn(80f, 1200f), layerPanelHeightDp = float("layerPanelHeightDp", defaults.layerPanelHeightDp).coerceIn(120f, 1600f),
+            layerPanelDualList = boolean("layerPanelDualList", defaults.layerPanelDualList), layerPanelSplitFraction = float("layerPanelSplitFraction", defaults.layerPanelSplitFraction).coerceIn(.2f, .8f),
+            layerRowDensity = enum("layerRowDensity", defaults.layerRowDensity), layerShowThumbnails = boolean("layerShowThumbnails", defaults.layerShowThumbnails), layerShowDetails = boolean("layerShowDetails", defaults.layerShowDetails),
             toolbarOffsetXDp = float("toolbarOffsetXDp", defaults.toolbarOffsetXDp).coerceIn(-1200f, 1200f), toolbarOffsetYDp = float("toolbarOffsetYDp", defaults.toolbarOffsetYDp).coerceIn(-1200f, 1200f),
             selectionStudioXDp = float("selectionStudioXDp",defaults.selectionStudioXDp).coerceIn(-1f,2400f), selectionStudioYDp = float("selectionStudioYDp",defaults.selectionStudioYDp).coerceIn(-1f,2400f),
             verticalToolbar = boolean("verticalToolbar", defaults.verticalToolbar), toolbarDock = enum("toolbarDock", defaults.toolbarDock),

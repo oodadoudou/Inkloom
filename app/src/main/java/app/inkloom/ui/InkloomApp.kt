@@ -139,6 +139,7 @@ import app.inkloom.engine.v5.tools.RasterLayerPatch
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsBackupCodec
 import app.inkloom.settings.AppSettingsStore
+import app.inkloom.settings.LayerRowDensity
 import app.inkloom.settings.AxisShortcutBinding
 import app.inkloom.settings.BuiltInWorkspace
 import app.inkloom.settings.BuiltInWorkspaces
@@ -3237,6 +3238,8 @@ private fun EditorScreen(
                     EditorPanel.LAYERS -> {
             LayerPanel(
                 page = selectedPage,
+                settings = settings,
+                onSettingsChange = onSettingsChange,
                 activeLayerId = activeLayerId,
                 brushColor = brushColor,
                 onClose = { layersOpen = false; onPanelVisibilityChange(EditorPanel.LAYERS, false) },
@@ -6181,6 +6184,8 @@ private fun layerPaletteColorName(color: LayerPaletteColor): String = when (colo
 @Composable
 private fun LayerPanel(
     page: InkPage,
+    settings: AppSettings,
+    onSettingsChange: (AppSettings) -> Unit,
     activeLayerId: String,
     brushColor: Int,
     onClose: () -> Unit,
@@ -6218,6 +6223,8 @@ private fun LayerPanel(
 
     PaintingLayerPanel(
             page = page,
+            settings = settings,
+            onSettingsChange = onSettingsChange,
             activeLayerId = activeLayerId,
             onClose = onClose,
             onSelect = onSelect,
@@ -6269,6 +6276,8 @@ private fun LayerContentPreview(page: InkPage, layer: InkLayer, modifier: Modifi
 @Composable
 private fun PaintingLayerPanel(
     page: InkPage,
+    settings: AppSettings,
+    onSettingsChange: (AppSettings) -> Unit,
     activeLayerId: String,
     onClose: () -> Unit,
     onSelect: (String) -> Unit,
@@ -6307,8 +6316,12 @@ private fun PaintingLayerPanel(
     var mergeMenuOpen by remember { mutableStateOf(false) }
     var layerSearch by rememberSaveable { mutableStateOf("") }
     val selectedLayerIds = secondarySelection
-    val listState = rememberLazyListState()
-    val drag = rememberLayerPanelDrag(page, activeLayerId, selectedLayerIds, listState,
+    val primaryListState = rememberLazyListState()
+    val secondaryListState = rememberLazyListState()
+    val primaryDrag = rememberLayerPanelDrag(page, activeLayerId, selectedLayerIds, primaryListState,
+        with(LocalDensity.current) { 48.dp.toPx() },
+        { onSecondarySelection(emptySet()); onSelect(it) }, onRelocate, onToggleFolderCollapsed)
+    val secondaryDrag = rememberLayerPanelDrag(page, activeLayerId, selectedLayerIds, secondaryListState,
         with(LocalDensity.current) { 48.dp.toPx() },
         { onSecondarySelection(emptySet()); onSelect(it) }, onRelocate, onToggleFolderCollapsed)
     fun moveInto(layer: InkLayer, folder: InkLayer?) {
@@ -6322,12 +6335,47 @@ private fun PaintingLayerPanel(
         if (target.role == LayerRole.BACKGROUND) return null
         return LayerDrop(target.id, if (delta > 0) LayerDropPosition.ABOVE else LayerDropPosition.BELOW)
     }
-    val filteredLayers = LayerHierarchy.panelOrder(page.layers.map { if (it.id in drag.expanded) it.copy(collapsed = false) else it }).filter { layerSearch.isBlank() || it.name.contains(layerSearch.trim(), ignoreCase = true) }
     val layerListDescription = tr("Layer list", "图层列表")
-    val shape = RoundedCornerShape(14.dp)
+    val secondaryLayerListDescription = tr("Second layer list", "第二图层列表")
+    val resizeLayerListsDescription = tr("Resize layer lists", "调整双图层列表高度")
+    var displayMenuOpen by remember { mutableStateOf(false) }
     Surface(modifier, shape = RoundedCornerShape(0.dp), color = Paper, contentColor = Ink) {
         Column {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Box {
+                    IconButton(onClick = { displayMenuOpen = true }, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Outlined.Tune, tr("Layer list display", "图层列表显示"), tint = Ink)
+                    }
+                    DropdownMenu(displayMenuOpen, { displayMenuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text(tr("Two layer lists", "双图层列表")) },
+                            leadingIcon = { Checkbox(settings.layerPanelDualList, null) },
+                            onClick = { onSettingsChange(settings.copy(layerPanelDualList = !settings.layerPanelDualList)) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(tr("Show thumbnails", "显示缩略图")) },
+                            leadingIcon = { Checkbox(settings.layerShowThumbnails, null) },
+                            onClick = { onSettingsChange(settings.copy(layerShowThumbnails = !settings.layerShowThumbnails)) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(tr("Show opacity and blend mode", "显示透明度和混合模式")) },
+                            leadingIcon = { Checkbox(settings.layerShowDetails, null) },
+                            onClick = { onSettingsChange(settings.copy(layerShowDetails = !settings.layerShowDetails)) },
+                        )
+                        HorizontalDivider()
+                        LayerRowDensity.entries.forEach { density ->
+                            DropdownMenuItem(
+                                text = { Text(when (density) {
+                                    LayerRowDensity.COMPACT -> tr("Compact rows", "紧凑行")
+                                    LayerRowDensity.COMFORTABLE -> tr("Comfortable rows", "标准行")
+                                    LayerRowDensity.LARGE -> tr("Large rows", "大号行")
+                                }) },
+                                leadingIcon = { RadioButton(settings.layerRowDensity == density, null) },
+                                onClick = { onSettingsChange(settings.copy(layerRowDensity = density)); displayMenuOpen = false },
+                            )
+                        }
+                    }
+                }
                 IconButton(onClick = { searchOpen = !searchOpen; if (!searchOpen) layerSearch = "" }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Search, tr("Search layers", "搜索图层"), tint = Ink) }
                 Box {
                     IconButton(onClick = { mergeMenuOpen = true }, modifier = Modifier.size(28.dp)) {
@@ -6386,7 +6434,20 @@ private fun PaintingLayerPanel(
                     IconButton({ onSecondarySelection(emptySet()) }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Close, tr("Exit layer selection", "退出图层多选"), Modifier.size(17.dp)) }
                 }
             }
-            LazyColumn(Modifier.weight(1f).onGloballyPositioned { drag.viewport = it.boundsInRoot() }.layerPanelDrag(drag).semantics { contentDescription = layerListDescription }, state = listState, contentPadding = PaddingValues(vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            val rowHeight = when (settings.layerRowDensity) {
+                LayerRowDensity.COMPACT -> 46.dp
+                LayerRowDensity.COMFORTABLE -> 62.dp
+                LayerRowDensity.LARGE -> 76.dp
+            }
+            val thumbnailSize = when (settings.layerRowDensity) {
+                LayerRowDensity.COMPACT -> 30.dp
+                LayerRowDensity.COMFORTABLE -> 42.dp
+                LayerRowDensity.LARGE -> 54.dp
+            }
+            val renderLayerList: @Composable (Modifier, androidx.compose.foundation.lazy.LazyListState, LayerPanelDrag, String) -> Unit = { listModifier, listState, drag, description ->
+            val filteredLayers = LayerHierarchy.panelOrder(page.layers.map { if (it.id in drag.expanded) it.copy(collapsed = false) else it })
+                .filter { layerSearch.isBlank() || it.name.contains(layerSearch.trim(), ignoreCase = true) }
+            LazyColumn(listModifier.onGloballyPositioned { drag.viewport = it.boundsInRoot() }.layerPanelDrag(drag).semantics { contentDescription = description }, state = listState, contentPadding = PaddingValues(vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 items(filteredLayers, key = { it.id }) { layer ->
                     var menu by remember { mutableStateOf(false) }
                     var maskMenu by remember { mutableStateOf(false) }
@@ -6408,7 +6469,7 @@ private fun PaintingLayerPanel(
                         }
                     }) {
                     Row(
-                        Modifier.fillMaxWidth().semantics { contentDescription = "${layerRowDescription} ${layer.name}"; this.selected = layer.id == activeLayerId }.onGloballyPositioned { drag.rows[layer.id] = it.boundsInRoot() }.height(62.dp).background(if (drag.drop == LayerDrop(layer.id, LayerDropPosition.INSIDE)) SageContainer else if (layer.id == activeLayerId) Sage else if (selected) SageContainer else Paper).drawWithContent {
+                        Modifier.fillMaxWidth().semantics { contentDescription = "${layerRowDescription} ${layer.name}"; this.selected = layer.id == activeLayerId }.onGloballyPositioned { drag.rows[layer.id] = it.boundsInRoot() }.height(rowHeight).background(if (drag.drop == LayerDrop(layer.id, LayerDropPosition.INSIDE)) SageContainer else if (layer.id == activeLayerId) Sage else if (selected) SageContainer else Paper).drawWithContent {
                             drawContent()
                             drawLine(OutlineSoft, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
                             val destination = drag.drop
@@ -6440,16 +6501,17 @@ private fun PaintingLayerPanel(
                                 null, Modifier.size(18.dp), tint = if (selected) Ink else MutedInk)
                         }
                         Spacer(Modifier.width((4 + depth * 16).dp))
-                        val thumbnailDescription = if (layer.role == LayerRole.FOLDER) "${tr("Toggle folder", "折叠或展开文件夹")} ${layer.name}" else "${tr("Layer content", "图层内容")} ${layer.name}"
-                        Surface(Modifier.size(42.dp).semantics { contentDescription = thumbnailDescription }.clickable { if (layer.role == LayerRole.FOLDER) onToggleFolderCollapsed(layer.id) else { onSecondarySelection(emptySet()); onSelect(layer.id) } }, shape = RoundedCornerShape(1.dp), color = Paper, border = androidx.compose.foundation.BorderStroke(
-                            if (layer.id == activeLayerId && editingMaskId != layer.id) 2.dp else 1.dp, if (selected) Ink else MutedInk)) {
-                            if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) LayerContentPreview(page, layer, Modifier.fillMaxSize())
-                            else if (layer.role == LayerRole.BACKGROUND) Box(Modifier.fillMaxSize().background(Color(
-                                (page.background as? PageBackground.Paper)?.colorArgb?.toInt() ?: android.graphics.Color.WHITE)))
-                            else Box(contentAlignment = Alignment.Center) {
-                                Icon(if (layer.collapsed) Icons.Outlined.Folder else Icons.Outlined.FolderOpen, null, Modifier.size(24.dp), tint = Ink)
+                        if (settings.layerShowThumbnails) {
+                            val thumbnailDescription = if (layer.role == LayerRole.FOLDER) "${tr("Toggle folder", "折叠或展开文件夹")} ${layer.name}" else "${tr("Layer content", "图层内容")} ${layer.name}"
+                            Surface(Modifier.size(thumbnailSize).semantics { contentDescription = thumbnailDescription }.clickable { if (layer.role == LayerRole.FOLDER) onToggleFolderCollapsed(layer.id) else { onSecondarySelection(emptySet()); onSelect(layer.id) } }, shape = RoundedCornerShape(1.dp), color = Paper, border = androidx.compose.foundation.BorderStroke(
+                                if (layer.id == activeLayerId && editingMaskId != layer.id) 2.dp else 1.dp, if (selected) Ink else MutedInk)) {
+                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) LayerContentPreview(page, layer, Modifier.fillMaxSize())
+                                else if (layer.role == LayerRole.BACKGROUND) Box(Modifier.fillMaxSize().background(Color(
+                                    (page.background as? PageBackground.Paper)?.colorArgb?.toInt() ?: android.graphics.Color.WHITE)))
+                                else Box(contentAlignment = Alignment.Center) {
+                                    Icon(if (layer.collapsed) Icons.Outlined.Folder else Icons.Outlined.FolderOpen, null, Modifier.size(24.dp), tint = Ink)
+                                }
                             }
-                        }
                         layer.mask?.let { mask ->
                             val maskDescription = "${tr("Edit layer mask", "编辑图层蒙版")} ${layer.name}"
                             Box(Modifier.size(40.dp).semantics { contentDescription = maskDescription }
@@ -6459,10 +6521,11 @@ private fun PaintingLayerPanel(
                                     if (editingMaskId == layer.id) Ink else MutedInk.copy(alpha = .45f), RoundedCornerShape(2.dp)))
                             }
                         }
+                        }
                         Spacer(Modifier.width(7.dp))
                         val reorderDescription = "${tr("Reorder layer", "拖动排序图层")} ${layer.name}"
                         Column(Modifier.weight(1f).semantics { contentDescription = reorderDescription }) {
-                            if (layer.role != LayerRole.BACKGROUND) Text(
+                            if (settings.layerShowDetails && layer.role != LayerRole.BACKGROUND) Text(
                                 "${(layer.opacity * 100).roundToInt()}%  ${LayerBlendModeDisplayName.of(layer, LocalUiLanguage.current)}",
                                 maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                 fontSize = 10.sp, color = MutedInk,
@@ -6527,6 +6590,32 @@ private fun PaintingLayerPanel(
                     }
                     }
                 }
+            }
+            }
+            if (settings.layerPanelDualList) {
+                var splitFraction by remember(settings.layerPanelSplitFraction) { mutableFloatStateOf(settings.layerPanelSplitFraction) }
+                BoxWithConstraints(Modifier.weight(1f)) {
+                    val availableHeight = (maxHeight - 10.dp).coerceAtLeast(80.dp)
+                    val containerHeightPx = with(LocalDensity.current) { maxHeight.toPx() }.coerceAtLeast(1f)
+                    Column(Modifier.fillMaxSize()) {
+                        renderLayerList(Modifier.fillMaxWidth().height(availableHeight * splitFraction), primaryListState, primaryDrag, layerListDescription)
+                        Box(Modifier.fillMaxWidth().height(10.dp).semantics { contentDescription = resizeLayerListsDescription }
+                            .pointerInput(containerHeightPx) {
+                                detectDragGestures(
+                                    onDragEnd = { onSettingsChange(settings.copy(layerPanelSplitFraction = splitFraction)) },
+                                    onDragCancel = { splitFraction = settings.layerPanelSplitFraction },
+                                ) { change, amount ->
+                                    change.consume()
+                                    splitFraction = (splitFraction + amount.y / containerHeightPx).coerceIn(.2f, .8f)
+                                }
+                            }.drawWithContent {
+                                drawLine(OutlineSoft, Offset(0f, size.height / 2f), Offset(size.width, size.height / 2f), 1.dp.toPx())
+                            })
+                        renderLayerList(Modifier.fillMaxWidth().weight(1f), secondaryListState, secondaryDrag, secondaryLayerListDescription)
+                    }
+                }
+            } else {
+                renderLayerList(Modifier.weight(1f), primaryListState, primaryDrag, layerListDescription)
             }
         }
     }
