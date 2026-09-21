@@ -17,6 +17,8 @@ import android.graphics.Color
 import android.graphics.Bitmap
 import app.inkloom.document.PageElement
 import app.inkloom.ui.MixedSelectionSource
+import app.inkloom.ui.LayerMaskStrokeHistory
+import app.inkloom.document.LayerMask
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -126,6 +128,97 @@ class SelectionTransformTest {
         InstrumentationRegistry.getInstrumentation().runOnMainSync { view.redo() }
         assertEquals(Color.RED, first.pixelAt(36, 20))
         assertEquals(Color.BLUE, second.pixelAt(36, 20))
+    }
+
+    @Test fun unlinkedMaskTransformsIndependentlyWhileLinkedMaskMovesWithLayerContent() {
+        for (linked in listOf(false, true)) {
+            val pixels = PixelTileSurface(64, 64, 64).also { surface ->
+                surface.beginWrite("pixel").use { write -> write.setPixel(20, 20, Color.RED); write.commit().close() }
+            }
+            val maskContent = MaskTileSurface(64, 64, 64).also { surface ->
+                surface.beginWrite("mask content").use { write -> write.setAlpha(20, 20, 220); write.commit().close() }
+            }
+            val selection = MaskTileSurface(64, 64, 64).also { surface ->
+                surface.beginWrite("selection").use { write ->
+                    write.composeAlpha(PixelRect(16, 16, 28, 28), ByteArray(144) { -1 }, mode = MaskComposeMode.REPLACE)
+                    write.commit().close()
+                }
+            }
+            var persistentMask = maskContent.snapshot()
+            lateinit var view: InkCanvasView
+            view = canvas {
+                pageModelWidth = 64f; pageModelHeight = 64f; activeLayerId = "paint"
+                setRasterLayerSurfaces(mapOf("paint" to pixels))
+                layerMasks = mapOf("paint" to LayerMask(linked = linked))
+                layerMaskSurfaces = mapOf("paint" to persistentMask)
+                bindDocumentSelectionState(DocumentSelectionRuntime(64).stateFor("mask-$linked", "page", 64, 64))
+                replaceSelectionFromMask(selection.snapshot())
+                onLayerMaskStrokeCommitted = { _, after ->
+                    val before = persistentMask
+                    persistentMask = after
+                    layerMaskSurfaces = layerMaskSurfaces + ("paint" to after)
+                    LayerMaskStrokeHistory(
+                        undo = { persistentMask = before; layerMaskSurfaces = layerMaskSurfaces + ("paint" to before) },
+                        redo = { persistentMask = after; layerMaskSurfaces = layerMaskSurfaces + ("paint" to after) },
+                        dispose = {},
+                    )
+                }
+                assertTrue(toggleLayerMaskEditing("paint"))
+                assertTrue(enterFreeTransform())
+                nudgeSelection(8f, 0f)
+                assertTrue(finishSelectionTransform(true))
+            }
+            assertEquals(0, persistentMask.alphaAt(20, 20))
+            assertEquals(220, persistentMask.alphaAt(28, 20))
+            if (linked) {
+                assertEquals(0, pixels.pixelAt(20, 20))
+                assertEquals(Color.RED, pixels.pixelAt(28, 20))
+            } else {
+                assertEquals(Color.RED, pixels.pixelAt(20, 20))
+                assertEquals(0, pixels.pixelAt(28, 20))
+            }
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { view.undo() }
+            assertEquals(220, persistentMask.alphaAt(20, 20))
+            assertEquals(Color.RED, pixels.pixelAt(20, 20))
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { view.redo() }
+            assertEquals(220, persistentMask.alphaAt(28, 20))
+        }
+    }
+
+    @Test fun groupMaskTransformsWithoutRequiringAGroupPixelSurface() {
+        val maskContent = MaskTileSurface(64, 64, 64).also { surface ->
+            surface.beginWrite("group mask").use { write -> write.setAlpha(20, 20, 200); write.commit().close() }
+        }
+        val selection = MaskTileSurface(64, 64, 64).also { surface ->
+            surface.beginWrite("selection").use { write ->
+                write.composeAlpha(PixelRect(16, 16, 28, 28), ByteArray(144) { -1 }, mode = MaskComposeMode.REPLACE)
+                write.commit().close()
+            }
+        }
+        var persistent = maskContent.snapshot()
+        canvas {
+            pageModelWidth = 64f; pageModelHeight = 64f; activeLayerId = "group"
+            layerMasks = mapOf("group" to LayerMask(linked = false))
+            layerMaskSurfaces = mapOf("group" to persistent)
+            bindDocumentSelectionState(DocumentSelectionRuntime(64).stateFor("group-mask", "page", 64, 64))
+            replaceSelectionFromMask(selection.snapshot())
+            onLayerMaskStrokeCommitted = { _, after ->
+                val before = persistent
+                persistent = after
+                layerMaskSurfaces = layerMaskSurfaces + ("group" to after)
+                LayerMaskStrokeHistory(
+                    undo = { persistent = before; layerMaskSurfaces = layerMaskSurfaces + ("group" to before) },
+                    redo = { persistent = after; layerMaskSurfaces = layerMaskSurfaces + ("group" to after) },
+                    dispose = {},
+                )
+            }
+            assertTrue(toggleLayerMaskEditing("group"))
+            assertTrue(enterFreeTransform())
+            nudgeSelection(8f, 0f)
+            assertTrue(finishSelectionTransform(true))
+        }
+        assertEquals(0, persistent.alphaAt(20, 20))
+        assertEquals(200, persistent.alphaAt(28, 20))
     }
 
     @Test fun selectedLayersAlignToActiveLayerWithoutFlattening() {
