@@ -181,6 +181,8 @@ import app.inkloom.settings.ToolboxMotionResolver
 import app.inkloom.settings.ToolboxQuickSlot
 import app.inkloom.settings.ToolboxQuickSlotKind
 import app.inkloom.settings.ToolboxQuickSlots
+import app.inkloom.settings.ToolPaletteEntry
+import app.inkloom.settings.ToolPaletteLayout
 import app.inkloom.settings.applyToolboxWorkspace
 import app.inkloom.settings.captureToolboxWorkspace
 import app.inkloom.settings.UiLanguage
@@ -2995,7 +2997,7 @@ private fun EditorScreen(
                     }
                     Box(preview.zIndex(4f).background(Ink))
                 }
-                if (settings.showToolbar) ToolDock(tool = tool, onTool = { chosen ->
+                if (settings.showToolbar) ToolDock(tool = tool, toolPaletteLayout = settings.toolPaletteLayout, onTool = { chosen ->
                     exitCanvasNavigation()
                     if (chosen == EditorTool.SELECT) rememberSelectionReturnTarget()
                     if (chosen == EditorTool.EYEDROPPER && tool != EditorTool.EYEDROPPER) {
@@ -3316,6 +3318,7 @@ private fun EditorScreen(
                         tool = tool, brushSize = brushSize, brushOpacity = brushOpacity,
                         settings = settings, onBrushSize = ::changeCurrentBrushSize,
                         onBrushOpacity = ::changeCurrentBrushOpacity, onSettings = onSettingsChange,
+                        shapeKind = insertShape, onShapeKind = { insertShape = it },
                     )
                     else -> BoxWithConstraints(Modifier.fillMaxSize().padding(6.dp)) {
                     ColorStudioPanel(
@@ -5324,7 +5327,7 @@ private fun ProcreateTopButton(
 }
 
 @Composable
-private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDragStart: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, onDragCancel: () -> Unit, layoutLocked: Boolean, vertical: Boolean, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit, modifier: Modifier = Modifier) {
+private fun ToolDock(tool: EditorTool, toolPaletteLayout: String, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDragStart: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, onDragCancel: () -> Unit, layoutLocked: Boolean, vertical: Boolean, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit, modifier: Modifier = Modifier) {
     var moreToolsOpen by remember { mutableStateOf(false) }
     var controlsOpen by remember { mutableStateOf(false) }
     val currentDragStart by rememberUpdatedState(onDragStart)
@@ -5351,6 +5354,7 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
         val content: @Composable () -> Unit = {
             ToolDockItems(
                 tool = tool,
+                toolPaletteLayout = toolPaletteLayout,
                 onTool = onTool,
                 onUndo = onUndo,
                 onRedo = onRedo,
@@ -5498,7 +5502,7 @@ private fun ProcreateSidebar(
 }
 
 @Composable
-private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit) {
+private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit) {
     val dragToolbarDescription = tr("Drag toolbar", "拖动工具栏")
     var toolLibraryLayout by rememberSaveable { mutableStateOf(ToolLibraryLayout.LIST) }
     var toolLibrarySort by rememberSaveable { mutableStateOf(ToolLibrarySort.DEFAULT) }
@@ -5520,25 +5524,17 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
             }
         }
     }
-    BrushPresetToolButton(EditorTool.PEN, Icons.Outlined.Brush, tr("Brush", "笔刷"), tool, libraryPresets.filterNot(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
-    ToolButton(EditorTool.HIGHLIGHTER, Icons.Outlined.BorderColor, tr("Marker", "标记笔"), tool, onTool)
-    BrushPresetToolButton(EditorTool.ERASER, InkloomIcons.Eraser, if (vertical) tr("Eraser tool", "橡皮工具") else tr("Eraser", "橡皮"), tool, libraryPresets.filter(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
-    ToolButton(EditorTool.SELECT, Icons.Outlined.Gesture, tr("Select", "选择"), tool, onTool)
     if (vertical) {
-        HorizontalDivider(Modifier.width(30.dp).padding(vertical = 2.dp), color = OutlineSoft)
-        ToolButton(EditorTool.EYEDROPPER, Icons.Outlined.Colorize, tr("Eyedropper", "吸管"), tool, onTool)
-        ToolButton(EditorTool.FILL, Icons.Outlined.FormatColorFill, tr("Paint bucket", "油漆桶"), tool, onTool)
-        ToolButton(EditorTool.GRADIENT, Icons.Outlined.Gradient, tr("Gradient", "渐变"), tool, onTool)
-        ToolButton(EditorTool.SMUDGE, Icons.Outlined.BlurOn, tr("Blend", "混色"), tool, onTool)
-        ToolButton(EditorTool.LIQUIFY, Icons.Outlined.Waves, tr("Liquify", "液化"), tool, onTool)
-        ToolButton(EditorTool.CORRECT_LINE, Icons.Outlined.AutoFixHigh, tr("Correct line", "线条修正"), tool, onTool)
-        ToolButton(EditorTool.SHAPE, Icons.Outlined.Category, tr("Shape", "形状"), tool, onTool)
-        ToolButton(EditorTool.TEXT, Icons.Outlined.Title, tr("Text", "文字"), tool, onTool)
-        ToolButton(EditorTool.NOTE, Icons.Outlined.StickyNote2, tr("Note", "便笺"), tool, onTool)
-        ToolButton(EditorTool.LINK, Icons.Outlined.Link, tr("Link", "链接"), tool, onTool)
-        ToolButton(EditorTool.IMAGE, Icons.Outlined.Image, tr("Image", "图片"), tool, onTool)
-        ToolButton(EditorTool.LASER, Icons.Outlined.TrackChanges, tr("Laser pointer", "激光笔"), tool, onTool)
-        HorizontalDivider(Modifier.width(30.dp).padding(vertical = 2.dp), color = OutlineSoft)
+        ToolPaletteLayout.decode(toolPaletteLayout).forEach { entry -> when(entry) {
+            ToolPaletteEntry.Separator -> HorizontalDivider(Modifier.width(30.dp).padding(vertical = 2.dp), color = OutlineSoft)
+            is ToolPaletteEntry.Tool -> ToolPaletteButton(entry.tool, tool, libraryPresets, selectedBrushId, eraserPreset,
+                onTool, onSystemPreset, onEraserPreset, onBrushPreset)
+        } }
+    } else {
+        BrushPresetToolButton(EditorTool.PEN, Icons.Outlined.Brush, tr("Brush", "笔刷"), tool, libraryPresets.filterNot(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
+        ToolButton(EditorTool.HIGHLIGHTER, Icons.Outlined.BorderColor, tr("Marker", "标记笔"), tool, onTool)
+        BrushPresetToolButton(EditorTool.ERASER, InkloomIcons.Eraser, tr("Eraser", "橡皮"), tool, libraryPresets.filter(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
+        ToolButton(EditorTool.SELECT, Icons.Outlined.Gesture, tr("Select", "选择"), tool, onTool)
     }
     Box {
         CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = tr("More tools", "更多工具"), selected = rulerEnabled || gridSnapEnabled || alignmentGuidesEnabled || tool in setOf(EditorTool.EYEDROPPER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE, EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.LASER)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
@@ -5802,6 +5798,59 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
     }
     CompactToolbarIconButton(onClick = onUndo, description = tr("Undo", "撤销")) { Icon(Icons.Outlined.Undo, null, Modifier.size(20.dp)) }
     CompactToolbarIconButton(onClick = onRedo, description = tr("Redo", "重做")) { Icon(Icons.Outlined.Redo, null, Modifier.size(20.dp)) }
+}
+
+@Composable
+private fun ToolPaletteButton(value: EditorTool, selected: EditorTool, brushes: List<ImportedBrush>, selectedBrushId: String?,
+                              eraserPreset: EraserPreset, onTool: (EditorTool) -> Unit, onSystemPreset: (EditorTool) -> Unit,
+                              onEraserPreset: (EraserPreset) -> Unit, onBrushPreset: (ImportedBrush) -> Unit) {
+    if (value == EditorTool.PEN) {
+        BrushPresetToolButton(value, Icons.Outlined.Brush, tr("Brush", "笔刷"), selected,
+            brushes.filterNot(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset,
+            onTool, onSystemPreset, onEraserPreset, onBrushPreset)
+        return
+    }
+    if (value == EditorTool.ERASER) {
+        BrushPresetToolButton(value, InkloomIcons.Eraser, tr("Eraser tool", "橡皮工具"), selected,
+            brushes.filter(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset,
+            onTool, onSystemPreset, onEraserPreset, onBrushPreset)
+        return
+    }
+    val icon = when(value) {
+        EditorTool.HIGHLIGHTER -> Icons.Outlined.BorderColor
+        EditorTool.EYEDROPPER -> Icons.Outlined.Colorize
+        EditorTool.SELECT -> Icons.Outlined.Gesture
+        EditorTool.SHAPE -> Icons.Outlined.Category
+        EditorTool.TEXT -> Icons.Outlined.Title
+        EditorTool.NOTE -> Icons.Outlined.StickyNote2
+        EditorTool.LINK -> Icons.Outlined.Link
+        EditorTool.IMAGE -> Icons.Outlined.Image
+        EditorTool.LASER -> Icons.Outlined.TrackChanges
+        EditorTool.FILL -> Icons.Outlined.FormatColorFill
+        EditorTool.GRADIENT -> Icons.Outlined.Gradient
+        EditorTool.SMUDGE -> Icons.Outlined.BlurOn
+        EditorTool.LIQUIFY -> Icons.Outlined.Waves
+        EditorTool.CORRECT_LINE -> Icons.Outlined.AutoFixHigh
+        EditorTool.PEN, EditorTool.ERASER -> error("handled above")
+    }
+    val label = when(value) {
+        EditorTool.HIGHLIGHTER -> tr("Marker", "标记笔")
+        EditorTool.EYEDROPPER -> tr("Eyedropper", "吸管")
+        EditorTool.SELECT -> tr("Select", "选择")
+        EditorTool.SHAPE -> tr("Shape", "形状")
+        EditorTool.TEXT -> tr("Text", "文字")
+        EditorTool.NOTE -> tr("Note", "便笺")
+        EditorTool.LINK -> tr("Link", "链接")
+        EditorTool.IMAGE -> tr("Image", "图片")
+        EditorTool.LASER -> tr("Laser pointer", "激光笔")
+        EditorTool.FILL -> tr("Paint bucket", "油漆桶")
+        EditorTool.GRADIENT -> tr("Gradient", "渐变")
+        EditorTool.SMUDGE -> tr("Blend", "混色")
+        EditorTool.LIQUIFY -> tr("Liquify", "液化")
+        EditorTool.CORRECT_LINE -> tr("Correct line", "线条修正")
+        EditorTool.PEN, EditorTool.ERASER -> ""
+    }
+    ToolButton(value, icon, label, selected, onTool)
 }
 
 @Composable

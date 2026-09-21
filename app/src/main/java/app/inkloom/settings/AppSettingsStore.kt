@@ -74,6 +74,7 @@ data class AppSettings(
     val selectionStudioYDp: Float = -1f,
     val verticalToolbar: Boolean = true,
     val toolbarDock: ToolbarDock = ToolbarDock.LEFT,
+    val toolPaletteLayout: String = ToolPaletteLayout.encode(ToolPaletteLayout.defaultEntries),
     val singleFingerDoubleTapUndo: Boolean = true,
     val twoFingerDoubleTapUndo: Boolean = true,
     val threeFingerTapRedo: Boolean = true,
@@ -262,6 +263,7 @@ class AppSettingsStore(context: Context) {
             selectionStudioYDp = preferences.getFloat("selectionStudioYDp", -1f).takeIf(Float::isFinite)?.coerceIn(-1f, 2400f) ?: -1f,
             verticalToolbar = preferences.getBoolean("verticalToolbar", true),
             toolbarDock = enumValue(preferences.getString("toolbarDock", null), ToolbarDock.LEFT),
+            toolPaletteLayout = ToolPaletteLayout.encode(ToolPaletteLayout.decode(preferences.getString("toolPaletteLayout", null))),
             singleFingerDoubleTapUndo = preferences.getBoolean("singleFingerDoubleTapUndo", true),
             twoFingerDoubleTapUndo = preferences.getBoolean("twoFingerDoubleTapUndo", true),
             threeFingerTapRedo = preferences.getBoolean("threeFingerTapRedo", true),
@@ -425,6 +427,7 @@ class AppSettingsStore(context: Context) {
             .putFloat("selectionStudioYDp", persisted.selectionStudioYDp.takeIf(Float::isFinite)?.coerceIn(-1f, 2400f) ?: -1f)
             .putBoolean("verticalToolbar", persisted.verticalToolbar)
             .putString("toolbarDock", persisted.toolbarDock.name)
+            .putString("toolPaletteLayout", ToolPaletteLayout.encode(ToolPaletteLayout.decode(persisted.toolPaletteLayout)))
             .putBoolean("singleFingerDoubleTapUndo", persisted.singleFingerDoubleTapUndo)
             .putBoolean("twoFingerDoubleTapUndo", persisted.twoFingerDoubleTapUndo)
             .putBoolean("threeFingerTapRedo", persisted.threeFingerTapRedo)

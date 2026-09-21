@@ -98,6 +98,7 @@ object WorkspaceLayoutProfilesCodec {
         put("brushPanelXDp", brushPanelXDp); put("brushPanelYDp", brushPanelYDp); put("brushPanelWidthDp", brushPanelWidthDp); put("brushPanelHeightDp", brushPanelHeightDp)
         put("layerPanelXDp", layerPanelXDp); put("layerPanelYDp", layerPanelYDp); put("layerPanelWidthDp", layerPanelWidthDp); put("layerPanelHeightDp", layerPanelHeightDp)
         put("toolbarOffsetXDp", toolbarOffsetXDp); put("toolbarOffsetYDp", toolbarOffsetYDp); put("verticalToolbar", verticalToolbar); put("toolbarDock", toolbarDock.name)
+        put("toolPaletteLayout", ToolPaletteLayout.encode(ToolPaletteLayout.decode(toolPaletteLayout)))
     }
 
     private fun JsonObject.toWorkspace() = ToolboxWorkspaceSnapshot(
@@ -112,6 +113,7 @@ object WorkspaceLayoutProfilesCodec {
         float("brushPanelXDp", 1180f), float("brushPanelYDp", 18f), float("brushPanelWidthDp", 400f), float("brushPanelHeightDp", 620f),
         float("layerPanelXDp", 1440f), float("layerPanelYDp", 18f), float("layerPanelWidthDp", 288f), float("layerPanelHeightDp", 620f),
         float("toolbarOffsetXDp", 16f), float("toolbarOffsetYDp", 16f), boolean("verticalToolbar", true), enum("toolbarDock", ToolbarDock.LEFT),
+        ToolPaletteLayout.encode(ToolPaletteLayout.decode(text("toolPaletteLayout"))),
     ).normalizedWorkspace()
 
     private fun JsonObject.text(key: String): String = get(key)?.jsonPrimitive?.content.orEmpty()

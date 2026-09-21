@@ -52,6 +52,7 @@ data class ToolboxWorkspaceSnapshot(
     val toolbarOffsetYDp: Float,
     val verticalToolbar: Boolean,
     val toolbarDock: ToolbarDock,
+    val toolPaletteLayout: String = ToolPaletteLayout.encode(ToolPaletteLayout.defaultEntries),
 )
 
 data class ToolboxQuickSlot(
@@ -115,6 +116,7 @@ fun AppSettings.captureToolboxWorkspace(): ToolboxWorkspaceSnapshot = ToolboxWor
     brushPanelXDp, brushPanelYDp, brushPanelWidthDp, brushPanelHeightDp,
     layerPanelXDp, layerPanelYDp, layerPanelWidthDp, layerPanelHeightDp,
     toolbarOffsetXDp, toolbarOffsetYDp, verticalToolbar, toolbarDock,
+    ToolPaletteLayout.encode(ToolPaletteLayout.decode(toolPaletteLayout)),
 )
 
 fun AppSettings.applyToolboxWorkspace(value: ToolboxWorkspaceSnapshot): AppSettings = copy(
@@ -156,6 +158,7 @@ fun AppSettings.applyToolboxWorkspace(value: ToolboxWorkspaceSnapshot): AppSetti
     toolbarOffsetYDp = value.toolbarOffsetYDp,
     verticalToolbar = value.verticalToolbar,
     toolbarDock = value.toolbarDock,
+    toolPaletteLayout = ToolPaletteLayout.encode(ToolPaletteLayout.decode(value.toolPaletteLayout)),
 )
 
 object ToolboxQuickSlotCodec {

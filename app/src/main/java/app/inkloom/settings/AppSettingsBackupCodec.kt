@@ -89,6 +89,7 @@ object AppSettingsBackupCodec {
         put("brushPanelXDp", brushPanelXDp); put("brushPanelYDp", brushPanelYDp); put("brushPanelWidthDp", brushPanelWidthDp); put("brushCategoryWidthDp",brushCategoryWidthDp); put("brushPanelHeightDp", brushPanelHeightDp)
         put("layerPanelXDp", layerPanelXDp); put("layerPanelYDp", layerPanelYDp); put("layerPanelWidthDp", layerPanelWidthDp); put("layerPanelHeightDp", layerPanelHeightDp)
         put("toolbarOffsetXDp", toolbarOffsetXDp); put("toolbarOffsetYDp", toolbarOffsetYDp); put("selectionStudioXDp",selectionStudioXDp); put("selectionStudioYDp",selectionStudioYDp); put("verticalToolbar", verticalToolbar); put("toolbarDock", toolbarDock.name)
+        put("toolPaletteLayout", ToolPaletteLayout.encode(ToolPaletteLayout.decode(toolPaletteLayout)))
         put("singleFingerDoubleTapUndo", singleFingerDoubleTapUndo); put("twoFingerDoubleTapUndo", twoFingerDoubleTapUndo); put("threeFingerTapRedo", threeFingerTapRedo); put("twoFingerRotation", twoFingerRotation)
         put("rulerEnabled", rulerEnabled); put("rulerCenterX", rulerCenterX); put("rulerCenterY", rulerCenterY); put("rulerAngleDegrees", rulerAngleDegrees); put("rulerSnapDegrees", rulerSnapDegrees)
         put("gridSnapEnabled", gridSnapEnabled); put("gridSpacing", gridSpacing); put("alignmentGuidesEnabled", alignmentGuidesEnabled); put("verticalGuideX", verticalGuideX); put("horizontalGuideY", horizontalGuideY)
@@ -140,6 +141,7 @@ object AppSettingsBackupCodec {
             toolbarOffsetXDp = float("toolbarOffsetXDp", defaults.toolbarOffsetXDp).coerceIn(-1200f, 1200f), toolbarOffsetYDp = float("toolbarOffsetYDp", defaults.toolbarOffsetYDp).coerceIn(-1200f, 1200f),
             selectionStudioXDp = float("selectionStudioXDp",defaults.selectionStudioXDp).coerceIn(-1f,2400f), selectionStudioYDp = float("selectionStudioYDp",defaults.selectionStudioYDp).coerceIn(-1f,2400f),
             verticalToolbar = boolean("verticalToolbar", defaults.verticalToolbar), toolbarDock = enum("toolbarDock", defaults.toolbarDock),
+            toolPaletteLayout = ToolPaletteLayout.encode(ToolPaletteLayout.decode(text("toolPaletteLayout").ifBlank { defaults.toolPaletteLayout })),
             singleFingerDoubleTapUndo = boolean("singleFingerDoubleTapUndo", defaults.singleFingerDoubleTapUndo), twoFingerDoubleTapUndo = boolean("twoFingerDoubleTapUndo", defaults.twoFingerDoubleTapUndo), threeFingerTapRedo = boolean("threeFingerTapRedo", defaults.threeFingerTapRedo),
             twoFingerRotation = boolean("twoFingerRotation", defaults.twoFingerRotation),
             rulerEnabled = boolean("rulerEnabled", defaults.rulerEnabled),

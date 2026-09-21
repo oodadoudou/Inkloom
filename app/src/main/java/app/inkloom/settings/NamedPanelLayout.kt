@@ -9,6 +9,7 @@ data class ToolRailLayout(
     val dock: String,
     val xDp: Float,
     val yDp: Float,
+    val paletteLayout: String = ToolPaletteLayout.encode(ToolPaletteLayout.defaultEntries),
 ) {
     fun applyTo(settings: AppSettings): AppSettings = settings.copy(
         showToolbar = visible,
@@ -16,11 +17,13 @@ data class ToolRailLayout(
         toolbarDock = ToolbarDock.entries.firstOrNull { it.name == dock } ?: ToolbarDock.FREE,
         toolbarOffsetXDp = xDp.takeIf { it.isFinite() } ?: FloatingToolbarPlacement.MARGIN_DP,
         toolbarOffsetYDp = yDp.takeIf { it.isFinite() } ?: FloatingToolbarPlacement.MARGIN_DP,
+        toolPaletteLayout = ToolPaletteLayout.encode(ToolPaletteLayout.decode(paletteLayout)),
     )
 
     companion object {
         fun capture(settings: AppSettings) = ToolRailLayout(settings.showToolbar, settings.verticalToolbar,
-            settings.toolbarDock.name, settings.toolbarOffsetXDp, settings.toolbarOffsetYDp)
+            settings.toolbarDock.name, settings.toolbarOffsetXDp, settings.toolbarOffsetYDp,
+            ToolPaletteLayout.encode(ToolPaletteLayout.decode(settings.toolPaletteLayout)))
     }
 }
 
@@ -60,6 +63,7 @@ data class PanelWorkspaceBackup(val layout: EditorPanelLayout, val namedLayouts:
             require(it.name.isNotBlank() && it.name.length <= 40 && EditorPanelLayouts.isValid(it.layout)) { "Invalid named panel layout" }
             it.toolRail?.let { rail ->
                 require(rail.xDp.isFinite() && rail.yDp.isFinite() && ToolbarDock.entries.any { dock -> dock.name == rail.dock }) { "Invalid toolbar layout" }
+                require(ToolPaletteLayout.decode(rail.paletteLayout).filterIsInstance<ToolPaletteEntry.Tool>().size == app.inkloom.model.EditorTool.entries.size) { "Invalid tool palette layout" }
             }
         }
     }
