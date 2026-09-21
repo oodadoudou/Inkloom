@@ -25,6 +25,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.importer.BrushGroupStore
+import app.inkloom.importer.BrushImportFailureStore
 import app.inkloom.importer.BrushMetadataStore
 import app.inkloom.brushpresetv5.BrushPresetV5Import
 import app.inkloom.model.BrushFormat
@@ -70,11 +71,23 @@ class BrushBatchManagementTest {
                 app.inkloom.settings.BrushUsageStore(context).save(app.inkloom.settings.BrushUsageState())
                 BrushMetadataStore(context).save(sourceBrushes + scrollingFixtures)
                 BrushGroupStore(context).save(emptyList())
+                BrushImportFailureStore(context).clear()
+                if (description.methodName == "persistentImportIssueIsReachableFromTheBrushMenu") {
+                    BrushImportFailureStore(context).record(
+                        sourceUri = "content://fixture/failed.sut",
+                        displayName = "failed.sut",
+                        targetGroup = "Source",
+                        reasons = listOf("Fixture decode failure"),
+                        finalStates = listOf("FAILED_DECODE"),
+                        attemptedAt = 100L,
+                    )
+                }
                 try {
                     base.evaluate()
                 } finally {
                     BrushMetadataStore(context).save(emptyList())
                     BrushGroupStore(context).save(emptyList())
+                    BrushImportFailureStore(context).clear()
                 }
             }
         }
@@ -120,6 +133,16 @@ class BrushBatchManagementTest {
         composeRule.onNodeWithContentDescription("Current brush version history").performClick()
         composeRule.onNodeWithText("Version history").assertIsDisplayed()
         composeRule.onNodeWithText("No previous versions yet. Edit and save this brush to create one.").assertIsDisplayed()
+    }
+
+    @Test fun persistentImportIssueIsReachableFromTheBrushMenu() {
+        openBrushes()
+        composeRule.onNodeWithContentDescription("Add brush or group").performClick()
+        composeRule.onNodeWithText("Import issues (1)").performClick()
+        composeRule.onNodeWithText("Brush import issues").assertIsDisplayed()
+        composeRule.onNodeWithText("failed.sut").assertIsDisplayed()
+        composeRule.onNodeWithText("Fixture decode failure").assertIsDisplayed()
+        composeRule.onNodeWithText("Retry").assertIsDisplayed()
     }
 
     @Test fun nestedGroupsExpandAndCollapseAsAnAccordion() {

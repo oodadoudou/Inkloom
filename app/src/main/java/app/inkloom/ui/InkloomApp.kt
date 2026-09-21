@@ -123,6 +123,9 @@ import app.inkloom.brushpresetv5.PresetOwnership
 import app.inkloom.brushpresetv5.PresetOwnershipOperations
 import app.inkloom.importer.BrushImportRepository
 import app.inkloom.importer.BrushImportBatch
+import app.inkloom.importer.BrushImportFailure
+import app.inkloom.importer.BrushImportFailureStore
+import app.inkloom.importer.BrushImportFinalState
 import app.inkloom.importer.BrushImportLedger
 import app.inkloom.importer.BrushLibraryInventory
 import app.inkloom.importer.BrushGroupOperations
@@ -461,6 +464,7 @@ fun InkloomApp(initialIntent: Intent?) {
     var pendingBrushExport by remember { mutableStateOf<ImportedBrush?>(null) }
     val brushStore = remember { BrushMetadataStore(context) }
     val brushGroupStore = remember { BrushGroupStore(context) }
+    val brushImportFailureStore = remember { BrushImportFailureStore(context) }
     val settingsStore = remember { AppSettingsStore(context) }
     val colorPaletteStore = remember { ColorSetLibraryStore(context) }
     var settings by remember { mutableStateOf(settingsStore.load()) }
@@ -472,7 +476,34 @@ fun InkloomApp(initialIntent: Intent?) {
     fun updateSettings(value: AppSettings) { settings = settingsStore.save(value) }
     var importedBrushes by remember { mutableStateOf(brushStore.load()) }
     var brushGroups by remember { mutableStateOf(BrushGroupOperations.reconcileRegisteredGroups(brushGroupStore.load(), importedBrushes)) }
+    var brushImportFailures by remember { mutableStateOf(brushImportFailureStore.load()) }
+    var brushImportFailuresOpen by remember { mutableStateOf(false) }
     var pendingBrushImportGroup by remember { mutableStateOf<String?>(null) }
+
+    fun brushSourceName(uri: Uri): String = runCatching {
+        context.contentResolver.query(
+            uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null,
+        )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+    }.getOrNull() ?: uri.lastPathSegment.orEmpty().ifBlank { settings.language.text("Brush import", "笔刷导入") }
+
+    fun persistBrushImportOutcome(uri: Uri, displayName: String, targetGroup: String, result: Result<BrushImportBatch>) {
+        val batch = result.getOrNull()
+        val failedRecords = batch?.ledger?.records?.filter { it.finalState != BrushImportFinalState.IMPORTED_USABLE }.orEmpty()
+        if (result.isSuccess && failedRecords.isEmpty()) {
+            brushImportFailureStore.removeSource(uri.toString(), targetGroup)
+        } else {
+            brushImportFailureStore.record(
+                sourceUri = uri.toString(),
+                displayName = displayName,
+                targetGroup = targetGroup,
+                reasons = failedRecords.flatMap { it.rejectionReasons }.ifEmpty {
+                    listOf(result.exceptionOrNull()?.message ?: settings.language.text("Import did not produce a usable brush", "导入未生成可用笔刷"))
+                },
+                finalStates = failedRecords.map { it.finalState.name }.ifEmpty { listOf("FILE_ERROR") },
+            )
+        }
+        brushImportFailures = brushImportFailureStore.load()
+    }
 
     LaunchedEffect(Unit) {
         val refreshed = withContext(Dispatchers.IO) {
@@ -491,11 +522,13 @@ fun InkloomApp(initialIntent: Intent?) {
             val results = withContext(Dispatchers.IO) {
                 uris.map { uri ->
                     runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-                    repository.importDetailed(uri)
+                    uri to repository.importDetailed(uri)
                 }
             }
             withContext(Dispatchers.Main.immediate) {
-                val batches = results.mapNotNull { it.getOrNull() }
+                results.forEach { (uri, result) -> persistBrushImportOutcome(uri, brushSourceName(uri), targetGroup.orEmpty(), result) }
+                val batchResults = results.map(Pair<Uri, Result<BrushImportBatch>>::second)
+                val batches = batchResults.mapNotNull { it.getOrNull() }
                 val additions = batches.flatMap { it.renderableBrushes }.let { brushes ->
                     targetGroup?.let { group ->
                         brushes.map { brush ->
@@ -515,7 +548,7 @@ fun InkloomApp(initialIntent: Intent?) {
                 val importLedger = BrushImportLedger.combine(batches.map(BrushImportBatch::ledger))
                     .withGroupsCreated(groupsCreated)
                 val importSummary = importLedger.summary
-                val fileFailures = results.count { it.isFailure }
+                val fileFailures = batchResults.count { it.isFailure }
                 val summary = settings.language.text(
                     "Source files: ${importSummary.sourceFilesScanned}; containers: ${importSummary.sourceContainers}; " +
                         "brushes discovered: ${importSummary.brushesDiscovered}; parsed: ${importSummary.parsed}; " +
@@ -532,7 +565,7 @@ fun InkloomApp(initialIntent: Intent?) {
                 )
                 if (importSummary.rejectedUnsupported > 0 || importSummary.failed > 0 || fileFailures > 0) {
                     val reasons = (importLedger.records.flatMap { record -> record.rejectionReasons } +
-                        results.mapNotNull { it.exceptionOrNull()?.message })
+                        batchResults.mapNotNull { it.exceptionOrNull()?.message })
                         .distinct().take(5)
                     importError = listOf(summary, reasons.joinToString("\n")).filter(String::isNotBlank).joinToString("\n\n")
                 } else {
@@ -563,7 +596,9 @@ fun InkloomApp(initialIntent: Intent?) {
                     for(source in plan.files) {
                         if(stopFolderImport.get()) break
                         folderImportProgress="${processed+1} / $total\n${source.path}"
-                        val result=withContext(Dispatchers.IO) { repository.importDetailed(tree.uri(source.id)) }
+                        val sourceUri=tree.uri(source.id)
+                        val result=withContext(Dispatchers.IO) { repository.importDetailed(sourceUri) }
+                        persistBrushImportOutcome(sourceUri, source.path, source.group, result)
                         val batch=result.getOrNull()
                         if(batch == null) issues += "${source.path}: ${result.exceptionOrNull()?.message}"
                         else {
@@ -597,6 +632,38 @@ fun InkloomApp(initialIntent: Intent?) {
         confirmButton={TextButton(onClick={stopFolderImport.set(true)}) {Text(settings.language.text("Stop import", "停止导入"))}})
     folderImportReport?.let { report -> AlertDialog(onDismissRequest={folderImportReport=null},title={Text(settings.language.text("Folder import result", "文件夹导入结果"))},
         text={Column(Modifier.heightIn(max=420.dp).verticalScroll(rememberScrollState())) {Text(report)}},confirmButton={TextButton(onClick={folderImportReport=null}) {Text(settings.language.text("Done", "完成"))}}) }
+    fun retryBrushImport(failure: BrushImportFailure) {
+        importScope.launch {
+            val uri = Uri.parse(failure.sourceUri)
+            val result = withContext(Dispatchers.IO) { repository.importDetailed(uri) }
+            withContext(Dispatchers.Main.immediate) {
+                result.getOrNull()?.let { batch ->
+                    val additions = batch.renderableBrushes.map { brush ->
+                        val nestedGroup = failure.targetGroup.takeIf(String::isNotBlank)
+                            ?.let { BrushGroupOperations.nest(it, brush.groupName) }
+                            ?: brush.groupName
+                        BrushGroupOperations.assign(brush, nestedGroup)
+                    }
+                    importedBrushes = BrushGroupOperations.mergeImports(importedBrushes, additions)
+                    brushStore.save(importedBrushes)
+                    brushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, importedBrushes)
+                    brushGroupStore.save(brushGroups)
+                }
+                persistBrushImportOutcome(uri, failure.displayName, failure.targetGroup, result)
+                if (result.isSuccess && result.getOrThrow().ledger.records.all { it.finalState == BrushImportFinalState.IMPORTED_USABLE }) {
+                    Toast.makeText(context, settings.language.text("Brush import retry succeeded.", "笔刷重新导入成功。"), Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+    if (brushImportFailuresOpen) BrushImportFailuresDialog(
+        failures = brushImportFailures,
+        language = settings.language,
+        onDismiss = { brushImportFailuresOpen = false },
+        onRetry = ::retryBrushImport,
+        onDelete = { failure -> brushImportFailureStore.remove(failure.id); brushImportFailures = brushImportFailureStore.load() },
+        onClear = { brushImportFailureStore.clear(); brushImportFailures = emptyList() },
+    )
     val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
             context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -810,6 +877,8 @@ fun InkloomApp(initialIntent: Intent?) {
                 brushPicker.launch(arrayOf("*/*"))
             },
             onImportBrushFolder = { brushFolderPicker.launch(null) },
+            brushImportFailureCount = brushImportFailures.size,
+            onOpenBrushImportFailures = { brushImportFailures = brushImportFailureStore.load(); brushImportFailuresOpen = true },
             onBrushGridLayout = { updateSettings(settings.copy(brushGridLayout = it)) },
             onPanelVisibilityChange = { panel, visible ->
                 val next = when (panel) {
@@ -1432,6 +1501,8 @@ private fun EditorScreen(
     onToggleBrushes: () -> Unit,
     onImportBrushes: (String?) -> Unit,
     onImportBrushFolder: () -> Unit,
+    brushImportFailureCount: Int,
+    onOpenBrushImportFailures: () -> Unit,
     onBrushGridLayout: (Boolean) -> Unit,
     onPanelVisibilityChange: (EditorPanel, Boolean) -> Unit,
     onBrushCategoryWidth: (Float) -> Unit,
@@ -3288,6 +3359,8 @@ private fun EditorScreen(
                 onBrushSelected = ::selectWorkspaceBrush,
                 onImportBrushes = onImportBrushes,
                 onImportBrushFolder = onImportBrushFolder,
+                brushImportFailureCount = brushImportFailureCount,
+                onOpenBrushImportFailures = onOpenBrushImportFailures,
             onBrushGridLayout = onBrushGridLayout,
             onBrushCategoryWidth = onBrushCategoryWidth,
                 onExportBrush = onExportBrush,
@@ -6641,6 +6714,8 @@ private fun BrushPanel(
     onBrushSelected: (ImportedBrush) -> Unit,
     onImportBrushes: (String?) -> Unit,
     onImportBrushFolder: () -> Unit,
+    brushImportFailureCount: Int,
+    onOpenBrushImportFailures: () -> Unit,
     onBrushGridLayout: (Boolean) -> Unit,
     onBrushCategoryWidth: (Float) -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
@@ -6666,6 +6741,8 @@ private fun BrushPanel(
             onBrushSelected = onBrushSelected,
             onImportBrushes = onImportBrushes,
             onImportBrushFolder = onImportBrushFolder,
+            brushImportFailureCount = brushImportFailureCount,
+            onOpenBrushImportFailures = onOpenBrushImportFailures,
             onBrushGridLayout = onBrushGridLayout,
             onBrushCategoryWidth = onBrushCategoryWidth,
             onExportBrush = onExportBrush,
@@ -6765,6 +6842,8 @@ private fun ProcreateBrushLibrary(
     onBrushSelected: (ImportedBrush) -> Unit,
     onImportBrushes: (String?) -> Unit,
     onImportBrushFolder: () -> Unit,
+    brushImportFailureCount: Int,
+    onOpenBrushImportFailures: () -> Unit,
     onBrushGridLayout: (Boolean) -> Unit,
     onBrushCategoryWidth: (Float) -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
@@ -7161,6 +7240,12 @@ private fun ProcreateBrushLibrary(
                             onImportBrushes(selectedCategory.takeIf { it != allLabel && it != ungroupedLabel && it != recentCategory })
                         })
                         DropdownMenuItem(text = { Text(tr("Import folder", "导入文件夹")) }, leadingIcon = { Icon(Icons.Outlined.FolderOpen, null) }, onClick = { addMenu = false; onImportBrushFolder() })
+                        DropdownMenuItem(
+                            text = { Text(tr("Import issues ($brushImportFailureCount)", "导入问题（$brushImportFailureCount）")) },
+                            leadingIcon = { Icon(Icons.Outlined.ErrorOutline, null) },
+                            enabled = brushImportFailureCount > 0,
+                            onClick = { addMenu = false; onOpenBrushImportFailures() },
+                        )
                         DropdownMenuItem(text = { Text(tr("Manage brush sets", "管理笔刷组")) }, leadingIcon = { Icon(Icons.Outlined.CreateNewFolder, null) }, onClick = { addMenu = false; manageGroups = true })
                     }
                 }
@@ -7635,6 +7720,64 @@ private fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit,
         },
         confirmButton = { Button(onClick = { onRename(selected, replacement) }, enabled = selected.isNotBlank() && BrushGroupOperations.normalize(replacement).isNotBlank()) { Text(tr("Rename", "重命名")) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Done", "完成")) } },
+    )
+}
+
+@Composable
+private fun BrushImportFailuresDialog(
+    failures: List<BrushImportFailure>,
+    language: UiLanguage,
+    onDismiss: () -> Unit,
+    onRetry: (BrushImportFailure) -> Unit,
+    onDelete: (BrushImportFailure) -> Unit,
+    onClear: () -> Unit,
+) {
+    val formatter = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(language.text("Brush import issues", "笔刷导入问题")) },
+        text = {
+            Column(Modifier.widthIn(min = 360.dp, max = 520.dp)) {
+                Text(
+                    language.text(
+                        "Failed sources stay here with their exact reason. Retry after updating Inkloom or restoring file access.",
+                        "失败来源会保留在这里并显示具体原因。更新 Inkloom 或恢复文件权限后可重新尝试。",
+                    ),
+                    color = MutedInk,
+                    fontSize = 11.sp,
+                )
+                Spacer(Modifier.height(10.dp))
+                if (failures.isEmpty()) Text(language.text("No unresolved imports.", "没有未解决的导入问题。"), color = MutedInk)
+                else LazyColumn(Modifier.heightIn(max = 430.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    items(failures, key = BrushImportFailure::id) { failure ->
+                        OutlinedCard {
+                            Column(Modifier.fillMaxWidth().padding(10.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(failure.displayName, maxLines = 2, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                        if (failure.targetGroup.isNotBlank()) Text(failure.targetGroup, color = MutedInk, fontSize = 10.sp)
+                                        Text(
+                                            language.text(
+                                                "Attempt ${failure.attemptCount} · ${formatter.format(Date(failure.lastAttemptAt))}",
+                                                "第 ${failure.attemptCount} 次 · ${formatter.format(Date(failure.lastAttemptAt))}",
+                                            ),
+                                            color = MutedInk,
+                                            fontSize = 10.sp,
+                                        )
+                                    }
+                                    TextButton(onClick = { onRetry(failure) }) { Text(language.text("Retry", "重试")) }
+                                    IconButton(onClick = { onDelete(failure) }) { Icon(Icons.Outlined.Delete, language.text("Forget this issue", "移除此问题")) }
+                                }
+                                Text(failure.reasons.joinToString("\n"), color = MaterialTheme.colorScheme.error, fontSize = 10.sp)
+                                if (failure.finalStates.isNotEmpty()) Text(failure.finalStates.joinToString(" · "), color = MutedInk, fontSize = 9.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(language.text("Done", "完成")) } },
+        dismissButton = { if (failures.isNotEmpty()) TextButton(onClick = onClear) { Text(language.text("Clear all", "全部清除")) } },
     )
 }
 
