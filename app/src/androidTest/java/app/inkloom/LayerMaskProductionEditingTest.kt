@@ -1,6 +1,8 @@
 package app.inkloom
 
 import android.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.os.SystemClock
 import android.util.Log
 import android.view.InputDevice
@@ -22,6 +24,35 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class LayerMaskProductionEditingTest {
+    @Test fun editingMaskShowsPurpleOnlyOverHiddenArea() {
+        val mask = MaskTileSurface(64, 64, tileSize = 64, initialDefaultAlpha = 255).also { surface ->
+            surface.beginWrite("hide left").use { write ->
+                for (y in 0 until 64) for (x in 0 until 32) write.setAlpha(x, y, 0)
+                write.commit().close()
+            }
+        }
+        lateinit var output: Bitmap
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
+                layout(0, 0, 256, 256)
+                pageModelWidth = 64f
+                pageModelHeight = 64f
+                layerMasks = mapOf("paint" to LayerMask(enabled = true))
+                layerMaskSurfaces = mapOf("paint" to mask.snapshot())
+                assertTrue(toggleLayerMaskEditing("paint"))
+            }
+            output = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(output))
+        }
+        try {
+            val hidden = output.getPixel(64, 128)
+            val visible = output.getPixel(192, 128)
+            assertTrue(Color.alpha(hidden) > 0)
+            assertTrue(Color.red(hidden) > Color.green(hidden))
+            assertTrue(Color.alpha(visible) < Color.alpha(hidden))
+        } finally { output.recycle() }
+    }
+
     @Test fun stylusPaintEraseUndoRedoPersistSparseMaskWithoutChangingLayerPixels() {
         val raster = PixelTileSurface(64, 64, tileSize = 64).also { surface ->
             surface.beginWrite("red layer").run {

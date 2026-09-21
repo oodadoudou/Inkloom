@@ -106,6 +106,28 @@ class RasterLayerMergeTest {
         assertEquals(page, edit.apply(transferred, true))
     }
 
+    @Test fun applyMaskBakesOneLayerOrCompleteFolderAndUndoRestoresStructure() {
+        val mask = LayerMask(baseVisible = false)
+        val folder = InkLayer(id = "masked-folder", name = "Masked group", role = LayerRole.FOLDER, mask = mask)
+        val child = lower.copy(id = "masked-child", parentId = folder.id)
+        val original = page.copy(layers = defaultInkLayers() + folder + child + upper)
+        val plan = requireNotNull(RasterLayerMerge.plan(
+            original,
+            RasterLayerMergeRequest(RasterLayerMergeOperation.APPLY_MASK, folder.id),
+        ).plan)
+        assertEquals(setOf(folder.id, child.id), plan.removedLayerIds)
+        assertNull(plan.resultPrototype.mask)
+        assertEquals(LayerRole.CUSTOM, plan.resultPrototype.role)
+        val baked = RasterLayerMerge.edit(original, plan, reference).apply(original, false)
+        assertFalse(baked.layers.any { it.id == child.id })
+        assertNull(baked.layers.first { it.id == folder.id }.mask)
+        assertEquals(original, RasterLayerMerge.edit(original, plan, reference).apply(baked, true))
+
+        val missing = RasterLayerMerge.plan(original,
+            RasterLayerMergeRequest(RasterLayerMergeOperation.APPLY_MASK, upper.id))
+        assertEquals(RasterLayerMerge.Rejection.INVALID_SELECTION, missing.rejection)
+    }
+
     @Test fun protectedAndUnsupportedPrecisionEndWithExplicitReasons() {
         val locked = page.copy(layers = page.layers.map { if (it.id == upper.id) it.copy(locked = true) else it })
         assertEquals(RasterLayerMerge.Rejection.PROTECTED, RasterLayerMerge.rejection(locked, upper.id))

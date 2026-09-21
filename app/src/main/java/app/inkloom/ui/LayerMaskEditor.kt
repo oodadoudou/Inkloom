@@ -56,6 +56,14 @@ internal class LayerMaskEditor(
             selected(layerId)
             return
         }
+        if (command == LayerMaskCommand.APPLY) {
+            view.requestLayerMerge(RasterLayerMergeRequest(RasterLayerMergeOperation.APPLY_MASK, layerId))
+            return
+        }
+        if (command == LayerMaskCommand.TOGGLE_OVERLAY) {
+            if (!view.toggleLayerMaskOverlay(layerId)) rejected("MASK_TARGET_UNAVAILABLE")
+            return
+        }
         owner = view
         view.selectionLayerTransferPending = true
         val selection = view.selectionMaskSurfaceSnapshot()?.takeUnless { it.isEmpty }
@@ -107,6 +115,46 @@ internal class LayerMaskEditor(
                 owner = null
             }
         }
+    }
+
+    fun transfer(sourceLayerId: String, targetLayerId: String, copy: Boolean) {
+        val view = canvas()
+        if (closed || job?.isActive == true || view == null || view.selectionLayerTransferPending ||
+            view.hasActivePaintContact() || !view.isBoundToSelectionPage(documentId, pageId)) {
+            rejected("BUSY"); return
+        }
+        val captured = page()
+        val source = captured.layers.firstOrNull { it.id == sourceLayerId }
+        val target = captured.layers.firstOrNull { it.id == targetLayerId }
+        val sourceMask = source?.mask
+        if (source == null || target == null || sourceMask == null || sourceLayerId == targetLayerId ||
+            source.role == LayerRole.BACKGROUND || target.role == LayerRole.BACKGROUND || target.mask != null ||
+            LayerHierarchy.effectiveLocked(captured.layers, source) || LayerHierarchy.effectiveLocked(captured.layers, target)) {
+            rejected("MASK_TRANSFER_TARGET_UNAVAILABLE"); return
+        }
+        val edit = LayerMaskTransferEdit(sourceLayerId, targetLayerId, sourceMask, target.mask, copy)
+        val release = assets.retainHistoryAssets(listOfNotNull(sourceMask.surface?.assetPath))
+        try {
+            if (!apply(edit, false)) { release(); rejected("STALE_HISTORY"); return }
+            view.installLayerMaskAttachment(sourceLayerId, edit.sourceAfter, assets)
+            view.installLayerMaskAttachment(targetLayerId, edit.targetAfter, assets)
+            view.recordExternalEdit(
+                undo = {
+                    if (apply(edit, true)) {
+                        view.installLayerMaskAttachment(sourceLayerId, edit.sourceBefore, assets)
+                        view.installLayerMaskAttachment(targetLayerId, edit.targetBefore, assets)
+                    } else rejected("STALE_HISTORY")
+                },
+                redo = {
+                    if (apply(edit, false)) {
+                        view.installLayerMaskAttachment(sourceLayerId, edit.sourceAfter, assets)
+                        view.installLayerMaskAttachment(targetLayerId, edit.targetAfter, assets)
+                    } else rejected("STALE_HISTORY")
+                },
+                dispose = release,
+            )
+            selected(targetLayerId)
+        } catch (_: Exception) { release(); rejected("MASK_ASSET_OR_HISTORY_UNAVAILABLE") }
     }
 
     fun close() {

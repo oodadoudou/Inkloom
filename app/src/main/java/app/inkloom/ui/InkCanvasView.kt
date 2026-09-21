@@ -736,6 +736,23 @@ class InkCanvasView(context: Context) : View(context) {
     private var editingLayerMaskId: String? = null
         set(value) { if (field != value) { field = value; onLayerMaskEditingChanged(value) } }
     private var boundMaskSurfaceValues: Map<String, MaskTileSurfaceSnapshot>? = null
+    private var layerMaskOverlayId: String? = null
+    private var layerMaskOverlayBitmap: Bitmap? = null
+    private var layerMaskOverlayKey: List<Any?>? = null
+    private val layerMaskOverlayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(185, 82, 214)
+        alpha = 105
+    }
+    private val layerMaskOverlayCutoutPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+        blendMode = BlendMode.DST_OUT
+    }
+
+    fun toggleLayerMaskOverlay(layerId: String): Boolean {
+        if (layerMasks[layerId]?.surface == null || layerMaskSurfaces[layerId] == null) return false
+        layerMaskOverlayId = if (layerMaskOverlayId == layerId) null else layerId
+        invalidate()
+        return true
+    }
     fun bindLayerMaskSurfaces(value: Map<String, MaskTileSurfaceSnapshot>) {
         if (boundMaskSurfaceValues == value) return
         boundMaskSurfaceValues = value
@@ -748,6 +765,7 @@ class InkCanvasView(context: Context) : View(context) {
             editingLayerMaskSurface = null
             if (attachment == null) editingLayerMaskId = null
         }
+        if (attachment == null && layerMaskOverlayId == layerId) layerMaskOverlayId = null
         layerMasks = if (attachment == null) layerMasks - layerId else layerMasks + (layerId to attachment)
         val snapshot = attachment?.surface?.let { assets.loadMaskTileSurface(it).snapshot() }
         layerMaskSurfaces = if (snapshot == null) layerMaskSurfaces - layerId else layerMaskSurfaces + (layerId to snapshot)
@@ -1538,6 +1556,7 @@ class InkCanvasView(context: Context) : View(context) {
             }
         if (includeInteractionOverlays) drawSnapGrid(canvas)
         drawV5LayerComposition(canvas, includeElements = true, layerFilter = referencedLayerIds)
+        if (includeInteractionOverlays) drawLayerMaskOverlay(canvas)
         if (includeInteractionOverlays) selectionCanvasTransform?.let { draft ->
             val mapping = draft.pose.rasterMappingFrom(draft.original)
             mixedSelectionDrafts.forEach { (layerId, mixed) ->
@@ -1605,6 +1624,27 @@ class InkCanvasView(context: Context) : View(context) {
         }
         if (imageCanvasTransform == null) drawStylusHoverCursor(canvas)
         imageCanvasTransform?.draw(canvas, width, height, viewportScale)
+    }
+
+    /** CSP-style purple overlay: the colored area is the portion hidden by the selected mask. */
+    private fun drawLayerMaskOverlay(canvas: Canvas) {
+        val layerId = editingLayerMaskId ?: layerMaskOverlayId ?: return
+        val mask = layerMaskSurfaces[layerId] ?: return
+        val area = RectF(0f, 0f, width.toFloat(), height.toFloat())
+        val key = listOf(layerId, mask.surfaceId, mask.revision, width, height)
+        if (key != layerMaskOverlayKey) {
+            val bitmap = layerMaskOverlayBitmap?.takeIf { it.width == width && it.height == height }
+                ?: Bitmap.createBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), Bitmap.Config.ALPHA_8).also {
+                    layerMaskOverlayBitmap?.recycle(); layerMaskOverlayBitmap = it
+                }
+            bitmap.eraseColor(Color.TRANSPARENT)
+            MaskTileCanvasRenderer.draw(mask, Canvas(bitmap), area)
+            layerMaskOverlayKey = key
+        }
+        val checkpoint = canvas.saveLayer(area, null)
+        canvas.drawRect(area, layerMaskOverlayPaint)
+        layerMaskOverlayBitmap?.let { canvas.drawBitmap(it, 0f, 0f, layerMaskOverlayCutoutPaint) }
+        canvas.restoreToCount(checkpoint)
     }
 
     private val selectionAnimation = SelectionAnimationScheduler(

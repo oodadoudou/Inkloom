@@ -77,6 +77,36 @@ class RasterLayerMergeRenderingTest {
         } finally { references.forEach(assets::releaseRasterTileReservation) }
     }
 
+    @Test fun applyingGroupMaskBakesExactlyTheDisplayedSubtreeAndRestoresOnUndo() {
+        val references = mutableListOf<RasterTileSurfaceRef>()
+        val bitmap = Bitmap.createBitmap(96, 64, Bitmap.Config.ARGB_8888).apply { eraseColor(0xffe85d75.toInt()) }
+        val raster = try { assets.importRasterTileSurface(bitmap).also { references += it } } finally { bitmap.recycle() }
+        val maskSurface = MaskTileSurface(96, 64, initialDefaultAlpha = 255)
+        maskSurface.beginWrite("soft half").use { write ->
+            for (y in 0..63) for (x in 48..95) write.setAlpha(x, y, 90)
+            write.commit().close()
+        }
+        val maskRef = assets.saveMaskTileSurface(maskSurface.snapshot())
+        val group = InkLayer(id = "apply-group", name = "Apply group", role = LayerRole.FOLDER,
+            opacity = .72f, blendMode = LayerBlendMode.MULTIPLY, mask = LayerMask(surface = maskRef))
+        val child = InkLayer(id = "apply-child", name = "Child", parentId = group.id, rasterTileSurface = raster)
+        val page = InkPage(width = 96f, height = 64f, layers = defaultInkLayers() + group + child)
+        try {
+            val plan = requireNotNull(RasterLayerMerge.plan(page,
+                RasterLayerMergeRequest(RasterLayerMergeOperation.APPLY_MASK, group.id)).plan)
+            val mergedRef = assets.saveRasterTileSurface(assets.renderLayerMergeSurface(plan)).also { references += it }
+            val edit = RasterLayerMerge.edit(page, plan, mergedRef)
+            val applied = edit.apply(page, false)
+            compare(page, applied)
+            assertNull(applied.layers.first { it.id == group.id }.mask)
+            assertFalse(applied.layers.any { it.id == child.id })
+            assertEquals(page, edit.apply(applied, true))
+        } finally {
+            references.forEach(assets::releaseRasterTileReservation)
+            assets.releaseAssetReservation(maskRef.assetPath)
+        }
+    }
+
     private fun verify(objects: Boolean, turns: Int, cropped: Boolean) {
         val references = mutableListOf<RasterTileSurfaceRef>()
         fun raster(color: Int, left: Int): RasterTileSurfaceRef {

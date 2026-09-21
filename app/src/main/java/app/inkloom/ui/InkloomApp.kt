@@ -1589,6 +1589,9 @@ private fun EditorScreen(
     fun performLayerMaskCommand(layerId: String, command: LayerMaskCommand) {
         maskEditor.execute(layerId, command)
     }
+    fun performLayerMaskTransfer(sourceLayerId: String, targetLayerId: String, copy: Boolean) {
+        maskEditor.transfer(sourceLayerId, targetLayerId, copy)
+    }
     fun brushMasterKey(brush: ImportedBrush?, selectedTool: EditorTool = tool): String = brush?.id ?: "system:${selectedTool.name.lowercase()}"
     fun savedBrushSize(brush: ImportedBrush?, fallback: Float, selectedTool: EditorTool = tool): Float =
         brushMasterSettingsStore.loadSize(selectedTool, brushMasterKey(brush, selectedTool), fallback)
@@ -3253,6 +3256,7 @@ private fun EditorScreen(
                 onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
                 onToggleDraft = { onToggleLayerDraft(document.id, selectedPage.id, it) },
                 onMaskCommand = ::performLayerMaskCommand,
+                onMaskTransfer = ::performLayerMaskTransfer,
                 editingMaskId = editingMaskId,
                 onRelocate = appearanceEditor::move,
                 secondarySelection = secondaryLayers, onSecondarySelection = { secondaryLayers = it },
@@ -6054,7 +6058,12 @@ private fun BrushPresetToolButton(
 }
 
 @Composable
-internal fun LayerMaskMenuItems(layer: InkLayer, onCommand: (LayerMaskCommand) -> Unit) {
+internal fun LayerMaskMenuItems(
+    layer: InkLayer,
+    transferTargets: List<InkLayer> = emptyList(),
+    onTransfer: (targetLayerId: String, copy: Boolean) -> Unit = { _, _ -> },
+    onCommand: (LayerMaskCommand) -> Unit,
+) {
     if (layer.role == LayerRole.BACKGROUND) return
     val mask = layer.mask
     if (mask == null) {
@@ -6087,11 +6096,29 @@ internal fun LayerMaskMenuItems(layer: InkLayer, onCommand: (LayerMaskCommand) -
             leadingIcon = { Icon(if (mask.linked) Icons.Outlined.LinkOff else Icons.Outlined.Link, null) },
             onClick = { onCommand(LayerMaskCommand.TOGGLE_LINKED) },
         )
+        DropdownMenuItem(
+            text = { Text(tr("Show or hide mask overlay", "显示或隐藏蒙版覆盖")) },
+            onClick = { onCommand(LayerMaskCommand.TOGGLE_OVERLAY) },
+        )
         DropdownMenuItem(text = { Text(tr("Invert layer mask", "反相图层蒙版")) }, onClick = { onCommand(LayerMaskCommand.INVERT) })
         if (mask.surface != null) DropdownMenuItem(
             text = { Text(tr("Load mask as selection", "从蒙版载入选区")) },
             onClick = { onCommand(LayerMaskCommand.LOAD_AS_SELECTION) },
         )
+        DropdownMenuItem(
+            text = { Text(tr("Apply layer mask", "应用图层蒙版")) },
+            onClick = { onCommand(LayerMaskCommand.APPLY) },
+        )
+        transferTargets.forEach { target ->
+            DropdownMenuItem(
+                text = { Text("${tr("Copy mask to", "复制蒙版到")} ${target.name}") },
+                onClick = { onTransfer(target.id, true) },
+            )
+            DropdownMenuItem(
+                text = { Text("${tr("Move mask to", "移动蒙版到")} ${target.name}") },
+                onClick = { onTransfer(target.id, false) },
+            )
+        }
         DropdownMenuItem(text = { Text(tr("Delete layer mask", "删除图层蒙版")) }, onClick = { onCommand(LayerMaskCommand.DELETE) })
     }
 }
@@ -6149,6 +6176,7 @@ private fun LayerPanel(
     onToggleReference: (String) -> Unit,
     onToggleDraft: (String) -> Unit,
     onMaskCommand: (String, LayerMaskCommand) -> Unit,
+    onMaskTransfer: (String, String, Boolean) -> Unit,
     editingMaskId: String? = null,
     onRelocate: (String, Set<String>, LayerDrop) -> Unit,
     secondarySelection: Set<String>,
@@ -6181,7 +6209,7 @@ private fun LayerPanel(
             onToggleClippedToBelow = onToggleClippedToBelow,
             onToggleReference = onToggleReference,
             onToggleDraft = onToggleDraft,
-            onMaskCommand = onMaskCommand, editingMaskId = editingMaskId,
+            onMaskCommand = onMaskCommand, onMaskTransfer = onMaskTransfer, editingMaskId = editingMaskId,
             onRelocate = onRelocate, secondarySelection = secondarySelection, onSecondarySelection = onSecondarySelection,
             onToggleFolderCollapsed = onToggleFolderCollapsed,
             onDuplicate = onDuplicate,
@@ -6232,6 +6260,7 @@ private fun PaintingLayerPanel(
     onToggleReference: (String) -> Unit,
     onToggleDraft: (String) -> Unit,
     onMaskCommand: (String, LayerMaskCommand) -> Unit,
+    onMaskTransfer: (String, String, Boolean) -> Unit,
     editingMaskId: String? = null,
     onRelocate: (String, Set<String>, LayerDrop) -> Unit,
     secondarySelection: Set<String>,
@@ -6419,7 +6448,17 @@ private fun PaintingLayerPanel(
                         Box(Modifier.semantics { contentDescription = layerActionsDescription }) {
                             IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), tint = rowInk) }
                             DropdownMenu(maskMenu, { maskMenu = false }) {
-                                LayerMaskMenuItems(layer) { command -> maskMenu = false; onMaskCommand(layer.id, command) }
+                                LayerMaskMenuItems(
+                                    layer = layer,
+                                    transferTargets = page.layers.filter { candidate ->
+                                        candidate.id != layer.id && candidate.role != LayerRole.BACKGROUND && candidate.mask == null &&
+                                            !LayerHierarchy.effectiveLocked(page.layers, candidate)
+                                    },
+                                    onTransfer = { targetId, copy ->
+                                        maskMenu = false
+                                        onMaskTransfer(layer.id, targetId, copy)
+                                    },
+                                ) { command -> maskMenu = false; onMaskCommand(layer.id, command) }
                             }
                             DropdownMenu(menu, { menu = false }) {
                                 DropdownMenuItem(text = { Text(if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) }, onClick = { menu = false; onLock(layer.id) })

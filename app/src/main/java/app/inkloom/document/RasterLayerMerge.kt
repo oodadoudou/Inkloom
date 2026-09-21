@@ -9,6 +9,8 @@ enum class RasterLayerMergeOperation {
     MERGE_VISIBLE_COPY,
     FLATTEN,
     TRANSFER_TO_LOWER,
+    /** Bakes one layer or folder subtree together with its enabled mask into editable pixels. */
+    APPLY_MASK,
 }
 
 data class RasterLayerMergeRequest(
@@ -49,6 +51,13 @@ object RasterLayerMerge {
     fun plan(page: InkPage, request: RasterLayerMergeRequest): PlanningResult {
         val byId = page.layers.associateBy(InkLayer::id)
         val initial = when (request.operation) {
+            RasterLayerMergeOperation.APPLY_MASK -> {
+                val target = request.primaryLayerId?.let(byId::get)
+                    ?: return rejected(Rejection.INVALID_SELECTION)
+                if (target.role == LayerRole.BACKGROUND || target.mask == null)
+                    return rejected(Rejection.INVALID_SELECTION)
+                setOf(target.id)
+            }
             RasterLayerMergeOperation.MERGE_DOWN,
             RasterLayerMergeOperation.TRANSFER_TO_LOWER -> {
                 val source = request.primaryLayerId?.let(byId::get)
@@ -102,7 +111,8 @@ object RasterLayerMerge {
         val resultParent = when (request.operation) {
             RasterLayerMergeOperation.MERGE_DOWN,
             RasterLayerMergeOperation.TRANSFER_TO_LOWER,
-            RasterLayerMergeOperation.MERGE_SELECTED -> commonParent
+            RasterLayerMergeOperation.MERGE_SELECTED,
+            RasterLayerMergeOperation.APPLY_MASK -> commonParent
             else -> null
         }
         val bottom = expanded.mapNotNull { id ->
@@ -112,12 +122,14 @@ object RasterLayerMerge {
         val resultName = when (request.operation) {
             RasterLayerMergeOperation.MERGE_VISIBLE_COPY -> "Visible copy"
             RasterLayerMergeOperation.FLATTEN -> "Flattened image"
+            RasterLayerMergeOperation.APPLY_MASK -> bottom.second.name
             else -> bottom.second.name
         }
         val insertionIndex = if (resultParent == null && request.operation !in setOf(
                 RasterLayerMergeOperation.MERGE_DOWN,
                 RasterLayerMergeOperation.TRANSFER_TO_LOWER,
                 RasterLayerMergeOperation.MERGE_SELECTED,
+                RasterLayerMergeOperation.APPLY_MASK,
             )) page.layers.count { it.id !in removed }
             else page.layers.take(bottom.first).count { it.id !in removed }
 

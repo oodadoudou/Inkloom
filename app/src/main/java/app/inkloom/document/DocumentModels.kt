@@ -217,6 +217,7 @@ enum class LayerMaskCommand {
     REVEAL_SELECTION,
     TOGGLE_ENABLED,
     TOGGLE_LINKED,
+    TOGGLE_OVERLAY,
     INVERT,
     LOAD_AS_SELECTION,
     APPLY,

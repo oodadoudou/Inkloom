@@ -41,6 +41,7 @@ internal class LayerMaskCommandPlanner(private val assets: DocumentAssetService)
             LayerMaskCommand.TOGGLE_ENABLED -> requireNotNull(before).copy(enabled = !before.enabled)
             LayerMaskCommand.TOGGLE_LINKED -> requireNotNull(before).copy(linked = !before.linked)
             LayerMaskCommand.EDIT, LayerMaskCommand.REPLACE_SURFACE, LayerMaskCommand.LOAD_AS_SELECTION,
+            LayerMaskCommand.TOGGLE_OVERLAY,
             LayerMaskCommand.APPLY -> reject(LayerMaskRejection.WRONG_DISPATCHER)
             else -> {
                 if (command in setOf(LayerMaskCommand.HIDE_SELECTION, LayerMaskCommand.REVEAL_SELECTION) && selection == null)
