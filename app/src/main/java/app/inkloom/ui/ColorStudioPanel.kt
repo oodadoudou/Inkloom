@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.inkloom.color.MixingBoard
+import app.inkloom.color.ColorHarmony
+import app.inkloom.color.ColorRelations
 import app.inkloom.settings.MixingColorBarStore
 import app.inkloom.settings.ColorSetLibrary
 import app.inkloom.settings.UiLanguage
@@ -128,6 +130,28 @@ private fun RelayoutPaletteOnWindowResize() {
 /** Fixed reference prevents selecting a tile from shifting every following tile under the pen. */
 @Composable
 private fun NearbyColorPalette(draft: ColorPickerDraft, language: UiLanguage, onPick: (Int) -> Unit) {
+    var mode by remember { mutableIntStateOf(0) }
+    fun tr(en: String, zh: String) = language.text(en, zh)
+    Column {
+        Row(Modifier.fillMaxWidth().height(34.dp)) {
+            listOf(tr("Nearby", "近似色"), tr("Harmony", "色彩和谐"), tr("Intermediate", "中间色")).forEachIndexed { index, label ->
+                Box(
+                    Modifier.weight(1f).fillMaxHeight().background(if (mode == index) SageContainer else Color.Transparent)
+                        .semantics { selected = mode == index; contentDescription = label }.clickable { mode = index },
+                    contentAlignment = Alignment.Center,
+                ) { Text(label, color = if (mode == index) Ink else MutedInk, fontSize = 10.sp) }
+            }
+        }
+        when (mode) {
+            0 -> NearbyMatrix(draft, language, onPick)
+            1 -> HarmonyPalette(draft, language, onPick)
+            else -> IntermediateColorPalette(draft, language, onPick)
+        }
+    }
+}
+
+@Composable
+private fun NearbyMatrix(draft: ColorPickerDraft, language: UiLanguage, onPick: (Int) -> Unit) {
     val color = draft.color
     var reference by remember { mutableStateOf(draft) }
     var saturationRange by remember { mutableFloatStateOf(.4f) }
@@ -158,6 +182,87 @@ private fun NearbyColorPalette(draft: ColorPickerDraft, language: UiLanguage, on
         }
         RangeControl(tr("Saturation range", "饱和度范围"), saturationRange) { saturationRange = it }
         RangeControl(tr("Brightness range", "明度范围"), valueRange) { valueRange = it }
+    }
+}
+
+@Composable
+private fun HarmonyPalette(draft: ColorPickerDraft, language: UiLanguage, onPick: (Int) -> Unit) {
+    var mode by remember { mutableStateOf(ColorHarmony.COMPLEMENTARY) }
+    var menu by remember { mutableStateOf(false) }
+    fun tr(en: String, zh: String) = language.text(en, zh)
+    fun label(value: ColorHarmony) = when (value) {
+        ColorHarmony.COMPLEMENTARY -> tr("Complementary", "互补色")
+        ColorHarmony.SPLIT_COMPLEMENTARY -> tr("Split complementary", "分裂互补色")
+        ColorHarmony.ANALOGOUS -> tr("Analogous", "类似色")
+        ColorHarmony.TRIADIC -> tr("Triadic", "三角色")
+        ColorHarmony.TETRADIC -> tr("Tetradic", "四色")
+    }
+    val colors = remember(draft.hue, draft.saturation, draft.value, mode) {
+        ColorRelations.harmony(draft.hue, draft.saturation, draft.value, mode)
+    }
+    Column {
+        Box {
+            Row(
+                Modifier.fillMaxWidth().height(36.dp).clickable { menu = true }.semantics { contentDescription = tr("Harmony mode", "和谐模式") },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(label(mode), Modifier.weight(1f).padding(horizontal = 6.dp), color = Ink, fontSize = 11.sp)
+                Icon(Icons.Outlined.ExpandMore, null, Modifier.size(16.dp), tint = MutedInk)
+            }
+            ColorPaletteDropdownMenu(menu, { menu = false }) {
+                ColorHarmony.entries.forEach { candidate ->
+                    DropdownMenuItem(text = { Text(label(candidate)) }, trailingIcon = { if (candidate == mode) Icon(Icons.Outlined.Check, null) }, onClick = { mode = candidate; menu = false })
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().height(94.dp)) {
+            colors.forEachIndexed { index, color ->
+                Box(
+                    Modifier.weight(1f).fillMaxHeight().padding(1.dp).background(Color(color)).border(.5.dp, OutlineSoft)
+                        .semantics { contentDescription = tr("Harmony color ${index + 1}", "和谐色 ${index + 1}") }.clickable { onPick(color) },
+                )
+            }
+        }
+        Text(tr("Harmony keeps the current saturation and brightness.", "和谐色保留当前饱和度和明度。"), Modifier.padding(6.dp), color = MutedInk, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun IntermediateColorPalette(draft: ColorPickerDraft, language: UiLanguage, onPick: (Int) -> Unit) {
+    fun defaults() = listOf(
+        draft.color,
+        ColorRelations.harmony(draft.hue, draft.saturation, draft.value, ColorHarmony.COMPLEMENTARY).last(),
+        0xff151515.toInt(),
+        0xfff2f2f2.toInt(),
+    )
+    var corners by remember { mutableStateOf(defaults()) }
+    fun tr(en: String, zh: String) = language.text(en, zh)
+    Column {
+        Row(Modifier.fillMaxWidth().height(34.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(tr("Tap a corner to replace it with the current color", "点击角点，用当前颜色替换"), Modifier.weight(1f).padding(horizontal = 4.dp), color = MutedInk, fontSize = 9.sp)
+            StudioIcon(Icons.Outlined.Refresh, tr("Reset intermediate colors", "重置中间色")) { corners = defaults() }
+        }
+        Row(Modifier.fillMaxWidth().height(32.dp)) {
+            corners.forEachIndexed { index, value ->
+                Box(
+                    Modifier.weight(1f).fillMaxHeight().padding(1.dp).background(Color(value)).border(.5.dp, OutlineSoft)
+                        .semantics { contentDescription = tr("Intermediate corner ${index + 1}", "中间色角点 ${index + 1}") }
+                        .clickable { corners = corners.toMutableList().also { it[index] = draft.color } },
+                )
+            }
+        }
+        repeat(7) { row ->
+            Row(Modifier.fillMaxWidth().height(32.dp)) {
+                repeat(7) { column ->
+                    val mixed = ColorRelations.cornerMix(corners[0], corners[1], corners[2], corners[3], column, row, 7)
+                    Box(
+                        Modifier.weight(1f).fillMaxHeight().padding(.5.dp).background(Color(mixed))
+                            .semantics { contentDescription = tr("Intermediate color ${row + 1}, ${column + 1}", "中间色 ${row + 1}，${column + 1}") }
+                            .clickable { onPick(mixed) },
+                    )
+                }
+            }
+        }
     }
 }
 

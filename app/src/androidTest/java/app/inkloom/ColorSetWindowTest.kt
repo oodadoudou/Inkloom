@@ -159,6 +159,18 @@ class ColorSetWindowTest {
         bounds("New color set from image")
     }
 
+    @Test fun harmonyAndIntermediateColorToolsAreReachable() {
+        openNewNotebook("Color relations ${SystemClock.uptimeMillis()}")
+        tap("Colors")
+        tap("Nearby")
+        tap("Harmony")
+        bounds("Harmony mode")
+        bounds("Harmony color 1")
+        tap("Intermediate")
+        bounds("Intermediate corner 1")
+        bounds("Intermediate color 4, 4")
+    }
+
     private fun library(): ColorSetLibrary = ColorSetLibraryStore(context).load()
 
     private fun openNewNotebook(name: String) {
