@@ -60,7 +60,7 @@ class SelectionMeshRasterTest {
         assertEquals(original,controller.pose)
     }
 
-    @Test fun partialMixedImageAndPaintTransformRestoresEditableSourceThroughUndoRedo() {
+    @Test fun mixedImageAndPaintTransformKeepsTheImageStructuredThroughUndoRedo() {
         for(format in PixelTileFormat.entries) {
             val surface=PixelTileSurface(64,64,pixelFormat=format)
             surface.beginWrite("paint").use { if(format.isHighPrecision) it.setLinearPixel(20,20,LinearRgba(1.5f,0f,0f,1f)) else it.setPixel(20,20,Color.RED);it.commit().close() }
@@ -68,18 +68,22 @@ class SelectionMeshRasterTest {
             for(y in 8..16) for(x in 8..48) image.setPixel(x,y,Color.BLUE)
             var released=false
             val elements=listOf(PageElement.Image(x=0f,y=0f,width=64f,height=64f,assetPath="fixture.png"))
-            val mixed=MixedSelectionDraft(MixedSelectionSource(elements,image) { released=true },surface)
+            val mixed=MixedSelectionDraft(MixedSelectionSource(elements,image,release={ released=true }))
             if(format.isHighPrecision) assertEquals(1.5f,surface.snapshot().linearPixelAt(20,20).red,.002f)
             val mask=MaskTileSurface(64,64)
             mask.beginWrite("half image and paint").use { it.replaceAlpha(PixelRect(8,8,25,25),ByteArray(17*17) { 255.toByte() });it.commit().close() }
             val session=RasterSelectionTransformSession(surface,mask.snapshot())
-            session.update(SelectionAffineTransform(16f,16f,translateY=25f))
-            assertEquals(Color.BLUE,surface.pixelAt(10,35)); assertEquals(0,surface.pixelAt(10,10)); assertEquals(Color.BLUE,surface.pixelAt(40,10))
+            val transform=SelectionAffineTransform(16f,16f,translateY=25f)
+            session.update(transform)
+            assertEquals(0,surface.pixelAt(10,35)); assertEquals(0,surface.pixelAt(10,10)); assertEquals(0,surface.pixelAt(40,10))
+            val transformed=mixed.transformed(transform,64,64,64f,64f).single() as PageElement.Image
+            assertEquals(25f/64f,transformed.y,.001f)
+            assertEquals("fixture.png",transformed.assetPath)
             val record=session.commit()!!.transactionRecord!!
-            surface.apply(record,PixelTileSurface.HistoryDirection.UNDO); mixed.undo()
+            surface.apply(record,PixelTileSurface.HistoryDirection.UNDO)
             assertEquals(0,surface.pixelAt(10,10)); assertEquals(Color.RED,surface.pixelAt(20,20))
-            mixed.redo(); surface.apply(record,PixelTileSurface.HistoryDirection.REDO)
-            assertEquals(Color.BLUE,surface.pixelAt(10,35)); assertEquals(Color.BLUE,surface.pixelAt(40,10))
+            surface.apply(record,PixelTileSurface.HistoryDirection.REDO)
+            assertEquals(Color.RED,surface.pixelAt(20,45)); assertEquals(0,surface.pixelAt(40,10))
             record.close(); mixed.close(); assertTrue(released)
         }
     }

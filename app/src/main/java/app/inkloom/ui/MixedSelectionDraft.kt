@@ -3,40 +3,46 @@ package app.inkloom.ui
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Rect
 import app.inkloom.document.PageElement
-import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
-import app.inkloom.engine.v5.surface.*
+import app.inkloom.document.StructuredElementTransform
+import app.inkloom.engine.v5.tools.SelectionAffineTransform
+import app.inkloom.engine.v5.tools.SelectionRasterTransform
 
-internal class MixedSelectionSource(val elements: List<PageElement>, val bitmap: Bitmap, val release: () -> Unit = {})
+internal class MixedSelectionSource(
+    val elements: List<PageElement>,
+    val bitmap: Bitmap,
+    val remainingBitmap: Bitmap? = null,
+    val release: () -> Unit = {},
+)
 
-/** Reversible rasterization precedes the transform, so partial image selections retain their outside pixels. */
-internal class MixedSelectionDraft(val source: MixedSelectionSource, val surface: PixelTileSurface) : AutoCloseable {
-    val bounds=PixelRect(0,0,surface.logicalWidth,surface.logicalHeight)
-    val record: PixelTileTransactionRecord
-    init {
-        val rendered=PixelTileBitmapAdapter.render(surface.snapshot())
-        val merged=if(rendered.isMutable) rendered else try {
-            requireNotNull(rendered.copy(requireNotNull(rendered.config),true))
-        } finally { rendered.recycle() }
-        try {
-            Canvas(merged).drawBitmap(source.bitmap,null,Rect(0,0,merged.width,merged.height),Paint(Paint.FILTER_BITMAP_FLAG))
-            val snapshot=PixelTileBitmapAdapter.import(merged,surface.tileSize).snapshot()
-            surface.beginWrite("rasterize mixed selection source").use { write ->
-                for(key in snapshot.tileKeys + surface.snapshot().tileKeys) {
-                    val l=key.column*surface.tileSize; val t=key.row*surface.tileSize
-                    val b=PixelRect(l,t,minOf(l+surface.tileSize,surface.logicalWidth),minOf(t+surface.tileSize,surface.logicalHeight))
-                    val local=PixelRect(0,0,b.width,b.height)
-                    if(surface.pixelFormat.isHighPrecision) {
-                        val pixels=snapshot.copyPremultipliedF16(b)
-                        write.editTileF16(key,local) { out,stride -> for(y in 0 until b.height) pixels.copyInto(out,y*stride,y*b.width,(y+1)*b.width) }
-                    } else write.replacePremultipliedPixels(b,snapshot.copyPremultipliedPixels(b))
-                }
-                record=write.commit()
-            }
-        } finally { merged.recycle() }
+/** Presentation-only draft; source objects remain editable and are committed as geometry. */
+internal class MixedSelectionDraft(val source: MixedSelectionSource) : AutoCloseable {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+
+    fun draw(canvas: Canvas, transform: SelectionRasterTransform, canvasWidth: Int, canvasHeight: Int) {
+        if (source.bitmap.isRecycled || canvasWidth <= 0 || canvasHeight <= 0) return
+        val columns = 12
+        val rows = 12
+        val vertices = FloatArray((columns + 1) * (rows + 1) * 2)
+        var index = 0
+        for (row in 0..rows) for (column in 0..columns) {
+            val x = source.bitmap.width * column / columns.toFloat()
+            val y = source.bitmap.height * row / rows.toFloat()
+            val mapped = transform.forward(x, y)
+            vertices[index++] = mapped.first * canvasWidth / source.bitmap.width
+            vertices[index++] = mapped.second * canvasHeight / source.bitmap.height
+        }
+        canvas.drawBitmapMesh(source.bitmap, columns, rows, vertices, 0, null, 0, paint)
     }
-    fun undo() = surface.apply(record,PixelTileSurface.HistoryDirection.UNDO)
-    fun redo() = surface.apply(record,PixelTileSurface.HistoryDirection.REDO)
-    override fun close() { record.close(); source.bitmap.recycle(); source.release() }
+
+    fun transformed(transform: SelectionAffineTransform, rasterWidth: Int, rasterHeight: Int,
+                    pageWidth: Float, pageHeight: Float): List<PageElement> = source.elements.map {
+        StructuredElementTransform.affine(it, transform, rasterWidth, rasterHeight, pageWidth, pageHeight)
+    }
+
+    override fun close() {
+        source.bitmap.recycle()
+        source.remainingBitmap?.takeIf { it !== source.bitmap }?.recycle()
+        source.release()
+    }
 }

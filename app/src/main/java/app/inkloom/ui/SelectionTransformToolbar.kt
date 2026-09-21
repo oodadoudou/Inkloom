@@ -60,7 +60,7 @@ internal fun SelectionTransformToolbar(
                 IconButton(onClick = { onFinish(false) }) { Icon(Icons.Outlined.Close, t("Cancel transform", "取消变换")) }
                 IconButton(onClick = { onFinish(true) }) { Icon(Icons.Outlined.Check, t("Apply transform", "应用变换")) }
             }
-            if(state.mixed) Text(t("Apply converts this layer’s images and objects to editable pixels. Undo restores the originals.", "应用后，本图层的图片和对象转为可绘制像素；撤销可恢复原对象。"),fontSize=11.sp,color=app.inkloom.ui.theme.MutedInk)
+            if(state.mixed) Text(t("Text, images and other objects remain editable. Distort and mesh are available for pixel-only selections.", "文字、图片和其他对象会保持可编辑；扭曲和网格仅用于纯像素选区。"),fontSize=11.sp,color=app.inkloom.ui.theme.MutedInk)
             HorizontalDivider(Modifier.widthIn(max = 620.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
             if (state.mode == SelectionTransformMode.WARP) Box {

@@ -87,6 +87,44 @@ class SelectionTransformTest {
         assertEquals(3, publications)
     }
 
+    @Test fun oneTransformMovesMultipleSelectedLayersAndOneUndoRestoresAll() {
+        fun layer(color: Int) = PixelTileSurface(64, 64, 64).also { surface ->
+            surface.beginWrite("layer fixture").use { write -> write.setPixel(20, 20, color); write.commit().close() }
+        }
+        val first = layer(Color.RED)
+        val second = layer(Color.BLUE)
+        val mask = MaskTileSurface(64, 64, 64).also { surface ->
+            surface.beginWrite("selection").use { write ->
+                write.composeAlpha(PixelRect(16, 16, 28, 28), ByteArray(144) { -1 }, mode = MaskComposeMode.REPLACE)
+                write.commit().close()
+            }
+        }
+        val published = mutableListOf<String>()
+        val view = canvas {
+            pageModelWidth = 64f; pageModelHeight = 64f
+            activeLayerId = "first"
+            selectionTransformLayerIds = setOf("first", "second")
+            setRasterLayerSurfaces(linkedMapOf("first" to first, "second" to second))
+            bindDocumentSelectionState(DocumentSelectionRuntime(64).stateFor("multi", "page", 64, 64))
+            replaceSelectionFromMask(mask.snapshot())
+            onRasterLayerCommitted = { published += it.layerId }
+            assertTrue(enterFreeTransform())
+        }
+        send(view, 1, MotionEvent.ACTION_DOWN, 137.5f, 137.5f)
+        send(view, 2, MotionEvent.ACTION_MOVE, 237.5f, 137.5f)
+        send(view, 3, MotionEvent.ACTION_UP, 237.5f, 137.5f)
+        assertEquals(Color.RED, first.pixelAt(36, 20))
+        assertEquals(Color.BLUE, second.pixelAt(36, 20))
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { assertTrue(view.finishSelectionTransform(true)) }
+        assertEquals(setOf("first", "second"), published.toSet())
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.undo() }
+        assertEquals(Color.RED, first.pixelAt(20, 20))
+        assertEquals(Color.BLUE, second.pixelAt(20, 20))
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.redo() }
+        assertEquals(Color.RED, first.pixelAt(36, 20))
+        assertEquals(Color.BLUE, second.pixelAt(36, 20))
+    }
+
     @Test fun everyTransformEntryRejectsLockedLayersInBothColorFormatsWithoutMutation() {
         for (highPrecision in listOf(false, true)) {
             val format = if (highPrecision) app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16
