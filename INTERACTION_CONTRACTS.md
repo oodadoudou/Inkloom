@@ -75,3 +75,12 @@
 ### 双指轻点撤销防误触合同（2026-09-21）
 
 重新核对 [Procreate Gestures](https://help.procreate.com/procreate/handbook/interface-gestures/gestures) 与 [CSP Basic touch gestures](https://help.clip-studio.com/en-us/manual_en/750_gestures/Basic_touch_gestures.htm)：两者都把撤销定义为两指轻点，并把双指拖动、捏合与旋转定义为画布导航。Inkloom 因此只在两根手指于 120ms 内相继落下、整次手势不超过 220ms、每根手指都保持在系统触摸阈值的 45% 内，且没有缩放或旋转时撤销一次。任何超阈值移动立即永久转为导航，抬手时不能再回退成撤销。
+
+### 画笔清晰度与画布栅格合同（2026-09-21）
+
+用户真机反馈部分笔刷在书写时整体偏糊。重新核对 [Procreate Brush Studio Settings](https://help.procreate.com/procreate/handbook/brushes/brush-studio-settings)、[CSP Customizing brush tools](https://help.clip-studio.com/en-us/manual_en/240_brushes/Customizing_brush_tools.htm) 与 [Android Paint bitmap filtering](https://developer.android.com/reference/android/graphics/Paint)：笔尖过滤／抗锯齿和软硬度属于每支笔的语义，画布呈现采样不能用全局锐化篡改这些设置。
+
+- 编辑像素以纸张可见区域的原生宽度为基准，默认纸张保持 1600 × 2263，不得在落笔前固定降到 1200 px。较小导入页至少使用 1600 px 绘画宽度，避免在高密度屏幕上先低分辨率存储再放大。
+- 超大页面在现有 4096 单边、16,777,216 像素预算内等比取样，不能因追求清晰度造成无界整页位图分配。
+- 笔尖 Shape／Grain 的过滤模式、CSP 抗锯齿等级、硬度和明确的 Blur／Wet Edge 参数继续逐笔生效；软笔刷应当柔和，硬勾线笔不再额外受到画布级预降采样。
+- 画布缩放只影响显示取样，不改变已提交像素。非整数缩放允许线性显示过滤以避免锯齿和 tile 接缝；100% 与原生尺寸是判断笔刷实际清晰度的基准。

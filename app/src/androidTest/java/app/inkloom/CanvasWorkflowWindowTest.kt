@@ -41,6 +41,19 @@ class CanvasWorkflowWindowTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    @Test fun defaultNotebookPaintSurfaceKeepsNativePaperResolution() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        val initial = requireNotNull(view.activeRasterSnapshotForTest())
+        assertEquals("Default 1600 px paper must not be pre-downsampled", 1600, initial.logicalWidth)
+        assertEquals(2263, initial.logicalHeight)
+        stroke(pagePoint(view, .3f, .4f), pagePoint(view, .5f, .4f))
+        compose.waitUntil(10_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 }
+        val painted = requireNotNull(view.activeRasterSnapshotForTest())
+        assertEquals(1600, painted.logicalWidth)
+        assertEquals(2263, painted.logicalHeight)
+    }
+
     @Test fun colorDropLeavesTwoFingerNavigationAndDrawingAvailable() {
         tap("New Note"); tap("Create")
         val view = canvas()

@@ -4105,6 +4105,9 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 @Composable
 private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onBackKey: () -> Boolean, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
+    val rasterRenderWidth = remember(renderedPage.width, renderedPage.height) {
+        CanvasRasterResolution.forDimensions(renderedPage.width, renderedPage.height)
+    }
     val selectionMaskSize = remember(renderedPage.width, renderedPage.height) {
         requireNotNull(SelectionMaskCompositor.maskSize(renderedPage.width, renderedPage.height))
     }
@@ -4124,8 +4127,8 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
     val rasterCommitMutex = remember(documentId, page.id) { Mutex() }
     val pendingRasterSaves = remember(documentId, page.id) { java.util.concurrent.atomic.AtomicInteger() }
     val currentMergePage by rememberUpdatedState(page)
-    val rasterSurfaceRuntime = remember(documentId, page.id) {
-        RasterLayerSurfaceRuntime(renderWidth = 1200, loader = assets::renderRasterLayerSurface)
+    val rasterSurfaceRuntime = remember(documentId, page.id, rasterRenderWidth) {
+        RasterLayerSurfaceRuntime(renderWidth = rasterRenderWidth, loader = assets::renderRasterLayerSurface)
     }
     val latestRasterAssets = remember(documentId, page.id) {
         page.layers.associate { layer ->
@@ -4364,7 +4367,7 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
         }
     }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
-    val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, 1200, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
+    val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible, rasterRenderWidth) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, rasterRenderWidth, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
     DisposableEffect(background) { onDispose { background?.recycle() } }
     val paperColor = (page.background as? PageBackground.Paper)?.colorArgb?.let(::Color) ?: Color.White
     val visibleLayerIds = page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role != LayerRole.FOLDER }.mapTo(mutableSetOf()) { it.id }
@@ -4373,7 +4376,7 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
     val layerBlendModes = page.layers.associate { it.id to it.blendMode }
     val layerOrder = page.layers.mapIndexed { index, layer -> layer.id to index }.toMap()
     val retainedLayerKeys = RetainedLayerRenderKey.forPage(page)
-    val layerElementBitmaps = remember(page.id, page.width, page.height, page.elements, retainedLayerKeys, page.crop, page.backgroundRotationQuarterTurns) {
+    val layerElementBitmaps = remember(page.id, page.width, page.height, page.elements, retainedLayerKeys, page.crop, page.backgroundRotationQuarterTurns, rasterRenderWidth) {
         page.layers.mapNotNull { layer ->
             val elementIds = page.elements.filter { it.layerId == layer.id }.mapTo(linkedSetOf(), PageElement::id)
             if (elementIds.isEmpty() || !LayerHierarchy.effectiveVisible(page.layers, layer)) return@mapNotNull null
@@ -4381,8 +4384,8 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
             val splitAtAlphaLock = layer.alphaLock && capturedIds.isNotEmpty()
             val baseElementIds = if (splitAtAlphaLock) elementIds.intersect(capturedIds) else elementIds
             val addedElementIds = if (splitAtAlphaLock) elementIds - capturedIds else emptySet()
-            val base = baseElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerBitmap(page, layer.id, 1200, it) }
-            val additions = addedElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerBitmap(page, layer.id, 1200, it) }
+            val base = baseElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerBitmap(page, layer.id, rasterRenderWidth, it) }
+            val additions = addedElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerBitmap(page, layer.id, rasterRenderWidth, it) }
             layer.id to LayerElementBitmaps(base, additions)
         }.toMap()
     }

@@ -49,12 +49,13 @@ internal class LayerMergeController(
                     require(RasterLayerMerge.rejection(effectivePage, sourceId) == null)
                     val index = effectivePage.layers.indexOfFirst { it.id == sourceId }
                     val pair = effectivePage.layers.subList(index - 1, index + 1)
+                    val presentationWidth = CanvasRasterResolution.forPage(effectivePage)
                     val originalSurfaces = mutableMapOf<String, PixelTileSurface>()
                     pair.forEach { layer ->
                         originalSurfaces[layer.id] = runtime.retainedSurface(layer.id) ?: withContext(Dispatchers.Default) {
                             assets.renderRasterLayerSurface(effectivePage.copy(layers = effectivePage.layers.map {
                                 it.copy(visible = true, parentId = null)
-                            }), layer.id, 1200)
+                            }), layer.id, presentationWidth)
                         }
                     }
                     val elementPaths = effectivePage.elements.filter { element -> pair.any { it.id == element.layerId } }.mapNotNull { element ->
@@ -70,7 +71,9 @@ internal class LayerMergeController(
                     val mergedRef = withContext(Dispatchers.IO) { assets.saveRasterTileSurface(mergedFull) }.also { reserved += it }
                     val edit = RasterLayerMerge.edit(effectivePage, sourceId, mergedRef)
                     val mergedPage = edit.apply(effectivePage, false)
-                    val mergedVisible = withContext(Dispatchers.Default) { assets.renderRasterLayerSurface(mergedPage, edit.target.id, 1200) }
+                    val mergedVisible = withContext(Dispatchers.Default) {
+                        assets.renderRasterLayerSurface(mergedPage, edit.target.id, presentationWidth)
+                    }
                     withContext(Dispatchers.IO) {
                         pair.mapNotNull { it.rasterTileSurface }.forEach { reference ->
                             reserved += assets.saveRasterTileSurface(assets.loadRasterTileSurface(reference), reference)
