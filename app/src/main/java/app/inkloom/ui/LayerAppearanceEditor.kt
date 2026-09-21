@@ -10,6 +10,8 @@ import app.inkloom.document.LayerBlendEdit
 import app.inkloom.document.LayerBlendMode
 import app.inkloom.document.LayerHierarchy
 import app.inkloom.document.LayerRole
+import app.inkloom.document.LayerPaletteColor
+import app.inkloom.document.LayerPaletteColorEdit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -73,6 +75,14 @@ internal class LayerAppearanceEditor(
         rejectedGesture = false
     }
 
+    fun setPaletteColor(layerId: String, color: LayerPaletteColor) {
+        if (closed || finishing || preview != null) { rejected(); return }
+        if (begin(layerId, allowBackground = true, allowLocked = true) {
+                LayerPaletteColorEdit(layerId, it.paletteColor, color)
+            }) commit()
+        rejectedGesture = false
+    }
+
     fun move(primaryId: String, selected: Set<String>, drop: app.inkloom.document.LayerDrop) {
         if (closed || finishing || preview != null) { rejected(); return }
         val edit = try { app.inkloom.document.LayerOrderEdit.create(page(), primaryId, selected, drop) }
@@ -86,12 +96,17 @@ internal class LayerAppearanceEditor(
         rejectedGesture = false
     }
 
-    private fun begin(layerId: String, edit: (app.inkloom.document.InkLayer) -> LayerAppearanceEdit): Boolean {
+    private fun begin(
+        layerId: String,
+        allowBackground: Boolean = false,
+        allowLocked: Boolean = false,
+        edit: (app.inkloom.document.InkLayer) -> LayerAppearanceEdit,
+    ): Boolean {
         val currentPage = page()
         val layer = currentPage.layers.firstOrNull { it.id == layerId }
         val view = canvas()
-        if (layer == null || layer.role == LayerRole.BACKGROUND ||
-            LayerHierarchy.effectiveLocked(currentPage.layers, layer) ||
+        if (layer == null || (!allowBackground && layer.role == LayerRole.BACKGROUND) ||
+            (!allowLocked && LayerHierarchy.effectiveLocked(currentPage.layers, layer)) ||
             view == null || view.selectionLayerTransferPending || view.hasActivePaintContact() ||
             !view.isBoundToSelectionPage(documentId, pageId)) {
             // Never steal the pen-up from a contact that still owns the canvas.

@@ -136,6 +136,10 @@ enum class LayerBlendMode {
     HUE, SATURATION, COLOR, LUMINOSITY;
 }
 
+/** Optional visual marker shown in the layer palette; it does not affect compositing. */
+@Serializable
+enum class LayerPaletteColor { NONE, GRAY, RED, ORANGE, YELLOW, GREEN, BLUE, VIOLET }
+
 /**
  * Durable reference to one immutable sparse pixel-surface generation.
  *
@@ -191,6 +195,7 @@ data class InkLayer(
     val collapsed: Boolean = false,
     /** Folder-only: child blending participates in the parent backdrop. */
     val passThrough: Boolean = false,
+    val paletteColor: LayerPaletteColor = LayerPaletteColor.NONE,
 )
 
 /** V5 has one paint-layer truth. Backgrounds and folders are structural, all other layers own pixels. */

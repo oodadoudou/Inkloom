@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.hasSetTextAction
@@ -49,6 +50,26 @@ class LayerGroupMaskWindowTest {
         }
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
+
+    @Test fun paletteColorMarkerUsesTheLayerMenuAndOneHistoryEntry() {
+        tap("New Note"); tap("Create")
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync {
+            model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java]
+        }
+        fun color() = requireNotNull(model.currentPage()).layers.first { it.name == "Layer 1" }.paletteColor
+
+        tap("Layers")
+        tap("Add layer")
+        tap("Layer actions Layer 1")
+        compose.onNodeWithText("Palette color").performScrollTo().performClick()
+        tap("Red")
+        compose.waitUntil(10_000) { color() == app.inkloom.document.LayerPaletteColor.RED }
+        tap("Undo")
+        compose.waitUntil(10_000) { color() == app.inkloom.document.LayerPaletteColor.NONE }
+        tap("Redo")
+        compose.waitUntil(10_000) { color() == app.inkloom.document.LayerPaletteColor.RED }
+    }
 
     @Test fun groupCopyDeleteUngroupAndUndoKeepNestedPaintOnTheRealWindow() {
         tap("New Note"); tap("Create"); val view = canvas()

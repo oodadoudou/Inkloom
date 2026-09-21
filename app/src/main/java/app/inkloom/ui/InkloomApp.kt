@@ -3251,6 +3251,7 @@ private fun EditorScreen(
                 onOpacity = appearanceEditor::handle,
                 onBlendMode = appearanceEditor::setBlendMode,
                 onThrough = appearanceEditor::setThrough,
+                onPaletteColor = appearanceEditor::setPaletteColor,
                 onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                 onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
@@ -6154,6 +6155,29 @@ private fun LayerMaskThumbnailView(mask: LayerMask, modifier: Modifier = Modifie
     }
 }
 
+private fun layerPaletteColor(color: LayerPaletteColor): Color = when (color) {
+    LayerPaletteColor.NONE -> Color.Transparent
+    LayerPaletteColor.GRAY -> Color(0xFF858585)
+    LayerPaletteColor.RED -> Color(0xFFB95B5B)
+    LayerPaletteColor.ORANGE -> Color(0xFFC17A42)
+    LayerPaletteColor.YELLOW -> Color(0xFFB39A45)
+    LayerPaletteColor.GREEN -> Color(0xFF5F956C)
+    LayerPaletteColor.BLUE -> Color(0xFF627FA6)
+    LayerPaletteColor.VIOLET -> Color(0xFF8A6D9E)
+}
+
+@Composable
+private fun layerPaletteColorName(color: LayerPaletteColor): String = when (color) {
+    LayerPaletteColor.NONE -> tr("None", "无")
+    LayerPaletteColor.GRAY -> tr("Gray", "灰色")
+    LayerPaletteColor.RED -> tr("Red", "红色")
+    LayerPaletteColor.ORANGE -> tr("Orange", "橙色")
+    LayerPaletteColor.YELLOW -> tr("Yellow", "黄色")
+    LayerPaletteColor.GREEN -> tr("Green", "绿色")
+    LayerPaletteColor.BLUE -> tr("Blue", "蓝色")
+    LayerPaletteColor.VIOLET -> tr("Violet", "紫色")
+}
+
 @Composable
 private fun LayerPanel(
     page: InkPage,
@@ -6171,6 +6195,7 @@ private fun LayerPanel(
     onOpacity: (String, LayerOpacityAction) -> Unit,
     onBlendMode: (String, LayerBlendMode) -> Unit,
     onThrough: (String) -> Unit,
+    onPaletteColor: (String, LayerPaletteColor) -> Unit,
     onToggleAlphaLock: (String) -> Unit,
     onToggleClippedToBelow: (String) -> Unit,
     onToggleReference: (String) -> Unit,
@@ -6205,6 +6230,7 @@ private fun LayerPanel(
             onOpacity = onOpacity,
             onBlendMode = onBlendMode,
             onThrough = onThrough,
+            onPaletteColor = onPaletteColor,
             onToggleAlphaLock = onToggleAlphaLock,
             onToggleClippedToBelow = onToggleClippedToBelow,
             onToggleReference = onToggleReference,
@@ -6255,6 +6281,7 @@ private fun PaintingLayerPanel(
     onOpacity: (String, LayerOpacityAction) -> Unit,
     onBlendMode: (String, LayerBlendMode) -> Unit,
     onThrough: (String) -> Unit,
+    onPaletteColor: (String, LayerPaletteColor) -> Unit,
     onToggleAlphaLock: (String) -> Unit,
     onToggleClippedToBelow: (String) -> Unit,
     onToggleReference: (String) -> Unit,
@@ -6363,6 +6390,7 @@ private fun PaintingLayerPanel(
                 items(filteredLayers, key = { it.id }) { layer ->
                     var menu by remember { mutableStateOf(false) }
                     var maskMenu by remember { mutableStateOf(false) }
+                    var paletteColorMenu by remember { mutableStateOf(false) }
                     DisposableEffect(layer.id) { onDispose { drag.rows.remove(layer.id) } }
                     val folderTargets = LayerHierarchy.availableFolders(page.layers, layer.id)
                     val selected = layer.id == activeLayerId || layer.id in selectedLayerIds
@@ -6396,6 +6424,7 @@ private fun PaintingLayerPanel(
                         ),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        Box(Modifier.width(4.dp).fillMaxHeight().background(layerPaletteColor(layer.paletteColor)))
                         IconButton(onClick = { onVisibility(layer.id) }, modifier = Modifier.width(30.dp).fillMaxHeight().background(Paper)) {
                             Icon(if (layer.visible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
                                 tr("Toggle layer visibility", "切换图层可见性"), Modifier.size(18.dp), tint = MutedInk)
@@ -6460,6 +6489,19 @@ private fun PaintingLayerPanel(
                                     },
                                 ) { command -> maskMenu = false; onMaskCommand(layer.id, command) }
                             }
+                            DropdownMenu(paletteColorMenu, { paletteColorMenu = false }) {
+                                LayerPaletteColor.entries.forEach { color ->
+                                    DropdownMenuItem(
+                                        text = { Text(layerPaletteColorName(color)) },
+                                        leadingIcon = {
+                                            Box(Modifier.size(16.dp).background(layerPaletteColor(color), CircleShape)
+                                                .border(1.dp, OutlineSoft, CircleShape))
+                                        },
+                                        trailingIcon = { if (layer.paletteColor == color) Icon(Icons.Outlined.Check, null, Modifier.size(16.dp)) },
+                                        onClick = { paletteColorMenu = false; onPaletteColor(layer.id, color) },
+                                    )
+                                }
+                            }
                             DropdownMenu(menu, { menu = false }) {
                                 DropdownMenuItem(text = { Text(if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) }, onClick = { menu = false; onLock(layer.id) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.alphaLock) tr("Unlock alpha", "解锁透明度") else tr("Lock alpha", "锁定透明度")) }, onClick = { menu = false; onToggleAlphaLock(layer.id) })
@@ -6468,6 +6510,7 @@ private fun PaintingLayerPanel(
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.draft) tr("Unset draft layer", "取消草稿图层") else tr("Set as draft layer", "设为草稿图层")) }, onClick = { menu = false; onToggleDraft(layer.id) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Select contents", "选取内容")) }, onClick = { menu = false; onSelectContents(layer.id) })
                                 if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Mask", "蒙版")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; maskMenu = true })
+                                DropdownMenuItem(text = { Text(tr("Palette color", "图层颜色标签")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; paletteColorMenu = true })
                                 DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
                                 if (layer.role == LayerRole.FOLDER) DropdownMenuItem(text = { Text(if (layer.collapsed) tr("Expand folder", "展开文件夹") else tr("Collapse folder", "折叠文件夹")) }, onClick = { menu = false; onToggleFolderCollapsed(layer.id) })
                                 if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Group layer", "编组图层")) }, onClick = { menu = false; onGroupSelected(layer.id, setOf(layer.id)) })

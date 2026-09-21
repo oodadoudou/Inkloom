@@ -26,3 +26,21 @@ data class LayerBlendEdit(
         })
     }
 }
+
+data class LayerPaletteColorEdit(
+    override val layerId: String,
+    val before: LayerPaletteColor,
+    val after: LayerPaletteColor,
+) : LayerAppearanceEdit {
+    override val isNoOp: Boolean get() = before == after
+
+    override fun apply(page: InkPage, undo: Boolean): InkPage? {
+        val expected = if (undo) after else before
+        val replacement = if (undo) before else after
+        val layer = page.layers.firstOrNull { it.id == layerId } ?: return null
+        if (layer.paletteColor != expected) return null
+        return page.copy(layers = page.layers.map {
+            if (it.id == layerId) it.copy(paletteColor = replacement) else it
+        })
+    }
+}
