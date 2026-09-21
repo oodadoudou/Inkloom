@@ -37,6 +37,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import app.inkloom.settings.ColorSetImport
+import app.inkloom.settings.ColorSetSwatch
+import app.inkloom.settings.ImagePaletteExtractor
+import app.inkloom.settings.ImportedColorSet
 import app.inkloom.settings.ColorSetLibrary
 import app.inkloom.settings.ColorSetLibraryStore
 import app.inkloom.settings.StarterColorSet
@@ -48,6 +51,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import java.util.UUID
 
 /** Color-set identity and selection survive tab disposal; editing never sorts by color. */
 @Composable
@@ -101,6 +105,28 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
             }
         }
     }
+    val imagePalettePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            importBusy = true
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val displayName = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0) else null
+                    } ?: tr("Image palette", "图片色板")
+                    val bytes = requireNotNull(context.contentResolver.openInputStream(uri)) { "The selected image could not be opened" }
+                        .use { it.readPaletteBytes() }
+                    val colors = ImagePaletteExtractor.extractEncoded(bytes)
+                    ImportedColorSet(
+                        displayName.substringBeforeLast('.').ifBlank { tr("Image palette", "图片色板") },
+                        colors.mapIndexed { index, value -> ColorSetSwatch(UUID.randomUUID().toString(), value, tr("Color ${index + 1}", "颜色 ${index + 1}")) },
+                        "Image",
+                    )
+                }
+            }.onSuccess { imported -> edit { ColorSetImport.addTo(it, imported) } }
+                .onFailure { failure -> error = failure.message ?: tr("Colors could not be extracted from the image", "无法从图片提取颜色") }
+            importBusy = false
+        }
+    }
     fun startName(action: String, initial: String) { naming = action; name = initial; menu = false }
     Column(Modifier.fillMaxWidth().onSizeChanged { gridWidth = with(density) { it.width.toDp() } }) {
         Row(Modifier.fillMaxWidth().height(34.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -123,6 +149,11 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
                         text = { Text(tr("Import color set from file", "从文件导入色板")) },
                         enabled = !importBusy,
                         onClick = { menu = false; palettePicker.launch(arrayOf("application/octet-stream", "application/zip", "application/json", "text/xml", "*/*")) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(tr("New color set from image", "从图片新建色板")) },
+                        enabled = !importBusy,
+                        onClick = { menu = false; imagePalettePicker.launch(arrayOf("image/*")) },
                     )
                     DropdownMenuItem(text = { Text(tr("Add starter color set", "添加基础色板")) }, onClick = { menu = false; starterPicker = true })
                     if (set != null) {

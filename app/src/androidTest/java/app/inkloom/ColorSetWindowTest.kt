@@ -156,6 +156,7 @@ class ColorSetWindowTest {
         tap("Palettes")
         tap("Color set menu")
         bounds("Import color set from file")
+        bounds("New color set from image")
     }
 
     private fun library(): ColorSetLibrary = ColorSetLibraryStore(context).load()
