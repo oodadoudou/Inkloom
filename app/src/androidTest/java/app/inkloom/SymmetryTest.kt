@@ -9,6 +9,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SymmetryMode
+import app.inkloom.document.SymmetryGuideState
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -45,6 +46,22 @@ class SymmetryTest {
 
         assertTrue(Color.alpha(surface.pixelAt(125, 100)) > 0)
         assertEquals(0, Color.alpha(surface.pixelAt(125, 300)))
+    }
+
+    @Test fun movedSymmetryAxisChangesTheMirroredTrajectory() {
+        val surface = PixelTileSurface(400, 400)
+        val view = canvas(surface) {
+            symmetryMode = SymmetryMode.HORIZONTAL
+            symmetryGuide = SymmetryGuideState(centerX = .5f, centerY = .25f)
+        }
+
+        send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 50f)
+        send(view, 20L, MotionEvent.ACTION_MOVE, 150f, 50f)
+        send(view, 40L, MotionEvent.ACTION_UP, 150f, 50f)
+
+        assertTrue(Color.alpha(surface.pixelAt(125, 50)) > 0)
+        assertTrue(Color.alpha(surface.pixelAt(125, 150)) > 0)
+        assertEquals(0, Color.alpha(surface.pixelAt(125, 350)))
     }
 
     @Test fun radialSymmetryUsesDocumentPixelAspectRatio() {

@@ -41,6 +41,19 @@ data class PaintSampleTransform(
         fun verticalAxis(width: Float) = PaintSampleTransform(-1f, 0f, 0f, 1f, width, 0f)
         fun bothAxes(width: Float, height: Float) = PaintSampleTransform(-1f, 0f, 0f, -1f, width, height)
 
+        fun reflection(angleRadians: Float, centerX: Float, centerY: Float): PaintSampleTransform {
+            val cosine = cos(angleRadians * 2f)
+            val sine = sin(angleRadians * 2f)
+            return PaintSampleTransform(
+                a = cosine,
+                b = sine,
+                c = sine,
+                d = -cosine,
+                tx = centerX - cosine * centerX - sine * centerY,
+                ty = centerY - sine * centerX + cosine * centerY,
+            )
+        }
+
         fun rotation(angleRadians: Float, centerX: Float, centerY: Float): PaintSampleTransform {
             val cosine = cos(angleRadians)
             val sine = sin(angleRadians)

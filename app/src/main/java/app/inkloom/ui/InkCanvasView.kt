@@ -176,6 +176,9 @@ import app.inkloom.document.RulerGuideState
 import app.inkloom.document.ShapeGeometry
 import app.inkloom.document.ShapeKind
 import app.inkloom.document.ShapePoint
+import app.inkloom.document.SymmetryGuide
+import app.inkloom.document.SymmetryGuideGesture
+import app.inkloom.document.SymmetryGuideState
 import app.inkloom.document.SingleFingerDoubleTapUndoGesture
 import app.inkloom.document.SprayGeometry
 import app.inkloom.document.CorrectLineMode
@@ -578,6 +581,8 @@ class InkCanvasView(context: Context) : View(context) {
     private var rulerGestureStart: RulerGuideState? = null
     private var rulerGestureX = 0f
     private var rulerGestureY = 0f
+    private var symmetryGuideGesture: SymmetryGuideGesture? = null
+    private var symmetryGuideGestureStart: SymmetryGuideState? = null
     private val snapGridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(130, 130, 130); alpha = 70; style = Paint.Style.STROKE; strokeWidth = 1f }
     private val alignmentGuidePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(20, 110, 220); alpha = 210; style = Paint.Style.STROKE; strokeWidth = 2f }
     private val alignmentGuideHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; alpha = 245; style = Paint.Style.FILL }
@@ -925,6 +930,10 @@ class InkCanvasView(context: Context) : View(context) {
     var fillAreaScalingPixels: Float = 0f
         set(value) { field = value.coerceIn(-64f, 64f) }
     var symmetryMode: SymmetryMode = SymmetryMode.NONE
+        set(value) { field = value; if (value == SymmetryMode.NONE) symmetryGuideGesture = null; invalidate() }
+    var symmetryGuide: SymmetryGuideState = SymmetryGuideState()
+        set(value) { field = value.normalized(); invalidate() }
+    var onSymmetryGuideChanged: (SymmetryGuideState) -> Unit = {}
     var onViewportScale: (Float, Float, Float) -> Unit = { _, _, _ -> }
     var onViewportPan: (Float, Float) -> Unit = { _, _ -> }
     var onViewportPinch: ((Float, Float, Float, Float, Float) -> Unit)? = null
@@ -999,6 +1008,9 @@ class InkCanvasView(context: Context) : View(context) {
             rulerGestureStart?.let { rulerGuide = it }
             rulerGestureMode = null
             rulerGestureStart = null
+            symmetryGuideGestureStart?.let { symmetryGuide = it }
+            symmetryGuideGesture = null
+            symmetryGuideGestureStart = null
             canvasGuideGestureStart?.let { canvasGuideState = it }
             canvasGuideGestureMode = null
             canvasGuideGestureStart = null
@@ -2336,6 +2348,9 @@ class InkCanvasView(context: Context) : View(context) {
             rulerGestureStart?.let { rulerGuide = it }
             rulerGestureMode = null
             rulerGestureStart = null
+            symmetryGuideGestureStart?.let { symmetryGuide = it }
+            symmetryGuideGesture = null
+            symmetryGuideGestureStart = null
             canvasGuideGestureStart?.let { canvasGuideState = it }
             canvasGuideGestureMode = null
             canvasGuideGestureStart = null
@@ -2347,6 +2362,7 @@ class InkCanvasView(context: Context) : View(context) {
             specialRulerGestureStart = null
         }
         if (!viewportGestureActive && handleGradientGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
+        if (!viewportGestureActive && handleSymmetryGuideGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         if (!viewportGestureActive && handleSpecialRulerGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         if (!viewportGestureActive && handlePerspectiveGuideGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         if (!viewportGestureActive && handleCanvasGuideGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
@@ -3211,6 +3227,9 @@ class InkCanvasView(context: Context) : View(context) {
         rulerGestureStart?.let { rulerGuide = it }
         rulerGestureMode = null
         rulerGestureStart = null
+        symmetryGuideGestureStart?.let { symmetryGuide = it }
+        symmetryGuideGesture = null
+        symmetryGuideGestureStart = null
         canvasGuideGestureStart?.let { canvasGuideState = it }
         canvasGuideGestureMode = null
         canvasGuideGestureStart = null
@@ -3620,6 +3639,49 @@ class InkCanvasView(context: Context) : View(context) {
                 editableGradient = start
                 gradientGestureHandle = -1
                 gradientGestureStart = null
+                parent?.requestDisallowInterceptTouchEvent(false)
+            }
+        }
+        invalidate()
+        return true
+    }
+
+    private fun handleSymmetryGuideGesture(event: MotionEvent, canvasX: Float, canvasY: Float, isStylus: Boolean, elapsedSinceStylus: Long): Boolean {
+        if (isStylus || symmetryMode == SymmetryMode.NONE) return false
+        val existing = symmetryGuideGesture
+        if (existing == null) {
+            if (forceNavigation || event.actionMasked != MotionEvent.ACTION_DOWN || event.pointerCount != 1 ||
+                elapsedSinceStylus <= StylusInputClassifier.RECENT_STYLUS_WINDOW_MS ||
+                event.getTouchMajor(event.actionIndex) >= StylusInputClassifier.PALM_TOUCH_MAJOR_PX
+            ) return false
+            val density = resources.displayMetrics.density
+            val hit = SymmetryGuide.hitTest(
+                symmetryGuide, canvasX, canvasY, width.toFloat(), height.toFloat(),
+                SYMMETRY_TOUCH_RADIUS_DP * density, SYMMETRY_HANDLE_DISTANCE_DP * density,
+            ) ?: return false
+            symmetryGuideGesture = hit
+            symmetryGuideGestureStart = symmetryGuide
+            parent?.requestDisallowInterceptTouchEvent(true)
+            return true
+        }
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1) {
+                symmetryGuide = when (existing) {
+                    SymmetryGuideGesture.MOVE -> SymmetryGuide.moveTo(symmetryGuide, canvasX, canvasY, width.toFloat(), height.toFloat())
+                    SymmetryGuideGesture.ROTATE -> SymmetryGuide.rotateToward(symmetryGuide, canvasX, canvasY, width.toFloat(), height.toFloat())
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                onSymmetryGuideChanged(symmetryGuide)
+                symmetryGuideGesture = null
+                symmetryGuideGestureStart = null
+                parent?.requestDisallowInterceptTouchEvent(false)
+                performClick()
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                symmetryGuideGestureStart?.let { symmetryGuide = it }
+                symmetryGuideGesture = null
+                symmetryGuideGestureStart = null
                 parent?.requestDisallowInterceptTouchEvent(false)
             }
         }
@@ -5106,26 +5168,42 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun drawSymmetryGuides(canvas: Canvas) {
         if (symmetryMode == SymmetryMode.NONE || width <= 0 || height <= 0) return
-        paint.style = Paint.Style.STROKE; paint.color = Color.rgb(24, 119, 242); paint.alpha = 120; paint.strokeWidth = 1.5f
-        val cx = width / 2f; val cy = height / 2f
+        paint.style = Paint.Style.STROKE; paint.color = Color.rgb(210, 210, 206); paint.alpha = 150; paint.strokeWidth = 1.5f * resources.displayMetrics.density
+        val state = symmetryGuide.normalized()
+        val cx = state.centerX * width; val cy = state.centerY * height
+        val base = Math.toRadians(state.angleDegrees.toDouble()).toFloat()
+        val reach = kotlin.math.hypot(width.toDouble(), height.toDouble()).toFloat() * 1.2f
+        fun axis(angle: Float) {
+            val dx = kotlin.math.cos(angle) * reach
+            val dy = kotlin.math.sin(angle) * reach
+            canvas.drawLine(cx - dx, cy - dy, cx + dx, cy + dy, paint)
+        }
         when (symmetryMode) {
-            SymmetryMode.VERTICAL, SymmetryMode.QUADRANT -> canvas.drawLine(cx, 0f, cx, height.toFloat(), paint)
+            SymmetryMode.VERTICAL, SymmetryMode.QUADRANT -> axis(base + Math.PI.toFloat() / 2f)
             else -> Unit
         }
         when (symmetryMode) {
-            SymmetryMode.HORIZONTAL, SymmetryMode.QUADRANT -> canvas.drawLine(0f, cy, width.toFloat(), cy, paint)
+            SymmetryMode.HORIZONTAL, SymmetryMode.QUADRANT -> axis(base)
             else -> Unit
         }
         when (symmetryMode) {
             SymmetryMode.RADIAL_4, SymmetryMode.RADIAL_6, SymmetryMode.RADIAL_8 -> {
                 val n = when (symmetryMode) { SymmetryMode.RADIAL_4 -> 4; SymmetryMode.RADIAL_6 -> 6; SymmetryMode.RADIAL_8 -> 8; else -> 4 }
                 for (k in 0 until n) {
-                    val a = Math.toRadians((360.0 / n * k))
-                    canvas.drawLine(cx, cy, (cx + kotlin.math.cos(a) * width).toFloat(), (cy + kotlin.math.sin(a) * height).toFloat(), paint)
+                    val angle = base + (Math.PI * 2.0 * k / n).toFloat()
+                    canvas.drawLine(cx, cy, cx + kotlin.math.cos(angle) * reach, cy + kotlin.math.sin(angle) * reach, paint)
                 }
             }
             else -> Unit
         }
+        val density = resources.displayMetrics.density
+        val handle = SymmetryGuide.rotationHandle(state, width.toFloat(), height.toFloat(), SYMMETRY_HANDLE_DISTANCE_DP * density)
+        rulerFillPaint.color = Color.rgb(238, 238, 234); rulerFillPaint.alpha = 245
+        canvas.drawCircle(cx, cy, 9f * density, rulerFillPaint)
+        canvas.drawCircle(handle.x, handle.y, 8f * density, rulerFillPaint)
+        rulerLinePaint.color = Color.rgb(56, 56, 54); rulerLinePaint.alpha = 230; rulerLinePaint.strokeWidth = 1.5f * density
+        canvas.drawCircle(cx, cy, 9f * density, rulerLinePaint)
+        canvas.drawCircle(handle.x, handle.y, 8f * density, rulerLinePaint)
     }
 
     private fun resolveTool(event: MotionEvent, toolType: Int): EditorTool {
@@ -5830,21 +5908,26 @@ class InkCanvasView(context: Context) : View(context) {
         return true
     }
 
-    private fun v5SampleTransforms(surface: PixelTileSurface): List<PaintSampleTransform> = when (symmetryMode) {
+    private fun v5SampleTransforms(surface: PixelTileSurface): List<PaintSampleTransform> {
+        val guide = symmetryGuide.normalized()
+        val centerX = surface.logicalWidth * guide.centerX
+        val centerY = surface.logicalHeight * guide.centerY
+        val angle = Math.toRadians(guide.angleDegrees.toDouble()).toFloat()
+        return when (symmetryMode) {
         SymmetryMode.NONE -> listOf(PaintSampleTransform.Identity)
         SymmetryMode.HORIZONTAL -> listOf(
             PaintSampleTransform.Identity,
-            PaintSampleTransform.horizontalAxis(surface.logicalHeight.toFloat()),
+            PaintSampleTransform.reflection(angle, centerX, centerY),
         )
         SymmetryMode.VERTICAL -> listOf(
             PaintSampleTransform.Identity,
-            PaintSampleTransform.verticalAxis(surface.logicalWidth.toFloat()),
+            PaintSampleTransform.reflection(angle + Math.PI.toFloat() / 2f, centerX, centerY),
         )
         SymmetryMode.QUADRANT -> listOf(
             PaintSampleTransform.Identity,
-            PaintSampleTransform.horizontalAxis(surface.logicalHeight.toFloat()),
-            PaintSampleTransform.verticalAxis(surface.logicalWidth.toFloat()),
-            PaintSampleTransform.bothAxes(surface.logicalWidth.toFloat(), surface.logicalHeight.toFloat()),
+            PaintSampleTransform.reflection(angle, centerX, centerY),
+            PaintSampleTransform.reflection(angle + Math.PI.toFloat() / 2f, centerX, centerY),
+            PaintSampleTransform.rotation(Math.PI.toFloat(), centerX, centerY),
         )
         SymmetryMode.RADIAL_4, SymmetryMode.RADIAL_6, SymmetryMode.RADIAL_8 -> {
             val count = when (symmetryMode) {
@@ -5855,10 +5938,11 @@ class InkCanvasView(context: Context) : View(context) {
             List(count) { index ->
                 PaintSampleTransform.rotation(
                     (Math.PI * 2.0 * index / count).toFloat(),
-                    surface.logicalWidth * .5f,
-                    surface.logicalHeight * .5f,
+                    centerX,
+                    centerY,
                 )
             }
+        }
         }
     }
 
@@ -6952,6 +7036,8 @@ class InkCanvasView(context: Context) : View(context) {
         const val DUAL_ROTATION_SEED = 0x61B8D2A3L
         const val VIEW_ROTATION_DEGREES_PER_PIXEL = .25f
         const val RULER_TOUCH_RADIUS_DP = 38f
+        const val SYMMETRY_TOUCH_RADIUS_DP = 30f
+        const val SYMMETRY_HANDLE_DISTANCE_DP = 72f
         const val GUIDE_TOUCH_RADIUS_DP = 14f
         const val GUIDE_SNAP_TOLERANCE_DP = 12f
         const val GUIDE_CAPTURE_MOVEMENT_DP = 3f

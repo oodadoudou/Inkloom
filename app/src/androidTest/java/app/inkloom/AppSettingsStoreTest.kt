@@ -173,6 +173,22 @@ class AppSettingsStoreTest {
         }
     }
 
+    @Test fun symmetryGuideSurvivesReload() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            AppSettingsStore(context).save(AppSettings(symmetryMode = app.inkloom.model.SymmetryMode.RADIAL_6, symmetryCenterX = .27f, symmetryCenterY = .68f, symmetryAngleDegrees = -32f))
+            val restored = AppSettingsStore(context).load()
+            assertEquals(app.inkloom.model.SymmetryMode.RADIAL_6, restored.symmetryMode)
+            assertEquals(.27f, restored.symmetryCenterX)
+            assertEquals(.68f, restored.symmetryCenterY)
+            assertEquals(-32f, restored.symmetryAngleDegrees)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
     @Test fun gridAndAlignmentGuidesSurviveReload() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)

@@ -93,6 +93,7 @@ object AppSettingsBackupCodec {
         put("toolbarOffsetXDp", toolbarOffsetXDp); put("toolbarOffsetYDp", toolbarOffsetYDp); put("selectionStudioXDp",selectionStudioXDp); put("selectionStudioYDp",selectionStudioYDp); put("verticalToolbar", verticalToolbar); put("toolbarDock", toolbarDock.name)
         put("toolPaletteLayout", ToolPaletteLayout.encode(ToolPaletteLayout.decode(toolPaletteLayout)))
         put("singleFingerDoubleTapUndo", singleFingerDoubleTapUndo); put("twoFingerDoubleTapUndo", twoFingerDoubleTapUndo); put("threeFingerTapRedo", threeFingerTapRedo); put("twoFingerRotation", twoFingerRotation)
+        put("symmetryMode", symmetryMode.name); put("symmetryCenterX", symmetryCenterX); put("symmetryCenterY", symmetryCenterY); put("symmetryAngleDegrees", symmetryAngleDegrees)
         put("rulerEnabled", rulerEnabled); put("rulerCenterX", rulerCenterX); put("rulerCenterY", rulerCenterY); put("rulerAngleDegrees", rulerAngleDegrees); put("rulerSnapDegrees", rulerSnapDegrees)
         put("gridSnapEnabled", gridSnapEnabled); put("gridSpacing", gridSpacing); put("alignmentGuidesEnabled", alignmentGuidesEnabled); put("verticalGuideX", verticalGuideX); put("horizontalGuideY", horizontalGuideY)
         put("perspectiveGuideMode", perspectiveGuideMode.name); put("perspectiveGuideAssisted", perspectiveGuideAssisted); put("perspectiveGuideEditing", perspectiveGuideEditing)
@@ -148,6 +149,8 @@ object AppSettingsBackupCodec {
             toolPaletteLayout = ToolPaletteLayout.encode(ToolPaletteLayout.decode(text("toolPaletteLayout").ifBlank { defaults.toolPaletteLayout })),
             singleFingerDoubleTapUndo = boolean("singleFingerDoubleTapUndo", defaults.singleFingerDoubleTapUndo), twoFingerDoubleTapUndo = boolean("twoFingerDoubleTapUndo", defaults.twoFingerDoubleTapUndo), threeFingerTapRedo = boolean("threeFingerTapRedo", defaults.threeFingerTapRedo),
             twoFingerRotation = boolean("twoFingerRotation", defaults.twoFingerRotation),
+            symmetryMode = enum("symmetryMode", defaults.symmetryMode), symmetryCenterX = float("symmetryCenterX", defaults.symmetryCenterX).coerceIn(0f, 1f), symmetryCenterY = float("symmetryCenterY", defaults.symmetryCenterY).coerceIn(0f, 1f),
+            symmetryAngleDegrees = app.inkloom.document.SymmetryGuideState.normalizeAngle(float("symmetryAngleDegrees", defaults.symmetryAngleDegrees)),
             rulerEnabled = boolean("rulerEnabled", defaults.rulerEnabled),
             rulerCenterX = float("rulerCenterX", defaults.rulerCenterX).coerceIn(0f, 1f), rulerCenterY = float("rulerCenterY", defaults.rulerCenterY).coerceIn(0f, 1f),
             rulerAngleDegrees = app.inkloom.document.RulerGuideState.normalizeAngle(float("rulerAngleDegrees", defaults.rulerAngleDegrees)), rulerSnapDegrees = float("rulerSnapDegrees", defaults.rulerSnapDegrees).coerceIn(1f, 90f),

@@ -2858,6 +2858,13 @@ private fun EditorScreen(
                             ShortcutAction.QUICK_SLOT_5, ShortcutAction.QUICK_SLOT_6, ShortcutAction.QUICK_SLOT_7, ShortcutAction.QUICK_SLOT_8 -> ToolboxQuickSlots.indexOf(action)?.let { applyQuickSlot(it, activation.trigger == ShortcutTrigger.HOLD) }
                         }
                     },
+                    onSymmetryGuideChange = { guide ->
+                        onSettingsChange(settings.copy(
+                            symmetryCenterX = guide.centerX,
+                            symmetryCenterY = guide.centerY,
+                            symmetryAngleDegrees = guide.angleDegrees,
+                        ))
+                    },
                     onRulerGuideChange = { guide ->
                         onSettingsChange(settings.copy(
                             rulerCenterX = guide.centerX,
@@ -4207,7 +4214,7 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onBackKey: () -> Boolean, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, transformLayerIds: Set<String>, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
+private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onBackKey: () -> Boolean, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, transformLayerIds: Set<String>, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onSymmetryGuideChange: (SymmetryGuideState) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val rasterRenderWidth = remember(renderedPage.width, renderedPage.height) {
         CanvasRasterResolution.forDimensions(renderedPage.width, renderedPage.height)
@@ -4498,6 +4505,7 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
     // Brush imports, preset switches and asynchronous checkpoint publication are UI changes and
     // must never reconstruct or replace the live painting surface.
     val rasterLayerSurfaces = rasterSurfaceRuntime.reconcile(page)
+    val symmetryGuide = SymmetryGuideState(settings.symmetryCenterX, settings.symmetryCenterY, settings.symmetryAngleDegrees).normalized()
     val rulerGuide = RulerGuideState(settings.rulerCenterX, settings.rulerCenterY, settings.rulerAngleDegrees, settings.rulerSnapDegrees).normalized()
     val canvasGuide = CanvasGuideState(settings.gridSnapEnabled, settings.gridSpacing, settings.alignmentGuidesEnabled, settings.verticalGuideX, settings.horizontalGuideY).normalized()
     val perspectiveGuide = PerspectiveGuideState(
@@ -4580,6 +4588,8 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.fillCloseGapPixels = settings.fillCloseGapPixels
                 view.fillAreaScalingPixels = settings.fillAreaScalingPixels
                 view.symmetryMode = settings.symmetryMode
+                view.symmetryGuide = symmetryGuide
+                view.onSymmetryGuideChanged = onSymmetryGuideChange
                 view.twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
                 view.threeFingerTapRedo = settings.threeFingerTapRedo
                 view.twoFingerRotationEnabled = settings.twoFingerRotation
@@ -4667,6 +4677,8 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.fillCloseGapPixels = settings.fillCloseGapPixels
                 view.fillAreaScalingPixels = settings.fillAreaScalingPixels
                 view.symmetryMode = settings.symmetryMode
+                view.symmetryGuide = symmetryGuide
+                view.onSymmetryGuideChanged = onSymmetryGuideChange
                 view.twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
                 view.threeFingerTapRedo = settings.threeFingerTapRedo
                 view.twoFingerRotationEnabled = settings.twoFingerRotation
@@ -5757,6 +5769,11 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
                 if (tool == EditorTool.ERASER) {
                     Text(tr("Eraser brush", "橡皮笔刷"), color = MutedInk, fontSize = 12.sp)
                     EraserPresetPicker(eraserPreset, onEraserPreset)
+                }
+                if (symmetryMode != SymmetryMode.NONE) {
+                    HorizontalDivider()
+                    Text(tr("Symmetry axis", "对称轴"), color = MutedInk, fontSize = 12.sp)
+                    Text(tr("Drag the center node to move the axis. Drag the outer node to rotate it.", "拖动中心节点移动对称轴，拖动外侧节点旋转。"), color = MutedInk, fontSize = 10.sp)
                 }
                 if (rulerEnabled) {
                     HorizontalDivider()

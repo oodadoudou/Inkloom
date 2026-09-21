@@ -29,6 +29,18 @@ class PaintSampleTransformTest {
         assertEquals((Math.PI - .4).toFloat(), transformed.orientationRadians, .0001f)
     }
 
+    @Test fun reflectionCanUseAnArbitraryOffsetAxis() {
+        val horizontal = PaintSampleTransform.reflection(0f, centerX = 25f, centerY = 40f)
+            .apply(sample(10f, 20f, orientation = 0f))
+        assertEquals(10f, horizontal.point.x, .0001f)
+        assertEquals(60f, horizontal.point.y, .0001f)
+
+        val diagonal = PaintSampleTransform.reflection((Math.PI / 4.0).toFloat(), centerX = 0f, centerY = 0f)
+            .apply(sample(20f, 0f, orientation = 0f))
+        assertEquals(0f, diagonal.point.x, .0001f)
+        assertEquals(20f, diagonal.point.y, .0001f)
+    }
+
     private fun sample(x: Float, y: Float, orientation: Float) = StrokeSample(
         inputSequence = 1,
         point = DocumentPoint(x, y),

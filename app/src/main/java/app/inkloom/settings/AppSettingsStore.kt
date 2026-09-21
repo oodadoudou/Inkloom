@@ -87,6 +87,9 @@ data class AppSettings(
     val threeFingerTapRedo: Boolean = true,
     val twoFingerRotation: Boolean = true,
     val symmetryMode: SymmetryMode = SymmetryMode.NONE,
+    val symmetryCenterX: Float = .5f,
+    val symmetryCenterY: Float = .5f,
+    val symmetryAngleDegrees: Float = 0f,
     val rulerEnabled: Boolean = false,
     val rulerCenterX: Float = .5f,
     val rulerCenterY: Float = .5f,
@@ -281,6 +284,9 @@ class AppSettingsStore(context: Context) {
             threeFingerTapRedo = preferences.getBoolean("threeFingerTapRedo", true),
             twoFingerRotation = if (migrateCanvasRotation) true else preferences.getBoolean("twoFingerRotation", true),
             symmetryMode = enumValue(preferences.getString("symmetryMode", null), SymmetryMode.NONE),
+            symmetryCenterX = preferences.getFloat("symmetryCenterX", .5f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f,
+            symmetryCenterY = preferences.getFloat("symmetryCenterY", .5f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f,
+            symmetryAngleDegrees = app.inkloom.document.SymmetryGuideState.normalizeAngle(preferences.getFloat("symmetryAngleDegrees", 0f)),
             rulerEnabled = preferences.getBoolean("rulerEnabled", false),
             rulerCenterX = preferences.getFloat("rulerCenterX", .5f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f,
             rulerCenterY = preferences.getFloat("rulerCenterY", .5f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f,
@@ -450,6 +456,9 @@ class AppSettingsStore(context: Context) {
             .putBoolean("threeFingerTapRedo", persisted.threeFingerTapRedo)
             .putBoolean("twoFingerRotation", persisted.twoFingerRotation)
             .putString("symmetryMode", persisted.symmetryMode.name)
+            .putFloat("symmetryCenterX", persisted.symmetryCenterX.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f)
+            .putFloat("symmetryCenterY", persisted.symmetryCenterY.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f)
+            .putFloat("symmetryAngleDegrees", app.inkloom.document.SymmetryGuideState.normalizeAngle(persisted.symmetryAngleDegrees))
             .putBoolean("rulerEnabled", persisted.rulerEnabled)
             .putFloat("rulerCenterX", persisted.rulerCenterX.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f)
             .putFloat("rulerCenterY", persisted.rulerCenterY.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f)
