@@ -448,7 +448,7 @@ class SelectionWindowRegressionTest {
         org.junit.Assert.assertArrayEquals(original,view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(bounds))
     }
 
-    @Test fun mixedImageAndPaintApplyUndoRedoAndReopenKeepOneDocumentResult() {
+    @Test fun mixedImageAndPaintApplyUndoRedoAndReopenKeepEditableObjectAndPixels() {
         tap("New Note"); tap("Create")
         val view = canvas()
         stroke(pagePoint(view,.25f,.45f),pagePoint(view,.5f,.5f))
@@ -477,17 +477,19 @@ class SelectionWindowRegressionTest {
         assertEquals(listOf(image),page().elements)
         org.junit.Assert.assertArrayEquals(original,view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(bounds))
         tap("Transform selection"); tap("Nudge → 1 px"); tap("Apply transform")
-        compose.waitUntil(20_000) { page().elements.none { it.id==image.id } }
+        compose.waitUntil(20_000) { page().elements.any { it.id==image.id && it.x>image.x } }
+        val movedImage=page().elements.single { it.id==image.id } as app.inkloom.document.PageElement.Image
         val applied=view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(bounds)
         assertTrue(!original.contentEquals(applied))
         assertTrue(java.io.File(image.assetPath).isFile)
-        tapAt(toolbarCenter("Undo")); compose.waitUntil(20_000) { page().elements.any { it.id==image.id } }
+        tapAt(toolbarCenter("Undo")); compose.waitUntil(20_000) { page().elements.singleOrNull { it.id==image.id }==image }
         org.junit.Assert.assertArrayEquals(original,view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(bounds))
-        tapAt(toolbarCenter("Redo")); compose.waitUntil(20_000) { page().elements.none { it.id==image.id } }
+        tapAt(toolbarCenter("Redo")); compose.waitUntil(20_000) { page().elements.singleOrNull { it.id==image.id }==movedImage }
         org.junit.Assert.assertArrayEquals(applied,view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(bounds))
         compose.activityRule.scenario.recreate(); compose.waitForIdle()
         val reopened=canvas()
         compose.waitUntil(20_000) { reopened.activeRasterSnapshotForTest()?.copyPremultipliedPixels(bounds)?.contentEquals(applied)==true }
+        assertEquals(movedImage, page().elements.single { it.id==image.id })
         if(reopened.hasActiveSelection()) tapAt(toolbarCenter("Selection"))
         val beforeDraw=reopened.activeRasterSnapshotForTest()!!.revision
         stroke(pagePoint(reopened,.65f,.75f),pagePoint(reopened,.8f,.8f))

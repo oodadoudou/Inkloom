@@ -4841,6 +4841,9 @@ class InkCanvasView(context: Context) : View(context) {
                             prepared.bitmap.recycle(); prepared.remainingBitmap?.recycle(); prepared.release(); throw failure
                         }
                         mixedElementOverrides[layerId] = prepared.remainingBitmap?.let { LayerElementBitmaps(it, null) }
+                    } else if (listOfNotNull(layerElementBitmaps[layerId]?.base, layerElementBitmaps[layerId]?.additions)
+                            .any { !it.isRecycled && NativeRasterOps.alphaBounds(it) != null }) {
+                        throw IllegalStateException("Retained objects are unavailable for structured transformation")
                     }
                 }
                 rasterSelectionTransformSessions[layerId] = RasterSelectionTransformSession(target, selection)
