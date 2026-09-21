@@ -28,6 +28,13 @@ class V5StorageFormatContractTest {
         assertEquals(document, DocumentCheckpointCodec.decode(encoded))
     }
 
+    @Test fun layerDrawingAssistRoundTripsWithoutChangingLegacyDefault() {
+        val document = InkDocument(title = "Assist", pages = listOf(InkPage(layers = listOf(InkLayer(name = "Assisted", drawingAssist = true)))))
+        val restored = DocumentCheckpointCodec.decode(DocumentCheckpointCodec.encode(document))
+        assertTrue(restored.pages.single().layers.single().drawingAssist)
+        assertTrue(!InkLayer(name = "Legacy default").drawingAssist)
+    }
+
     @Test fun barePreV5DocumentIsRejectedRatherThanMigrated() {
         val legacy = Json.encodeToString(InkDocument(title = "legacy"))
 

@@ -190,6 +190,8 @@ data class InkLayer(
     val clippedToBelow: Boolean = false,
     val reference: Boolean = false,
     val draft: Boolean = false,
+    /** When any page layer opts in, guides constrain only layers carrying this flag. */
+    val drawingAssist: Boolean = false,
     val mask: LayerMask? = null,
     val parentId: String? = null,
     val collapsed: Boolean = false,

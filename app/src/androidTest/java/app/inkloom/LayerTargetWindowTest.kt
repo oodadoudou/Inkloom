@@ -116,6 +116,19 @@ class LayerTargetWindowTest {
         assertEquals("Recreation retains the explicit target", target, canvas().activeLayerId)
     }
 
+    @Test fun drawingAssistCanBeToggledFromTheLayerMenuAndPersists() {
+        tap("New Note"); tap("Create")
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync { model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java] }
+        tap("Layers")
+        tap("Layer actions Layer 1")
+        tap("Turn on Drawing Assist")
+        compose.waitUntil { model.currentPage()!!.layers.first { it.name == "Layer 1" }.drawingAssist }
+        tap("Layer actions Layer 1")
+        tap("Turn off Drawing Assist")
+        compose.waitUntil { !model.currentPage()!!.layers.first { it.name == "Layer 1" }.drawingAssist }
+    }
+
     @Test fun creationFollowsSelectedSiblingOrFolderAndSharesPaintHistory() {
         tap("New Note"); tap("Create"); val view = canvas()
         lateinit var model: app.inkloom.ui.InkloomViewModel

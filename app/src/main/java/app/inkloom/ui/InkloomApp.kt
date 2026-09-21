@@ -955,6 +955,7 @@ fun InkloomApp(initialIntent: Intent?) {
             },
             onToggleLayerReference = viewModel::toggleLayerReference,
             onToggleLayerDraft = viewModel::toggleLayerDraft,
+            onToggleLayerDrawingAssist = viewModel::toggleLayerDrawingAssist,
             onToggleLayerFolderCollapsed = viewModel::toggleLayerFolderCollapsed,
             onDuplicateLayer = viewModel::duplicateLayer,
             onApplyRasterLayerMerge = viewModel::applyRasterLayerMerge,
@@ -1550,6 +1551,7 @@ private fun EditorScreen(
     onToggleLayerClippedToBelow: (String, String, String) -> Unit,
     onToggleLayerReference: (String, String, String) -> Unit,
     onToggleLayerDraft: (String, String, String) -> Unit,
+    onToggleLayerDrawingAssist: (String, String, String) -> Unit,
     onToggleLayerFolderCollapsed: (String, String, String) -> Unit,
     onDuplicateLayer: (String, String, String) -> String?,
     onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean,
@@ -3337,6 +3339,7 @@ private fun EditorScreen(
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                 onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
                 onToggleDraft = { onToggleLayerDraft(document.id, selectedPage.id, it) },
+                onToggleDrawingAssist = { onToggleLayerDrawingAssist(document.id, selectedPage.id, it) },
                 onMaskCommand = ::performLayerMaskCommand,
                 onMaskTransfer = ::performLayerMaskTransfer,
                 editingMaskId = editingMaskId,
@@ -4527,6 +4530,12 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
         angleDegrees = settings.specialRulerAngleDegrees,
         spacing = settings.specialRulerSpacing,
     ).normalized()
+    // Existing documents keep their historical page-wide assist behavior until at least one
+    // paint layer explicitly opts in. From that point, assistance follows the layer badges.
+    val hasLayerDrawingAssist = page.layers.any { it.drawingAssist }
+    val activeDrawingAssist = !hasLayerDrawingAssist || page.layers.firstOrNull { it.id == activeLayerId }?.drawingAssist == true
+    val effectivePerspectiveGuide = perspectiveGuide.copy(assisted = perspectiveGuide.assisted && activeDrawingAssist)
+    val effectiveSpecialRuler = specialRuler.copy(assisted = specialRuler.assisted && activeDrawingAssist)
     val gradientDefinition = GradientDefinition(
         kind = settings.gradientKind,
         edgeMode = settings.gradientEdgeMode,
@@ -4590,6 +4599,7 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.symmetryMode = settings.symmetryMode
                 view.symmetryGuide = symmetryGuide
                 view.onSymmetryGuideChanged = onSymmetryGuideChange
+                view.symmetryAssisted = activeDrawingAssist
                 view.twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
                 view.threeFingerTapRedo = settings.threeFingerTapRedo
                 view.twoFingerRotationEnabled = settings.twoFingerRotation
@@ -4603,11 +4613,12 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.rulerEnabled = settings.rulerEnabled
                 view.rulerGuide = rulerGuide
                 view.onRulerGuideChanged = onRulerGuideChange
+                view.rulerAssisted = activeDrawingAssist
                 view.canvasGuideState = canvasGuide
                 view.onCanvasGuideChanged = onCanvasGuideChange
-                view.perspectiveGuideState = perspectiveGuide
+                view.perspectiveGuideState = effectivePerspectiveGuide
                 view.onPerspectiveGuideChanged = onPerspectiveGuideChange
-                view.specialRulerState = specialRuler
+                view.specialRulerState = effectiveSpecialRuler
                 view.onSpecialRulerChanged = onSpecialRulerChange
                 view.gradientDefinition = gradientDefinition
                 view.gradientAngleSnapEnabled = settings.gradientAngleSnapEnabled
@@ -4679,6 +4690,7 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.symmetryMode = settings.symmetryMode
                 view.symmetryGuide = symmetryGuide
                 view.onSymmetryGuideChanged = onSymmetryGuideChange
+                view.symmetryAssisted = activeDrawingAssist
                 view.twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
                 view.threeFingerTapRedo = settings.threeFingerTapRedo
                 view.twoFingerRotationEnabled = settings.twoFingerRotation
@@ -4692,11 +4704,12 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.rulerEnabled = settings.rulerEnabled
                 view.rulerGuide = rulerGuide
                 view.onRulerGuideChanged = onRulerGuideChange
+                view.rulerAssisted = activeDrawingAssist
                 view.canvasGuideState = canvasGuide
                 view.onCanvasGuideChanged = onCanvasGuideChange
-                view.perspectiveGuideState = perspectiveGuide
+                view.perspectiveGuideState = effectivePerspectiveGuide
                 view.onPerspectiveGuideChanged = onPerspectiveGuideChange
-                view.specialRulerState = specialRuler
+                view.specialRulerState = effectiveSpecialRuler
                 view.onSpecialRulerChanged = onSpecialRulerChange
                 view.gradientDefinition = gradientDefinition
                 view.gradientAngleSnapEnabled = settings.gradientAngleSnapEnabled
@@ -6295,6 +6308,7 @@ private fun LayerPanel(
     onToggleClippedToBelow: (String) -> Unit,
     onToggleReference: (String) -> Unit,
     onToggleDraft: (String) -> Unit,
+    onToggleDrawingAssist: (String) -> Unit,
     onMaskCommand: (String, LayerMaskCommand) -> Unit,
     onMaskTransfer: (String, String, Boolean) -> Unit,
     editingMaskId: String? = null,
@@ -6332,6 +6346,7 @@ private fun LayerPanel(
             onToggleClippedToBelow = onToggleClippedToBelow,
             onToggleReference = onToggleReference,
             onToggleDraft = onToggleDraft,
+            onToggleDrawingAssist = onToggleDrawingAssist,
             onMaskCommand = onMaskCommand, onMaskTransfer = onMaskTransfer, editingMaskId = editingMaskId,
             onRelocate = onRelocate, secondarySelection = secondarySelection, onSecondarySelection = onSecondarySelection,
             onToggleFolderCollapsed = onToggleFolderCollapsed,
@@ -6385,6 +6400,7 @@ private fun PaintingLayerPanel(
     onToggleClippedToBelow: (String) -> Unit,
     onToggleReference: (String) -> Unit,
     onToggleDraft: (String) -> Unit,
+    onToggleDrawingAssist: (String) -> Unit,
     onMaskCommand: (String, LayerMaskCommand) -> Unit,
     onMaskTransfer: (String, String, Boolean) -> Unit,
     editingMaskId: String? = null,
@@ -6626,6 +6642,7 @@ private fun PaintingLayerPanel(
                         if (layer.locked) Icon(Icons.Outlined.Lock, tr("Locked", "已锁定"), Modifier.size(15.dp), tint = MutedInk)
                         if (layer.reference) Icon(Icons.Outlined.Lightbulb, tr("Reference layer", "参考图层"), Modifier.size(15.dp), tint = MutedInk)
                         if (layer.draft) Icon(Icons.Outlined.EditNote, tr("Draft layer", "草稿图层"), Modifier.size(15.dp), tint = MutedInk)
+                        if (layer.drawingAssist) Icon(Icons.Outlined.AutoFixHigh, tr("Drawing Assist", "绘图辅助"), Modifier.size(15.dp), tint = MutedInk)
                         val layerActionsDescription = "${tr("Layer actions", "图层操作")} ${layer.name}"
                         Box(Modifier.semantics { contentDescription = layerActionsDescription }) {
                             IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), tint = rowInk) }
@@ -6661,6 +6678,7 @@ private fun PaintingLayerPanel(
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.clippedToBelow) tr("Stop clipping", "取消剪贴") else tr("Clipping mask", "剪贴蒙版")) }, onClick = { menu = false; onToggleClippedToBelow(layer.id) })
                                 if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(if (layer.reference) tr("Unset reference layer", "取消参考图层") else tr("Set as reference layer", "设为参考图层")) }, onClick = { menu = false; onToggleReference(layer.id) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.draft) tr("Unset draft layer", "取消草稿图层") else tr("Set as draft layer", "设为草稿图层")) }, onClick = { menu = false; onToggleDraft(layer.id) })
+                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.drawingAssist) tr("Turn off Drawing Assist", "关闭绘图辅助") else tr("Turn on Drawing Assist", "开启绘图辅助")) }, onClick = { menu = false; onToggleDrawingAssist(layer.id) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Select contents", "选取内容")) }, onClick = { menu = false; onSelectContents(layer.id) })
                                 if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Mask", "蒙版")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; maskMenu = true })
                                 DropdownMenuItem(text = { Text(tr("Palette color", "图层颜色标签")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; paletteColorMenu = true })

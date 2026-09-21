@@ -64,6 +64,19 @@ class SymmetryTest {
         assertEquals(0, Color.alpha(surface.pixelAt(125, 350)))
     }
 
+    @Test fun layerWithoutDrawingAssistKeepsGuideVisibleButPublishesOneTrajectory() {
+        val surface = PixelTileSurface(400, 400)
+        val view = canvas(surface) {
+            symmetryMode = SymmetryMode.HORIZONTAL
+            symmetryAssisted = false
+        }
+        send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
+        send(view, 20L, MotionEvent.ACTION_MOVE, 150f, 100f)
+        send(view, 40L, MotionEvent.ACTION_UP, 150f, 100f)
+        assertTrue(Color.alpha(surface.pixelAt(125, 100)) > 0)
+        assertEquals(0, Color.alpha(surface.pixelAt(125, 300)))
+    }
+
     @Test fun radialSymmetryUsesDocumentPixelAspectRatio() {
         val surface = PixelTileSurface(100, 200)
         val view = canvas(surface) {

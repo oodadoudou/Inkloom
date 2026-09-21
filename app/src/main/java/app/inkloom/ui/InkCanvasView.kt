@@ -818,6 +818,7 @@ class InkCanvasView(context: Context) : View(context) {
     var twoFingerRotationEnabled: Boolean = false
     var rulerEnabled: Boolean = false
         set(value) { field = value; if (!value) rulerGestureMode = null; invalidate() }
+    var rulerAssisted: Boolean = true
     var rulerGuide: RulerGuideState = RulerGuideState()
         set(value) { field = value.normalized(); invalidate() }
     var onRulerGuideChanged: (RulerGuideState) -> Unit = {}
@@ -933,6 +934,7 @@ class InkCanvasView(context: Context) : View(context) {
         set(value) { field = value; if (value == SymmetryMode.NONE) symmetryGuideGesture = null; invalidate() }
     var symmetryGuide: SymmetryGuideState = SymmetryGuideState()
         set(value) { field = value.normalized(); invalidate() }
+    var symmetryAssisted: Boolean = true
     var onSymmetryGuideChanged: (SymmetryGuideState) -> Unit = {}
     var onViewportScale: (Float, Float, Float) -> Unit = { _, _, _ -> }
     var onViewportPan: (Float, Float) -> Unit = { _, _ -> }
@@ -5909,6 +5911,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun v5SampleTransforms(surface: PixelTileSurface): List<PaintSampleTransform> {
+        if (!symmetryAssisted) return listOf(PaintSampleTransform.Identity)
         val guide = symmetryGuide.normalized()
         val centerX = surface.logicalWidth * guide.centerX
         val centerY = surface.logicalHeight * guide.centerY
@@ -6144,7 +6147,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun v5ConstrainedNormalizedPoint(x: Float, y: Float): Pair<Float, Float> {
         val start = v5GestureStartNormalized
-        if (!rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) &&
+        if (!(rulerEnabled && rulerAssisted) && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) &&
             activePerspectiveSnapConstraint == null && start != null
         ) {
             activePerspectiveSnapConstraint = PerspectiveGuides.constraintAt(
@@ -6158,7 +6161,7 @@ class InkCanvasView(context: Context) : View(context) {
                 GUIDE_CAPTURE_MOVEMENT_DP * resources.displayMetrics.density,
             )
         }
-        if (!rulerEnabled && perspectiveGuideState.mode == PerspectiveGuideMode.NONE &&
+        if (!(rulerEnabled && rulerAssisted) && perspectiveGuideState.mode == PerspectiveGuideMode.NONE &&
             activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) &&
             activeSpecialRulerConstraint == null && start != null
         ) {
@@ -6173,7 +6176,7 @@ class InkCanvasView(context: Context) : View(context) {
                 GUIDE_CAPTURE_MOVEMENT_DP * resources.displayMetrics.density,
             )
         }
-        val result = if (rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
+        val result = if (rulerEnabled && rulerAssisted && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
             RulerGuide.project(rulerGuide, x, y, width.toFloat(), height.toFloat())
         } else {
             activePerspectiveSnapConstraint?.apply(x, y)
