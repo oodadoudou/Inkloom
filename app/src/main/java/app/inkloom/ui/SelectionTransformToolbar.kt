@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.inkloom.engine.v5.tools.SelectionTransformMode
+import app.inkloom.engine.v5.tools.SelectionAlignment
 import app.inkloom.settings.UiLanguage
 import app.inkloom.settings.text
 import java.util.Locale
@@ -36,6 +37,8 @@ internal fun SelectionTransformToolbar(
     interpolation: app.inkloom.engine.v5.tools.SelectionInterpolation,
     onInterpolation: (app.inkloom.engine.v5.tools.SelectionInterpolation) -> Unit,
     onDimensions: (Float, Float, Float) -> Unit,
+    onMeshDensity: (Int, Int) -> Unit,
+    onAlign: (SelectionAlignment) -> Unit,
     onFlip: (Boolean) -> Unit,
     onReset: () -> Unit,
     onSnapping: (Boolean, Boolean, Float) -> Unit,
@@ -60,6 +63,37 @@ internal fun SelectionTransformToolbar(
             if(state.mixed) Text(t("Apply converts this layer’s images and objects to editable pixels. Undo restores the originals.", "应用后，本图层的图片和对象转为可绘制像素；撤销可恢复原对象。"),fontSize=11.sp,color=app.inkloom.ui.theme.MutedInk)
             HorizontalDivider(Modifier.widthIn(max = 620.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+            if (state.mode == SelectionTransformMode.WARP) Box {
+                var meshOpen by remember { mutableStateOf(false) }
+                TextButton(onClick = { meshOpen = true }) {
+                    Text(t("Grid ${state.pose.meshColumns - 1}×${state.pose.meshRows - 1}", "网格 ${state.pose.meshColumns - 1}×${state.pose.meshRows - 1}"))
+                }
+                DropdownMenu(meshOpen, { meshOpen = false }) {
+                    (2..8).forEach { divisions ->
+                        DropdownMenuItem(
+                            text = { Text("$divisions × $divisions") },
+                            leadingIcon = { RadioButton(state.pose.meshColumns == divisions + 1 && state.pose.meshRows == divisions + 1, null) },
+                            onClick = { onMeshDensity(divisions + 1, divisions + 1); meshOpen = false },
+                        )
+                    }
+                }
+            }
+            Box {
+                var alignOpen by remember { mutableStateOf(false) }
+                TextButton(onClick = { alignOpen = true }) { Text(t("Align", "对齐")) }
+                DropdownMenu(alignOpen, { alignOpen = false }) {
+                    SelectionAlignment.entries.forEach { alignment ->
+                        DropdownMenuItem(text = { Text(when (alignment) {
+                            SelectionAlignment.LEFT -> t("Left to canvas", "左对齐画布")
+                            SelectionAlignment.HORIZONTAL_CENTER -> t("Center horizontally", "水平居中")
+                            SelectionAlignment.RIGHT -> t("Right to canvas", "右对齐画布")
+                            SelectionAlignment.TOP -> t("Top to canvas", "顶部对齐画布")
+                            SelectionAlignment.VERTICAL_CENTER -> t("Center vertically", "垂直居中")
+                            SelectionAlignment.BOTTOM -> t("Bottom to canvas", "底部对齐画布")
+                        }) }, onClick = { onAlign(alignment); alignOpen = false })
+                    }
+                }
+            }
             Box {
                 var snapOpen by remember { mutableStateOf(false) }
                 TextButton(onClick={ snapOpen=true }) { Text(t("Snapping", "吸附")) }

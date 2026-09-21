@@ -4,6 +4,8 @@ import kotlin.math.*
 
 enum class SelectionTransformMode { FREEFORM, UNIFORM, DISTORT, WARP }
 
+enum class SelectionAlignment { LEFT, HORIZONTAL_CENTER, RIGHT, TOP, VERTICAL_CENTER, BOTTOM }
+
 enum class SelectionTransformNode(val x: Float, val y: Float) {
     TOP_LEFT(0f, 0f), TOP(.5f, 0f), TOP_RIGHT(1f, 0f), RIGHT(1f, .5f),
     BOTTOM_RIGHT(1f, 1f), BOTTOM(.5f, 1f), BOTTOM_LEFT(0f, 1f), LEFT(0f, .5f),
@@ -16,10 +18,14 @@ data class SelectionTransformPose(
     val angle: Float = 0f, val flippedX: Boolean = false, val flippedY: Boolean = false,
     val corners: List<Pair<Float, Float>>? = null,
     val mesh: List<Pair<Float, Float>>? = null,
+    val meshColumns: Int = 4,
+    val meshRows: Int = 4,
 ) {
     init {
         require(listOf(centerX, centerY, width, height, angle).all(Float::isFinite))
         require(width > 0 && height > 0)
+        require(meshColumns in 3..9 && meshRows in 3..9)
+        require(mesh == null || mesh.size == meshColumns * meshRows)
     }
 
     fun point(x: Float, y: Float): Pair<Float, Float> {
@@ -39,7 +45,7 @@ data class SelectionTransformPose(
     }
 
     fun rasterMappingFrom(original: SelectionTransformPose): SelectionRasterTransform =
-        mesh?.let { SelectionMeshMapping(original.centerX-original.width/2, original.centerY-original.height/2, original.width, original.height, it) } ?: corners?.let { SelectionProjectiveMapping(original.centerX-original.width/2, original.centerY-original.height/2,
+        mesh?.let { SelectionMeshMapping(original.centerX-original.width/2, original.centerY-original.height/2, original.width, original.height, it, meshColumns, meshRows) } ?: corners?.let { SelectionProjectiveMapping(original.centerX-original.width/2, original.centerY-original.height/2,
             original.width, original.height, it) } ?: affineFrom(original)
 
     /** Affine controls after Distort operate on the retained original quad, never its raster preview. */
@@ -54,11 +60,61 @@ data class SelectionTransformPose(
         return if (mesh != null) next.copy(mesh = mappedPoints, corners = null) else next.copy(corners = mappedPoints)
     }
 
-    fun lattice(): List<Pair<Float, Float>> = mesh ?: (0..3).flatMap { y -> (0..3).map { x ->
-        val q = sourceCorners(); val u=x/3f; val v=y/3f
+    fun lattice(): List<Pair<Float, Float>> = mesh ?: (0 until meshRows).flatMap { y -> (0 until meshColumns).map { x ->
+        val q = sourceCorners(); val u=x/(meshColumns-1f); val v=y/(meshRows-1f)
         ((1-u)*(1-v)*q[0].first+u*(1-v)*q[1].first+u*v*q[2].first+(1-u)*v*q[3].first) to
             ((1-u)*(1-v)*q[0].second+u*(1-v)*q[1].second+u*v*q[2].second+(1-u)*v*q[3].second)
     } }
+
+    /** Changes mesh density without baking the current deformation into pixels. */
+    fun withMeshDensity(columns: Int, rows: Int): SelectionTransformPose {
+        val nextColumns = columns.coerceIn(3, 9)
+        val nextRows = rows.coerceIn(3, 9)
+        if (nextColumns == meshColumns && nextRows == meshRows) return copy(mesh = lattice())
+        val old = mesh?.let {
+            SelectionMeshMapping(
+                0f,
+                0f,
+                1f,
+                1f,
+                it,
+                meshColumns,
+                meshRows,
+            )
+        }
+        val q = sourceCorners()
+        val sampled = (0 until nextRows).flatMap { y ->
+            (0 until nextColumns).map { x ->
+                val u = x / (nextColumns - 1f)
+                val v = y / (nextRows - 1f)
+                old?.forward(u, v)
+                    ?: (((1-u)*(1-v)*q[0].first+u*(1-v)*q[1].first+u*v*q[2].first+(1-u)*v*q[3].first) to
+                        ((1-u)*(1-v)*q[0].second+u*(1-v)*q[1].second+u*v*q[2].second+(1-u)*v*q[3].second))
+            }
+        }
+        return copy(corners = null, mesh = sampled, meshColumns = nextColumns, meshRows = nextRows)
+    }
+
+    fun aligned(alignment: SelectionAlignment, referenceWidth: Float, referenceHeight: Float): SelectionTransformPose {
+        val points = mesh ?: sourceCorners()
+        val left = points.minOf { it.first }
+        val right = points.maxOf { it.first }
+        val top = points.minOf { it.second }
+        val bottom = points.maxOf { it.second }
+        val dx = when (alignment) {
+            SelectionAlignment.LEFT -> -left
+            SelectionAlignment.HORIZONTAL_CENTER -> referenceWidth / 2f - (left + right) / 2f
+            SelectionAlignment.RIGHT -> referenceWidth - right
+            else -> 0f
+        }
+        val dy = when (alignment) {
+            SelectionAlignment.TOP -> -top
+            SelectionAlignment.VERTICAL_CENTER -> referenceHeight / 2f - (top + bottom) / 2f
+            SelectionAlignment.BOTTOM -> referenceHeight - bottom
+            else -> 0f
+        }
+        return withPose(copy(centerX = centerX + dx, centerY = centerY + dy))
+    }
 
     fun warp(index: Int, dx: Float, dy: Float): SelectionTransformPose {
         val points=lattice().mapIndexed { i,p -> if(i==index) p.first+dx to p.second+dy else p }

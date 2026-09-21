@@ -3158,6 +3158,8 @@ private fun EditorScreen(
                         onInterpolation = { onSettingsChange(settings.copy(selectionInterpolation = it)) },
                         onMode = { canvasView?.setSelectionTransformMode(it) },
                         onDimensions = { w, h, a -> canvasView?.setSelectionTransformDimensions(w, h, a) },
+                        onMeshDensity = { columns, rows -> canvasView?.setSelectionMeshDensity(columns, rows) },
+                        onAlign = { canvasView?.alignSelectionToCanvas(it) },
                         onFlip = { canvasView?.flipSelection(it) },
                         onReset = { canvasView?.resetSelectionTransform() },
                         onSnapping = { snap, magnetic, distance -> canvasView?.configureSelectionSnapping(snap, magnetic, distance) },

@@ -4,24 +4,28 @@ import kotlin.math.*
 
 /** Interpolating lattice, tessellated once per draft. Inverse bins bound per-pixel work. */
 class SelectionMeshMapping(val left: Float, val top: Float, val width: Float, val height: Float,
-    val nodes: List<Pair<Float, Float>>) : SelectionRasterTransform {
-    init { require(nodes.size == 16 && nodes.all { it.first.isFinite() && it.second.isFinite() }) }
+    val nodes: List<Pair<Float, Float>>, val columns: Int = 4, val rows: Int = 4) : SelectionRasterTransform {
+    init {
+        require(columns in 3..9 && rows in 3..9)
+        require(nodes.size == columns * rows && nodes.all { it.first.isFinite() && it.second.isFinite() })
+    }
     override val isIdentity = nodes.indices.all { i ->
-        abs(nodes[i].first-(left+width*(i%4)/3)) < .0001f && abs(nodes[i].second-(top+height*(i/4)/3)) < .0001f
+        abs(nodes[i].first-(left+width*(i%columns)/(columns-1f))) < .0001f &&
+            abs(nodes[i].second-(top+height*(i/columns)/(rows-1f))) < .0001f
     }
     private fun cubic(a: Float,b: Float,c: Float,d: Float,t: Float) =
         b + .5f*t*(c-a+t*(2*a-5*b+4*c-d+t*(3*(b-c)+d-a)))
     private fun sample(u: Float,v: Float): Pair<Float,Float> {
-        val gx=u.coerceIn(0f,1f)*3; val gy=v.coerceIn(0f,1f)*3
-        val ix=min(2,gx.toInt()); val iy=min(2,gy.toInt())
+        val gx=u.coerceIn(0f,1f)*(columns-1); val gy=v.coerceIn(0f,1f)*(rows-1)
+        val ix=min(columns-2,gx.toInt()); val iy=min(rows-2,gy.toInt())
         fun component(horizontal: Boolean): Float {
             fun at(x: Int,y: Int): Float {
                 // Linear extrapolation at the boundary keeps an undeformed lattice exactly affine.
                 fun row(yy: Int): Float {
-                    fun p(xx: Int) = nodes[yy*4+xx].let { if(horizontal) it.first else it.second }
-                    return when { x<0 -> 2*p(0)-p(1); x>3 -> 2*p(3)-p(2); else -> p(x) }
+                    fun p(xx: Int) = nodes[yy*columns+xx].let { if(horizontal) it.first else it.second }
+                    return when { x<0 -> 2*p(0)-p(1); x>=columns -> 2*p(columns-1)-p(columns-2); else -> p(x) }
                 }
-                return when { y<0 -> 2*row(0)-row(1); y>3 -> 2*row(3)-row(2); else -> row(y) }
+                return when { y<0 -> 2*row(0)-row(1); y>=rows -> 2*row(rows-1)-row(rows-2); else -> row(y) }
             }
             val r=FloatArray(4) { j -> cubic(at(ix-1,iy+j-1),at(ix,iy+j-1),at(ix+1,iy+j-1),at(ix+2,iy+j-1),gx-ix) }
             return cubic(r[0],r[1],r[2],r[3],gy-iy)
@@ -30,7 +34,7 @@ class SelectionMeshMapping(val left: Float, val top: Float, val width: Float, va
     }
     override fun forward(x: Float,y: Float) = sample((x-left)/width,(y-top)/height)
     override fun inverseCoefficients(): FloatArray = error("Mesh uses a spatial inverse, not a homography")
-    private val steps=24
+    private val steps=max(24,max(columns-1,rows-1)*8)
     val vertices = (0..steps).flatMap { y -> (0..steps).map { x -> sample(x.toFloat()/steps,y.toFloat()/steps) } }
     val minX=vertices.minOf { it.first }; val maxX=vertices.maxOf { it.first }
     val minY=vertices.minOf { it.second }; val maxY=vertices.maxOf { it.second }

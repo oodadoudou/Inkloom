@@ -27,6 +27,15 @@
 - 图片＋像素有可准备的混合源时允许共同变换；当前应用会栅格化对象，取消／撤销需恢复对象和像素。没有可准备的源时明确拒绝，不能只变换像素导致部分提交。此合同替代旧的“所有保留对象一律不支持变换”。
 - 变换始终从冻结源预览，确认一次提交、取消原样恢复；多次拖动不累计重采样。
 
+### 进阶变换合同（2026-09-21）
+
+本轮重新核对 [CSP 变换](https://help.clip-studio.com/en-us/manual_en/180_layers/Transforming_images.htm)、[CSP 工具与子工具定制](https://help.clip-studio.com/en-us/manual_en/150_tools/Customizing_the_Tool_and_Sub_Tool_palettes.htm)、[Photoshop 变换](https://helpx.adobe.com/photoshop/desktop/crop-resize-transform/transform-manipulate-reshape/transform-objects.html) 与 [Photoshop 面板停靠](https://helpx.adobe.com/photoshop/desktop/get-started/learn-the-basics/dock-undock-panels.html)。
+
+- 网格变形的横纵分割数属于变换草稿，切换密度只重采样控制网格，不重采样画面；确认前始终从冻结源生成预览。
+- 对齐与均分必须明确参考对象；没有多对象时只显示画布参考对齐，不伪装成均分。
+- 多图层、图片与可编辑文字共同变换时保留原图层和对象类型；不能为了共用一个预览路径而静默栅格化。
+- 工具／子工具拖动显示明确插入线，可跨组移动；拖到分隔线创建区段。排序、分隔和各工具属性进入工作区持久化及备份。
+
 ## 笔刷与笔记
 
 - 最近与置顶独立；选中普通分类中的笔刷不自动移到列表顶部。长按拖动用于排序／分组，编辑使用明确入口。

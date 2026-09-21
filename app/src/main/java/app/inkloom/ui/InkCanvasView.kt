@@ -6446,6 +6446,18 @@ class InkCanvasView(context: Context) : View(context) {
         draft.replace(draft.pose.withPose(draft.pose.copy(width = width, height = height, angle = angle.mod(360f))))
     }
 
+    internal fun setSelectionMeshDensity(columns: Int, rows: Int) {
+        selectionCanvasTransform?.setMeshDensity(columns, rows)
+        onSelectionTransformChanged(selectionTransformUiState)
+        invalidate()
+    }
+
+    internal fun alignSelectionToCanvas(alignment: app.inkloom.engine.v5.tools.SelectionAlignment) {
+        selectionCanvasTransform?.alignToCanvas(alignment)
+        onSelectionTransformChanged(selectionTransformUiState)
+        invalidate()
+    }
+
     internal fun configureSelectionSnapping(snapping: Boolean, magnetics: Boolean, distance: Float) {
         selectionCanvasTransform?.let { it.snapping=snapping; it.magnetics=magnetics; it.snapDistance=distance.coerceIn(1f,50f) }
         onSelectionTransformChanged(selectionTransformUiState); invalidate()

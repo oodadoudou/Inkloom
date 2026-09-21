@@ -43,6 +43,8 @@ internal class SelectionCanvasTransform(
         changed(next)
     }
     fun reset() = replace(original)
+    fun setMeshDensity(columns: Int, rows: Int) = replace(pose.withMeshDensity(columns, rows))
+    fun alignToCanvas(alignment: SelectionAlignment) = replace(pose.aligned(alignment, rasterWidth.toFloat(), rasterHeight.toFloat()))
     fun nudge(dx: Float, dy: Float) = replace(pose.withPose(pose.copy(centerX=pose.centerX+dx, centerY=pose.centerY+dy)))
     fun cancelGesture() {
         if (dragging) { dragging = false; replace(start) }
@@ -125,12 +127,13 @@ internal class SelectionCanvasTransform(
     fun draw(canvas: Canvas, w: Int, h: Int, zoom: Float) {
         if(mode==SelectionTransformMode.WARP) {
             val lattice=pose.lattice()
-            val mapping=SelectionMeshMapping(0f,0f,1f,1f,lattice)
+            val mapping=SelectionMeshMapping(0f,0f,1f,1f,lattice,pose.meshColumns,pose.meshRows)
             paint.style=Paint.Style.STROKE; paint.strokeWidth=1.5f*density/zoom; paint.color=Color.rgb(57,103,85)
-            for(axis in 0..1) for(line in 0..3) {
+            for(axis in 0..1) for(line in 0 until if(axis==0) pose.meshColumns else pose.meshRows) {
                 val path=Path()
                 for(step in 0..48) {
-                    val p=if(axis==0) mapping.forward(line/3f,step/48f) else mapping.forward(step/48f,line/3f)
+                    val p=if(axis==0) mapping.forward(line/(pose.meshColumns-1f),step/48f)
+                        else mapping.forward(step/48f,line/(pose.meshRows-1f))
                     val x=p.first*w/rasterWidth; val y=p.second*h/rasterHeight
                     if(step==0) path.moveTo(x,y) else path.lineTo(x,y)
                 }
