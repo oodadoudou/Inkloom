@@ -362,20 +362,32 @@ class DocumentAssetService(private val context: Context) {
         return bitmap
     }
 
-    /** Bake a bounded pair on transparent pixels, before page crop, retaining its native resolution. */
-    fun renderMergedLayerPair(page: InkPage, sourceId: String): PixelTileSurface {
-        require(RasterLayerMerge.rejection(page, sourceId) == null)
-        val index = page.layers.indexOfFirst { it.id == sourceId }
-        val isolated = page.copy(crop = PageCrop(), layers = page.layers.subList(index - 1, index + 1).map {
-            it.copy(visible = true, parentId = null)
-        })
-        val width = RasterLayerMerge.renderWidth(page, sourceId)
-        val height = (width * page.height / page.width).toInt().coerceAtLeast(1)
+    /** Bake one planned merge through the same compositor used by export and the live projection. */
+    fun renderLayerMergeSurface(plan: RasterLayerMerge.Plan): PixelTileSurface {
+        val page = plan.renderPage
+        val width = plan.renderWidth
+        val height = (width * page.height / page.width.coerceAtLeast(1f)).toInt().coerceAtLeast(1)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         return try {
-            drawPage(Canvas(bitmap), isolated, width, height, includeBackground = false, includeDraftLayers = true)
+            drawPage(
+                Canvas(bitmap),
+                page,
+                width,
+                height,
+                includeBackground = plan.includeBackground,
+                includeDraftLayers = false,
+            )
             PixelTileBitmapAdapter.import(bitmap)
         } finally { bitmap.recycle() }
+    }
+
+    /** Compatibility entry point for the original Merge Down action. */
+    fun renderMergedLayerPair(page: InkPage, sourceId: String): PixelTileSurface {
+        val plan = requireNotNull(RasterLayerMerge.plan(
+            page,
+            RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_DOWN, sourceId),
+        ).plan)
+        return renderLayerMergeSurface(plan)
     }
 
     /** Small isolated preview: hidden layers remain identifiable without changing document state. */

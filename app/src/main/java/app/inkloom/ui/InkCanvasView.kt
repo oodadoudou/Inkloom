@@ -6088,12 +6088,19 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     var onLayerCreationRequested: ((String, Boolean) -> Unit)? = null
-    var onLayerMergeRequested: (String) -> Unit = {}
+    var onLayerMergeRequested: (app.inkloom.document.RasterLayerMergeRequest) -> Unit = {}
     var onLayerTreeRequested: (app.inkloom.document.LayerTreeAction, String, Set<String>) -> Unit = { _, _, _ -> }
     private var pendingPaintPublicationsForMerge = 0
     internal fun hasPendingPaintPublicationForMerge() = pendingPaintPublicationsForMerge > 0 || pendingMaskPublications > 0 || hasActivePaintContact()
     internal fun hasActivePaintContact() = v5StrokeController.isActive || layerMaskGesture != null
     fun requestLayerMerge(layerId: String) {
+        requestLayerMerge(app.inkloom.document.RasterLayerMergeRequest(
+            app.inkloom.document.RasterLayerMergeOperation.MERGE_DOWN,
+            layerId,
+        ))
+    }
+
+    fun requestLayerMerge(request: app.inkloom.document.RasterLayerMergeRequest) {
         if (selectionLayerTransferPending) return
         if (hasActivePaintContact()) {
             onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "请先抬笔，再合并图层" else "Lift the pen before merging layers")
@@ -6101,7 +6108,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         finishSelectionColorFill(true)
         finishSelectionTransform(true)
-        onLayerMergeRequested(layerId)
+        onLayerMergeRequested(request)
     }
 
     fun requestLayerTree(action: app.inkloom.document.LayerTreeAction, layerId: String,

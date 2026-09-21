@@ -3260,6 +3260,7 @@ private fun EditorScreen(
 
                 onDuplicate = { layerId -> canvasView?.requestLayerTree(LayerTreeAction.DUPLICATE, layerId) },
                 onMergeDown = { layerId -> canvasView?.requestLayerMerge(layerId) },
+                onMerge = { request -> canvasView?.requestLayerMerge(request) },
                 onDelete = { canvasView?.requestLayerTree(LayerTreeAction.DELETE, it) },
                 onGroupSelected = { primary, selected -> canvasView?.requestLayerTree(LayerTreeAction.GROUP_SELECTED, primary, selected) },
                 onUngroup = { canvasView?.requestLayerTree(LayerTreeAction.UNGROUP, it) },
@@ -4315,11 +4316,11 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 { Toast.makeText(context, settings.language.text("Could not create or restore layer; finish the current operation or unlock its folder", "无法新建或恢复图层，请完成当前操作或解锁目标文件夹"), Toast.LENGTH_SHORT).show() }
             ).create(view, targetId, folder)
         }
-        view.onLayerMergeRequested = { sourceId ->
+        view.onLayerMergeRequested = { request ->
             LayerMergeController(context, documentId, assets, rasterSurfaceRuntime, rasterCommitMutex,
                 latestRasterAssets, pendingRasterSaves, gradientCommitScope, { currentMergePage },
                 { edit, undo, expected -> onApplyRasterLayerMerge(documentId, page.id, edit, undo, expected) },
-                onSelectionTransferLayerChosen, settings.language).merge(view, sourceId)
+                onSelectionTransferLayerChosen, settings.language).merge(view, request)
         }
         view.onLayerTreeRequested = { action, targetId, selectedIds ->
             LayerTreeController(context, documentId, page.id, assets, rasterSurfaceRuntime, rasterCommitMutex,
@@ -6155,6 +6156,7 @@ private fun LayerPanel(
     onToggleFolderCollapsed: (String) -> Unit,
     onDuplicate: (String) -> Unit,
     onMergeDown: (String) -> Unit,
+    onMerge: (RasterLayerMergeRequest) -> Unit,
     onDelete: (String) -> Unit,
     onGroupSelected: (String, Set<String>) -> Unit,
     onUngroup: (String) -> Unit,
@@ -6184,6 +6186,7 @@ private fun LayerPanel(
             onToggleFolderCollapsed = onToggleFolderCollapsed,
             onDuplicate = onDuplicate,
             onMergeDown = onMergeDown,
+            onMerge = onMerge,
             onDelete = onDelete,
             onGroupSelected = onGroupSelected,
             onUngroup = onUngroup,
@@ -6236,6 +6239,7 @@ private fun PaintingLayerPanel(
     onToggleFolderCollapsed: (String) -> Unit,
     onDuplicate: (String) -> Unit,
     onMergeDown: (String) -> Unit,
+    onMerge: (RasterLayerMergeRequest) -> Unit,
     onDelete: (String) -> Unit,
     onGroupSelected: (String, Set<String>) -> Unit,
     onUngroup: (String) -> Unit,
@@ -6244,6 +6248,7 @@ private fun PaintingLayerPanel(
     var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
     var renameValue by remember { mutableStateOf("") }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var mergeMenuOpen by remember { mutableStateOf(false) }
     var layerSearch by rememberSaveable { mutableStateOf("") }
     val selectedLayerIds = secondarySelection
     val listState = rememberLazyListState()
@@ -6268,6 +6273,22 @@ private fun PaintingLayerPanel(
         Column {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 IconButton(onClick = { searchOpen = !searchOpen; if (!searchOpen) layerSearch = "" }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Search, tr("Search layers", "搜索图层"), tint = Ink) }
+                Box {
+                    IconButton(onClick = { mergeMenuOpen = true }, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Outlined.MoreHoriz, tr("Layer merge commands", "图层合并命令"), tint = Ink)
+                    }
+                    DropdownMenu(mergeMenuOpen, { mergeMenuOpen = false }) {
+                        fun request(operation: RasterLayerMergeOperation) {
+                            mergeMenuOpen = false
+                            onMerge(RasterLayerMergeRequest(operation, activeLayerId, selectedLayerIds + activeLayerId))
+                        }
+                        DropdownMenuItem(text = { Text(tr("Transfer to lower layer", "转移到下一图层")) }, onClick = { request(RasterLayerMergeOperation.TRANSFER_TO_LOWER) })
+                        DropdownMenuItem(text = { Text(tr("Merge selected layers", "合并所选图层")) }, enabled = selectedLayerIds.isNotEmpty(), onClick = { request(RasterLayerMergeOperation.MERGE_SELECTED) })
+                        DropdownMenuItem(text = { Text(tr("Merge visible layers", "合并可见图层")) }, onClick = { request(RasterLayerMergeOperation.MERGE_VISIBLE) })
+                        DropdownMenuItem(text = { Text(tr("Merge visible to new layer", "合并可见图层副本")) }, onClick = { request(RasterLayerMergeOperation.MERGE_VISIBLE_COPY) })
+                        DropdownMenuItem(text = { Text(tr("Flatten image", "平面化图像")) }, onClick = { request(RasterLayerMergeOperation.FLATTEN) })
+                    }
+                }
             }
             val propertyLayer = page.layers.firstOrNull { it.id == activeLayerId }
             LayerPropertiesBar(propertyLayer,
@@ -6301,6 +6322,10 @@ private fun PaintingLayerPanel(
                     IconButton({ onGroupSelected(activeLayerId, selectedLayerIds + activeLayerId); onSecondarySelection(emptySet()) }, Modifier.size(32.dp)) {
                         Icon(Icons.Outlined.CreateNewFolder, tr("Group selected layers", "将所选图层编组"), Modifier.size(17.dp))
                     }
+                    IconButton({
+                        onMerge(RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_SELECTED, activeLayerId, selectedLayerIds + activeLayerId))
+                        onSecondarySelection(emptySet())
+                    }, Modifier.size(32.dp)) { Icon(Icons.Outlined.MergeType, tr("Merge selected layers", "合并所选图层"), Modifier.size(17.dp)) }
                     IconButton({ selectedLayerIds.mapNotNull { id -> page.layers.firstOrNull { it.id == id } }.filter { it.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER) }.forEach { onDelete(it.id) }; onSecondarySelection(emptySet()) }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Delete, tr("Delete selected custom layers", "删除所选自定义图层"), Modifier.size(17.dp)) }
                     IconButton({ onSecondarySelection(emptySet()) }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Close, tr("Exit layer selection", "退出图层多选"), Modifier.size(17.dp)) }
                 }

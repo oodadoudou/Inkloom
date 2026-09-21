@@ -8,13 +8,19 @@ class RasterLayerMergeTest {
     private val lower = InkLayer(id = "lower", name = "Lower")
     private val upper = InkLayer(id = "upper", name = "Upper", rasterTileSurface = reference)
     private val page = InkPage(layers = defaultInkLayers() + lower + upper)
-    @Test fun ordinaryPaintLayersAreSupportedAtTheirNativeResolution() {
+
+    @Test fun ordinaryPaintLayersUseTheirNativeResolution() {
         assertNull(RasterLayerMerge.rejection(page, upper.id))
-        assertEquals(1200, RasterLayerMerge.renderWidth(page, upper.id))
+        assertEquals(1600, RasterLayerMerge.renderWidth(page, upper.id))
     }
+
     @Test fun mergeAndUndoRestoreBothLayerSettingsAndObjectsExactly() {
-        val original = page.copy(layers = page.layers.map { if (it.id == upper.id) it.copy(opacity = .5f, alphaLock = true, mask = LayerMask()) else it },
-            elements = listOf(PageElement.Text(id = "note", x = .1f, y = .1f, text = "Test", layerId = upper.id)))
+        val original = page.copy(
+            layers = page.layers.map {
+                if (it.id == upper.id) it.copy(opacity = .5f, alphaLock = true, mask = LayerMask()) else it
+            },
+            elements = listOf(PageElement.Text(id = "note", x = .1f, y = .1f, text = "Test", layerId = upper.id)),
+        )
         val edit = RasterLayerMerge.edit(original, upper.id, reference)
         val merged = edit.apply(original, false)
         assertFalse(merged.layers.any { it.id == upper.id })
@@ -24,31 +30,100 @@ class RasterLayerMergeTest {
         assertEquals(original, edit.apply(merged, true))
         assertEquals(merged, edit.apply(edit.apply(merged, true), false))
     }
-    @Test fun mergeNeverCrossesFolderOrClippingDependencies() {
-        assertEquals(RasterLayerMerge.Rejection.DIFFERENT_GROUP, RasterLayerMerge.rejection(page.copy(layers = page.layers.map {
-            if (it.id == upper.id) it.copy(parentId = "folder") else it
-        }), upper.id))
-        assertEquals(RasterLayerMerge.Rejection.CLIPPING, RasterLayerMerge.rejection(page.copy(layers = page.layers + InkLayer(name = "Clipped", clippedToBelow = true)), upper.id))
+
+    @Test fun mergeDownSupportsBlendMasksAndClippingDependencies() {
+        val base = lower.copy(id = "base")
+        val clippedLower = lower.copy(id = "clipped-lower", clippedToBelow = true, blendMode = LayerBlendMode.MULTIPLY)
+        val maskedUpper = upper.copy(mask = LayerMask(), blendMode = LayerBlendMode.SCREEN)
+        val complex = page.copy(
+            crop = PageCrop(.1f, .1f, .9f, .9f),
+            layers = defaultInkLayers() + base + clippedLower + maskedUpper,
+        )
+        val plan = requireNotNull(RasterLayerMerge.plan(
+            complex,
+            RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_DOWN, maskedUpper.id),
+        ).plan)
+        assertEquals(setOf(base.id, clippedLower.id, maskedUpper.id), plan.removedLayerIds)
+        assertEquals(PageCrop(), plan.renderPage.crop)
     }
-    @Test fun protectedModesAndHighPrecisionAreExplicitlyRejected() {
-        fun rejection(layer: InkLayer) = RasterLayerMerge.rejection(page.copy(layers = page.layers.dropLast(1) + layer), upper.id)
-        assertEquals(RasterLayerMerge.Rejection.PROTECTED, rejection(upper.copy(locked = true)))
-        assertEquals(RasterLayerMerge.Rejection.BLEND_MODE, rejection(upper.copy(blendMode = LayerBlendMode.MULTIPLY)))
-        assertEquals(RasterLayerMerge.Rejection.HIDDEN_OR_DRAFT_MISMATCH, rejection(upper.copy(visible = false)))
-        assertEquals(RasterLayerMerge.Rejection.PIXEL_FORMAT, rejection(upper.copy(rasterTileSurface = reference.copy(pixelFormat = "rgba16f-linear"))))
-        assertEquals(RasterLayerMerge.Rejection.SIZE_LIMIT, rejection(upper.copy(rasterTileSurface = reference.copy(logicalWidth = 8000))))
+
+    @Test fun selectedFolderConsumesItsCompleteTreeAndRestoresItInOneUndo() {
+        val folder = InkLayer(id = "folder", name = "Group", role = LayerRole.FOLDER, opacity = .7f)
+        val child = lower.copy(id = "child", parentId = folder.id)
+        val outside = upper.copy(id = "outside")
+        val original = page.copy(layers = defaultInkLayers() + folder + child + outside)
+        val plan = requireNotNull(RasterLayerMerge.plan(
+            original,
+            RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_SELECTED, folder.id, setOf(folder.id, outside.id)),
+        ).plan)
+        assertTrue(setOf(folder.id, child.id, outside.id).all { it in plan.removedLayerIds })
+        val edit = RasterLayerMerge.edit(original, plan, reference)
+        val merged = edit.apply(original, false)
+        assertEquals(1, merged.layers.count { it.role != LayerRole.BACKGROUND && it.id !in setOf(LayerIds.INK) })
+        assertEquals(original, edit.apply(merged, true))
     }
-    @Test fun maskedCropIsRejectedInsteadOfChangingTheVisibleResult() {
-        val masked = page.copy(crop = PageCrop(.1f, .1f, .9f, .9f), layers = page.layers.map {
-            if (it.id == upper.id) it.copy(mask = LayerMask()) else it
+
+    @Test fun visibleMergePreservesHiddenSourcesWhileVisibleCopyPreservesEverything() {
+        val hidden = lower.copy(id = "hidden", visible = false)
+        val visible = upper.copy(id = "visible")
+        val original = page.copy(layers = defaultInkLayers() + hidden + visible)
+        val merge = requireNotNull(RasterLayerMerge.plan(
+            original,
+            RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_VISIBLE),
+        ).plan)
+        assertTrue(visible.id in merge.removedLayerIds)
+        assertFalse(hidden.id in merge.removedLayerIds)
+        val copy = requireNotNull(RasterLayerMerge.plan(
+            original,
+            RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_VISIBLE_COPY),
+        ).plan)
+        assertTrue(copy.removedLayerIds.isEmpty())
+        val copied = RasterLayerMerge.edit(original, copy, reference).apply(original, false)
+        assertEquals(original.layers.size + 1, copied.layers.size)
+    }
+
+    @Test fun flattenBakesPaperAndHidesTheStructuralBackground() {
+        val plan = requireNotNull(RasterLayerMerge.plan(
+            page,
+            RasterLayerMergeRequest(RasterLayerMergeOperation.FLATTEN),
+        ).plan)
+        assertTrue(plan.includeBackground)
+        val flattened = RasterLayerMerge.edit(page, plan, reference).apply(page, false)
+        assertFalse(flattened.layers.first { it.role == LayerRole.BACKGROUND }.visible)
+        assertEquals(1, flattened.layers.count(InkLayer::isPaintSurfaceLayer))
+    }
+
+    @Test fun transferToLowerKeepsTheSelectedLayerAsAnEmptyEditableLayer() {
+        val plan = requireNotNull(RasterLayerMerge.plan(
+            page,
+            RasterLayerMergeRequest(RasterLayerMergeOperation.TRANSFER_TO_LOWER, upper.id),
+        ).plan)
+        val edit = RasterLayerMerge.edit(page, plan, reference)
+        val transferred = edit.apply(page, false)
+        assertEquals(listOf(lower.id, upper.id), transferred.layers.takeLast(2).map(InkLayer::id))
+        assertEquals(reference, transferred.layers.first { it.id == lower.id }.rasterTileSurface)
+        assertNull(transferred.layers.first { it.id == upper.id }.rasterTileSurface)
+        assertEquals(page, edit.apply(transferred, true))
+    }
+
+    @Test fun protectedAndUnsupportedPrecisionEndWithExplicitReasons() {
+        val locked = page.copy(layers = page.layers.map { if (it.id == upper.id) it.copy(locked = true) else it })
+        assertEquals(RasterLayerMerge.Rejection.PROTECTED, RasterLayerMerge.rejection(locked, upper.id))
+        val highPrecision = page.copy(layers = page.layers.map {
+            if (it.id == upper.id) it.copy(rasterTileSurface = reference.copy(pixelFormat = "rgba16f-linear")) else it
         })
-        assertEquals(RasterLayerMerge.Rejection.MASK_GEOMETRY, RasterLayerMerge.rejection(masked, upper.id))
+        assertEquals(RasterLayerMerge.Rejection.PIXEL_FORMAT, RasterLayerMerge.rejection(highPrecision, upper.id))
+        val oversized = page.copy(width = 9000f, height = 9000f)
+        assertEquals(RasterLayerMerge.Rejection.SIZE_LIMIT, RasterLayerMerge.rejection(oversized, upper.id))
     }
+
     @Test fun undoPreservesUnrelatedLayersAndObjects() {
         val edit = RasterLayerMerge.edit(page, upper.id, reference)
         val elsewhere = InkLayer(name = "Other")
         val objectElsewhere = PageElement.Text(x = .1f, y = .1f, text = "Unrelated", layerId = elsewhere.id)
-        val changed = edit.apply(page, false).let { it.copy(layers = it.layers + elsewhere, elements = it.elements + objectElsewhere) }
+        val changed = edit.apply(page, false).let {
+            it.copy(layers = it.layers + elsewhere, elements = it.elements + objectElsewhere)
+        }
         val restored = edit.apply(changed, true)
         assertEquals(elsewhere, restored.layers.last())
         assertTrue(objectElsewhere in restored.elements)
