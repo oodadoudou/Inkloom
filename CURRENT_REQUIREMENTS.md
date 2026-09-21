@@ -1,6 +1,6 @@
 # Inkloom 当前需求与待排优先级
 
-核对日期：2026-09-21。功能代码基线：`cc4c144`，最新交付 Debug **0.204.0**。本轮完成 layout 实机反馈、选区浮条、触控防误撤回、逐笔记页面恢复，以及画布预降采样导致的笔迹偏糊修复。
+核对日期：2026-09-21。功能代码基线：`99232a0e`，最新交付 Debug **0.205.0**。本轮完成选区与变换进阶，以及 CSP 工作区工具内容定制；真机适配状态仍按下述边界记录。
 
 **本文件是当前需求状态的唯一入口。** 用户下一步填写 Priority；下表顺序不是开发顺序。细项不丢弃，见 [REQUESTED_FEATURE_CATALOG.md](REQUESTED_FEATURE_CATALOG.md)，但其原编号和历史目标不代表未完成状态。旧版本计划、旧额度阈值、旧勾选和分支上的未交付代码均不作为当前依据。
 
@@ -13,10 +13,10 @@
 | R01 | 待填写 | 完整图层合并 | **部分实现。** 已有受限的向下合并；还缺合并选中、合并可见、可见副本、平面化、转移到下层，并保持所有受支持混合模式、剪贴、蒙版、组效果、精度与撤销。现有合并仅兼容部分同组 Normal 图层，有 4096 像素限制。 |
 | R02 | 待填写 | 高级蒙版 | **部分实现。** 创建、绘画／擦除、启停、反相、删除、选区转换已存在；还缺蒙版覆盖显示、内容与蒙版联动／独立变换、跨层拖动／复制、应用并烘焙、组蒙版的变换／应用。`linked` 已能保存，不代表联合变换已经实现。 |
 | R03 | 待填写 | 图层分组边界与 CSP 面板剩余项 | **部分实现。** 已有编组、明确解组、整组复制／删除和一次撤销。编组限制同一父级且拒绝剪贴根；解组拒绝组蒙版、非默认透明度／模式和 Through。完整外观保留的解组仍缺；图层颜色标记／着色、双图层列表和更多面板定制需逐项核对，不能笼统记为已还原全部 CSP 图层。 |
-| R04 | 布局本轮完成，真机待验 | CSP 工作区剩余交互 | **布局容器已完成本轮开发；内容能力仍部分实现。** 面板浮动／边缘停靠／拆分／标签组合排序、竖工具栏、子工具／属性、命名布局已交付。浮窗四条完整边可长按拖动，四角双轴缩放；容器最小宽高降为 72 dp，内容过窄自动变成紧凑图标栏，拉宽恢复。拖到 Block 的上／下／左／右整边形成嵌套分割，标题形成标签组；独立叶面板可从分割组拖离。面板宽高、停靠树和标签状态持久化，待新包真机验收。工具／子工具跨组排序与分隔自定义、更多工具族的独立属性属于内容能力剩余项；旧布局设置字段的代码清理归 R21。大字体、窄窗、键盘和旋转下的可达性归 V02。 |
-| R05 | 待填写 | 保留结构的多对象变换 | **部分实现。** 当前图片＋绘画像素可混合变换、取消、撤销和重开，但应用会栅格化参与对象。还缺跨多层并保留原图层、图片及可编辑文字结构的统一变换。 |
-| R06 | 待填写 | 变换进阶 | **部分实现。** 自由／等比／扭曲、固定 4×4 控制点网格、吸附、磁性、微移和采样选项已存在。还缺可调密度网格、人偶／操控变形、完整对象对齐／均分与基准选择。 |
-| R07 | 待填写 | 选区进阶与剪贴板 | **部分实现。** 基础套索／矩形／椭圆／自动／选区笔刷、增减交反、羽化／扩缩、保存恢复、像素剪切复制等已存在；选中后的上下文菜单现为带明确抓手、位置持久化且保持屏幕可达的浮条，不再固定覆盖其他面板。还缺完整快速蒙版、色域选择工作流、系统透明图片剪贴板；向量相交／包含选择依赖真正向量对象。内部像素剪贴板不能算系统互通完成。 |
+| R04 | 已开发，真机待验 | CSP 工作区剩余交互 | **本轮代码完成。** 面板浮动／边缘停靠／拆分／标签组合排序、竖工具栏、子工具／属性、命名布局已交付；工具可在分隔线两侧跨组长按拖动排序，分隔线可增删及恢复默认，顺序随设置、备份和命名布局保存。当前所有工具族均有独立属性面板或明确的对象编辑入口。API 29 兼容及真实 Android 长按拖动均有回归。窄屏、大字体、旋转、键盘弹出和 120 Hz 拖动仍是 `DEVICE_PENDING`，归 V02，不把模拟器结果冒充实机验证。旧布局设置字段的代码清理归 R21。 |
+| R05 | 已开发 | 保留结构的多对象变换 | **本轮目标完成。** 多个所选图层的像素、图片、文字及其他页面对象进入同一次变换和一次撤销；移动、自由／等比缩放及旋转提交为各对象几何变化，保留图层、对象类型、ID 和可编辑内容，不再为混合对象生成栅格化副本。非仿射扭曲、网格、操控变形及镜像仅接受像素内容；含结构对象时明确拒绝并说明原因，避免静默栅格化。 |
+| R06 | 已开发 | 变换进阶 | **本轮目标完成。** 网格密度可在 2×2 至 8×8 调整；操控变形支持添加、拖动和清除控制点，并使用邻域衰减；多图层可按画布或当前图层作参考进行六向对齐，三个以上图层支持水平／垂直中心均分。吸附、磁性、微移和插值继续沿用原生产路径。更细的边缘／间距基准种类不在本轮承诺内。 |
+| R07 | 已开发 | 选区进阶与剪贴板 | **本轮目标完成。** 快速蒙版以红色覆盖显示并允许用画笔／橡皮编辑，退出时转换为普通选区；色域选择支持阈值、连续／非连续及当前层／可见合成参考；复制会向 Android 系统发布保留 Alpha 的 PNG，系统透明图片也可粘贴回 Inkloom，内部剪贴板继续保留源位置。向量相交／包含选择依赖真正向量对象，仍归 R16。 |
 | R08 | 暂缓 | 笔刷导入保真剩余语义 | **部分实现。** SUT／ABR／Procreate 高级动态、双笔、颗粒和湿画等仍有近似或未支持语义，需要以用户真实笔刷逐项对照。保留用户已认可的笔触效果，不据此重做整个引擎。缺少原始专有笔尖／颗粒的笔刷单列，按用户要求暂缓缺资源项。 |
 | R09 | 待填写 | 笔刷库流程 | **部分实现。** 文件／文件夹嵌套导入、最近、置顶、分类宽度／视图记忆、普通拖动已有。还缺当前可达笔刷窗口的完整搜索／版本历史入口、多指收集拖动、持久化失败导入账本与可追溯重试。旧历史对话框和 store 存在，但不能算当前入口闭环。 |
 | R10 | 待填写 | 色板文件与配色辅助 | **部分实现。** RGB 默认、色环、主副色、保存色板、基础线稿／草稿／灰阶及混色已有。还缺外部 `.swatches`／`.aco`／`.cls` 等实际导入与明确格式边界、图片提取色板、色彩和谐、完整近似色和角点混色网格。资源候选不等于已内置或可导入。 |
@@ -44,8 +44,11 @@
 - [x] 选区菜单可拖动且记忆位置；双指撤销加入落指时间、总时长、系统触摸阈值和缩放／旋转排除条件。
 - [x] 每本笔记重新打开恢复最后有效页面；删除页后不保留无效页面引用。
 - [x] 默认纸张绘画像素保持 1600 × 2263，不再固定降为 1200 px；笔尖过滤、抗锯齿、软硬和纹理语义保持逐笔设置。
-- [x] JVM 853 项（0 失败、8 跳过）、Android 15 全量 660 项（0 失败／跳过）、lint（0 错误、100 警告）、`git diff --check`；普通 Debug 安装及冷启动（1256 ms）通过。
-- [x] Debug 0.204.0 源提交／SHA-256 一致；Drive Desktop 本地同步副本已校验；本地与 Drive 的 0.203.0 托管交付已清理。云端下载未验证。
+- [x] 工具在自定义面板内可跨分隔线长按拖动；分隔线增删、恢复默认和布局持久化均有操作级与 Android 手势回归。
+- [x] 多图层像素、图片和文字共同变换时保留结构；可调网格、操控控制点、参考对象对齐及均分已加入。
+- [x] 快速蒙版、连续／非连续色域选择，以及保留 Alpha 的 Android PNG 剪贴板已加入。
+- [x] JVM 859 项（0 失败、8 跳过）、Android 15 全量 668 项（0 失败／跳过）、lint（0 错误、102 警告）、`git diff --check`；普通 Debug 安装及冷启动通过。
+- [x] Debug 0.205.0 源提交／SHA-256 一致；Drive Desktop 本地同步副本已校验；旧托管交付已清理。云端下载未验证。
 - [ ] MovinkPad Pro 14 真机验收：四周停靠后的宽高调整、笔与手指操作、120 Hz 流畅度，`DEVICE_PENDING`。
 
 此清单对应布局操作；工具／子工具自定义排序和各工具属性的完整功能仍按 R04 内容能力单独追踪，不宣称 CSP 全功能 1:1。
@@ -77,11 +80,11 @@
 | 图层分组 | [LayerTreeEdit.kt](app/src/main/java/app/inkloom/document/LayerTreeEdit.kt)、[LayerTreeController.kt](app/src/main/java/app/inkloom/ui/LayerTreeController.kt)、[LayerTreeEditTest.kt](app/src/test/java/app/inkloom/document/LayerTreeEditTest.kt) |
 | 合并限制 | [LayerMergeController.kt](app/src/main/java/app/inkloom/ui/LayerMergeController.kt)、[RasterLayerMerge.kt](app/src/main/java/app/inkloom/document/RasterLayerMerge.kt) |
 | 蒙版边界 | [LayerMaskEditor.kt](app/src/main/java/app/inkloom/ui/LayerMaskEditor.kt)、[LayerMaskCommandPlanner.kt](app/src/main/java/app/inkloom/document/LayerMaskCommandPlanner.kt)；APPLY 不能仅凭枚举算完成 |
-| 工作区 | [EditorPanelLayout.kt](app/src/main/java/app/inkloom/settings/EditorPanelLayout.kt)、[EditorPanels.kt](app/src/main/java/app/inkloom/ui/EditorPanels.kt)、[NamedPanelLayoutWindowTest.kt](app/src/androidTest/java/app/inkloom/NamedPanelLayoutWindowTest.kt)、[ToolWorkspacePanelsWindowTest.kt](app/src/androidTest/java/app/inkloom/ToolWorkspacePanelsWindowTest.kt) |
-| 混合变换／网格 | [MixedSelectionDraft.kt](app/src/main/java/app/inkloom/ui/MixedSelectionDraft.kt)、[SelectionTransformGeometry.kt](app/src/main/java/app/inkloom/engine/v5/tools/SelectionTransformGeometry.kt)、[SelectionWindowRegressionTest.kt](app/src/androidTest/java/app/inkloom/SelectionWindowRegressionTest.kt) |
+| 工作区 | [EditorPanelLayout.kt](app/src/main/java/app/inkloom/settings/EditorPanelLayout.kt)、[EditorPanels.kt](app/src/main/java/app/inkloom/ui/EditorPanels.kt)、[ToolPaletteLayout.kt](app/src/main/java/app/inkloom/settings/ToolPaletteLayout.kt)、[NamedPanelLayoutWindowTest.kt](app/src/androidTest/java/app/inkloom/NamedPanelLayoutWindowTest.kt)、[ToolWorkspacePanelsWindowTest.kt](app/src/androidTest/java/app/inkloom/ToolWorkspacePanelsWindowTest.kt) |
+| 混合变换／网格 | [MixedSelectionDraft.kt](app/src/main/java/app/inkloom/ui/MixedSelectionDraft.kt)、[SelectionTransformGeometry.kt](app/src/main/java/app/inkloom/engine/v5/tools/SelectionTransformGeometry.kt)、[SelectionTransformTest.kt](app/src/androidTest/java/app/inkloom/SelectionTransformTest.kt)、[SelectionMeshRasterTest.kt](app/src/androidTest/java/app/inkloom/SelectionMeshRasterTest.kt) |
 | 图片模板 | [ImagePaperTemplateTest.kt](app/src/androidTest/java/app/inkloom/ImagePaperTemplateTest.kt)、[PageTemplateStore.kt](app/src/main/java/app/inkloom/document/PageTemplateStore.kt) |
 | 导出限制 | [DocumentAssetService.kt](app/src/main/java/app/inkloom/document/DocumentAssetService.kt) |
-| 最新交付 | [0.204.0 交付证据](dist/Inkloom-0.204.0-cc4c144-debug.json)：853 项 JVM（0 失败、8 跳过）、660 项 Android 15（0 失败／跳过）、lint（0 错误）、签名、安装、冷启动、SHA-256 与 Drive Desktop 本地副本校验通过。 |
+| 最新交付 | [0.205.0 交付证据](dist/Inkloom-0.205.0-99232a0-debug.json)：859 项 JVM（0 失败、8 跳过）、668 项 Android 15（0 失败／跳过）、lint（0 错误）、签名、安装、冷启动、SHA-256 与 Drive Desktop 本地副本校验通过。 |
 
 代码路径核对与既有测试报告支持此状态；本轮未逐一复测细项索引的全部条目。没有足够证据的高级子项保留“待核对”，不硬判完成。
 
