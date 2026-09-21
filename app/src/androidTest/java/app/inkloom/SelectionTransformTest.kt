@@ -14,6 +14,9 @@ import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileKey
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import android.graphics.Color
+import android.graphics.Bitmap
+import app.inkloom.document.PageElement
+import app.inkloom.ui.MixedSelectionSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -180,6 +183,44 @@ class SelectionTransformTest {
         assertEquals(Color.RED, first.pixelAt(8, 20))
         assertEquals(PixelRect(28, 20, 29, 21), app.inkloom.engine.v5.tools.selectionContentBounds(middle.snapshot()))
         assertEquals(Color.BLUE, last.pixelAt(48, 20))
+    }
+
+    @Test fun multiLayerTextAndImageRemainEditableAfterOneTransform() {
+        val text = PageElement.Text(id = "text", layerId = "first", x = .1f, y = .2f, width = 12f, height = 8f, text = "Editable")
+        val image = PageElement.Image(id = "image", layerId = "second", x = .3f, y = .4f, width = 14f, height = 10f, assetPath = "fixture.png")
+        val surfaces = linkedMapOf("first" to PixelTileSurface(64, 64, 64), "second" to PixelTileSurface(64, 64, 64))
+        val mask = MaskTileSurface(64, 64, 64).also { surface ->
+            surface.beginWrite("selection").use { write ->
+                write.composeAlpha(PixelRect(0, 0, 64, 64), ByteArray(64 * 64) { -1 }, mode = MaskComposeMode.REPLACE)
+                write.commit().close()
+            }
+        }
+        val committed = linkedMapOf<String, app.inkloom.document.LayerElementEdit>()
+        canvas {
+            pageModelWidth = 64f; pageModelHeight = 64f; activeLayerId = "first"
+            selectionTransformLayerIds = surfaces.keys
+            setRasterLayerSurfaces(surfaces)
+            bindDocumentSelectionState(DocumentSelectionRuntime(64).stateFor("structured", "page", 64, 64))
+            replaceSelectionFromMask(mask.snapshot())
+            onPrepareMixedSelection = { layerId, _ ->
+                val element = if (layerId == "first") text else image
+                MixedSelectionSource(listOf(element), Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888).apply {
+                    setPixel(20, 20, Color.WHITE)
+                })
+            }
+            onRasterLayerCommitted = { commit -> commit.layerElements?.let { committed[commit.layerId] = it } }
+            assertTrue(enterFreeTransform())
+            nudgeSelection(5f, 0f)
+            assertTrue(finishSelectionTransform(true))
+        }
+        val movedText = committed.getValue("first").replacement.single()
+        val movedImage = committed.getValue("second").replacement.single()
+        assertTrue(movedText is PageElement.Text)
+        assertTrue(movedImage is PageElement.Image)
+        assertEquals("text", movedText.id)
+        assertEquals("image", movedImage.id)
+        assertTrue(movedText.x > text.x)
+        assertTrue(movedImage.x > image.x)
     }
 
     @Test fun everyTransformEntryRejectsLockedLayersInBothColorFormatsWithoutMutation() {
