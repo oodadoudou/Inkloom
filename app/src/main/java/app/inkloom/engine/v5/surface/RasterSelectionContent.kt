@@ -1,5 +1,7 @@
 package app.inkloom.engine.v5.surface
 
+import android.graphics.Bitmap
+
 /**
  * Pixel payload copied through a document selection. Color values remain premultiplied and are
  * already multiplied by [selectionAlpha], so feathered edges survive copy, cut and paste exactly.
@@ -33,6 +35,45 @@ data class RasterSelectionEdit(
 
 /** Sparse-tile selection consumers shared by delete/cut/copy/paste production call paths. */
 object RasterSelectionContent {
+    /** Converts the bounded clipboard payload to a portable transparent PNG source bitmap. */
+    fun toBitmap(clipboard: RasterSelectionClipboard): Bitmap {
+        val pixels = when (clipboard.pixelFormat) {
+            PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> requireNotNull(clipboard.rgba8).copyOf()
+            PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 ->
+                requireNotNull(clipboard.rgbaF16).map(PackedRgbaF16::toPremultipliedArgb8888).toIntArray()
+        }
+        return Bitmap.createBitmap(clipboard.width, clipboard.height, Bitmap.Config.ARGB_8888).also {
+            it.setPixels(pixels, 0, clipboard.width, 0, 0, clipboard.width, clipboard.height)
+        }
+    }
+
+    /** Imports a transparent system image without discarding its alpha channel. */
+    fun fromBitmap(
+        bitmap: Bitmap,
+        destinationWidth: Int,
+        destinationHeight: Int,
+        pixelFormat: PixelTileFormat,
+        sourceLeft: Int = 0,
+        sourceTop: Int = 0,
+    ): RasterSelectionClipboard? {
+        if (bitmap.isRecycled || bitmap.width <= 0 || bitmap.height <= 0) return null
+        val rgba = IntArray(Math.multiplyExact(bitmap.width, bitmap.height))
+        bitmap.getPixels(rgba, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        val alpha = ByteArray(rgba.size) { index -> (rgba[index] ushr 24).toByte() }
+        if (alpha.none { it.toInt().and(0xff) != 0 }) return null
+        return when (pixelFormat) {
+            PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> RasterSelectionClipboard(
+                destinationWidth, destinationHeight, sourceLeft, sourceTop,
+                bitmap.width, bitmap.height, pixelFormat, alpha, rgba8 = rgba,
+            )
+            PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 -> RasterSelectionClipboard(
+                destinationWidth, destinationHeight, sourceLeft, sourceTop,
+                bitmap.width, bitmap.height, pixelFormat, alpha,
+                rgbaF16 = LongArray(rgba.size) { index -> PackedRgbaF16.fromPremultipliedArgb8888(rgba[index]) },
+            )
+        }
+    }
+
     fun copy(
         pixels: PixelTileSurfaceSnapshot,
         selection: MaskTileSurfaceSnapshot,

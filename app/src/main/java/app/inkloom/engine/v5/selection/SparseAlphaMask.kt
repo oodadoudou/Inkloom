@@ -209,6 +209,41 @@ internal class SparseAlphaMask private constructor(
             return try { fromBitmapRegion(scaled, left, top, size.width, size.height) } finally { scaled.recycle() }
         }
 
+        /** Builds a non-contiguous color-range selection from a composite preview. */
+        fun fromColorRange(
+            source: Bitmap,
+            targetColor: Int,
+            tolerance: Float,
+            includeAlpha: Boolean,
+            pageWidth: Float,
+            pageHeight: Float,
+        ): SparseAlphaMask? {
+            if (source.isRecycled || source.width <= 0 || source.height <= 0) return null
+            val pixels = IntArray(source.width * source.height)
+            source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+            val tr = targetColor ushr 16 and 0xff
+            val tg = targetColor ushr 8 and 0xff
+            val tb = targetColor and 0xff
+            val ta = targetColor ushr 24 and 0xff
+            val limit = tolerance.coerceIn(0f, 1f) * if (includeAlpha) 510f else 441.673f
+            val maskPixels = IntArray(pixels.size) { index ->
+                val color = pixels[index]
+                val dr = (color ushr 16 and 0xff) - tr
+                val dg = (color ushr 8 and 0xff) - tg
+                val db = (color and 0xff) - tb
+                val da = if (includeAlpha) (color ushr 24 and 0xff) - ta else 0
+                val distance = kotlin.math.sqrt((dr * dr + dg * dg + db * db + da * da).toFloat())
+                if (distance <= limit) Color.WHITE else Color.TRANSPARENT
+            }
+            val bitmap = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
+            bitmap.setPixels(maskPixels, 0, source.width, 0, 0, source.width, source.height)
+            return try {
+                fromFloodFill(bitmap, 0, 0, source.width, source.height, pageWidth, pageHeight)
+            } finally {
+                bitmap.recycle()
+            }
+        }
+
         fun full(pageWidth: Float, pageHeight: Float): SparseAlphaMask? {
             val size = SelectionMaskCompositor.maskSize(pageWidth, pageHeight) ?: return null
             return SparseAlphaMask(

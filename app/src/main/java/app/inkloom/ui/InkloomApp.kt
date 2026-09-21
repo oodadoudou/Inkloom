@@ -1566,6 +1566,7 @@ private fun EditorScreen(
     }
     var selectionFeather by remember { mutableFloatStateOf(0f) }
     var selectionColorFill by remember(selectedPage.id) { mutableStateOf(false) }
+    var quickMaskActive by remember(selectedPage.id) { mutableStateOf(false) }
     SideEffect { canvasView?.onSelectionThresholdChanged = { value -> onSettingsChange(settings.copy(selectionThreshold = value)) } }
     var savedSelectionsOpen by remember(selectedPage.id) { mutableStateOf(false) }
     val trSelectionName = tr("Selection", "选区")
@@ -3125,6 +3126,18 @@ private fun EditorScreen(
                     onClear = { canvasView?.clearSelection() },
                     colorFill = selectionColorFill,
                     onColorFill = { if (canvasView?.setSelectionColorFill(!selectionColorFill) == true) selectionColorFill = !selectionColorFill },
+                    quickMask = quickMaskActive,
+                    onQuickMask = {
+                        quickMaskActive = !quickMaskActive
+                        canvasView?.quickMaskActive = quickMaskActive
+                        if (quickMaskActive) {
+                            canvasView?.beginSelectionInput(SelectionShape.BRUSH)
+                            canvasView?.selectionMode = SelectionMode.ADD
+                            onSettingsChange(settings.copy(selectionShape = SelectionShape.BRUSH, selectionMode = SelectionMode.ADD))
+                        }
+                    },
+                    colorRangeTarget = brushColor,
+                    onColorRange = { tolerance, includeAlpha -> canvasView?.selectColorRange(brushColor, tolerance, includeAlpha) == true },
                     onSaveLoad = { savedSelectionsOpen = true },
                     featherPixels = selectionFeather,
                     interpolation = settings.selectionInterpolation,
@@ -8359,6 +8372,8 @@ private fun SelectionStudioPanel(
     maskVisibility: Float, onMaskVisibility: (Float) -> Unit,
     onShape: (SelectionShape) -> Unit, onMode: (SelectionMode) -> Unit,
     onClear: () -> Unit, colorFill: Boolean, onColorFill: () -> Unit,
+    quickMask: Boolean, onQuickMask: () -> Unit,
+    colorRangeTarget: Int, onColorRange: (Float, Boolean) -> Boolean,
     onSaveLoad: () -> Unit, featherPixels: Float,
     interpolation: app.inkloom.engine.v5.tools.SelectionInterpolation,
     onInterpolation: (app.inkloom.engine.v5.tools.SelectionInterpolation) -> Unit,
@@ -8373,6 +8388,9 @@ private fun SelectionStudioPanel(
     var optionsOpen by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
     var featherOpen by remember { mutableStateOf(false) }
+    var colorRangeOpen by remember { mutableStateOf(false) }
+    var colorRangeTolerance by rememberSaveable { mutableFloatStateOf(.18f) }
+    var colorRangeAlpha by rememberSaveable { mutableStateOf(false) }
     var amount by rememberSaveable { mutableFloatStateOf(8f) }
     if (featherOpen) {
         val finish by rememberUpdatedState(onFinishFeather)
@@ -8390,6 +8408,25 @@ private fun SelectionStudioPanel(
             dismissButton = { TextButton(onClick = { onFinishFeather(false); featherOpen = false }) { Text(tr("Cancel feather", "取消羽化")) } },
         )
     }
+    if (colorRangeOpen) AlertDialog(
+        onDismissRequest = { colorRangeOpen = false },
+        title = { Text(tr("Color range", "色域选择")) },
+        text = { Column(Modifier.width(320.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(28.dp).background(Color(colorRangeTarget), RoundedCornerShape(5.dp)))
+                Spacer(Modifier.width(10.dp))
+                Text(tr("Uses the current foreground color", "使用当前前景色"), fontSize = 12.sp)
+            }
+            Text("${tr("Tolerance", "容差")} ${(colorRangeTolerance * 100).toInt()}%")
+            BrushParameterSlider(colorRangeTolerance, { colorRangeTolerance = it }, valueRange = 0f..1f)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(colorRangeAlpha, { colorRangeAlpha = it })
+                Text(tr("Include transparency difference", "包含透明度差异"), fontSize = 12.sp)
+            }
+        } },
+        confirmButton = { TextButton(onClick = { if (onColorRange(colorRangeTolerance, colorRangeAlpha)) colorRangeOpen = false }) { Text(tr("Select", "选择")) } },
+        dismissButton = { TextButton(onClick = { colorRangeOpen = false }) { Text(tr("Cancel", "取消")) } },
+    )
     if (optionsOpen) AlertDialog(
         onDismissRequest = { optionsOpen = false },
         title = { Text(tr("Selection settings", "选区设置")) },
@@ -8490,6 +8527,7 @@ private fun SelectionStudioPanel(
                 SelectionStudioAction(Icons.Outlined.ContentCopy, tr("Copy & Paste", "复制并粘贴"), enabled = hasSelection, onClick = onCopy)
                 SelectionStudioAction(Icons.Outlined.BlurOn, tr("Feather", "羽化"), enabled = hasSelection) { featherOpen = onBeginFeather() }
                 SelectionStudioAction(Icons.Outlined.Bookmarks, tr("Save & Load", "保存与载入"), onClick = onSaveLoad)
+                SelectionStudioAction(Icons.Outlined.Layers, tr("Quick mask", "快速蒙版"), selected = quickMask, onClick = onQuickMask)
                 SelectionStudioAction(Icons.Outlined.FormatColorFill, tr("Color Fill", "颜色填充"), selected = colorFill, onClick = onColorFill)
                 SelectionStudioAction(Icons.Outlined.Close, tr("Clear", "清除"), onClick = onClear)
                 Box {
@@ -8503,6 +8541,7 @@ private fun SelectionStudioPanel(
                         DropdownMenuItem(text = { Text(tr("Intersect", "交集")) }, onClick = { settingsOpen = false; onMode(SelectionMode.INTERSECT) })
                         DropdownMenuItem(text = { Text(tr("Brush selection", "画笔选区")) }, onClick = { settingsOpen = false; onShape(SelectionShape.BRUSH) })
                         DropdownMenuItem(text = { Text(tr("Smart border selection", "智能边界选区")) }, onClick = { settingsOpen = false; onShape(SelectionShape.SMART_BORDER) })
+                        DropdownMenuItem(text = { Text(tr("Color range…", "色域选择…")) }, onClick = { settingsOpen = false; colorRangeOpen = true })
                         DropdownMenuItem(text = { Text(tr("Selection settings", "选区设置")) }, onClick = { settingsOpen = false; optionsOpen = true })
                     }
                 }

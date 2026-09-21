@@ -1604,6 +1604,9 @@ class InkCanvasView(context: Context) : View(context) {
 
     var selectionMaskVisibility: Float = .25f
         set(value) { field = value.coerceIn(0f, 1f); invalidate() }
+    var quickMaskActive: Boolean = false
+        set(value) { field = value; invalidate() }
+    private val quickMaskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(220, 42, 66) }
     private val protectionPattern by lazy {
         Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888).apply {
             for (y in 0 until 16) for (x in 0 until 16) setPixel(x, y,
@@ -1618,7 +1621,14 @@ class InkCanvasView(context: Context) : View(context) {
     private var softwareProtectionBitmap: Bitmap? = null
     private var softwareProtectionKey: List<Any?>? = null
     private fun drawSelectionProtection(canvas: Canvas) {
-        if (!hasSelection() || selectionMaskVisibility <= 0f || selectionCanvasTransform != null) return
+        if (selectionMaskVisibility <= 0f || selectionCanvasTransform != null) return
+        if (!hasSelection()) {
+            if (quickMaskActive) {
+                quickMaskPaint.alpha = (maxOf(selectionMaskVisibility, .42f) * 255).toInt()
+                canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), quickMaskPaint)
+            }
+            return
+        }
         val mask = selectionMaskForRasterTools() ?: return
         val area = RectF(0f, 0f, width.toFloat(), height.toFloat())
         // Cache only alpha. Pinch/rotation changes the lightweight shader matrix, never the mask raster.
@@ -1633,6 +1643,7 @@ class InkCanvasView(context: Context) : View(context) {
             protectionCacheKey = key
         }
         protectionPaint.alpha = (selectionMaskVisibility * 255).toInt()
+        quickMaskPaint.alpha = ((if (quickMaskActive) maxOf(selectionMaskVisibility, .42f) else selectionMaskVisibility) * 255).toInt()
         protectionShader.setLocalMatrix(Matrix().apply {
             setScale(1f / viewportScale, 1f / viewportScale)
             if (canvas.isHardwareAccelerated) postTranslate(selectionAntPhase() / viewportScale, 0f)
@@ -1648,14 +1659,14 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                 bitmap.eraseColor(Color.TRANSPARENT)
                 val target = Canvas(bitmap)
-                target.drawRect(area, protectionPaint)
+                target.drawRect(area, if (quickMaskActive) quickMaskPaint else protectionPaint)
                 protectionBitmap?.let { target.drawBitmap(it, 0f, 0f, protectionCutoutPaint) }
                 softwareProtectionKey = softwareKey
             }
             softwareProtectionBitmap?.let { canvas.drawBitmap(it, 0f, 0f, null) }
         } else {
             val checkpoint = canvas.saveLayer(area, null)
-            canvas.drawRect(area, protectionPaint)
+            canvas.drawRect(area, if (quickMaskActive) quickMaskPaint else protectionPaint)
             protectionBitmap?.let { canvas.drawBitmap(it, 0f, 0f, protectionCutoutPaint) }
             canvas.restoreToCount(checkpoint)
         }
@@ -4039,6 +4050,28 @@ class InkCanvasView(context: Context) : View(context) {
         invalidate()
     }
 
+    fun selectColorRange(targetColor: Int, tolerance: Float, includeAlpha: Boolean): Boolean {
+        commitSelectionContour()
+        finishAutomaticSelection(false)
+        val sampleWidth = width.coerceIn(1, 1024)
+        val sampleHeight = (height.coerceAtLeast(1) * (sampleWidth / width.coerceAtLeast(1).toFloat())).toInt().coerceIn(1, 1536)
+        val source = renderDocumentPageBitmap(sampleWidth, sampleHeight)
+        return try {
+            val exactMask = SparseAlphaMask.fromColorRange(
+                source, targetColor, tolerance, includeAlpha, pageModelWidth, pageModelHeight,
+            ) ?: return false
+            val selectionState = documentSelectionState
+            val beforeAlpha = selectionState?.snapshot()
+            composeSelectionAlpha(exactMask, selectionMode)
+            if (selectionMode == SelectionMode.REPLACE) selectionFeatherPixels = 0f
+            recordSelectionHistory(selectionState, beforeAlpha)
+            invalidate()
+            true
+        } finally {
+            source.recycle()
+        }
+    }
+
     private fun selectWithLasso(polygon: List<StrokePoint>) {
         selectWithLasso(polygon, exactMask = null)
     }
@@ -6072,6 +6105,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (selection != null && rasterSurface != null) {
             RasterSelectionContent.copy(rasterSurface.snapshot(), selection)?.let { copied ->
                 rasterSelectionClipboard = copied
+                TransparentImageClipboard.publish(context, copied)
                 return true
             }
         }
@@ -6089,9 +6123,16 @@ class InkCanvasView(context: Context) : View(context) {
     fun pasteSelectionFromClipboard(): Boolean {
         if (rejectLayerContentEdit()) return false
         finishSelectionTransform(apply = true)
-        val rasterSurface = rasterTileSurfaceFor(activeLayerId)
-        val rasterClipboard = rasterSelectionClipboard
-        if (rasterSurface != null && rasterClipboard != null && rasterClipboard.pixelFormat == rasterSurface.pixelFormat) {
+        val rasterSurface = rasterTileSurfaceFor(activeLayerId) ?: return false
+        val systemClipboard = TransparentImageClipboard.read(
+            context,
+            rasterSurface.logicalWidth,
+            rasterSurface.logicalHeight,
+            rasterSurface.pixelFormat,
+        )
+        val rasterClipboard = if (TransparentImageClipboard.ownsPrimaryClip(context) && rasterSelectionClipboard != null)
+            rasterSelectionClipboard else systemClipboard ?: rasterSelectionClipboard
+        if (rasterClipboard != null && rasterClipboard.pixelFormat == rasterSurface.pixelFormat) {
             val offsetX = (pageModelWidth * .03f).toInt()
             val offsetY = (pageModelHeight * .03f).toInt()
             val left = (rasterClipboard.sourceLeft + offsetX).coerceIn(-rasterClipboard.width + 1, rasterSurface.logicalWidth - 1)
