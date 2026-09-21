@@ -1,6 +1,6 @@
 # Inkloom 当前需求与待排优先级
 
-核对日期：2026-09-21。代码基线：`82e2717`，待交付 Debug **0.204.0**。本轮完成 layout 实机反馈、选区浮条、触控防误撤回、逐笔记页面恢复，以及画布预降采样导致的笔迹偏糊修复。
+核对日期：2026-09-21。功能代码基线：`cc4c144`，最新交付 Debug **0.204.0**。本轮完成 layout 实机反馈、选区浮条、触控防误撤回、逐笔记页面恢复，以及画布预降采样导致的笔迹偏糊修复。
 
 **本文件是当前需求状态的唯一入口。** 用户下一步填写 Priority；下表顺序不是开发顺序。细项不丢弃，见 [REQUESTED_FEATURE_CATALOG.md](REQUESTED_FEATURE_CATALOG.md)，但其原编号和历史目标不代表未完成状态。旧版本计划、旧额度阈值、旧勾选和分支上的未交付代码均不作为当前依据。
 
@@ -45,7 +45,7 @@
 - [x] 每本笔记重新打开恢复最后有效页面；删除页后不保留无效页面引用。
 - [x] 默认纸张绘画像素保持 1600 × 2263，不再固定降为 1200 px；笔尖过滤、抗锯齿、软硬和纹理语义保持逐笔设置。
 - [x] JVM 853 项（0 失败、8 跳过）、Android 15 全量 660 项（0 失败／跳过）、lint（0 错误、100 警告）、`git diff --check`；普通 Debug 安装及冷启动（1256 ms）通过。
-- [ ] Debug 0.204.0 源提交／SHA-256、Drive Desktop 同步和旧交付清理正在完成。
+- [x] Debug 0.204.0 源提交／SHA-256 一致；Drive Desktop 本地同步副本已校验；本地与 Drive 的 0.203.0 托管交付已清理。云端下载未验证。
 - [ ] MovinkPad Pro 14 真机验收：四周停靠后的宽高调整、笔与手指操作、120 Hz 流畅度，`DEVICE_PENDING`。
 
 此清单对应布局操作；工具／子工具自定义排序和各工具属性的完整功能仍按 R04 内容能力单独追踪，不宣称 CSP 全功能 1:1。
@@ -81,7 +81,7 @@
 | 混合变换／网格 | [MixedSelectionDraft.kt](app/src/main/java/app/inkloom/ui/MixedSelectionDraft.kt)、[SelectionTransformGeometry.kt](app/src/main/java/app/inkloom/engine/v5/tools/SelectionTransformGeometry.kt)、[SelectionWindowRegressionTest.kt](app/src/androidTest/java/app/inkloom/SelectionWindowRegressionTest.kt) |
 | 图片模板 | [ImagePaperTemplateTest.kt](app/src/androidTest/java/app/inkloom/ImagePaperTemplateTest.kt)、[PageTemplateStore.kt](app/src/main/java/app/inkloom/document/PageTemplateStore.kt) |
 | 导出限制 | [DocumentAssetService.kt](app/src/main/java/app/inkloom/document/DocumentAssetService.kt) |
-| 最新交付 | [0.203.0 交付证据](dist/Inkloom-0.203.0-27cb6a0-debug.json)：844 项 JVM（0 失败、8 跳过）、654 项 Android 15（0 失败／跳过）、lint（0 错误）、签名、安装、冷启动与横竖屏面板检查通过。 |
+| 最新交付 | [0.204.0 交付证据](dist/Inkloom-0.204.0-cc4c144-debug.json)：853 项 JVM（0 失败、8 跳过）、660 项 Android 15（0 失败／跳过）、lint（0 错误）、签名、安装、冷启动、SHA-256 与 Drive Desktop 本地副本校验通过。 |
 
 代码路径核对与既有测试报告支持此状态；本轮未逐一复测细项索引的全部条目。没有足够证据的高级子项保留“待核对”，不硬判完成。
 
