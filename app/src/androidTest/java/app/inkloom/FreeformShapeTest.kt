@@ -21,6 +21,33 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class FreeformShapeTest {
+    @Test fun heldGesturePublishesQuickShapeThroughEditableCallback() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            var ordinaryCommits = 0
+            var editableShape: PageElement.Shape? = null
+            val view = InkCanvasView(instrumentation.targetContext).apply {
+                layout(0, 0, 1_000, 1_000)
+                tool = EditorTool.SHAPE
+                shapeKind = ShapeKind.FREEFORM
+                pageModelWidth = 1_000f
+                pageModelHeight = 1_000f
+                inkColor = Color.BLACK
+                baseWidth = 8f
+                onShapeCommitted = { ordinaryCommits++ }
+                onQuickShapeCommitted = { editableShape = it }
+            }
+
+            view.dispatchStylus(MotionEvent.ACTION_DOWN, 120f, 200f, 10L)
+            view.dispatchStylus(MotionEvent.ACTION_MOVE, 500f, 500f, 20L)
+            view.dispatchStylus(MotionEvent.ACTION_MOVE, 880f, 800f, 30L)
+            view.dispatchStylus(MotionEvent.ACTION_UP, 880f, 800f, 30L + 650L)
+
+            assertEquals(0, ordinaryCommits)
+            assertEquals(ShapeKind.LINE, requireNotNull(editableShape).kind)
+        }
+    }
+
     @Test fun stylusGestureCreatesRetainedNormalizedPolygon() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {

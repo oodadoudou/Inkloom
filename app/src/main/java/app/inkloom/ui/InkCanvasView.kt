@@ -873,6 +873,8 @@ class InkCanvasView(context: Context) : View(context) {
     var pageModelWidth: Float = 1600f
     var pageModelHeight: Float = 2263f
     var onShapeCommitted: (PageElement.Shape) -> Unit = {}
+    /** A held freeform gesture that QuickShape recognized remains editable after pen-up. */
+    var onQuickShapeCommitted: ((PageElement.Shape) -> Unit)? = null
     var onGradientCommitted: (startX: Float, startY: Float, endX: Float, endY: Float, definition: GradientDefinition, selectionMask: MaskTileSurfaceSnapshot?) -> Unit = { _, _, _, _, _, _ -> }
     var gradientDefinition: GradientDefinition = GradientDefinition(stops = listOf(GradientColorStop(0f, 0xFF111111L), GradientColorStop(1f, 0xFFFFFFFFL)))
     var gradientAngleSnapEnabled: Boolean = false
@@ -2824,19 +2826,24 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                     if (selectionShape != SelectionShape.FREEFORM) clearLassoInput()
                 } else if (activeTool == EditorTool.SHAPE) {
+                    var quickShape = false
                     val shape = if (shapeKind == ShapeKind.FREEFORM) {
                         appendShapePoint(normalizedX, normalizedY)
                         // QuickShape: when the freehand gesture ends with a brief hold,
                         // snap the rough path to a perfect line/rectangle/ellipse.
                         val held = shapeFreeformLastMoveAt > 0L && event.eventTime - shapeFreeformLastMoveAt >= QUICKSHAPE_HOLD_MS
                         val recognized = if (held) ShapeGeometry.quickShape(shapeFreeformPoints, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), gestureBrushSize) else null
+                        quickShape = recognized != null
                         recognized ?: ShapeGeometry.createFreeform(shapeFreeformPoints, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), gestureBrushSize)
                     } else {
                         val start = shapeStart
                         val end = shapeEnd
                         if (start != null && end != null) ShapeGeometry.create(shapeKind, start, end, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), gestureBrushSize) else null
                     }
-                    shape?.copy(layerId = activeLayerId)?.let(onShapeCommitted)
+                    shape?.copy(layerId = activeLayerId)?.let { committed ->
+                        if (quickShape) (onQuickShapeCommitted ?: onShapeCommitted)(committed)
+                        else onShapeCommitted(committed)
+                    }
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear(); shapeFreeformLastMoveAt = 0L
                 } else if (activeTool == EditorTool.LASER) {
                     laserTrail.append(normalizedX, normalizedY, event.eventTime)
