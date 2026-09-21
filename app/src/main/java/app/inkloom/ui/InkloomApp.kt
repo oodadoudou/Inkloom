@@ -956,6 +956,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onToggleLayerReference = viewModel::toggleLayerReference,
             onToggleLayerDraft = viewModel::toggleLayerDraft,
             onToggleLayerDrawingAssist = viewModel::toggleLayerDrawingAssist,
+            onUpdateLayerDrawingGuide = viewModel::updateLayerDrawingGuide,
             onToggleLayerFolderCollapsed = viewModel::toggleLayerFolderCollapsed,
             onDuplicateLayer = viewModel::duplicateLayer,
             onApplyRasterLayerMerge = viewModel::applyRasterLayerMerge,
@@ -1551,7 +1552,8 @@ private fun EditorScreen(
     onToggleLayerClippedToBelow: (String, String, String) -> Unit,
     onToggleLayerReference: (String, String, String) -> Unit,
     onToggleLayerDraft: (String, String, String) -> Unit,
-    onToggleLayerDrawingAssist: (String, String, String) -> Unit,
+    onToggleLayerDrawingAssist: (String, String, String, LayerDrawingGuide) -> Unit,
+    onUpdateLayerDrawingGuide: (String, String, String, LayerDrawingGuide) -> Unit,
     onToggleLayerFolderCollapsed: (String, String, String) -> Unit,
     onDuplicateLayer: (String, String, String) -> String?,
     onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean,
@@ -1842,6 +1844,12 @@ private fun EditorScreen(
     var insertLinkPageId by remember(document.id) { mutableStateOf(selectedPage.id) }
     var insertShape by remember { mutableStateOf(ShapeKind.RECTANGLE) }
     var selectedElementId by remember(selectedPage.id) { mutableStateOf<String?>(null) }
+    fun updateActiveLayerDrawingGuide(transform: (LayerDrawingGuide) -> LayerDrawingGuide): Boolean {
+        val layer = selectedPage.layers.firstOrNull { it.id == activeLayerId && it.drawingAssist } ?: return false
+        val guide = layer.drawingGuide ?: return false
+        onUpdateLayerDrawingGuide(document.id, selectedPage.id, layer.id, transform(guide))
+        return true
+    }
     var imageTransformId by remember(selectedPage.id) { mutableStateOf<String?>(null) }
     var imageCanvasTransform by remember(selectedPage.id) { mutableStateOf<ImageCanvasTransform?>(null) }
     var imageCanvasPreview by remember(selectedPage.id) { mutableStateOf<PageElement.Image?>(null) }
@@ -2865,53 +2873,53 @@ private fun EditorScreen(
                         }
                     },
                     onSymmetryGuideChange = { guide ->
-                        onSettingsChange(settings.copy(
+                        if (!updateActiveLayerDrawingGuide { it.copy(
                             symmetryCenterX = guide.centerX,
                             symmetryCenterY = guide.centerY,
                             symmetryAngleDegrees = guide.angleDegrees,
-                        ))
+                        ) }) onSettingsChange(settings.copy(symmetryCenterX = guide.centerX, symmetryCenterY = guide.centerY, symmetryAngleDegrees = guide.angleDegrees))
                     },
                     onRulerGuideChange = { guide ->
-                        onSettingsChange(settings.copy(
+                        if (!updateActiveLayerDrawingGuide { it.copy(
                             rulerCenterX = guide.centerX,
                             rulerCenterY = guide.centerY,
                             rulerAngleDegrees = guide.angleDegrees,
                             rulerSnapDegrees = guide.snapDegrees,
-                        ))
+                        ) }) onSettingsChange(settings.copy(rulerCenterX = guide.centerX, rulerCenterY = guide.centerY, rulerAngleDegrees = guide.angleDegrees, rulerSnapDegrees = guide.snapDegrees))
                     },
                     onCanvasGuideChange = { guide ->
-                        onSettingsChange(settings.copy(
+                        if (!updateActiveLayerDrawingGuide { it.copy(
                             gridSnapEnabled = guide.gridSnapEnabled,
                             gridSpacing = guide.gridSpacing,
                             alignmentGuidesEnabled = guide.alignmentGuidesEnabled,
                             verticalGuideX = guide.verticalGuideX,
                             horizontalGuideY = guide.horizontalGuideY,
-                        ))
+                        ) }) onSettingsChange(settings.copy(gridSnapEnabled = guide.gridSnapEnabled, gridSpacing = guide.gridSpacing, alignmentGuidesEnabled = guide.alignmentGuidesEnabled, verticalGuideX = guide.verticalGuideX, horizontalGuideY = guide.horizontalGuideY))
                     },
                     onPerspectiveGuideChange = { guide ->
                         val points = guide.normalized().points
-                        onSettingsChange(settings.copy(
-                            perspectiveGuideMode = guide.mode,
-                            perspectiveGuideAssisted = guide.assisted,
-                            perspectiveGuideEditing = guide.editing,
+                        if (!updateActiveLayerDrawingGuide { it.copy(
+                            perspectiveMode = guide.mode.name,
+                            perspectiveAssisted = guide.assisted,
+                            perspectiveEditing = guide.editing,
                             perspectivePoint1X = points[0].x,
                             perspectivePoint1Y = points[0].y,
                             perspectivePoint2X = points[1].x,
                             perspectivePoint2Y = points[1].y,
                             perspectivePoint3X = points[2].x,
                             perspectivePoint3Y = points[2].y,
-                        ))
+                        ) }) onSettingsChange(settings.copy(perspectiveGuideMode = guide.mode, perspectiveGuideAssisted = guide.assisted, perspectiveGuideEditing = guide.editing, perspectivePoint1X = points[0].x, perspectivePoint1Y = points[0].y, perspectivePoint2X = points[1].x, perspectivePoint2Y = points[1].y, perspectivePoint3X = points[2].x, perspectivePoint3Y = points[2].y))
                     },
                     onSpecialRulerChange = { ruler ->
-                        onSettingsChange(settings.copy(
-                            specialRulerMode = ruler.mode,
+                        if (!updateActiveLayerDrawingGuide { it.copy(
+                            specialRulerMode = ruler.mode.name,
                             specialRulerAssisted = ruler.assisted,
                             specialRulerEditing = ruler.editing,
                             specialRulerCenterX = ruler.centerX,
                             specialRulerCenterY = ruler.centerY,
                             specialRulerAngleDegrees = ruler.angleDegrees,
                             specialRulerSpacing = ruler.spacing,
-                        ))
+                        ) }) onSettingsChange(settings.copy(specialRulerMode = ruler.mode, specialRulerAssisted = ruler.assisted, specialRulerEditing = ruler.editing, specialRulerCenterX = ruler.centerX, specialRulerCenterY = ruler.centerY, specialRulerAngleDegrees = ruler.angleDegrees, specialRulerSpacing = ruler.spacing))
                     },
                     onSelectionActiveChanged = { selectionActive = it; selectionFeather = canvasView?.selectionFeatherPixels ?: 0f },
                 )
@@ -3343,7 +3351,7 @@ private fun EditorScreen(
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                 onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
                 onToggleDraft = { onToggleLayerDraft(document.id, selectedPage.id, it) },
-                onToggleDrawingAssist = { onToggleLayerDrawingAssist(document.id, selectedPage.id, it) },
+                onToggleDrawingAssist = { onToggleLayerDrawingAssist(document.id, selectedPage.id, it, settings.toLayerDrawingGuide()) },
                 onMaskCommand = ::performLayerMaskCommand,
                 onMaskTransfer = ::performLayerMaskTransfer,
                 editingMaskId = editingMaskId,
@@ -4220,6 +4228,26 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
     is PageBackground.Pdf -> tr("PDF page", "PDF 页面")
 }
 
+private fun AppSettings.toLayerDrawingGuide() = LayerDrawingGuide(
+    symmetryMode = symmetryMode.name,
+    symmetryCenterX = symmetryCenterX, symmetryCenterY = symmetryCenterY, symmetryAngleDegrees = symmetryAngleDegrees,
+    rulerEnabled = rulerEnabled, rulerCenterX = rulerCenterX, rulerCenterY = rulerCenterY,
+    rulerAngleDegrees = rulerAngleDegrees, rulerSnapDegrees = rulerSnapDegrees,
+    gridSnapEnabled = gridSnapEnabled, gridSpacing = gridSpacing, alignmentGuidesEnabled = alignmentGuidesEnabled,
+    verticalGuideX = verticalGuideX, horizontalGuideY = horizontalGuideY,
+    perspectiveMode = perspectiveGuideMode.name, perspectiveAssisted = perspectiveGuideAssisted,
+    perspectiveEditing = perspectiveGuideEditing, perspectivePoint1X = perspectivePoint1X,
+    perspectivePoint1Y = perspectivePoint1Y, perspectivePoint2X = perspectivePoint2X,
+    perspectivePoint2Y = perspectivePoint2Y, perspectivePoint3X = perspectivePoint3X, perspectivePoint3Y = perspectivePoint3Y,
+    specialRulerMode = specialRulerMode.name, specialRulerAssisted = specialRulerAssisted,
+    specialRulerEditing = specialRulerEditing, specialRulerCenterX = specialRulerCenterX,
+    specialRulerCenterY = specialRulerCenterY, specialRulerAngleDegrees = specialRulerAngleDegrees,
+    specialRulerSpacing = specialRulerSpacing,
+)
+
+private inline fun <reified T : Enum<T>> enumOrDefault(name: String, fallback: T): T =
+    enumValues<T>().firstOrNull { it.name == name } ?: fallback
+
 @Composable
 private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, onBeginQuickShapeEdit: () -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onBackKey: () -> Boolean, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, transformLayerIds: Set<String>, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onSymmetryGuideChange: (SymmetryGuideState) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
@@ -4512,27 +4540,33 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
     // Brush imports, preset switches and asynchronous checkpoint publication are UI changes and
     // must never reconstruct or replace the live painting surface.
     val rasterLayerSurfaces = rasterSurfaceRuntime.reconcile(page)
-    val symmetryGuide = SymmetryGuideState(settings.symmetryCenterX, settings.symmetryCenterY, settings.symmetryAngleDegrees).normalized()
-    val rulerGuide = RulerGuideState(settings.rulerCenterX, settings.rulerCenterY, settings.rulerAngleDegrees, settings.rulerSnapDegrees).normalized()
-    val canvasGuide = CanvasGuideState(settings.gridSnapEnabled, settings.gridSpacing, settings.alignmentGuidesEnabled, settings.verticalGuideX, settings.horizontalGuideY).normalized()
+    val activeLayerGuide = page.layers.firstOrNull { it.id == activeLayerId && it.drawingAssist }?.drawingGuide
+    val symmetryMode = activeLayerGuide?.let { enumOrDefault(it.symmetryMode, settings.symmetryMode) } ?: settings.symmetryMode
+    val symmetryGuide = (activeLayerGuide?.let { SymmetryGuideState(it.symmetryCenterX, it.symmetryCenterY, it.symmetryAngleDegrees) }
+        ?: SymmetryGuideState(settings.symmetryCenterX, settings.symmetryCenterY, settings.symmetryAngleDegrees)).normalized()
+    val rulerEnabled = activeLayerGuide?.rulerEnabled ?: settings.rulerEnabled
+    val rulerGuide = (activeLayerGuide?.let { RulerGuideState(it.rulerCenterX, it.rulerCenterY, it.rulerAngleDegrees, it.rulerSnapDegrees) }
+        ?: RulerGuideState(settings.rulerCenterX, settings.rulerCenterY, settings.rulerAngleDegrees, settings.rulerSnapDegrees)).normalized()
+    val canvasGuide = (activeLayerGuide?.let { CanvasGuideState(it.gridSnapEnabled, it.gridSpacing, it.alignmentGuidesEnabled, it.verticalGuideX, it.horizontalGuideY) }
+        ?: CanvasGuideState(settings.gridSnapEnabled, settings.gridSpacing, settings.alignmentGuidesEnabled, settings.verticalGuideX, settings.horizontalGuideY)).normalized()
     val perspectiveGuide = PerspectiveGuideState(
-        mode = settings.perspectiveGuideMode,
-        assisted = settings.perspectiveGuideAssisted,
-        editing = settings.perspectiveGuideEditing,
+        mode = activeLayerGuide?.let { enumOrDefault(it.perspectiveMode, settings.perspectiveGuideMode) } ?: settings.perspectiveGuideMode,
+        assisted = activeLayerGuide?.perspectiveAssisted ?: settings.perspectiveGuideAssisted,
+        editing = activeLayerGuide?.perspectiveEditing ?: settings.perspectiveGuideEditing,
         points = listOf(
-            PerspectiveGuidePoint(settings.perspectivePoint1X, settings.perspectivePoint1Y),
-            PerspectiveGuidePoint(settings.perspectivePoint2X, settings.perspectivePoint2Y),
-            PerspectiveGuidePoint(settings.perspectivePoint3X, settings.perspectivePoint3Y),
+            PerspectiveGuidePoint(activeLayerGuide?.perspectivePoint1X ?: settings.perspectivePoint1X, activeLayerGuide?.perspectivePoint1Y ?: settings.perspectivePoint1Y),
+            PerspectiveGuidePoint(activeLayerGuide?.perspectivePoint2X ?: settings.perspectivePoint2X, activeLayerGuide?.perspectivePoint2Y ?: settings.perspectivePoint2Y),
+            PerspectiveGuidePoint(activeLayerGuide?.perspectivePoint3X ?: settings.perspectivePoint3X, activeLayerGuide?.perspectivePoint3Y ?: settings.perspectivePoint3Y),
         ),
     ).normalized()
     val specialRuler = SpecialRulerState(
-        mode = settings.specialRulerMode,
-        assisted = settings.specialRulerAssisted,
-        editing = settings.specialRulerEditing,
-        centerX = settings.specialRulerCenterX,
-        centerY = settings.specialRulerCenterY,
-        angleDegrees = settings.specialRulerAngleDegrees,
-        spacing = settings.specialRulerSpacing,
+        mode = activeLayerGuide?.let { enumOrDefault(it.specialRulerMode, settings.specialRulerMode) } ?: settings.specialRulerMode,
+        assisted = activeLayerGuide?.specialRulerAssisted ?: settings.specialRulerAssisted,
+        editing = activeLayerGuide?.specialRulerEditing ?: settings.specialRulerEditing,
+        centerX = activeLayerGuide?.specialRulerCenterX ?: settings.specialRulerCenterX,
+        centerY = activeLayerGuide?.specialRulerCenterY ?: settings.specialRulerCenterY,
+        angleDegrees = activeLayerGuide?.specialRulerAngleDegrees ?: settings.specialRulerAngleDegrees,
+        spacing = activeLayerGuide?.specialRulerSpacing ?: settings.specialRulerSpacing,
     ).normalized()
     // Existing documents keep their historical page-wide assist behavior until at least one
     // paint layer explicitly opts in. From that point, assistance follows the layer badges.
@@ -4606,7 +4640,7 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.fillSubTool = settings.fillSubTool
                 view.fillCloseGapPixels = settings.fillCloseGapPixels
                 view.fillAreaScalingPixels = settings.fillAreaScalingPixels
-                view.symmetryMode = settings.symmetryMode
+                view.symmetryMode = symmetryMode
                 view.symmetryGuide = symmetryGuide
                 view.onSymmetryGuideChanged = onSymmetryGuideChange
                 view.symmetryAssisted = activeDrawingAssist
@@ -4620,7 +4654,7 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.onKeyInputDiagnostic = onKeyInputDiagnostic
                 view.onMotionInputDiagnostic = onMotionInputDiagnostic
                 view.onShortcutAction = onShortcutAction
-                view.rulerEnabled = settings.rulerEnabled
+                view.rulerEnabled = rulerEnabled
                 view.rulerGuide = rulerGuide
                 view.onRulerGuideChanged = onRulerGuideChange
                 view.rulerAssisted = activeDrawingAssist
@@ -4703,7 +4737,7 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.fillSubTool = settings.fillSubTool
                 view.fillCloseGapPixels = settings.fillCloseGapPixels
                 view.fillAreaScalingPixels = settings.fillAreaScalingPixels
-                view.symmetryMode = settings.symmetryMode
+                view.symmetryMode = symmetryMode
                 view.symmetryGuide = symmetryGuide
                 view.onSymmetryGuideChanged = onSymmetryGuideChange
                 view.symmetryAssisted = activeDrawingAssist
@@ -4717,7 +4751,7 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.onKeyInputDiagnostic = onKeyInputDiagnostic
                 view.onMotionInputDiagnostic = onMotionInputDiagnostic
                 view.onShortcutAction = onShortcutAction
-                view.rulerEnabled = settings.rulerEnabled
+                view.rulerEnabled = rulerEnabled
                 view.rulerGuide = rulerGuide
                 view.onRulerGuideChanged = onRulerGuideChange
                 view.rulerAssisted = activeDrawingAssist

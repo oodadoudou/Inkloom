@@ -192,12 +192,50 @@ data class InkLayer(
     val draft: Boolean = false,
     /** When any page layer opts in, guides constrain only layers carrying this flag. */
     val drawingAssist: Boolean = false,
+    /** Layer-owned ruler geometry. Null preserves the legacy page-wide guide settings. */
+    val drawingGuide: LayerDrawingGuide? = null,
     val mask: LayerMask? = null,
     val parentId: String? = null,
     val collapsed: Boolean = false,
     /** Folder-only: child blending participates in the parent backdrop. */
     val passThrough: Boolean = false,
     val paletteColor: LayerPaletteColor = LayerPaletteColor.NONE,
+)
+
+/** Serializable snapshot of the guides attached to one paint layer.
+ * Enum names are stored as strings so documents remain readable when guide modes expand. */
+@Serializable
+data class LayerDrawingGuide(
+    val symmetryMode: String = "NONE",
+    val symmetryCenterX: Float = .5f,
+    val symmetryCenterY: Float = .5f,
+    val symmetryAngleDegrees: Float = 0f,
+    val rulerEnabled: Boolean = false,
+    val rulerCenterX: Float = .5f,
+    val rulerCenterY: Float = .5f,
+    val rulerAngleDegrees: Float = 0f,
+    val rulerSnapDegrees: Float = 15f,
+    val gridSnapEnabled: Boolean = false,
+    val gridSpacing: Float = 64f,
+    val alignmentGuidesEnabled: Boolean = false,
+    val verticalGuideX: Float = .5f,
+    val horizontalGuideY: Float = .5f,
+    val perspectiveMode: String = "NONE",
+    val perspectiveAssisted: Boolean = true,
+    val perspectiveEditing: Boolean = false,
+    val perspectivePoint1X: Float = .5f,
+    val perspectivePoint1Y: Float = .42f,
+    val perspectivePoint2X: Float = .88f,
+    val perspectivePoint2Y: Float = .42f,
+    val perspectivePoint3X: Float = .5f,
+    val perspectivePoint3Y: Float = .12f,
+    val specialRulerMode: String = "NONE",
+    val specialRulerAssisted: Boolean = true,
+    val specialRulerEditing: Boolean = false,
+    val specialRulerCenterX: Float = .5f,
+    val specialRulerCenterY: Float = .5f,
+    val specialRulerAngleDegrees: Float = 0f,
+    val specialRulerSpacing: Float = 64f,
 )
 
 /** V5 has one paint-layer truth. Backgrounds and folders are structural, all other layers own pixels. */

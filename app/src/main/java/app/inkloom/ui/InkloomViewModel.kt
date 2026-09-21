@@ -456,8 +456,18 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(draft = !it.draft) else it })
     }
 
-    fun toggleLayerDrawingAssist(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
-        page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(drawingAssist = !it.drawingAssist) else it })
+    fun toggleLayerDrawingAssist(documentId: String, pageId: String, layerId: String, guide: app.inkloom.document.LayerDrawingGuide) = updatePage(documentId, pageId) { page ->
+        page.copy(layers = page.layers.map { layer ->
+            if (layer.id != layerId || layer.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) layer
+            else if (layer.drawingAssist) layer.copy(drawingAssist = false)
+            else layer.copy(drawingAssist = true, drawingGuide = guide)
+        })
+    }
+
+    fun updateLayerDrawingGuide(documentId: String, pageId: String, layerId: String, guide: app.inkloom.document.LayerDrawingGuide) = updatePage(documentId, pageId) { page ->
+        page.copy(layers = page.layers.map { layer ->
+            if (layer.id == layerId && layer.drawingAssist && layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) layer.copy(drawingGuide = guide) else layer
+        })
     }
 
     fun toggleLayerFolderCollapsed(documentId: String, pageId: String, folderId: String) = updatePage(documentId, pageId) { page ->
