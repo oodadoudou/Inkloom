@@ -2,7 +2,7 @@ package app.inkloom.engine.v5.tools
 
 import kotlin.math.*
 
-enum class SelectionTransformMode { FREEFORM, UNIFORM, DISTORT, WARP }
+enum class SelectionTransformMode { FREEFORM, UNIFORM, DISTORT, WARP, PUPPET }
 
 enum class SelectionAlignment { LEFT, HORIZONTAL_CENTER, RIGHT, TOP, VERTICAL_CENTER, BOTTOM }
 
@@ -120,6 +120,29 @@ data class SelectionTransformPose(
         val points=lattice().mapIndexed { i,p -> if(i==index) p.first+dx to p.second+dy else p }
         val l=points.minOf { it.first }; val r=points.maxOf { it.first }; val t=points.minOf { it.second }; val b=points.maxOf { it.second }
         return copy(centerX=(l+r)/2,centerY=(t+b)/2,width=(r-l).coerceAtLeast(1f),height=(b-t).coerceAtLeast(1f),angle=0f,corners=null,mesh=points)
+    }
+
+    /** Moves a puppet pin with smooth radial falloff while other pins anchor their nodes. */
+    fun puppetWarp(index: Int, dx: Float, dy: Float, anchored: Set<Int>): SelectionTransformPose {
+        val source = lattice()
+        val pivot = source.getOrNull(index) ?: return this
+        val radius = max(width, height).coerceAtLeast(1f) * .42f
+        val points = source.mapIndexed { node, point ->
+            when {
+                node in anchored -> point
+                node == index -> point.first + dx to point.second + dy
+                else -> {
+                    val distance = hypot(point.first - pivot.first, point.second - pivot.second)
+                    val normalized = (1f - distance / radius).coerceIn(0f, 1f)
+                    val weight = normalized * normalized * (3f - 2f * normalized)
+                    point.first + dx * weight to point.second + dy * weight
+                }
+            }
+        }
+        val left=points.minOf { it.first }; val right=points.maxOf { it.first }
+        val top=points.minOf { it.second }; val bottom=points.maxOf { it.second }
+        return copy(centerX=(left+right)/2, centerY=(top+bottom)/2, width=(right-left).coerceAtLeast(1f),
+            height=(bottom-top).coerceAtLeast(1f), angle=0f, corners=null, mesh=points)
     }
 
     fun distort(node: SelectionTransformNode, dx: Float, dy: Float): SelectionTransformPose? {

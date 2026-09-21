@@ -456,7 +456,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var selectionCanvasTransform: SelectionCanvasTransform? = null
     internal var onSelectionTransformChanged: (SelectionTransformUiState?) -> Unit = {}
     internal val selectionTransformUiState: SelectionTransformUiState?
-        get() = selectionCanvasTransform?.let { SelectionTransformUiState(it.pose, it.mode, it.snapping, it.magnetics, it.snapDistance, mixedSelectionDrafts.isNotEmpty()) }
+        get() = selectionCanvasTransform?.let { SelectionTransformUiState(it.pose, it.mode, it.snapping, it.magnetics, it.snapDistance, mixedSelectionDrafts.isNotEmpty(), rasterSelectionTransformSessions.size.coerceAtLeast(1), alignmentReferenceActiveLayer) }
 
     private var selectionTransformCenterX = 0f
     private var selectionTransformCenterY = 0f
@@ -467,6 +467,8 @@ class InkCanvasView(context: Context) : View(context) {
     private val rasterSelectionTransformSessions = linkedMapOf<String, RasterSelectionTransformSession>()
     private var rasterSelectionTransformOriginalMask: MaskTileSurfaceSnapshot? = null
     var selectionTransformLayerIds: Set<String> = emptySet()
+    private val selectionLayerOffsets = linkedMapOf<String, Pair<Float, Float>>()
+    private var alignmentReferenceActiveLayer = false
     private val selectionAntPattern = Bitmap.createBitmap(
         16,
         16,
@@ -1538,7 +1540,14 @@ class InkCanvasView(context: Context) : View(context) {
         drawV5LayerComposition(canvas, includeElements = true, layerFilter = referencedLayerIds)
         if (includeInteractionOverlays) selectionCanvasTransform?.let { draft ->
             val mapping = draft.pose.rasterMappingFrom(draft.original)
-            mixedSelectionDrafts.values.forEach { it.draw(canvas, mapping, width, height) }
+            mixedSelectionDrafts.forEach { (layerId, mixed) ->
+                val offset = selectionLayerOffsets[layerId] ?: (0f to 0f)
+                val adjusted = (mapping as? SelectionAffineTransform)?.copy(
+                    translateX = mapping.translateX + offset.first,
+                    translateY = mapping.translateY + offset.second,
+                ) ?: mapping
+                mixed.draw(canvas, adjusted, width, height)
+            }
         }
         if (!includeInteractionOverlays) return
         val selectionPreview = selectionPolygon()
@@ -4821,6 +4830,7 @@ class InkCanvasView(context: Context) : View(context) {
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
         val selection = selectionMaskForRasterTools()?.takeUnless(MaskTileSurfaceSnapshot::isEmpty) ?: return false
         return runCatching {
+            selectionLayerOffsets.clear()
             v5StrokeController.awaitIdle()
             layerIds.forEach { layerId ->
                 val target = requireNotNull(rasterTileSurfaceFor(layerId))
@@ -4853,15 +4863,17 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun updateRasterSelectionTransform(
         scaleX: Float, scaleY: Float, rotation: Float, translateX: Float, translateY: Float,
-    ) {
-        val surface = rasterTileSurfaceFor(activeLayerId) ?: return
-        updateRasterSelectionTransform(SelectionAffineTransform(
+    ): SelectionAffineTransform? {
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return null
+        val transform = SelectionAffineTransform(
             centerX = selectionTransformCenterX * surface.logicalWidth,
             centerY = selectionTransformCenterY * surface.logicalHeight,
             scaleX = scaleX.nonZeroTransformScale(), scaleY = scaleY.nonZeroTransformScale(), rotationDegrees = rotation,
             translateX = translateX * surface.logicalWidth / pageModelWidth.coerceAtLeast(1f),
             translateY = translateY * surface.logicalHeight / pageModelHeight.coerceAtLeast(1f),
-        ))
+        )
+        updateRasterSelectionTransform(transform)
+        return transform
     }
 
     private fun updateRasterSelectionTransform(transform: app.inkloom.engine.v5.tools.SelectionRasterTransform) {
@@ -4869,7 +4881,12 @@ class InkCanvasView(context: Context) : View(context) {
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return
         var activeResult: app.inkloom.engine.v5.tools.RasterSelectionTransformResult? = null
         rasterSelectionTransformSessions.forEach { (layerId, session) ->
-            val result = session.update(transform, selectionInterpolation)
+            val offset = selectionLayerOffsets[layerId] ?: (0f to 0f)
+            val adjusted = (transform as? SelectionAffineTransform)?.copy(
+                translateX = transform.translateX + offset.first,
+                translateY = transform.translateY + offset.second,
+            ) ?: transform
+            val result = session.update(adjusted, selectionInterpolation)
             if (layerId == activeLayerId) activeResult = result
         }
         val result = activeResult ?: return
@@ -4895,7 +4912,7 @@ class InkCanvasView(context: Context) : View(context) {
         } else replaceSelectionAlphaMask(SparseAlphaMask.fromSnapshot(result.selection), resetFeather = false)
     }
 
-    private fun finishRasterSelectionTransform(): Boolean {
+    private fun finishRasterSelectionTransform(finalTransform: app.inkloom.engine.v5.tools.SelectionRasterTransform): Boolean {
         if (rasterSelectionTransformSessions.isEmpty()) return false
         val sessions = rasterSelectionTransformSessions.toMap()
         rasterSelectionTransformSessions.clear()
@@ -4910,9 +4927,7 @@ class InkCanvasView(context: Context) : View(context) {
             rebuildSelectionDerivedState(); return false
         }
         rebuildSelectionDerivedState()
-        val pose = selectionCanvasTransform?.pose
-        val originalPose = selectionCanvasTransform?.original
-        val affine = if (pose != null && originalPose != null) pose.rasterMappingFrom(originalPose) as? SelectionAffineTransform else null
+        val affine = finalTransform as? SelectionAffineTransform
         if (mixed.isNotEmpty() && affine == null) {
             results.values.filterNotNull().forEach { result -> result.transactionRecord?.let { it.close() } }
             mixed.keys.forEach(mixedElementOverrides::remove)
@@ -4925,7 +4940,9 @@ class InkCanvasView(context: Context) : View(context) {
             val result = results[layerId] ?: return
             val surface = rasterTileSurfaceFor(layerId) ?: return
             val draft = mixed[layerId]
-            val replacement = if (draft != null && useAfter) draft.transformed(requireNotNull(affine), surface.logicalWidth,
+            val offset = selectionLayerOffsets[layerId] ?: (0f to 0f)
+            val layerAffine = affine?.copy(translateX = affine.translateX + offset.first, translateY = affine.translateY + offset.second)
+            val replacement = if (draft != null && useAfter) draft.transformed(requireNotNull(layerAffine), surface.logicalWidth,
                 surface.logicalHeight, pageModelWidth, pageModelHeight) else draft?.source?.elements
             val edit = draft?.let { app.inkloom.document.LayerElementEdit(it.source.elements.mapTo(mutableSetOf(), PageElement::id), replacement.orEmpty()) }
             if (edit != null) mixedElementExpected[layerId] = edit
@@ -4955,6 +4972,7 @@ class InkCanvasView(context: Context) : View(context) {
             dispose = {
                 results.values.filterNotNull().forEach { it.transactionRecord?.close() }
                 mixed.values.forEach(MixedSelectionDraft::close)
+                selectionLayerOffsets.clear()
             },
         )
         return true
@@ -4967,6 +4985,7 @@ class InkCanvasView(context: Context) : View(context) {
         mixedSelectionDrafts.keys.forEach(mixedElementOverrides::remove)
         mixedSelectionDrafts.values.forEach(MixedSelectionDraft::close)
         mixedSelectionDrafts.clear()
+        selectionLayerOffsets.clear()
         invalidateLayerComposition()
         rasterSelectionTransformOriginalMask?.let { original ->
             documentSelectionState?.replaceFrom(original)
@@ -6049,14 +6068,14 @@ class InkCanvasView(context: Context) : View(context) {
         selectionTransformCenterX = bounds.centerX()
         selectionTransformCenterY = bounds.centerY()
         if (!beginRasterSelectionTransform()) return false
-        updateRasterSelectionTransform(
+        val transform = updateRasterSelectionTransform(
             scaleX = if (horizontal) -1f else 1f,
             scaleY = if (horizontal) 1f else -1f,
             rotation = 0f,
             translateX = 0f,
             translateY = 0f,
-        )
-        return finishRasterSelectionTransform()
+        ) ?: return false
+        return finishRasterSelectionTransform(transform)
     }
 
     var onLayerCreationRequested: ((String, Boolean) -> Unit)? = null
@@ -6509,6 +6528,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (mixedSelectionDrafts.isNotEmpty() && mode in setOf(
                 app.inkloom.engine.v5.tools.SelectionTransformMode.DISTORT,
                 app.inkloom.engine.v5.tools.SelectionTransformMode.WARP,
+                app.inkloom.engine.v5.tools.SelectionTransformMode.PUPPET,
             )) {
             onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
                 "文字和图片保持可编辑时支持自由、等比、旋转和翻转；网格与扭曲仅作用于像素选区"
@@ -6527,13 +6547,94 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     internal fun setSelectionMeshDensity(columns: Int, rows: Int) {
+        if (mixedSelectionDrafts.isNotEmpty()) return
         selectionCanvasTransform?.setMeshDensity(columns, rows)
         onSelectionTransformChanged(selectionTransformUiState)
         invalidate()
     }
 
+    internal fun clearSelectionPuppetPins() {
+        selectionCanvasTransform?.clearPuppetPins()
+        onSelectionTransformChanged(selectionTransformUiState)
+        invalidate()
+    }
+
+    private fun selectionTransformLayerBounds(layerId: String): PixelRect? {
+        val surface = rasterTileSurfaceFor(layerId) ?: return null
+        val selection = rasterSelectionTransformOriginalMask ?: selectionMaskForRasterTools()
+        val selectedPixels = app.inkloom.engine.v5.tools.selectionContentBounds(surface.snapshot())
+            ?.let { content ->
+                selection?.let { mask ->
+                    RasterSelectionContent.selectionBoundsInPixels(mask, surface.logicalWidth, surface.logicalHeight)
+                        ?.let(content::intersect)
+                } ?: content
+            }
+            ?.takeUnless(PixelRect::isEmpty)
+        val structured = mixedSelectionDrafts[layerId]?.source?.bitmap
+            ?.takeUnless(Bitmap::isRecycled)
+            ?.let(NativeRasterOps::alphaBounds)
+            ?.let { PixelRect(it.left, it.top, it.right, it.bottom) }
+        return when {
+            selectedPixels == null -> structured
+            structured == null -> selectedPixels
+            else -> selectedPixels.union(structured)
+        }
+    }
+
+    internal fun setSelectionAlignmentReference(activeLayer: Boolean) {
+        alignmentReferenceActiveLayer = activeLayer && rasterSelectionTransformSessions.size >= 2
+        onSelectionTransformChanged(selectionTransformUiState)
+    }
+
+    internal fun distributeSelectionLayers(horizontal: Boolean) {
+        val ordered = rasterSelectionTransformSessions.keys.mapNotNull { layerId ->
+            selectionTransformLayerBounds(layerId)?.let { layerId to it }
+        }.sortedBy { (_, bounds) -> if (horizontal) bounds.left else bounds.top }
+        if (ordered.size < 3) {
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                "均分至少需要三个含选中内容的图层" else "Distribute requires selected content on at least three layers")
+            return
+        }
+        val first = ordered.first().second
+        val last = ordered.last().second
+        val firstCenter = if (horizontal) (first.left + first.right) / 2f else (first.top + first.bottom) / 2f
+        val lastCenter = if (horizontal) (last.left + last.right) / 2f else (last.top + last.bottom) / 2f
+        val step = (lastCenter - firstCenter) / (ordered.size - 1)
+        ordered.forEachIndexed { index, (layerId, bounds) ->
+            if (index == 0 || index == ordered.lastIndex) return@forEachIndexed
+            val center = if (horizontal) (bounds.left + bounds.right) / 2f else (bounds.top + bounds.bottom) / 2f
+            val delta = firstCenter + step * index - center
+            val old = selectionLayerOffsets[layerId] ?: (0f to 0f)
+            selectionLayerOffsets[layerId] = if (horizontal) old.first + delta to old.second else old.first to old.second + delta
+        }
+        selectionCanvasTransform?.let { updateRasterSelectionTransform(it.pose.rasterMappingFrom(it.original)) }
+        invalidate()
+    }
+
     internal fun alignSelectionToCanvas(alignment: app.inkloom.engine.v5.tools.SelectionAlignment) {
-        selectionCanvasTransform?.alignToCanvas(alignment)
+        if (!alignmentReferenceActiveLayer || rasterSelectionTransformSessions.size < 2) {
+            selectionCanvasTransform?.alignToCanvas(alignment)
+        } else {
+            val reference = selectionTransformLayerBounds(activeLayerId) ?: return
+            rasterSelectionTransformSessions.keys.filter { it != activeLayerId }.forEach { layerId ->
+                val bounds = selectionTransformLayerBounds(layerId) ?: return@forEach
+                val dx = when (alignment) {
+                    app.inkloom.engine.v5.tools.SelectionAlignment.LEFT -> reference.left - bounds.left.toFloat()
+                    app.inkloom.engine.v5.tools.SelectionAlignment.HORIZONTAL_CENTER -> (reference.left + reference.right - bounds.left - bounds.right) / 2f
+                    app.inkloom.engine.v5.tools.SelectionAlignment.RIGHT -> reference.right - bounds.right.toFloat()
+                    else -> 0f
+                }
+                val dy = when (alignment) {
+                    app.inkloom.engine.v5.tools.SelectionAlignment.TOP -> reference.top - bounds.top.toFloat()
+                    app.inkloom.engine.v5.tools.SelectionAlignment.VERTICAL_CENTER -> (reference.top + reference.bottom - bounds.top - bounds.bottom) / 2f
+                    app.inkloom.engine.v5.tools.SelectionAlignment.BOTTOM -> reference.bottom - bounds.bottom.toFloat()
+                    else -> 0f
+                }
+                val old = selectionLayerOffsets[layerId] ?: (0f to 0f)
+                selectionLayerOffsets[layerId] = old.first + dx to old.second + dy
+            }
+            selectionCanvasTransform?.let { updateRasterSelectionTransform(it.pose.rasterMappingFrom(it.original)) }
+        }
         onSelectionTransformChanged(selectionTransformUiState)
         invalidate()
     }
@@ -6548,9 +6649,12 @@ class InkCanvasView(context: Context) : View(context) {
 
     internal fun finishSelectionTransform(apply: Boolean): Boolean {
         val draft = selectionCanvasTransform ?: return false
+        val finalTransform = draft.pose.rasterMappingFrom(draft.original)
         selectionCanvasTransform = null
 
-        if (apply && !draft.pose.rasterMappingFrom(draft.original).isIdentity) finishRasterSelectionTransform() else cancelRasterSelectionTransform()
+        if (apply && (!finalTransform.isIdentity || selectionLayerOffsets.values.any { (x, y) -> x != 0f || y != 0f })) {
+            finishRasterSelectionTransform(finalTransform)
+        } else cancelRasterSelectionTransform()
         onSelectionTransformChanged(null)
         invalidate()
         return true
@@ -6702,8 +6806,8 @@ class InkCanvasView(context: Context) : View(context) {
         selectionTransformCenterX = bounds.centerX()
         selectionTransformCenterY = bounds.centerY()
         if (!beginRasterSelectionTransform()) return
-        updateRasterSelectionTransform(scale, scale, rotationDegrees, 0f, 0f)
-        finishRasterSelectionTransform()
+        val transform = updateRasterSelectionTransform(scale, scale, rotationDegrees, 0f, 0f) ?: return
+        finishRasterSelectionTransform(transform)
     }
 
     private fun Float.nonZeroTransformScale(): Float = when {

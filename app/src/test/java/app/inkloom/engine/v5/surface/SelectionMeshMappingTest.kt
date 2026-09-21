@@ -59,4 +59,18 @@ class SelectionMeshMappingTest {
         val bottom=left.aligned(SelectionAlignment.BOTTOM,400f,300f)
         assertEquals(300f,bottom.mesh!!.maxOf { it.second },.001f)
     }
+
+    @Test fun puppetWarpUsesSmoothFalloffAndHonorsAnchorPins() {
+        val original=SelectionTransformPose(150f,150f,240f,240f).withMeshDensity(7,7)
+        val moving=24
+        val anchor=0
+        val deformed=original.puppetWarp(moving,36f,-18f,setOf(anchor))
+        assertEquals(original.mesh!![anchor],deformed.mesh!![anchor])
+        assertEquals(original.mesh!![moving].first+36f,deformed.mesh!![moving].first,.001f)
+        assertEquals(original.mesh!![moving].second-18f,deformed.mesh!![moving].second,.001f)
+        val neighbor=moving+1
+        assertTrue(deformed.mesh!![neighbor].first > original.mesh!![neighbor].first)
+        assertTrue(deformed.mesh!![neighbor].first < original.mesh!![neighbor].first+36f)
+        assertFalse(deformed.rasterMappingFrom(original).isIdentity)
+    }
 }

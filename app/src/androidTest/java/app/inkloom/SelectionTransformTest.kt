@@ -125,6 +125,63 @@ class SelectionTransformTest {
         assertEquals(Color.BLUE, second.pixelAt(36, 20))
     }
 
+    @Test fun selectedLayersAlignToActiveLayerWithoutFlattening() {
+        fun layer(x: Int, color: Int) = PixelTileSurface(64, 64, 64).also { surface ->
+            surface.beginWrite("alignment fixture").use { write -> write.setPixel(x, 20, color); write.commit().close() }
+        }
+        val first = layer(10, Color.RED)
+        val second = layer(34, Color.BLUE)
+        val mask = MaskTileSurface(64, 64, 64).also { surface ->
+            surface.beginWrite("selection").use { write ->
+                write.composeAlpha(PixelRect(0, 0, 64, 64), ByteArray(64 * 64) { -1 }, mode = MaskComposeMode.REPLACE)
+                write.commit().close()
+            }
+        }
+        val view = canvas {
+            pageModelWidth = 64f; pageModelHeight = 64f; activeLayerId = "first"
+            selectionTransformLayerIds = setOf("first", "second")
+            setRasterLayerSurfaces(linkedMapOf("first" to first, "second" to second))
+            bindDocumentSelectionState(DocumentSelectionRuntime(64).stateFor("align", "page", 64, 64))
+            replaceSelectionFromMask(mask.snapshot())
+            assertTrue(enterFreeTransform())
+            setSelectionAlignmentReference(true)
+            alignSelectionToCanvas(app.inkloom.engine.v5.tools.SelectionAlignment.LEFT)
+            assertTrue(finishSelectionTransform(true))
+        }
+        assertEquals(Color.RED, first.pixelAt(10, 20))
+        assertEquals(PixelRect(10, 20, 11, 21), app.inkloom.engine.v5.tools.selectionContentBounds(second.snapshot()))
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.undo() }
+        assertEquals(Color.BLUE, second.pixelAt(34, 20))
+    }
+
+    @Test fun selectedLayersDistributeBetweenOuterLayerCenters() {
+        fun layer(x: Int, color: Int) = PixelTileSurface(64, 64, 64).also { surface ->
+            surface.beginWrite("distribution fixture").use { write -> write.setPixel(x, 20, color); write.commit().close() }
+        }
+        val first = layer(8, Color.RED)
+        val middle = layer(14, Color.GREEN)
+        val last = layer(48, Color.BLUE)
+        val mask = MaskTileSurface(64, 64, 64).also { surface ->
+            surface.beginWrite("selection").use { write ->
+                write.composeAlpha(PixelRect(0, 0, 64, 64), ByteArray(64 * 64) { -1 }, mode = MaskComposeMode.REPLACE)
+                write.commit().close()
+            }
+        }
+        canvas {
+            pageModelWidth = 64f; pageModelHeight = 64f; activeLayerId = "first"
+            selectionTransformLayerIds = setOf("first", "middle", "last")
+            setRasterLayerSurfaces(linkedMapOf("first" to first, "middle" to middle, "last" to last))
+            bindDocumentSelectionState(DocumentSelectionRuntime(64).stateFor("distribute", "page", 64, 64))
+            replaceSelectionFromMask(mask.snapshot())
+            assertTrue(enterFreeTransform())
+            distributeSelectionLayers(horizontal = true)
+            assertTrue(finishSelectionTransform(true))
+        }
+        assertEquals(Color.RED, first.pixelAt(8, 20))
+        assertEquals(PixelRect(28, 20, 29, 21), app.inkloom.engine.v5.tools.selectionContentBounds(middle.snapshot()))
+        assertEquals(Color.BLUE, last.pixelAt(48, 20))
+    }
+
     @Test fun everyTransformEntryRejectsLockedLayersInBothColorFormatsWithoutMutation() {
         for (highPrecision in listOf(false, true)) {
             val format = if (highPrecision) app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16

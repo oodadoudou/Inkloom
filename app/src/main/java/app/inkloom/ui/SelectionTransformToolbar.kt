@@ -38,7 +38,10 @@ internal fun SelectionTransformToolbar(
     onInterpolation: (app.inkloom.engine.v5.tools.SelectionInterpolation) -> Unit,
     onDimensions: (Float, Float, Float) -> Unit,
     onMeshDensity: (Int, Int) -> Unit,
+    onClearPuppetPins: () -> Unit,
+    onReference: (Boolean) -> Unit,
     onAlign: (SelectionAlignment) -> Unit,
+    onDistribute: (Boolean) -> Unit,
     onFlip: (Boolean) -> Unit,
     onReset: () -> Unit,
     onSnapping: (Boolean, Boolean, Float) -> Unit,
@@ -54,7 +57,7 @@ internal fun SelectionTransformToolbar(
                 SelectionTransformMode.entries.forEach { mode ->
                     TextButton(onClick = { onMode(mode) }, modifier = Modifier.widthIn(min = 72.dp).height(48.dp),
                         colors = ButtonDefaults.textButtonColors(containerColor = if (state.mode == mode) app.inkloom.ui.theme.SageContainer else Color.Transparent, contentColor = if (state.mode == mode) app.inkloom.ui.theme.Ink else app.inkloom.ui.theme.MutedInk)) {
-                        Text(when (mode) { SelectionTransformMode.FREEFORM -> t("Freeform", "自由变换"); SelectionTransformMode.UNIFORM -> t("Uniform", "等比变换"); SelectionTransformMode.DISTORT -> t("Distort", "扭曲"); SelectionTransformMode.WARP -> t("Warp", "网格变形") }, fontSize = 12.sp)
+                        Text(when (mode) { SelectionTransformMode.FREEFORM -> t("Freeform", "自由变换"); SelectionTransformMode.UNIFORM -> t("Uniform", "等比变换"); SelectionTransformMode.DISTORT -> t("Distort", "扭曲"); SelectionTransformMode.WARP -> t("Warp", "网格变形"); SelectionTransformMode.PUPPET -> t("Puppet", "操控变形") }, fontSize = 12.sp)
                     }
                 }
                 IconButton(onClick = { onFinish(false) }) { Icon(Icons.Outlined.Close, t("Cancel transform", "取消变换")) }
@@ -63,7 +66,7 @@ internal fun SelectionTransformToolbar(
             if(state.mixed) Text(t("Text, images and other objects remain editable. Distort and mesh are available for pixel-only selections.", "文字、图片和其他对象会保持可编辑；扭曲和网格仅用于纯像素选区。"),fontSize=11.sp,color=app.inkloom.ui.theme.MutedInk)
             HorizontalDivider(Modifier.widthIn(max = 620.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-            if (state.mode == SelectionTransformMode.WARP) Box {
+            if (state.mode == SelectionTransformMode.WARP || state.mode == SelectionTransformMode.PUPPET) Box {
                 var meshOpen by remember { mutableStateOf(false) }
                 TextButton(onClick = { meshOpen = true }) {
                     Text(t("Grid ${state.pose.meshColumns - 1}×${state.pose.meshRows - 1}", "网格 ${state.pose.meshColumns - 1}×${state.pose.meshRows - 1}"))
@@ -78,20 +81,40 @@ internal fun SelectionTransformToolbar(
                     }
                 }
             }
+            if (state.mode == SelectionTransformMode.PUPPET) TextButton(onClick = onClearPuppetPins) {
+                Text(t("Clear pins", "清除控制点"))
+            }
             Box {
                 var alignOpen by remember { mutableStateOf(false) }
                 TextButton(onClick = { alignOpen = true }) { Text(t("Align", "对齐")) }
                 DropdownMenu(alignOpen, { alignOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text(t("Canvas reference", "参考画布")) },
+                        leadingIcon = { RadioButton(!state.activeLayerReference, null) },
+                        onClick = { onReference(false) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(t("Active layer reference", "参考当前图层")) },
+                        leadingIcon = { RadioButton(state.activeLayerReference, null) },
+                        enabled = state.layerCount >= 2,
+                        onClick = { onReference(true) },
+                    )
+                    HorizontalDivider()
                     SelectionAlignment.entries.forEach { alignment ->
                         DropdownMenuItem(text = { Text(when (alignment) {
-                            SelectionAlignment.LEFT -> t("Left to canvas", "左对齐画布")
+                            SelectionAlignment.LEFT -> t("Align left", "左对齐")
                             SelectionAlignment.HORIZONTAL_CENTER -> t("Center horizontally", "水平居中")
-                            SelectionAlignment.RIGHT -> t("Right to canvas", "右对齐画布")
-                            SelectionAlignment.TOP -> t("Top to canvas", "顶部对齐画布")
+                            SelectionAlignment.RIGHT -> t("Align right", "右对齐")
+                            SelectionAlignment.TOP -> t("Align top", "顶部对齐")
                             SelectionAlignment.VERTICAL_CENTER -> t("Center vertically", "垂直居中")
-                            SelectionAlignment.BOTTOM -> t("Bottom to canvas", "底部对齐画布")
+                            SelectionAlignment.BOTTOM -> t("Align bottom", "底部对齐")
                         }) }, onClick = { onAlign(alignment); alignOpen = false })
                     }
+                    HorizontalDivider()
+                    DropdownMenuItem(text = { Text(t("Distribute horizontally", "水平均分")) }, enabled = state.layerCount >= 3,
+                        onClick = { onDistribute(true); alignOpen = false })
+                    DropdownMenuItem(text = { Text(t("Distribute vertically", "垂直均分")) }, enabled = state.layerCount >= 3,
+                        onClick = { onDistribute(false); alignOpen = false })
                 }
             }
             Box {

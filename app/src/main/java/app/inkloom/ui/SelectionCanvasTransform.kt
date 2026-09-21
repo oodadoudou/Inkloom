@@ -8,7 +8,7 @@ import android.view.MotionEvent
 import app.inkloom.engine.v5.tools.*
 import kotlin.math.*
 
-internal data class SelectionTransformUiState(val pose: SelectionTransformPose, val mode: SelectionTransformMode, val snapping: Boolean = false, val magnetics: Boolean = false, val snapDistance: Float = 12f, val mixed: Boolean = false)
+internal data class SelectionTransformUiState(val pose: SelectionTransformPose, val mode: SelectionTransformMode, val snapping: Boolean = false, val magnetics: Boolean = false, val snapDistance: Float = 12f, val mixed: Boolean = false, val layerCount: Int = 1, val activeLayerReference: Boolean = false)
 
 /** Geometry owns the draft; its callback always samples the original raster and selection. */
 internal class SelectionCanvasTransform(
@@ -29,6 +29,7 @@ internal class SelectionCanvasTransform(
     private var guideX: Float? = null
     private var guideY: Float? = null
     private var meshNode = -1
+    private val puppetPins = linkedSetOf<Int>()
     private var start = original
     private var node = SelectionTransformNode.MOVE
     private var startX = 0f
@@ -44,6 +45,7 @@ internal class SelectionCanvasTransform(
     }
     fun reset() = replace(original)
     fun setMeshDensity(columns: Int, rows: Int) = replace(pose.withMeshDensity(columns, rows))
+    fun clearPuppetPins() { puppetPins.clear(); reset() }
     fun alignToCanvas(alignment: SelectionAlignment) = replace(pose.aligned(alignment, rasterWidth.toFloat(), rasterHeight.toFloat()))
     fun nudge(dx: Float, dy: Float) = replace(pose.withPose(pose.copy(centerX=pose.centerX+dx, centerY=pose.centerY+dy)))
     fun cancelGesture() {
@@ -63,9 +65,10 @@ internal class SelectionCanvasTransform(
                 start = pose; startX = px; startY = py; dragging = true
                 val radius = min(24f * density / zoom.coerceAtLeast(.1f),
                     min(pose.width * w / rasterWidth, pose.height * h / rasterHeight) * .3f).coerceAtLeast(6f * density / zoom.coerceAtLeast(.1f))
-                meshNode = if (mode == SelectionTransformMode.WARP) pose.lattice().indices.minByOrNull {
+                meshNode = if (mode == SelectionTransformMode.WARP || mode == SelectionTransformMode.PUPPET) pose.lattice().indices.minByOrNull {
                     val p=pose.lattice()[it]; hypot(p.first*w/rasterWidth-x,p.second*h/rasterHeight-y)
                 } ?: -1 else -1
+                if (mode == SelectionTransformMode.PUPPET && meshNode >= 0) puppetPins += meshNode
                 node = handles(w, h, zoom).minByOrNull { hypot(it.second.first - x, it.second.second - y) }
                     ?.takeIf { hypot(it.second.first - x, it.second.second - y) <= radius }?.first ?: SelectionTransformNode.MOVE
             }
@@ -74,11 +77,13 @@ internal class SelectionCanvasTransform(
                 guideX=null; guideY=null
                 val tap=event.actionMasked==MotionEvent.ACTION_UP && hypot(dx*w/rasterWidth,dy*h/rasterHeight)*zoom < 3*density
                 val outside=startX < start.centerX-start.width/2 || startX > start.centerX+start.width/2 || startY < start.centerY-start.height/2 || startY > start.centerY+start.height/2
-                if(tap && outside && mode != SelectionTransformMode.WARP && node==SelectionTransformNode.MOVE) {
+                if(tap && outside && mode != SelectionTransformMode.WARP && mode != SelectionTransformMode.PUPPET && node==SelectionTransformNode.MOVE) {
                     val vx=startX-start.centerX; val vy=startY-start.centerY
                     replace(start); if(abs(vx/start.width)>abs(vy/start.height)) nudge(sign(vx),0f) else nudge(0f,sign(vy))
                 } else if (mode == SelectionTransformMode.WARP && meshNode >= 0) {
                     replace(start.warp(meshNode,dx,dy))
+                } else if (mode == SelectionTransformMode.PUPPET && meshNode >= 0) {
+                    replace(start.puppetWarp(meshNode, dx, dy, puppetPins - meshNode))
                 } else if (mode == SelectionTransformMode.DISTORT) {
                     val next = start.distort(node, px-startX, py-startY)
                     if (next != null) replace(next) else if (event.actionMasked == MotionEvent.ACTION_UP) rejected()
@@ -125,7 +130,7 @@ internal class SelectionCanvasTransform(
     }
 
     fun draw(canvas: Canvas, w: Int, h: Int, zoom: Float) {
-        if(mode==SelectionTransformMode.WARP) {
+        if(mode==SelectionTransformMode.WARP || mode==SelectionTransformMode.PUPPET) {
             val lattice=pose.lattice()
             val mapping=SelectionMeshMapping(0f,0f,1f,1f,lattice,pose.meshColumns,pose.meshRows)
             paint.style=Paint.Style.STROKE; paint.strokeWidth=1.5f*density/zoom; paint.color=Color.rgb(57,103,85)
@@ -139,7 +144,8 @@ internal class SelectionCanvasTransform(
                 }
                 canvas.drawPath(path,paint)
             }
-            lattice.forEach { p ->
+            lattice.forEachIndexed { index, p ->
+                if (mode == SelectionTransformMode.PUPPET && index !in puppetPins) return@forEachIndexed
                 paint.style=Paint.Style.FILL; paint.color=Color.WHITE; canvas.drawCircle(p.first*w/rasterWidth,p.second*h/rasterHeight,6*density/zoom,paint)
                 paint.style=Paint.Style.STROKE; paint.color=Color.rgb(57,103,85); canvas.drawCircle(p.first*w/rasterWidth,p.second*h/rasterHeight,6*density/zoom,paint)
             }
