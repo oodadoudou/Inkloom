@@ -102,7 +102,6 @@ internal class LayerTreeController(
                     LayerTreeRejection.LOCKED -> "Unlock the layers or their folders first"
                     LayerTreeRejection.MIXED_PARENTS -> "Move the selected layers into the same folder first"
                     LayerTreeRejection.CLIPPING -> "This clipping relationship cannot be preserved by grouping"
-                    LayerTreeRejection.GROUP_EFFECTS -> "Remove or apply the group's mask and effects before ungrouping"
                     LayerTreeRejection.PROTECTED_CHILD -> "This group contains a protected system layer"
                     LayerTreeRejection.INVALID_STRUCTURE -> "This layer structure cannot be changed"
                 }, when (error.reason) {
@@ -111,7 +110,6 @@ internal class LayerTreeController(
                     LayerTreeRejection.LOCKED -> "请先解锁图层或所属分组"
                     LayerTreeRejection.MIXED_PARENTS -> "请先将所选图层移至同一分组"
                     LayerTreeRejection.CLIPPING -> "当前剪贴关系无法在编组后保持"
-                    LayerTreeRejection.GROUP_EFFECTS -> "解组前请先移除或应用组蒙版及效果"
                     LayerTreeRejection.PROTECTED_CHILD -> "此分组包含受保护的系统图层"
                     LayerTreeRejection.INVALID_STRUCTURE -> "无法调整此图层结构"
                 }))

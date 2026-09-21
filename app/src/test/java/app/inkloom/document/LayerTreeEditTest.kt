@@ -61,12 +61,18 @@ class LayerTreeEditTest {
         assertEquals(.4f, restored.layers.first { it.id == top.id }.opacity)
     }
 
-    @Test fun `locked and effect bearing folders are rejected explicitly`() {
-        try {
-            LayerTreeEdit.create(page.copy(layers = page.layers.map { if (it.id == folder.id) it.copy(mask = LayerMask()) else it }),
-                LayerTreeAction.UNGROUP, folder.id)
-            fail("Group mask cannot disappear silently")
-        } catch (error: LayerTreeRejected) { assertEquals(LayerTreeRejection.GROUP_EFFECTS, error.reason) }
+    @Test fun `ungroup removes folder effects and one undo restores the exact folder`() {
+        val effectedFolder = folder.copy(mask = LayerMask(), opacity = .43f,
+            blendMode = LayerBlendMode.MULTIPLY, passThrough = true)
+        val effectedPage = page.copy(layers = page.layers.map { if (it.id == folder.id) effectedFolder else it })
+        val edit = LayerTreeEdit.create(effectedPage, LayerTreeAction.UNGROUP, folder.id)
+        val ungrouped = edit.apply(effectedPage, false)!!
+        assertTrue(ungrouped.layers.none { it.id == folder.id })
+        assertNull(ungrouped.layers.first { it.id == nested.id }.parentId)
+        assertEquals(effectedPage, edit.apply(ungrouped, true))
+    }
+
+    @Test fun `locked folders are rejected explicitly`() {
         try {
             LayerTreeEdit.create(page.copy(layers = page.layers.map { if (it.id == folder.id) it.copy(locked = true) else it }),
                 LayerTreeAction.DELETE, folder.id)

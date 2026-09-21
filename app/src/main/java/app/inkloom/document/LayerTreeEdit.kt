@@ -3,7 +3,7 @@ package app.inkloom.document
 import java.util.UUID
 
 enum class LayerTreeAction { GROUP_SELECTED, UNGROUP, DUPLICATE, DELETE }
-enum class LayerTreeRejection { MISSING, BACKGROUND, LOCKED, MIXED_PARENTS, CLIPPING, GROUP_EFFECTS, PROTECTED_CHILD, INVALID_STRUCTURE }
+enum class LayerTreeRejection { MISSING, BACKGROUND, LOCKED, MIXED_PARENTS, CLIPPING, PROTECTED_CHILD, INVALID_STRUCTURE }
 class LayerTreeRejected(val reason: LayerTreeRejection) : IllegalArgumentException(reason.name)
 
 /** A layer-tree transaction changes ownership and membership, never a surviving layer's pixels. */
@@ -79,8 +79,6 @@ data class LayerTreeEdit(
                 LayerTreeAction.UNGROUP -> {
                     if (target.role != LayerRole.FOLDER) reject(LayerTreeRejection.MISSING)
                     if (LayerHierarchy.effectiveLocked(original, target)) reject(LayerTreeRejection.LOCKED)
-                    if (target.mask != null || target.opacity != 1f || target.blendMode != LayerBlendMode.NORMAL || target.passThrough)
-                        reject(LayerTreeRejection.GROUP_EFFECTS)
                     val children = original.filter { it.parentId == target.id }
                     afterLayers = original.filterNot { it.id == target.id }.map {
                         if (it.parentId == target.id) it.copy(parentId = target.parentId) else it
