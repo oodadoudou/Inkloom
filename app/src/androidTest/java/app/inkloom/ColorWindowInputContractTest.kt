@@ -609,7 +609,9 @@ class ColorWindowInputContractTest {
         stroke(Offset(before.left+before.width()*.2f,before.exactCenterY()),Offset(before.exactCenterX(),before.exactCenterY()))
         val grip=center("Drag mix panel")
         val close=bounds("Close mix panel")
-        val end=Offset(close.right-3f,close.bottom+80f)
+        // Release outside the source block. Its visible right edge is now an
+        // intentional split target, matching CSP-style block composition.
+        val end=Offset((before.left-600f).coerceAtLeast(100f),before.top+100f)
         val down=SystemClock.uptimeMillis()
         event(MotionEvent.ACTION_DOWN,grip,down,MotionEvent.TOOL_TYPE_FINGER)
         SystemClock.sleep(500)
