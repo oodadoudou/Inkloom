@@ -6061,6 +6061,12 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun flipSelection(horizontal: Boolean): Boolean {
         selectionCanvasTransform?.let { draft ->
+            if (mixedSelectionDrafts.isNotEmpty()) {
+                onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                    "文字和图片保持可编辑时暂不支持镜像；请仅选择像素内容后再翻转"
+                else "Mirroring editable text and images is unsupported; select pixel content only before flipping")
+                return false
+            }
             draft.replace(draft.pose.withPose(if (horizontal) draft.pose.copy(flippedX = !draft.pose.flippedX) else draft.pose.copy(flippedY = !draft.pose.flippedY)))
             return true
         }

@@ -196,6 +196,7 @@ class SelectionTransformTest {
             }
         }
         val committed = linkedMapOf<String, app.inkloom.document.LayerElementEdit>()
+        val rejections = mutableListOf<String>()
         canvas {
             pageModelWidth = 64f; pageModelHeight = 64f; activeLayerId = "first"
             selectionTransformLayerIds = surfaces.keys
@@ -209,7 +210,9 @@ class SelectionTransformTest {
                 })
             }
             onRasterLayerCommitted = { commit -> commit.layerElements?.let { committed[commit.layerId] = it } }
+            onPaintCapabilityRejected = { rejections += it }
             assertTrue(enterFreeTransform())
+            org.junit.Assert.assertFalse(flipSelection(horizontal = true))
             nudgeSelection(5f, 0f)
             assertTrue(finishSelectionTransform(true))
         }
@@ -221,6 +224,7 @@ class SelectionTransformTest {
         assertEquals("image", movedImage.id)
         assertTrue(movedText.x > text.x)
         assertTrue(movedImage.x > image.x)
+        assertTrue(rejections.single().contains("unsupported", ignoreCase = true))
     }
 
     @Test fun everyTransformEntryRejectsLockedLayersInBothColorFormatsWithoutMutation() {
