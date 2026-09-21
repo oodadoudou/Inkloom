@@ -39,6 +39,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     private val indexFile = File(application.filesDir, "library.json")
     private val backupService = LibraryBackupService(application.filesDir)
     private val pageTemplateStore = PageTemplateStore(application.filesDir)
+    private val notebookResumeStore = NotebookResumeStore(application)
     val assets = DocumentAssetService(application)
     val selectionRuntime = DocumentSelectionRuntime()
     private val textRecognition = OnDeviceTextRecognitionService(application)
@@ -134,7 +135,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         val document = store.get(documentId) ?: return
         val needsMigration = document.pages.any { page -> page.elements.any { it is PageElement.Fill } }
         mutableState.value = mutableState.value.copy(selectedDocumentId = documentId,
-            selectedPageId = document.pages.firstOrNull()?.id, migratingLegacyFills = needsMigration,
+            selectedPageId = notebookResumeStore.restore(document) ?: document.pages.firstOrNull()?.id, migratingLegacyFills = needsMigration,
             legacyFillMigrationError = null)
         if (!needsMigration) return
         viewModelScope.launch {
@@ -158,7 +159,12 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun dismissLegacyFillMigrationError() {
         mutableState.value = mutableState.value.copy(legacyFillMigrationError = null)
     }
-    fun selectPage(pageId: String) { mutableState.value = mutableState.value.copy(selectedPageId = pageId) }
+    fun selectPage(pageId: String) {
+        val documentId=mutableState.value.selectedDocumentId ?: return
+        if(store.get(documentId)?.pages?.none { it.id==pageId } != false) return
+        mutableState.value = mutableState.value.copy(selectedPageId = pageId)
+        notebookResumeStore.remember(documentId,pageId)
+    }
 
     fun rename(documentId: String, title: String) = update(documentId) { it.copy(title = title.ifBlank { it.title }, updatedAt = System.currentTimeMillis()) }
     fun toggleFavorite(documentId: String) = update(documentId) { it.copy(favorite = !it.favorite, updatedAt = System.currentTimeMillis()) }
@@ -168,6 +174,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun restore(documentId: String) = update(documentId) { it.copy(trashedAt = null, updatedAt = System.currentTimeMillis()) }
     fun deletePermanently(documentId: String): Boolean {
         if (!store.deletePermanently(documentId)) return false
+        notebookResumeStore.forget(documentId)
         selectionRuntime.releaseDocument(documentId)
         DrawingColorStore(getApplication()).remove(documentId)
         refreshSelection()
@@ -272,6 +279,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         if (!copy) store.save(result.source)
         refresh()
         mutableState.value = mutableState.value.copy(selectedDocumentId = targetDocumentId, selectedPageId = result.transferredPageId)
+        notebookResumeStore.remember(targetDocumentId,result.transferredPageId)
     }
 
     fun applyPageTemplate(documentId: String, pageId: String, templateId: String, paperColorArgb: Long? = null) = update(documentId) { document ->
@@ -704,7 +712,19 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         document.copy(pages = document.pages.map { if (it.id == pageId) transform(it) else it }, updatedAt = System.currentTimeMillis())
     }
     private fun refresh(recovered: Int = mutableState.value.recoveredOperations) { mutableState.value = mutableState.value.copy(documents = store.list(), folders = loadFolders(), recoveredOperations = recovered) }
-    private fun refreshSelection() { refresh(); mutableState.value.selectedDocumentId?.let { id -> if (store.get(id) == null) mutableState.value = mutableState.value.copy(selectedDocumentId = null, selectedPageId = null) } }
+    private fun refreshSelection() {
+        refresh()
+        mutableState.value.selectedDocumentId?.let { id ->
+            val document=store.get(id)
+            if(document==null) mutableState.value=mutableState.value.copy(selectedDocumentId=null,selectedPageId=null)
+            else {
+                val pageId=mutableState.value.selectedPageId?.takeIf { candidate -> document.pages.any { it.id==candidate } }
+                    ?: document.pages.firstOrNull()?.id
+                mutableState.value=mutableState.value.copy(selectedPageId=pageId)
+                pageId?.let { notebookResumeStore.remember(id,it) }
+            }
+        }
+    }
 
     private suspend fun recognizeImages(page: InkPage, languageTag: String): List<RecognizedTextBlock> = buildList {
         (page.background as? PageBackground.Image)?.assetPath?.let(::File)?.takeIf(File::isFile)?.let { file ->
