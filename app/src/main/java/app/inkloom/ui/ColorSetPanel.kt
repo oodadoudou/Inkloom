@@ -1,5 +1,9 @@
 package app.inkloom.ui
 
+import android.content.Intent
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,17 +36,24 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
+import app.inkloom.settings.ColorSetImport
 import app.inkloom.settings.ColorSetLibrary
 import app.inkloom.settings.ColorSetLibraryStore
 import app.inkloom.settings.StarterColorSet
 import app.inkloom.settings.UiLanguage
 import app.inkloom.settings.text
 import app.inkloom.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 
 /** Color-set identity and selection survive tab disposal; editing never sorts by color. */
 @Composable
 internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp, onPick: (Int) -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val store = remember { ColorSetLibraryStore(context) }
     val density = LocalDensity.current
     var gridWidth by remember { mutableStateOf(320.dp) }
@@ -63,12 +74,33 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
     var name by remember { mutableStateOf("") }
     var deletion by remember { mutableStateOf(false) }
     var tileMenu by remember { mutableStateOf<String?>(null) }
+    var importBusy by remember { mutableStateOf(false) }
     val set = library.activeSet
     val bounds = remember { mutableMapOf<String, Rect>() }
     val gridState = rememberLazyGridState()
     var dragging by remember { mutableStateOf<String?>(null) }
     var target by remember { mutableStateOf<String?>(null) }
     var position by remember { mutableStateOf(Offset.Zero) }
+    val palettePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            scope.launch {
+                importBusy = true
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        val displayName = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) cursor.getString(0) else null
+                        } ?: uri.lastPathSegment.orEmpty().substringAfterLast('/').ifBlank { "Imported palette.aco" }
+                        val bytes = requireNotNull(context.contentResolver.openInputStream(uri)) { "The selected palette could not be opened" }
+                            .use { it.readPaletteBytes() }
+                        ColorSetImport.decode(displayName, bytes)
+                    }
+                }.onSuccess { imported -> edit { ColorSetImport.addTo(it, imported) } }
+                    .onFailure { failure -> error = failure.message ?: tr("Color palette could not be imported", "无法导入色板") }
+                importBusy = false
+            }
+        }
+    }
     fun startName(action: String, initial: String) { naming = action; name = initial; menu = false }
     Column(Modifier.fillMaxWidth().onSizeChanged { gridWidth = with(density) { it.width.toDp() } }) {
         Row(Modifier.fillMaxWidth().height(34.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -87,6 +119,11 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
                 SetAction(Icons.Outlined.MoreHoriz, tr("Color set menu", "色板菜单")) { menu = true }
                 ColorPaletteDropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem(text = { Text(tr("New color set", "新建色板")) }, onClick = { startName("new", "") })
+                    DropdownMenuItem(
+                        text = { Text(tr("Import color set from file", "从文件导入色板")) },
+                        enabled = !importBusy,
+                        onClick = { menu = false; palettePicker.launch(arrayOf("application/octet-stream", "application/zip", "application/json", "text/xml", "*/*")) },
+                    )
                     DropdownMenuItem(text = { Text(tr("Add starter color set", "添加基础色板")) }, onClick = { menu = false; starterPicker = true })
                     if (set != null) {
                         DropdownMenuItem(text = { Text(tr("Rename color set", "重命名色板")) }, onClick = { startName("rename", set.name) })
@@ -146,6 +183,7 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
             SetAction(Icons.Outlined.SwapHoriz, tr("Replace selected color", "替换所选颜色"), set?.selectedSwatch != null) { if (set?.selectedSwatchId != null) edit { it.replaceSwatch(set.id, set.selectedSwatchId, color) } }
             SetAction(Icons.Outlined.DeleteOutline, tr("Delete selected color", "删除所选颜色"), set?.selectedSwatch != null) { if (set?.selectedSwatchId != null) edit { it.removeSwatch(set.id, set.selectedSwatchId) } }
         }
+        if (importBusy) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp), color = Ink, trackColor = OutlineSoft)
         error?.let { Text(it, color = Ink, fontSize = 11.sp) }
     }
     if (starterPicker) AlertDialog(onDismissRequest = { starterPicker = false },
@@ -188,6 +226,20 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
     if (deletion && set != null) AlertDialog(onDismissRequest = { deletion = false }, title = { Text(tr("Delete color set", "删除色板")) }, text = { Text(set.name) }, confirmButton = {
         TextButton(onClick = { edit { it.deleteSet(set.id) }; deletion = false }) { Text(tr("Delete", "删除")) }
     }, dismissButton = { TextButton(onClick = { deletion = false }) { Text(tr("Cancel", "取消")) } })
+}
+
+private fun InputStream.readPaletteBytes(): ByteArray {
+    val output = ByteArrayOutputStream()
+    val buffer = ByteArray(8192)
+    var total = 0
+    while (true) {
+        val read = read(buffer)
+        if (read < 0) break
+        total += read
+        require(total <= ColorSetImport.MAX_FILE_BYTES) { "Color palette file exceeds 16 MB" }
+        output.write(buffer, 0, read)
+    }
+    return output.toByteArray()
 }
 
 @Composable

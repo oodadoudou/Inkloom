@@ -150,6 +150,14 @@ class ColorSetWindowTest {
         bounds("Color tile 1")
     }
 
+    @Test fun paletteFileImportIsReachableFromTheColorSetMenu() {
+        openNewNotebook("Palette import ${SystemClock.uptimeMillis()}")
+        tap("Colors")
+        tap("Palettes")
+        tap("Color set menu")
+        bounds("Import color set from file")
+    }
+
     private fun library(): ColorSetLibrary = ColorSetLibraryStore(context).load()
 
     private fun openNewNotebook(name: String) {
