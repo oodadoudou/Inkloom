@@ -60,7 +60,7 @@ object ToolPaletteLayout {
             }
         }
         EditorTool.entries.filter(seen::add).forEach { output += ToolPaletteEntry.Tool(it) }
-        while (output.lastOrNull() == ToolPaletteEntry.Separator) output.removeLast()
+        while (output.lastOrNull() == ToolPaletteEntry.Separator) output.removeAt(output.lastIndex)
         return output
     }
 }
