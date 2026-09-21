@@ -60,6 +60,20 @@ class InkCanvasNavigationTest {
         assertEquals(0, undoCount)
     }
 
+    @Test fun smallTwoFingerPanAndLateSecondContactDoNotUndo() {
+        val view=canvas().apply { twoFingerDoubleTapUndo=true }
+        var undoCount=0
+        view.onUndoGesture={undoCount++}
+        send(view,1_000L,MotionEvent.ACTION_DOWN,point(0,300f,300f))
+        send(view,1_020L,MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),point(0,300f,300f),point(1,500f,300f))
+        send(view,1_060L,MotionEvent.ACTION_MOVE,point(0,314f,300f),point(1,514f,300f))
+        send(view,1_100L,MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),point(0,314f,300f),point(1,514f,300f))
+        send(view,2_000L,MotionEvent.ACTION_DOWN,point(0,300f,300f))
+        send(view,2_180L,MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),point(0,300f,300f),point(1,500f,300f))
+        send(view,2_200L,MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),point(0,300f,300f),point(1,500f,300f))
+        assertEquals(0,undoCount)
+    }
+
     @Test fun partiallyObscuredStylusEventsRemainDrawable() {
         val view = canvas().apply { tool = EditorTool.PEN }
         obscuredStylusEvent(MotionEvent.ACTION_DOWN, 120f, 160f).also { event ->

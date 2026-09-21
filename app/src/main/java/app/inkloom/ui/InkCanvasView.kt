@@ -515,6 +515,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var navigationGestureRotation = 0f
     private var navigationMoved = false
     private var navigationTapEligible = false
+    private var navigationFirstContactAt = 0L
     /** Once two fingers enter viewport navigation, the gesture remains navigation until the last
      * contact is released. This prevents the remaining finger from becoming an accidental stroke. */
     private var viewportGestureActive = false
@@ -2306,6 +2307,7 @@ class InkCanvasView(context: Context) : View(context) {
             }
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    navigationFirstContactAt=event.eventTime
                     twoPointerRotationGesture.reset()
                     navigationSpan = 0f
                     navigationGestureStartSpan = 0f
@@ -2330,8 +2332,8 @@ class InkCanvasView(context: Context) : View(context) {
                         val focus = event.centroid()
                         threeFingerTapRedoGesture.start(event.eventTime, focus.first, focus.second)
                     } else if (event.pointerCount == 2 && twoFingerDoubleTapUndo) {
-                        val focus = event.centroid()
-                        twoFingerTapUndoGesture.start(event.eventTime, focus.first, focus.second)
+                        twoFingerTapUndoGesture.start(navigationFirstContactAt,event.eventTime,
+                            event.getX(0),event.getY(0),event.getX(1),event.getY(1))
                     } else {
                         twoFingerTapUndoGesture.cancel()
                         threeFingerTapRedoGesture.cancel()
@@ -2378,8 +2380,7 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                     if (event.pointerCount == 3) threeFingerTapRedoGesture.move(focus.first, focus.second, transforming = true)
                     else twoFingerTapUndoGesture.move(
-                        focus.first,
-                        focus.second,
+                        event.getX(0),event.getY(0),event.getX(1),event.getY(1),
                         transforming = kotlin.math.abs(span - navigationGestureStartSpan) > navigationTouchSlop || navigationGestureRotation > 2f,
                     )
                     onViewportPinch?.invoke(factor, navigationX, navigationY, focus.first, focus.second) ?: run {
