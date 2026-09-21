@@ -3,6 +3,7 @@ package app.inkloom
 import android.content.Context
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.geometry.Offset
 import androidx.test.core.app.ApplicationProvider
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsStore
@@ -84,5 +85,27 @@ class ToolWorkspacePanelsWindowTest {
         compose.onNodeWithTag("workspace-gradient-dither").performClick()
         compose.waitForIdle()
         assertEquals(false, AppSettingsStore(compose.activity).load().gradientDither)
+    }
+
+    @Test fun longPressDragMovesToolAcrossPaletteGroupSeparatorAndPersistsIt() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithText("Tool property").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Customize tool rail").performClick()
+        val brush = compose.onNodeWithContentDescription("Reorder tool Brush")
+        val selection = compose.onNodeWithContentDescription("Reorder tool Selection")
+        val distance = selection.fetchSemanticsNode().boundsInRoot.center.y - brush.fetchSemanticsNode().boundsInRoot.center.y
+        brush.performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveBy(Offset(0f, distance + 35f), 700)
+            up()
+        }
+        compose.waitForIdle()
+        val entries = app.inkloom.settings.ToolPaletteLayout.decode(AppSettingsStore(compose.activity).load().toolPaletteLayout)
+        val brushIndex = entries.indexOf(app.inkloom.settings.ToolPaletteEntry.Tool(app.inkloom.model.EditorTool.PEN))
+        val firstSeparator = entries.indexOf(app.inkloom.settings.ToolPaletteEntry.Separator)
+        assertTrue("Brush must cross the first separator", brushIndex > firstSeparator)
     }
 }

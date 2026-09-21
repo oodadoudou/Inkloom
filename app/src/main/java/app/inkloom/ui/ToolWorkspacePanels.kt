@@ -21,6 +21,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -307,7 +309,8 @@ private fun ToolPaletteOrganizerDialog(settings: AppSettings, onSettings: (AppSe
                                             entries=pending;current=next;travel-=direction*30f
                                         }
                                     }
-                                }.padding(horizontal=10.dp),verticalAlignment=Alignment.CenterVertically) {
+                                }.semantics { contentDescription = language.text("Reorder tool ${label(entry.tool)}", "拖动排序工具 ${label(entry.tool)}") }
+                                .padding(horizontal=10.dp),verticalAlignment=Alignment.CenterVertically) {
                                 Icon(Icons.Outlined.DragIndicator,null,Modifier.size(18.dp),tint=MutedInk)
                                 Spacer(Modifier.width(8.dp));Text(label(entry.tool),Modifier.weight(1f),color=Ink,fontSize=12.sp)
                             }
