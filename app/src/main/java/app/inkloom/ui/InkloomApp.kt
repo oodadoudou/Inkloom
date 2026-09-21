@@ -6976,21 +6976,32 @@ private fun ProcreateBrushLibrary(
     }
     val visibleLibraryBrushes = remember(usableLibraryBrushes) { usableLibraryBrushes.filterNot(ImportedBrush::hidden) }
     val recentBrushIds = remember(visibleLibraryBrushes, usage) { usage.displayedIds(visibleLibraryBrushes.mapTo(linkedSetOf(), ImportedBrush::id)) }
-    val displayed = remember(visibleLibraryBrushes, usage, selectedCategory) {
-    val categoryBrushes = if (selectedCategory == recentCategory) {
-        val byId = visibleLibraryBrushes.associateBy(ImportedBrush::id)
-        recentBrushIds.mapNotNull(byId::get)
-    } else visibleLibraryBrushes.filter { brush ->
-        when (selectedCategory) {
-            allLabel -> true
-            ungroupedLabel -> brush.format != BrushFormat.SYSTEM
-            else -> if (brush.format == BrushFormat.SYSTEM) brush.groupName == selectedCategory else BrushGroupOperations.isWithin(brush.groupName, selectedCategory)
+    var brushSearchOpen by rememberSaveable { mutableStateOf(false) }
+    var brushSearch by rememberSaveable { mutableStateOf("") }
+    val displayed = remember(visibleLibraryBrushes, usage, selectedCategory, brushSearch) {
+        val query = brushSearch.trim()
+        if (query.isNotEmpty()) {
+            visibleLibraryBrushes.filter { brush ->
+                brush.name.contains(query, ignoreCase = true) ||
+                    brush.groupName.contains(query, ignoreCase = true) ||
+                    brush.format.label.contains(query, ignoreCase = true)
+            }
+        } else {
+            val categoryBrushes = if (selectedCategory == recentCategory) {
+                val byId = visibleLibraryBrushes.associateBy(ImportedBrush::id)
+                recentBrushIds.mapNotNull(byId::get)
+            } else visibleLibraryBrushes.filter { brush ->
+                when (selectedCategory) {
+                    allLabel -> true
+                    ungroupedLabel -> brush.format != BrushFormat.SYSTEM
+                    else -> if (brush.format == BrushFormat.SYSTEM) brush.groupName == selectedCategory else BrushGroupOperations.isWithin(brush.groupName, selectedCategory)
+                }
+            }
+            if (selectedCategory == recentCategory) categoryBrushes else {
+                val byId = categoryBrushes.associateBy(ImportedBrush::id)
+                usage.orderInCategory(selectedCategory, categoryBrushes.map(ImportedBrush::id)).mapNotNull(byId::get)
+            }
         }
-    }
-    if (selectedCategory == recentCategory) categoryBrushes else {
-        val byId = categoryBrushes.associateBy(ImportedBrush::id)
-        usage.orderInCategory(selectedCategory, categoryBrushes.map(ImportedBrush::id)).mapNotNull(byId::get)
-    }
     }
     LaunchedEffect(brushes) {
         val availableIds = usableLibraryBrushes.mapTo(linkedSetOf(), ImportedBrush::id)
@@ -6998,6 +7009,10 @@ private fun ProcreateBrushLibrary(
         if (managingBrushes && selectedBrushIds.isEmpty()) managingBrushes = false
     }
     var quickPropertiesOpen by remember { mutableStateOf(false) }
+    val brushLibraryContext = LocalContext.current
+    val versionHistoryStore = remember(brushLibraryContext) { BrushVersionHistoryStore(brushLibraryContext) }
+    var historyBrush by remember { mutableStateOf<ImportedBrush?>(null) }
+    val brushSearchDescription = tr("Brush search field", "笔刷搜索框")
     val listKey = "list:$selectedCategory"
     val gridKey = "grid:$selectedCategory"
     val presetListState = remember(selectedCategory) {
@@ -7086,13 +7101,27 @@ private fun ProcreateBrushLibrary(
                     DropdownMenu(expanded = quickPropertiesOpen && quickBrush != null,
                         onDismissRequest = { quickPropertiesOpen = false }) {
                         quickBrush?.let { selected ->
-                            BrushQuickProperties(selected, settings.language, onCommit = onQuickBrushCommit,
+                            BrushQuickProperties(selected, settings.language, onCommit = { updated ->
+                                if (selected.format != BrushFormat.SYSTEM) versionHistoryStore.record(selected)
+                                onQuickBrushCommit(updated)
+                            },
                                 onEdit = { quickPropertiesOpen = false; editBrush = selected })
                         }
                     }
                 }
                 IconButton(onClick = { onBrushGridLayout(!gridLayout) }, modifier = Modifier.size(38.dp)) {
                     Icon(if (gridLayout) Icons.Outlined.ViewList else Icons.Outlined.GridView, if (gridLayout) tr("List view", "列表视图") else tr("Grid view", "网格视图"), tint = Ink)
+                }
+                IconButton(onClick = {
+                    brushSearchOpen = !brushSearchOpen
+                    if (!brushSearchOpen) brushSearch = ""
+                }, modifier = Modifier.size(38.dp)) {
+                    Icon(if (brushSearchOpen) Icons.Outlined.Close else Icons.Outlined.Search,
+                        if (brushSearchOpen) tr("Close brush search", "关闭笔刷搜索") else tr("Search brushes", "搜索笔刷"), tint = Ink)
+                }
+                IconButton(onClick = { quickBrush?.let { historyBrush = it } }, enabled = quickBrush != null && quickBrush.format != BrushFormat.SYSTEM,
+                    modifier = Modifier.size(38.dp)) {
+                    Icon(Icons.Outlined.History, tr("Current brush version history", "当前笔刷版本历史"), tint = Ink)
                 }
                 IconButton(
                     onClick = { if (managingBrushes) finishBrushManagement() else managingBrushes = true },
@@ -7127,6 +7156,19 @@ private fun ProcreateBrushLibrary(
                 }
             }
             HorizontalDivider(color = OutlineSoft)
+            if (brushSearchOpen) {
+                OutlinedTextField(
+                    value = brushSearch,
+                    onValueChange = { brushSearch = it },
+                    placeholder = { Text(tr("Brush name, set, or format", "搜索笔刷名称、分组或格式"), fontSize = 11.sp) },
+                    leadingIcon = { Icon(Icons.Outlined.Search, null, Modifier.size(17.dp)) },
+                    trailingIcon = { if (brushSearch.isNotEmpty()) IconButton(onClick = { brushSearch = "" }) { Icon(Icons.Outlined.Close, null, Modifier.size(16.dp)) } },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp)
+                        .semantics { contentDescription = brushSearchDescription },
+                )
+                HorizontalDivider(color = OutlineSoft)
+            }
             if (managingBrushes) {
                 Row(
                     Modifier.fillMaxWidth().height(46.dp).background(Paper).padding(horizontal = 8.dp)
@@ -7441,12 +7483,18 @@ private fun ProcreateBrushLibrary(
             onDismiss = { editBrush = null },
             onSaveAs = { v5 ->
                 val updated = BrushPresetV5Import.writePreset(brush, v5, BrushFormat.INKLOOM)
-                if (brushes.any { it.id == updated.id }) onUpdateBrush(updated) else onReplaceBrushes(brushes + updated)
+                if (brushes.any { it.id == updated.id }) {
+                    if (brush.format != BrushFormat.SYSTEM) versionHistoryStore.record(brush)
+                    onUpdateBrush(updated)
+                } else onReplaceBrushes(brushes + updated)
                 editBrush = null
             },
             onSaveInPlace = { v5 ->
                 val updated = BrushPresetV5Import.writePreset(brush, v5, BrushFormat.INKLOOM)
-                if (brushes.any { it.id == updated.id }) onUpdateBrush(updated) else onReplaceBrushes(brushes + updated)
+                if (brushes.any { it.id == updated.id }) {
+                    if (brush.format != BrushFormat.SYSTEM) versionHistoryStore.record(brush)
+                    onUpdateBrush(updated)
+                } else onReplaceBrushes(brushes + updated)
                 editBrush = null
             },
             onResetToFactory = (owned.ownership as? PresetOwnership.User)?.derivedFromFactoryId
@@ -7455,6 +7503,7 @@ private fun ProcreateBrushLibrary(
                 ?.let { factoryPreset ->
                     {
                         PresetOwnershipOperations.resetToFactory(owned, factoryPreset)?.let { reset ->
+                            versionHistoryStore.record(brush)
                             onUpdateBrush(
                                 BrushPresetV5Import.writePreset(brush, reset.preset, BrushFormat.INKLOOM),
                             )
@@ -7465,6 +7514,25 @@ private fun ProcreateBrushLibrary(
             onDelete = {
                 onDeleteBrush(brush.id)
                 editBrush = null
+            },
+        )
+    }
+    historyBrush?.let { brush ->
+        var versions by remember(brush.id) { mutableStateOf(versionHistoryStore.versions(brush.id)) }
+        BrushVersionHistoryDialog(
+            brush = brush,
+            versions = versions,
+            onDismiss = { historyBrush = null },
+            onRestore = { version ->
+                versionHistoryStore.record(brush)
+                val restored = versionHistoryStore.restore(brush, version)
+                onUpdateBrush(restored)
+                historyBrush = restored
+                versions = versionHistoryStore.versions(brush.id)
+            },
+            onDelete = { version ->
+                versionHistoryStore.delete(version.versionId)
+                versions = versionHistoryStore.versions(brush.id)
             },
         )
     }

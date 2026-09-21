@@ -108,6 +108,20 @@ class BrushBatchManagementTest {
         composeRule.onNodeWithContentDescription("Brush preset Technical Pencil").assertIsDisplayed()
     }
 
+    @Test fun searchFindsBrushesAcrossGroupsAndCurrentBrushHistoryIsReachable() {
+        openBrushes()
+        composeRule.onNodeWithContentDescription("Search brushes").performClick()
+        composeRule.onNodeWithContentDescription("Brush search field").performTextInput("Target C")
+        composeRule.onNodeWithContentDescription("Brush preset Target C").assertIsDisplayed()
+        assertEquals(0, composeRule.onAllNodesWithContentDescription("Brush preset Batch A").fetchSemanticsNodes().size)
+
+        composeRule.onNodeWithContentDescription("Close brush search").performClick()
+        composeRule.onNodeWithContentDescription("Brush preset Batch A").performClick()
+        composeRule.onNodeWithContentDescription("Current brush version history").performClick()
+        composeRule.onNodeWithText("Version history").assertIsDisplayed()
+        composeRule.onNodeWithText("No previous versions yet. Edit and save this brush to create one.").assertIsDisplayed()
+    }
+
     @Test fun nestedGroupsExpandAndCollapseAsAnAccordion() {
         openBrushes()
         composeRule.onNodeWithText("Ink").assertIsDisplayed()
