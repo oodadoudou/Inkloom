@@ -88,7 +88,7 @@ object AppSettingsBackupCodec {
         put("brushGridLayout", brushGridLayout)
         put("brushPanelXDp", brushPanelXDp); put("brushPanelYDp", brushPanelYDp); put("brushPanelWidthDp", brushPanelWidthDp); put("brushCategoryWidthDp",brushCategoryWidthDp); put("brushPanelHeightDp", brushPanelHeightDp)
         put("layerPanelXDp", layerPanelXDp); put("layerPanelYDp", layerPanelYDp); put("layerPanelWidthDp", layerPanelWidthDp); put("layerPanelHeightDp", layerPanelHeightDp)
-        put("toolbarOffsetXDp", toolbarOffsetXDp); put("toolbarOffsetYDp", toolbarOffsetYDp); put("verticalToolbar", verticalToolbar); put("toolbarDock", toolbarDock.name)
+        put("toolbarOffsetXDp", toolbarOffsetXDp); put("toolbarOffsetYDp", toolbarOffsetYDp); put("selectionStudioXDp",selectionStudioXDp); put("selectionStudioYDp",selectionStudioYDp); put("verticalToolbar", verticalToolbar); put("toolbarDock", toolbarDock.name)
         put("singleFingerDoubleTapUndo", singleFingerDoubleTapUndo); put("twoFingerDoubleTapUndo", twoFingerDoubleTapUndo); put("threeFingerTapRedo", threeFingerTapRedo); put("twoFingerRotation", twoFingerRotation)
         put("rulerEnabled", rulerEnabled); put("rulerCenterX", rulerCenterX); put("rulerCenterY", rulerCenterY); put("rulerAngleDegrees", rulerAngleDegrees); put("rulerSnapDegrees", rulerSnapDegrees)
         put("gridSnapEnabled", gridSnapEnabled); put("gridSpacing", gridSpacing); put("alignmentGuidesEnabled", alignmentGuidesEnabled); put("verticalGuideX", verticalGuideX); put("horizontalGuideY", horizontalGuideY)
@@ -133,11 +133,12 @@ object AppSettingsBackupCodec {
             pagePanelWidthDp = float("pagePanelWidthDp", defaults.pagePanelWidthDp).coerceIn(80f, 1200f), pagePanelHeightDp = float("pagePanelHeightDp", defaults.pagePanelHeightDp).coerceIn(120f, 1600f),
             brushPanelXDp = float("brushPanelXDp", defaults.brushPanelXDp).coerceIn(-2400f, 2400f), brushPanelYDp = float("brushPanelYDp", defaults.brushPanelYDp).coerceIn(-2400f, 2400f),
             brushGridLayout = boolean("brushGridLayout", defaults.brushGridLayout),
-            brushCategoryWidthDp = float("brushCategoryWidthDp",defaults.brushCategoryWidthDp).coerceIn(80f,360f),
+            brushCategoryWidthDp = float("brushCategoryWidthDp",defaults.brushCategoryWidthDp).coerceIn(56f,360f),
             brushPanelWidthDp = float("brushPanelWidthDp", defaults.brushPanelWidthDp).coerceIn(80f, 1200f), brushPanelHeightDp = float("brushPanelHeightDp", defaults.brushPanelHeightDp).coerceIn(120f, 1600f),
             layerPanelXDp = float("layerPanelXDp", defaults.layerPanelXDp).coerceIn(-2400f, 2400f), layerPanelYDp = float("layerPanelYDp", defaults.layerPanelYDp).coerceIn(-2400f, 2400f),
             layerPanelWidthDp = float("layerPanelWidthDp", defaults.layerPanelWidthDp).coerceIn(80f, 1200f), layerPanelHeightDp = float("layerPanelHeightDp", defaults.layerPanelHeightDp).coerceIn(120f, 1600f),
             toolbarOffsetXDp = float("toolbarOffsetXDp", defaults.toolbarOffsetXDp).coerceIn(-1200f, 1200f), toolbarOffsetYDp = float("toolbarOffsetYDp", defaults.toolbarOffsetYDp).coerceIn(-1200f, 1200f),
+            selectionStudioXDp = float("selectionStudioXDp",defaults.selectionStudioXDp).coerceIn(-1f,2400f), selectionStudioYDp = float("selectionStudioYDp",defaults.selectionStudioYDp).coerceIn(-1f,2400f),
             verticalToolbar = boolean("verticalToolbar", defaults.verticalToolbar), toolbarDock = enum("toolbarDock", defaults.toolbarDock),
             singleFingerDoubleTapUndo = boolean("singleFingerDoubleTapUndo", defaults.singleFingerDoubleTapUndo), twoFingerDoubleTapUndo = boolean("twoFingerDoubleTapUndo", defaults.twoFingerDoubleTapUndo), threeFingerTapRedo = boolean("threeFingerTapRedo", defaults.threeFingerTapRedo),
             twoFingerRotation = boolean("twoFingerRotation", defaults.twoFingerRotation),

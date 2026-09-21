@@ -3147,7 +3147,10 @@ private fun EditorScreen(
                     },
                     onFill = { canvasView?.fillSelection() },
                     onTransform = { canvasView?.enterFreeTransform() },
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp),
+                    positionX = settings.selectionStudioXDp,
+                    positionY = settings.selectionStudioYDp,
+                    onPosition = { x,y -> onSettingsChange(settings.copy(selectionStudioXDp=x,selectionStudioYDp=y)) },
+                    modifier = Modifier.fillMaxSize().zIndex(4f),
                 )
                 selectionTransformState?.let { state ->
                     SelectionTransformToolbar(state, settings.language,
@@ -8310,6 +8313,7 @@ private fun SelectionStudioPanel(
     onExpand: (Float) -> Unit, onShrink: (Float) -> Unit, onBorder: (Float) -> Unit,
     onFeather: (Float) -> Unit, onBeginFeather: () -> Boolean, onFinishFeather: (Boolean) -> Unit,
     onFill: () -> Unit, onTransform: () -> Unit,
+    positionX: Float, positionY: Float, onPosition: (Float,Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var optionsOpen by remember { mutableStateOf(false) }
@@ -8379,9 +8383,33 @@ private fun SelectionStudioPanel(
         confirmButton = { TextButton(onClick = { optionsOpen = false }) { Text(tr("Done", "完成")) } },
     )
     val studioDescription = tr("Selection studio", "选区面板")
-    Surface(modifier.widthIn(max = 640.dp).semantics { contentDescription = studioDescription }, shape = RoundedCornerShape(14.dp), color = Paper, shadowElevation = 3.dp) {
+    BoxWithConstraints(modifier) {
+    val density=LocalDensity.current.density
+    var measuredWidth by remember { mutableFloatStateOf(640f) }
+    var measuredHeight by remember { mutableFloatStateOf(112f) }
+    val containerWidth=maxWidth.value
+    val containerHeight=maxHeight.value
+    var dragX by remember(positionX) { mutableFloatStateOf(positionX) }
+    var dragY by remember(positionY) { mutableFloatStateOf(positionY) }
+    val desiredX=if(dragX>=0f) dragX else (containerWidth-measuredWidth)/2f
+    val desiredY=if(dragY>=0f) dragY else containerHeight-measuredHeight-4f
+    val bounded=FloatingToolbarPlacement.clamp(desiredX,desiredY,containerWidth,containerHeight,false,measuredWidth,measuredHeight)
+    Surface(Modifier.offset { IntOffset((bounded.xDp*density).roundToInt(),(bounded.yDp*density).roundToInt()) }
+        .widthIn(max = 640.dp).onGloballyPositioned {
+            measuredWidth=it.size.width/density;measuredHeight=it.size.height/density
+        }.semantics { contentDescription = studioDescription }, shape = RoundedCornerShape(14.dp), color = Paper, shadowElevation = 3.dp) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.DragIndicator,tr("Move selection studio", "移动选区面板"),
+                    Modifier.size(30.dp).padding(4.dp).pointerInput(containerWidth,containerHeight,measuredWidth,measuredHeight) {
+                        detectDragGestures(onDragStart={dragX=bounded.xDp;dragY=bounded.yDp},
+                            onDragEnd={onPosition(dragX,dragY)},onDragCancel={dragX=bounded.xDp;dragY=bounded.yDp}) { change,delta ->
+                            change.consume()
+                            val next=FloatingToolbarPlacement.clamp(dragX+delta.x/density,dragY+delta.y/density,
+                                containerWidth,containerHeight,false,measuredWidth,measuredHeight)
+                            dragX=next.xDp;dragY=next.yDp
+                        }
+                    },tint=MutedInk)
                 listOf(SelectionShape.MAGIC_WAND, SelectionShape.FREEFORM, SelectionShape.RECTANGLE, SelectionShape.ELLIPSE).forEach { option ->
                     val label = when (option) {
                         SelectionShape.MAGIC_WAND -> tr("Automatic", "自动")
@@ -8426,6 +8454,7 @@ private fun SelectionStudioPanel(
                 }
             }
         }
+    }
     }
 }
 

@@ -118,6 +118,34 @@ class EditorPanelsWindowTest {
         }
     }
 
+    @Test fun longPressAnywhereOnThePerimeterResizesAndNarrowPanelsAutoCollapse() {
+        lateinit var state:EditorPanelState
+        val original=EditorPanelLayout(open=setOf(EditorPanel.LAYERS)).let { layout -> layout.copy(floating=layout.floating.map {
+            if(it.node.id=="layers") it.copy(rect=PanelRect(100f,100f,380f,360f)) else it
+        }) }
+        compose.runOnUiThread {
+            state=EditorPanelState(compose.activity,AppSettings());state.layout=original
+            compose.activity.setContent { MaterialTheme { ResizeHost(state) } }
+        }
+        compose.waitForIdle()
+        val density=compose.activity.resources.displayMetrics.density
+        val node=compose.onNodeWithTag("editor-panel-layers").fetchSemanticsNode()
+        val bounds=node.boundsInWindow
+        val screenOffset=node.positionOnScreen-node.positionInWindow
+        val anywhereOnRight=Offset(bounds.right-12f*density,bounds.center.y)+screenOffset
+        drag(anywhereOnRight,anywhereOnRight+Offset(60f*density,0f),holdMillis=700)
+        assertEquals(440f,state.layout.floating.first { it.node.id=="layers" }.rect.width,3f)
+
+        val right=point("Resize layers panel · right edge")
+        drag(right,right-Offset(500f*density,0f))
+        assertEquals(72f,state.layout.floating.first { it.node.id=="layers" }.rect.width,3f)
+        compose.onNodeWithText("Body LAYERS").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Layers").assertIsDisplayed()
+        val expand=point("Resize layers panel · right edge")
+        drag(expand,expand+Offset(180f*density,0f))
+        compose.onNodeWithText("Body LAYERS").assertIsDisplayed()
+    }
+
     @Test fun resizingCancelAndLayoutLockKeepOriginalGeometry() {
         lateinit var state: EditorPanelState
         val original = EditorPanelLayout(open = setOf(EditorPanel.LAYERS)).let { l -> l.copy(floating = l.floating.map {
@@ -244,8 +272,8 @@ class EditorPanelsWindowTest {
         return node.boundsInWindow.center+node.positionOnScreen-node.positionInWindow
     }
     private fun tap(point:Offset) { val time=SystemClock.uptimeMillis();event(0,point,time);event(1,point,time);compose.waitForIdle() }
-    private fun drag(a:Offset,b:Offset,cancel:Boolean=false,stylus:Boolean=false) {
-        val time=SystemClock.uptimeMillis();event(0,a,time,stylus);SystemClock.sleep(500)
+    private fun drag(a:Offset,b:Offset,cancel:Boolean=false,stylus:Boolean=false,holdMillis:Long=500) {
+        val time=SystemClock.uptimeMillis();event(0,a,time,stylus);SystemClock.sleep(holdMillis)
         for(i in 1..24) { event(2,a+(b-a)*(i/24f),time,stylus);SystemClock.sleep(16) }
         instrumentation.uiAutomation.executeShellCommand("screencap -p /data/local/tmp/panel-during-drag.png").close()
         event(if(cancel) 3 else 1,b,time,stylus);compose.waitForIdle()

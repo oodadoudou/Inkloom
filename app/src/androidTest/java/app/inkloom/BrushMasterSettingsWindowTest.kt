@@ -309,6 +309,9 @@ class BrushMasterSettingsWindowTest {
         val handle=center("Resize brush categories")
         stroke(handle,handle-Offset(70f,0f))
         assertTrue(prefs.getFloat("brushCategoryWidthDp",120f)<width-15f)
+        val narrow=center("Resize brush categories")
+        stroke(narrow,narrow-Offset(500f,0f))
+        assertEquals(56f,prefs.getFloat("brushCategoryWidthDp",120f),2f)
     }
 
     @Test fun selectingAnImportedBrushLeavesAllRowsInPlace() {

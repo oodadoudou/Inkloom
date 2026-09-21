@@ -27,8 +27,10 @@ internal fun BrushLibrarySplitLayout(
     val density=LocalDensity.current.density
     val save by rememberUpdatedState(onWidth)
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        val maximum=(maxWidth.value-144f).coerceIn(80f,360f)
-        val minimum=minOf(96f,maximum)
+        // Keep enough room for one brush preview, but let the category rail become
+        // a narrow icon/name strip. Its old 96dp floor made this divider feel stuck.
+        val maximum=(maxWidth.value-112f).coerceIn(56f,360f)
+        val minimum=minOf(56f,maximum)
         var width by remember(savedWidth) { mutableFloatStateOf(savedWidth) }
         val visibleWidth=width.coerceIn(minimum,maximum)
         var dragging by remember { mutableStateOf(false) }

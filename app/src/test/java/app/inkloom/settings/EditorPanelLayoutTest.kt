@@ -65,4 +65,20 @@ class EditorPanelLayoutTest {
         assertEquals(3, EditorPanelLayouts.tabInsertionIndex(tabs, 360f, 100f, 330f))
     }
 
+    @Test fun panelContentCollapsesBeforeItCanBlockAUserResize() {
+        assertEquals(72f, EditorPanelLayouts.minimumWidth(PanelNode.Tabs("brush", listOf(EditorPanel.BRUSHES))))
+        assertEquals(72f, EditorPanelLayouts.minimumHeight(PanelNode.Tabs("layers", listOf(EditorPanel.LAYERS))))
+        assertTrue(EditorPanelLayouts.compactThreshold(EditorPanel.BRUSHES) > EditorPanelLayouts.minimumWidth(PanelNode.Tabs("brush", listOf(EditorPanel.BRUSHES))))
+    }
+
+    @Test fun everyVisibleBlockEdgeIsAFullSplitTargetAndTitleRemainsATabTarget() {
+        val target = PanelSlot(PanelNode.Tabs("target", listOf(EditorPanel.LAYERS)), PanelRect(100f,100f,300f,400f), "target", true)
+        val dragged = PanelRect(500f,100f,200f,200f)
+        assertEquals(PanelEdge.LEFT, EditorPanelLayouts.target(listOf(target), emptySet(), 126f, 300f, dragged, -1f, 0f, 900f,700f)?.edge)
+        assertEquals(PanelEdge.RIGHT, EditorPanelLayouts.target(listOf(target), emptySet(), 374f, 300f, dragged, 1f, 0f, 900f,700f)?.edge)
+        assertEquals(PanelEdge.TOP, EditorPanelLayouts.target(listOf(target), emptySet(), 250f, 140f, dragged, 0f, -1f, 900f,700f)?.edge)
+        assertEquals(PanelEdge.BOTTOM, EditorPanelLayouts.target(listOf(target), emptySet(), 250f, 460f, dragged, 0f, 1f, 900f,700f)?.edge)
+        assertEquals(PanelEdge.TAB, EditorPanelLayouts.target(listOf(target), emptySet(), 250f, 112f, dragged, 0f, 1f, 900f,700f)?.edge)
+    }
+
 }

@@ -62,3 +62,16 @@
 布局持久化补全（2026-09-21）：当前停靠树、标签顺序、尺寸、打开状态、锁定与命名布局统一进入资料库备份；命名布局保留工具栏方向和位置。恢复时先校验整个布局，再更新同一个在用状态对象；损坏布局明确拒绝，不能悄悄清空已有布局。旧备份缺少布局时保留当前布局，不从旧字段伪造停靠树。
 
 边缘热区不越过浮窗侧边去覆盖画布工具；标题上边缘不占用标题中央的拖动路径。实际窗口外框和边缘手柄热区分别测量，屏幕边缘的手柄内移不能改变持久化尺寸。
+
+### 窄面板、组合停靠与选区浮条补充合同（2026-09-21）
+
+用户实机发现 0.203.0 的内容最低宽度仍阻止面板继续收窄，而且边缘抓取、上下组合和选区工具条会互相遮挡。重新核对 [CSP Palettes](https://help.clip-studio.com/en-us/manual_en/690_interface/Palettes.htm)、[Photoshop panels](https://helpx.adobe.com/photoshop/desktop/get-started/learn-the-basics/dock-undock-panels.html)、[Procreate Selections](https://help.procreate.com/procreate/handbook/selections/selections-interface) 与 [Photoshop Elements Contextual Task Bar](https://helpx.adobe.com/ca/photoshop-elements/desktop/workspace-and-environment/contextual-task-bar.html)。
+
+- 面板容器最小宽高只保证标题、拖动和恢复能力；内容的理想宽度不能反向阻止用户缩窄。低于各内容可用阈值时自动进入紧凑标签栏，重新拉宽即恢复内容，不新增需要用户维护的手动折叠状态。
+- 浮窗四条完整边均可长按后拖动；角落同时改变两个维度。短按仍交给面板内容，长按开始后由稳定根节点持有手势，取消恢复按下前几何。
+- 拖到任意 Block 的标题形成标签组；拖到 Block 的上／下／左／右边缘形成分割。边缘命中使用可见的整边指示线，不要求命中一个孤立点。嵌套分割、标签组、拆离和保存恢复使用同一布局树。
+- 选区工具条是画布上的上下文浮条：使用明确抓手拖动，临时视口只约束渲染位置，松手保存，旋转／大字体后仍保持可达。它不能固定覆盖右下翻页或已停靠面板；拖动不改变选区像素或模式。
+
+### 双指轻点撤销防误触合同（2026-09-21）
+
+重新核对 [Procreate Gestures](https://help.procreate.com/procreate/handbook/interface-gestures/gestures) 与 [CSP Basic touch gestures](https://help.clip-studio.com/en-us/manual_en/750_gestures/Basic_touch_gestures.htm)：两者都把撤销定义为两指轻点，并把双指拖动、捏合与旋转定义为画布导航。Inkloom 因此只在两根手指于 120ms 内相继落下、整次手势不超过 220ms、每根手指都保持在系统触摸阈值的 45% 内，且没有缩放或旋转时撤销一次。任何超阈值移动立即永久转为导航，抬手时不能再回退成撤销。

@@ -41,11 +41,23 @@ class PanelResizingTest {
     @Test fun clampingDoesNotMoveTheOppositeEdgeAndReverseMotionIsImmediate() {
         val min = PanelResizing.floating(original, "layers", PanelGrip.TOP_LEFT, 2000f, 2000f, width, height).floating[2].rect
         assertEquals(530f, min.right); assertEquals(570f, min.bottom)
-        assertEquals(240f, min.width); assertEquals(160f, min.height)
+        assertEquals(72f, min.width); assertEquals(72f, min.height)
         val reverse = PanelResizing.floating(original, "layers", PanelGrip.TOP_LEFT, 10f, 10f, width, height).floating[2].rect
         assertEquals(370f, reverse.width); assertEquals(410f, reverse.height)
         val max = PanelResizing.floating(original, "layers", PanelGrip.TOP_LEFT, -2000f, -2000f, width, height).floating[2].rect
         assertEquals(0f, max.x); assertEquals(0f, max.y); assertEquals(530f, max.right); assertEquals(570f, max.bottom)
+    }
+
+    @Test fun continuousPerimeterMapsEverySideAndCornerWithoutClaimingTheInterior() {
+        assertEquals(PanelGrip.TOP_LEFT, PanelResizing.gripAt(8f, 8f, 300f, 400f))
+        assertEquals(PanelGrip.TOP_RIGHT, PanelResizing.gripAt(292f, 8f, 300f, 400f))
+        assertEquals(PanelGrip.BOTTOM_LEFT, PanelResizing.gripAt(8f, 392f, 300f, 400f))
+        assertEquals(PanelGrip.BOTTOM_RIGHT, PanelResizing.gripAt(292f, 392f, 300f, 400f))
+        assertEquals(PanelGrip.LEFT, PanelResizing.gripAt(8f, 200f, 300f, 400f))
+        assertEquals(PanelGrip.RIGHT, PanelResizing.gripAt(292f, 200f, 300f, 400f))
+        assertEquals(PanelGrip.TOP, PanelResizing.gripAt(150f, 8f, 300f, 400f))
+        assertEquals(PanelGrip.BOTTOM, PanelResizing.gripAt(150f, 392f, 300f, 400f))
+        assertNull(PanelResizing.gripAt(150f, 200f, 300f, 400f))
     }
 
     @Test fun allDockSidesResizeAcrossAndAlongTheirEdgeAndRoundTrip() {
@@ -75,7 +87,7 @@ class PanelResizingTest {
         val narrow = dock.copy(dock = split.copy(fraction = .01f))
         val moved = PanelResizing.divider(narrow, split.id, 40f, 0f, width, height)
         val first = EditorPanelLayouts.slots(moved, width, height).first { it.node.id == "brushes" }.rect
-        assertEquals(360f, first.width, .01f)
+        assertEquals(112f, first.width, .01f)
     }
 
     @Test fun lockingDisablesGeometryChangesButNotSelectionOrVisibility() {

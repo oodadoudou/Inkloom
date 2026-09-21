@@ -10,6 +10,27 @@ enum class PanelGrip(val x: Int, val y: Int) {
 
 /** Each preview is derived from the frozen layout and total root-coordinate displacement. */
 object PanelResizing {
+    /** Resolve a continuous perimeter gesture without covering the panel's children. */
+    fun gripAt(x: Float, y: Float, width: Float, height: Float,
+        edgeBand: Float = 16f, cornerSpan: Float = 32f): PanelGrip? {
+        if (width <= 0f || height <= 0f || x !in 0f..width || y !in 0f..height) return null
+        val left = x <= edgeBand
+        val right = x >= width - edgeBand
+        val top = y <= edgeBand
+        val bottom = y >= height - edgeBand
+        return when {
+            left && y <= cornerSpan -> PanelGrip.TOP_LEFT
+            right && y <= cornerSpan -> PanelGrip.TOP_RIGHT
+            left && y >= height - cornerSpan -> PanelGrip.BOTTOM_LEFT
+            right && y >= height - cornerSpan -> PanelGrip.BOTTOM_RIGHT
+            left -> PanelGrip.LEFT
+            right -> PanelGrip.RIGHT
+            top -> PanelGrip.TOP
+            bottom -> PanelGrip.BOTTOM
+            else -> null
+        }
+    }
+
     fun floating(layout: EditorPanelLayout, id: String, grip: PanelGrip,
         dx: Float, dy: Float, width: Float, height: Float): EditorPanelLayout {
         if (layout.locked) return layout

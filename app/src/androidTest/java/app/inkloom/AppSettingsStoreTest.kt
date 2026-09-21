@@ -206,6 +206,18 @@ class AppSettingsStoreTest {
         }
     }
 
+    @Test fun selectionStudioPositionSurvivesReload() {
+        val context=ApplicationProvider.getApplicationContext<Context>()
+        val preferences=context.getSharedPreferences("inkloom_settings",Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            AppSettingsStore(context).save(AppSettings(selectionStudioXDp=214f,selectionStudioYDp=468f))
+            val restored=AppSettingsStore(context).load()
+            assertEquals(214f,restored.selectionStudioXDp)
+            assertEquals(468f,restored.selectionStudioYDp)
+        } finally { preferences.edit().clear().commit() }
+    }
+
     @Test fun toolboxBrushGroupTargetsSurviveReload() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)

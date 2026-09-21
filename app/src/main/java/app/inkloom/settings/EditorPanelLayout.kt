@@ -13,8 +13,8 @@ data class PanelRect(val x: Float, val y: Float, val width: Float, val height: F
     fun contains(px: Float, py: Float) = px in x..right && py in y..bottom
     fun moved(dx: Float, dy: Float) = copy(x = x + dx, y = y + dy)
     fun bounded(w: Float, h: Float): PanelRect {
-        val width = width.coerceIn(minOf(160f, w), w.coerceAtLeast(1f))
-        val minHeight = minOf(120f, h.coerceAtLeast(1f))
+        val width = width.coerceIn(minOf(72f, w), w.coerceAtLeast(1f))
+        val minHeight = minOf(72f, h.coerceAtLeast(1f))
         val top = y.coerceIn(0f, (h-minHeight).coerceAtLeast(0f))
         val height = height.coerceIn(minHeight, (h-top).coerceAtLeast(minHeight))
         return PanelRect(x.coerceIn(0f, (w-width).coerceAtLeast(0f)), top, width, height)
@@ -56,6 +56,13 @@ data class PanelSlot(val node: PanelNode, val rect: PanelRect, val rootId: Strin
 
 /** Small immutable layout transactions: a panel has one owner, preview never edits the document. */
 object EditorPanelLayouts {
+    fun compactThreshold(panel: EditorPanel): Float = when (panel) {
+        EditorPanel.PAGES -> 144f
+        EditorPanel.BRUSHES -> 260f
+        EditorPanel.LAYERS, EditorPanel.SUBTOOLS, EditorPanel.PROPERTIES -> 200f
+        EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY -> 180f
+    }
+
     /** Stable width keeps tab hit targets and drop insertion aligned in both UI languages. */
     fun tabWidth(panel: EditorPanel): Float = when (panel) {
         EditorPanel.SUBTOOLS -> 78f
@@ -148,13 +155,15 @@ object EditorPanelLayouts {
     fun minimumWidth(node: PanelNode): Float = when(node) {
         is PanelNode.Space -> 24f
         is PanelNode.Canvas -> 200f
-        is PanelNode.Tabs -> node.panels.maxOf { when(it) { EditorPanel.PAGES -> 160f; EditorPanel.BRUSHES -> 320f; else -> 240f } }
+        // Content switches to its compact tab rail below its useful width. The
+        // content's ideal size must never prevent the user from narrowing a dock.
+        is PanelNode.Tabs -> 72f
         is PanelNode.Split -> if(node.horizontal) minimumWidth(node.first)+minimumWidth(node.second)+4f else maxOf(minimumWidth(node.first),minimumWidth(node.second))
     }
     fun minimumHeight(node: PanelNode): Float = when(node) {
         is PanelNode.Space -> 24f
         is PanelNode.Canvas -> 160f
-        is PanelNode.Tabs -> 160f
+        is PanelNode.Tabs -> 72f
         is PanelNode.Split -> if(!node.horizontal) minimumHeight(node.first)+minimumHeight(node.second)+4f else maxOf(minimumHeight(node.first),minimumHeight(node.second))
     }
     private fun cut(total: Float, fraction: Float, first: Float, second: Float): Float =
@@ -229,7 +238,7 @@ object EditorPanelLayouts {
         else -> false
     }
 
-    /** Narrow boundaries and real title strips only. Ordinary content overlap is not a target. */
+    /** Title means tabs; a visible band along any other edge means a split. */
     fun target(slots: List<PanelSlot>, excludedIds: Set<String>, pointerX: Float, pointerY: Float,
         dragged: PanelRect, dx: Float, dy: Float, width: Float, height: Float, tolerance: Float = 12f): PanelDropTarget? {
         val candidates=slots.asReversed().filter { it.node.id !in excludedIds }
@@ -244,7 +253,16 @@ object EditorPanelLayouts {
             val edges=listOf(PanelEdge.LEFT to abs(pointerX-r.x), PanelEdge.RIGHT to abs(pointerX-r.right),
                 PanelEdge.TOP to abs(pointerY-r.y),PanelEdge.BOTTOM to abs(pointerY-r.bottom))
             val edge=edges.minByOrNull { it.second }!!
-            if(edge.second <= tolerance) return PanelDropTarget(slot.node.id,edge.first)
+            val splitBand = when (slot.node) {
+                is PanelNode.Tabs -> when (edge.first) {
+                    PanelEdge.LEFT, PanelEdge.RIGHT -> (r.width * .22f).coerceIn(24f, 48f)
+                    PanelEdge.TOP, PanelEdge.BOTTOM -> (r.height * .18f).coerceIn(24f, 48f)
+                    PanelEdge.TAB -> tolerance
+                }
+                is PanelNode.Space -> maxOf(r.width, r.height)
+                else -> tolerance
+            }
+            if(edge.second <= splitBand) return PanelDropTarget(slot.node.id,edge.first)
             // Floating content in front blocks targets belonging to windows behind it.
             if(slot.floating) return null
         }

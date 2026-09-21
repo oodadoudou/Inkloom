@@ -802,6 +802,24 @@ class InkloomLaunchTest {
         composeRule.waitUntil(5_000) { findInkCanvasView()?.tool == app.inkloom.model.EditorTool.PEN }
     }
 
+    @Test fun selectionStudioCanMoveAndRestoresItsSavedPosition() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Selection").performClick()
+        val before=composeRule.onNodeWithContentDescription("Selection studio").fetchSemanticsNode().boundsInRoot
+        composeRule.onNodeWithContentDescription("Move selection studio").performTouchInput {
+            swipe(center,center+Offset(-160f,-100f),durationMillis=450)
+        }
+        composeRule.waitForIdle()
+        val moved=composeRule.onNodeWithContentDescription("Selection studio").fetchSemanticsNode().boundsInRoot
+        assertTrue("Selection studio should move: $before -> $moved",moved.left<before.left-20f && moved.top<before.top-20f)
+        composeRule.onNodeWithContentDescription("Exit selection tool").performClick()
+        composeRule.onNodeWithContentDescription("Selection").performClick()
+        composeRule.waitForIdle()
+        val restored=composeRule.onNodeWithContentDescription("Selection studio").fetchSemanticsNode().boundsInRoot
+        assertEquals(moved.left,restored.left,3f)
+        assertEquals(moved.top,restored.top,3f)
+    }
+
     @Test fun selectionStudioCommitsRealSelectionAndDeselectRemovesIt() {
         createNotebookAndOpenEditor()
         assertTrue(composeRule.onAllNodesWithContentDescription("Selection studio").fetchSemanticsNodes().isEmpty())

@@ -18,6 +18,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DragIndicator
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Brush
+import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.BlurOn
+import androidx.compose.material.icons.outlined.Colorize
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -200,6 +208,16 @@ internal fun EditorPanels(
         EditorPanel.SUBTOOLS->"子工具"; EditorPanel.PROPERTIES->"工具属性"
         EditorPanel.WHEEL->"色环"; EditorPanel.PALETTES->"色板"; EditorPanel.MIX->"混色"; EditorPanel.NEARBY->"近似色"
     })
+    fun icon(panel: EditorPanel)=when(panel) {
+        EditorPanel.PAGES -> Icons.Outlined.Description
+        EditorPanel.BRUSHES -> Icons.Outlined.Brush
+        EditorPanel.LAYERS -> Icons.Outlined.Layers
+        EditorPanel.SUBTOOLS -> Icons.Outlined.GridView
+        EditorPanel.PROPERTIES -> Icons.Outlined.Tune
+        EditorPanel.WHEEL, EditorPanel.PALETTES -> Icons.Outlined.Palette
+        EditorPanel.MIX -> Icons.Outlined.BlurOn
+        EditorPanel.NEARBY -> Icons.Outlined.Colorize
+    }
     var drag by remember { mutableStateOf<PanelDrag?>(null) }
     var resize by remember { mutableStateOf<PanelResize?>(null) }
     val gestureDown = remember { arrayOf(Offset.Zero) }
@@ -248,7 +266,9 @@ internal fun EditorPanels(
         fun begin(slot: PanelSlot, panel: EditorPanel?) {
             if (state.layout.locked) return
             dragFocus.requestFocus()
-            val sourceId=if(panel==null && slot.floating) slot.rootId else slot.node.id
+            // A leaf inside a split floating root can be detached on its own. Only
+            // the root title moves the complete floating combination.
+            val sourceId=if(panel==null && slot.floating && slot.rootId==slot.node.id) slot.rootId else slot.node.id
             val rect=currentSlots.firstOrNull { it.node.id==sourceId }?.rect ?: slot.rect
             drag=PanelDrag(gestureOrigin[0] ?: state.layout,sourceId,panel,rect,gestureDown[0].x/density,gestureDown[0].y/density)
             if (panel != null) state.layout = EditorPanelLayouts.select(state.layout, panel)
@@ -292,6 +312,14 @@ internal fun EditorPanels(
                 val down=awaitFirstDown(requireUnconsumed=false,pass=PointerEventPass.Initial)
                 gestureOrigin[0] = state.layout
                 gestureDown[0] = down.position
+                val pendingPerimeterResize = if(!state.layout.locked) state.layout.floating.asReversed().firstNotNullOfOrNull { root ->
+                    val visible=EditorPanelLayouts.visible(root.node,state.layout.open) ?: return@firstNotNullOfOrNull null
+                    val rect=root.rect.bounded(w,h)
+                    if(!rect.contains(down.position.x/density,down.position.y/density)) null else
+                        PanelResizing.gripAt(down.position.x/density-rect.x,down.position.y/density-rect.y,rect.width,rect.height)
+                            ?.let { Triple(root.node.id,it,state.layout) }
+                } else null
+                var perimeterCandidate=pendingPerimeterResize
                 var last=down.position
                 try {
                     while(true) {
@@ -300,6 +328,15 @@ internal fun EditorPanels(
                             cancelResize(); break
                         }
                         val change=event.changes.firstOrNull { it.id==down.id } ?: break
+                        if(resize==null && drag==null && perimeterCandidate!=null && change.pressed) {
+                            val elapsed=change.uptimeMillis-down.uptimeMillis
+                            val travel=(change.position-down.position).getDistance()
+                            if(elapsed>=viewConfiguration.longPressTimeoutMillis) {
+                                val (rootId,grip,original)=perimeterCandidate!!
+                                resize=PanelResize(original,rootId,grip,true,down.position)
+                                perimeterCandidate=null
+                            } else if(travel>viewConfiguration.touchSlop || change.isConsumed) perimeterCandidate=null
+                        }
                         val resizing = resize
                         if (resizing != null) {
                             // Compose synthesizes an already-consumed up for ACTION_CANCEL.
@@ -339,9 +376,10 @@ internal fun EditorPanels(
                 val moving=!individual && d!=null && (d.sourceId==tabs.id || (d.panel==null && EditorPanelLayouts.find(EditorPanelLayouts.node(d.original,d.sourceId) ?: tabs,tabs.id)!=null))
                 val rect=if(moving) slot.rect.moved(d!!.dx,d.dy) else slot.rect
                 val active=if(individual && tabs.active==d?.panel) tabs.panels.first { it != d.panel } else tabs.active
+                val compact = rect.width < EditorPanelLayouts.compactThreshold(active) || rect.height < 112f
                 Column(geometry(rect).testTag("editor-panel-${tabs.id}").zIndex(if(moving) 100f else if(slot.floating) 5f+layout.floating.indexOfFirst { it.node.id==slot.rootId } else 1f)
                     .background(Paper).border(1.dp,OutlineSoft).pointerInput(slot.rootId) {
-                        awaitEachGesture { awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial); state.raise(slot.rootId,tabs.id) }
+                        awaitEachGesture { awaitFirstDown(requireUnconsumed=false,pass=PointerEventPass.Initial);state.raise(slot.rootId,tabs.id) }
                     }) {
                     Row(Modifier.fillMaxWidth().height(32.dp).background(Paper),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                         Icon(Icons.Outlined.DragIndicator,language.text("Move panel group","移动面板组合"),
@@ -366,7 +404,18 @@ internal fun EditorPanels(
                             Icon(Icons.Outlined.Close,language.text("Close ${title(active).lowercase()} panel","关闭${title(active)}面板"),Modifier.size(16.dp),tint=Ink)
                         }
                     }
-                    Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+                    if(compact) {
+                        Column(Modifier.weight(1f).fillMaxWidth().clipToBounds(),
+                            horizontalAlignment=androidx.compose.ui.Alignment.CenterHorizontally) {
+                            tabs.panels.forEach { panel ->
+                                IconButton(onClick={state.commit(EditorPanelLayouts.select(state.layout,panel))},
+                                    modifier=Modifier.size(46.dp).background(if(panel==active) SageContainer else Color.Transparent)
+                                        .semantics { contentDescription=title(panel) }) {
+                                    Icon(icon(panel),title(panel),Modifier.size(21.dp),tint=Ink)
+                                }
+                            }
+                        }
+                    } else Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                         bodies.getValue(active).invoke()
                     }
                 }
