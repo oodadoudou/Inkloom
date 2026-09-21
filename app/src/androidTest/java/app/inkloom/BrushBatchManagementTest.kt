@@ -165,6 +165,29 @@ class BrushBatchManagementTest {
         )
     }
 
+    @Test fun selectedBrushStackLongPressDragsAsOneMove() {
+        openBrushes()
+        composeRule.onNodeWithContentDescription("Select multiple brushes").performClick()
+        composeRule.onNodeWithContentDescription("Brush preset Batch A").performClick()
+        composeRule.onNodeWithContentDescription("Brush preset Batch B").performClick()
+        val row = composeRule.onNodeWithContentDescription("Brush preset Batch A")
+        val rowBounds = row.fetchSemanticsNode().boundsInRoot
+        val target = composeRule.onNodeWithContentDescription("Brush group Target").fetchSemanticsNode().boundsInRoot.center
+        row.performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveBy(target - rowBounds.center, 300)
+            up()
+        }
+
+        val store = BrushMetadataStore(composeRule.activity)
+        composeRule.waitUntil(5_000) {
+            store.load().filter { it.id in setOf("batch-a", "batch-b") }.all { it.groupName == "Target" }
+        }
+        assertEquals(setOf("batch-a", "batch-b"), store.load().filter { it.groupName == "Target" && it.id.startsWith("batch-") }.mapTo(linkedSetOf(), ImportedBrush::id))
+        assertEquals(0, composeRule.onAllNodesWithContentDescription("Exit brush management").fetchSemanticsNodes().size)
+    }
+
     @Test fun swipeDeleteRemovesOnlyTheChosenImportedBrush() {
         openBrushes()
         val store = BrushMetadataStore(composeRule.activity)

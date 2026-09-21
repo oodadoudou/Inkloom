@@ -6827,6 +6827,7 @@ private fun ProcreateBrushLibrary(
     val categoryViewport = remember { arrayOf<Rect?>(null) }
     val presetViewport = remember { arrayOf<Rect?>(null) }
     var draggingBrush by remember { mutableStateOf<ImportedBrush?>(null) }
+    var draggingBrushIds by remember { mutableStateOf(emptySet<String>()) }
     var brushDragPosition by remember { mutableStateOf<Offset?>(null) }
     val liveBrushDragPoint by rememberUpdatedState(brushDragPosition)
     val edgeDensity = LocalDensity.current.density
@@ -6881,6 +6882,7 @@ private fun ProcreateBrushLibrary(
         managingBrushes = false
         selectedBrushIds = emptySet()
         draggingBrush = null
+        draggingBrushIds = emptySet()
         brushDragPosition = null
     }
     fun applyBrushGroupOperation(ids: Set<String>, group: String, copy: Boolean) {
@@ -6919,21 +6921,23 @@ private fun ProcreateBrushLibrary(
     fun brushDropHovered(brush: ImportedBrush): Boolean {
         val moving = draggingBrush ?: return false
         val point = brushDragPosition ?: return false
-        return moving.id != brush.id && moving.format != BrushFormat.SYSTEM &&
+        return brush.id !in draggingBrushIds && moving.format != BrushFormat.SYSTEM &&
             BrushGroupOperations.normalize(moving.groupName).equals(BrushGroupOperations.normalize(brush.groupName), true) &&
             brushDragBounds[brush.id]?.contains(point) == true
     }
 
     fun finishBrushDrag() {
         val brush = draggingBrush ?: return
+        val draggedIds = draggingBrushIds.ifEmpty { setOf(brush.id) }
+        val batchDrag = managingBrushes
         val point = brushDragPosition
         val category = point?.let { p -> groupDropBounds.entries.firstOrNull { it.value.contains(p) }?.key }
-        val targetId = point?.let { p -> brushDragBounds.entries.firstOrNull { it.key != brush.id && it.value.contains(p) }?.key }
+        val targetId = point?.let { p -> brushDragBounds.entries.firstOrNull { it.key !in draggedIds && it.value.contains(p) }?.key }
         val targetBrush = (systemBrushes + brushes).firstOrNull { it.id == targetId }
-        if (category != null) applyBrushGroupOperation(setOf(brush.id), category, copy = true)
+        if (category != null) applyBrushGroupOperation(draggedIds, category, copy = !batchDrag)
         else if (targetBrush != null && !BrushGroupOperations.normalize(brush.groupName).equals(BrushGroupOperations.normalize(targetBrush.groupName), true)) {
-            applyBrushGroupOperation(setOf(brush.id), targetBrush.groupName, copy = false)
-        } else if (targetId != null && brush.format != BrushFormat.SYSTEM) {
+            applyBrushGroupOperation(draggedIds, targetBrush.groupName, copy = false)
+        } else if (targetId != null && draggedIds.size == 1 && brush.format != BrushFormat.SYSTEM) {
             val peers = BrushGroupOperations.orderForDisplay(brushes.filter {
                 BrushGroupOperations.normalize(it.groupName).equals(BrushGroupOperations.normalize(brush.groupName), true)
             })
@@ -6942,9 +6946,10 @@ private fun ProcreateBrushLibrary(
             if (from >= 0 && to >= 0 && from != to) onReorderBrush(brush.id, to - from)
         }
         else if (point != null && presetViewport[0]?.contains(point) == true && selectedCategory in importedCategories && !BrushGroupOperations.normalize(brush.groupName).equals(selectedCategory, true)) {
-            applyBrushGroupOperation(setOf(brush.id), selectedCategory, copy = false)
+            applyBrushGroupOperation(draggedIds, selectedCategory, copy = false)
         }
         draggingBrush = null
+        draggingBrushIds = emptySet()
         brushDragPosition = null
     }
     @Composable
@@ -7081,11 +7086,16 @@ private fun ProcreateBrushLibrary(
     Surface(
         modifier = modifier.onGloballyPositioned { panelOrigin[0] = it.localToWindow(Offset.Zero) }
             .brushLibraryDragSurface(
-                hit = { local -> if (managingBrushes) null else brushDragBounds.entries.firstOrNull { it.value.contains(panelOrigin[0] + local) }?.key },
-                start = { id, local -> draggingBrush = usableLibraryBrushes.firstOrNull { it.id == id }; brushDragPosition = panelOrigin[0] + local },
+                hit = { local -> brushDragBounds.entries.firstOrNull { it.value.contains(panelOrigin[0] + local) }?.key },
+                start = { id, local ->
+                    draggingBrush = usableLibraryBrushes.firstOrNull { it.id == id }
+                    draggingBrushIds = if (managingBrushes) (currentSelectedBrushIds + id) else setOf(id)
+                    if (managingBrushes && id !in currentSelectedBrushIds) selectedBrushIds = currentSelectedBrushIds + id
+                    brushDragPosition = panelOrigin[0] + local
+                },
                 move = { local -> brushDragPosition = panelOrigin[0] + local },
                 finish = { finishBrushDrag() },
-                cancel = { draggingBrush = null; brushDragPosition = null },
+                cancel = { draggingBrush = null; draggingBrushIds = emptySet(); brushDragPosition = null },
             ),
         shape = RoundedCornerShape(0.dp),
         color = Paper,
@@ -7372,7 +7382,8 @@ private fun ProcreateBrushLibrary(
         }
         draggingBrush?.let { lifted ->
             val dragPreviewDescription = tr("Dragged brush preview", "拖动中的笔刷预览")
-            Text(lifted.name, color = Ink, maxLines = 1, fontSize = 12.sp,
+            val dragLabel = if (draggingBrushIds.size > 1) tr("${draggingBrushIds.size} brushes", "${draggingBrushIds.size} 支笔刷") else lifted.name
+            Text(dragLabel, color = Ink, maxLines = 1, fontSize = 12.sp,
                 modifier = Modifier.offset {
                     val point = (brushDragPosition ?: panelOrigin[0]) - panelOrigin[0]
                     IntOffset(point.x.roundToInt() + 20, point.y.roundToInt() - 48)
