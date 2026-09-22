@@ -3,10 +3,18 @@ package app.inkloom.engine.v5.composite
 import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
 import app.inkloom.engine.v5.surface.PixelTileFormat
 import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.document.LayerAdjustment
 
 /** Children are ordered bottom-to-top. Group effects are applied once to the composite children. */
 sealed interface PixelProjectionNode {
     data class Paint(val input: PixelLayerProjectionInput) : PixelProjectionNode
+    data class Adjustment(
+        val id: String,
+        val adjustment: LayerAdjustment,
+        val opacity: Float = 1f,
+        val mask: MaskTileSurfaceSnapshot? = null,
+        val visible: Boolean = true,
+    ) : PixelProjectionNode
     data class Group(
         val id: String,
         val children: List<PixelProjectionNode>,
@@ -29,6 +37,7 @@ class PixelGroupProjectionCache(
 ) {
     private val caches = mutableMapOf("root" to PixelLayerProjectionCache(width, height, tileSize, format, surfaceId))
     private val contributions = mutableMapOf<String, PixelBackdropInterpolationCache>()
+    private val adjustments = mutableMapOf<String, PixelAdjustmentProjectionCache>()
     val emptySnapshot = PixelTileSurface(width, height, tileSize, "$surfaceId/empty", pixelFormat = format).snapshot()
     val snapshot get() = caches.getValue("root").snapshot
 
@@ -36,6 +45,7 @@ class PixelGroupProjectionCache(
         val groupIds = hashSetOf<String>()
         val usedCaches = hashSetOf<String>()
         val usedContributions = hashSetOf<String>()
+        val usedAdjustments = hashSetOf<String>()
         var recomposed = 0
         var reused = 0
         fun count(update: PixelLayerProjectionUpdate): app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot {
@@ -54,6 +64,16 @@ class PixelGroupProjectionCache(
             initialBackdrop?.let { inputs += PixelLayerProjectionInput("$scope/backdrop", it, isClippingBase = false) }
             for (node in children) when (node) {
                 is PixelProjectionNode.Paint -> inputs += node.input
+                is PixelProjectionNode.Adjustment -> if (node.visible) {
+                    val before = compose("before-adjustment/${node.id}", inputs)
+                    usedAdjustments += node.id
+                    val cache = adjustments.getOrPut(node.id) {
+                        PixelAdjustmentProjectionCache(width, height, tileSize, format, "$surfaceId/adjustment/${node.id}")
+                    }
+                    val result = count(cache.update(before, node.adjustment, node.opacity.coerceIn(0f, 1f), node.mask))
+                    inputs.clear()
+                    inputs += PixelLayerProjectionInput(node.id, result, isClippingBase = false)
+                }
                 is PixelProjectionNode.Group -> {
                     require(groupIds.add(node.id)) { "Duplicate or cyclic projection group ${node.id}" }
                     when {
@@ -81,6 +101,7 @@ class PixelGroupProjectionCache(
         val result = project(nodes, "root")
         caches.keys.retainAll(usedCaches)
         contributions.keys.retainAll(usedContributions)
+        adjustments.keys.retainAll(usedAdjustments)
         return PixelLayerProjectionUpdate(result, recomposed, reused)
     }
 }

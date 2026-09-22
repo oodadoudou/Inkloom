@@ -126,7 +126,7 @@ object LayerIds {
 }
 
 @Serializable
-enum class LayerRole { BACKGROUND, INK, HIGHLIGHT, OBJECTS, CUSTOM, FOLDER }
+enum class LayerRole { BACKGROUND, INK, HIGHLIGHT, OBJECTS, CUSTOM, FOLDER, ADJUSTMENT }
 
 @Serializable
 enum class LayerBlendMode {
@@ -200,6 +200,8 @@ data class InkLayer(
     /** Folder-only: child blending participates in the parent backdrop. */
     val passThrough: Boolean = false,
     val paletteColor: LayerPaletteColor = LayerPaletteColor.NONE,
+    /** Non-destructive color operation applied to the composited siblings below this layer. */
+    val adjustment: LayerAdjustment? = null,
 )
 
 /** Serializable snapshot of the guides attached to one paint layer.
@@ -239,7 +241,45 @@ data class LayerDrawingGuide(
 )
 
 /** V5 has one paint-layer truth. Backgrounds and folders are structural, all other layers own pixels. */
-fun InkLayer.isPaintSurfaceLayer(): Boolean = role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)
+fun InkLayer.isPaintSurfaceLayer(): Boolean = role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER, LayerRole.ADJUSTMENT)
+
+@Serializable
+enum class LayerAdjustmentKind {
+    BRIGHTNESS_CONTRAST,
+    HUE_SATURATION,
+    LEVELS,
+    CURVES,
+    COLOR_BALANCE,
+    GRADIENT_MAP,
+}
+
+@Serializable
+data class AdjustmentCurvePoint(val input: Float, val output: Float)
+
+@Serializable
+data class LayerAdjustment(
+    val kind: LayerAdjustmentKind = LayerAdjustmentKind.BRIGHTNESS_CONTRAST,
+    val brightness: Float = 0f,
+    val contrast: Float = 0f,
+    val hueDegrees: Float = 0f,
+    val saturation: Float = 0f,
+    val inputBlack: Float = 0f,
+    val inputGamma: Float = 1f,
+    val inputWhite: Float = 1f,
+    val outputBlack: Float = 0f,
+    val outputWhite: Float = 1f,
+    val curve: List<AdjustmentCurvePoint> = listOf(AdjustmentCurvePoint(0f, 0f), AdjustmentCurvePoint(1f, 1f)),
+    val shadowsRed: Float = 0f,
+    val shadowsGreen: Float = 0f,
+    val shadowsBlue: Float = 0f,
+    val midtonesRed: Float = 0f,
+    val midtonesGreen: Float = 0f,
+    val midtonesBlue: Float = 0f,
+    val highlightsRed: Float = 0f,
+    val highlightsGreen: Float = 0f,
+    val highlightsBlue: Float = 0f,
+    val gradient: List<GradientColorStop> = listOf(GradientColorStop(0f, 0xFF000000L), GradientColorStop(1f, 0xFFFFFFFFL)),
+)
 
 @Serializable
 data class LayerMask(
