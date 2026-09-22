@@ -64,11 +64,18 @@ class BrushWindowReturnTest {
         compose.waitForIdle()
         compose.onNodeWithText("Distributed Systems").assertExists()
         compose.onNodeWithText("1/3").assertExists()
+        compose.onNodeWithContentDescription("Next page").performTouchInput { click() }
+        compose.onNodeWithContentDescription("Next page").performTouchInput { click() }
+        compose.onNodeWithText("3/3").assertExists()
         compose.onNodeWithContentDescription("Switch notebook").performTouchInput { click() }
         compose.waitForIdle()
         compose.onNodeWithText(title).performScrollTo().performTouchInput { click() }
         compose.waitForIdle()
         compose.onNodeWithText("1/1").assertExists()
+        compose.onNodeWithContentDescription("Switch notebook").performTouchInput { click() }
+        compose.onNodeWithText("Distributed Systems").performScrollTo().performTouchInput { click() }
+        compose.waitForIdle()
+        compose.onNodeWithText("3/3").assertExists()
     }
 
     @Test fun lastPagePlusCreatesBlankMatchingTemplateAndNormalNextStillNavigates() {

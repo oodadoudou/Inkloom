@@ -988,6 +988,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onRecognizeDocument = viewModel::recognizeDocumentText,
             onConvertHandwriting = viewModel::convertRecognizedHandwritingToText,
             onOpenInternalLink = { documentId, pageId -> viewModel.select(documentId); viewModel.selectPage(pageId) },
+            onOpenNotebook = viewModel::select,
             onSettings = { settingsOpen = true },
             onSettingsChange = ::updateSettings,
         )
@@ -1578,6 +1579,7 @@ private fun EditorScreen(
     onRecognizeDocument: (String, String, (Result<Int>) -> Unit) -> Unit,
     onConvertHandwriting: (String, String, String, Boolean) -> Unit,
     onOpenInternalLink: (String, String) -> Unit,
+    onOpenNotebook: (String) -> Unit,
     onSettings: () -> Unit,
     onSettingsChange: (AppSettings) -> Unit,
 ) {
@@ -2073,7 +2075,7 @@ private fun EditorScreen(
                             leadingIcon = { if (note.id == document.id) Icon(Icons.Outlined.Check, null) },
                             onClick = {
                                 notebookSwitcherOpen = false
-                                if (note.id != document.id) note.pages.firstOrNull()?.let { onOpenInternalLink(note.id, it.id) }
+                                if (note.id != document.id) onOpenNotebook(note.id)
                             },
                         )
                     }
