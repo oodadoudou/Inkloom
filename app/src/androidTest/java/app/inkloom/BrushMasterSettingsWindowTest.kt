@@ -124,6 +124,25 @@ class BrushMasterSettingsWindowTest {
         } finally { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
+    @Test fun sizeAndOpacityButtonsMakeExactSmallAdjustments() {
+        openPencil()
+        tap("Close brushes panel")
+        setMasters(24f, .36f)
+        tap("Increase Brush size")
+        assertEquals(25f, canvas().baseWidth, .001f)
+        tap("Decrease Brush size")
+        assertEquals(24f, canvas().baseWidth, .001f)
+        tap("Increase Brush opacity")
+        assertEquals(.37f, canvas().inkOpacity, .001f)
+        tap("Decrease Brush opacity")
+        assertEquals(.36f, canvas().inkOpacity, .001f)
+        setMasters(400f, 1f)
+        tap("Increase Brush size")
+        tap("Increase Brush opacity")
+        assertEquals(400f, canvas().baseWidth, .001f)
+        assertEquals(1f, canvas().inkOpacity, .001f)
+    }
+
     @Test fun sizeDragShowsPixelReadoutOutsideTheNarrowDockWithoutCommittingEarly() {
         openPencil()
         tap("Close brushes panel")

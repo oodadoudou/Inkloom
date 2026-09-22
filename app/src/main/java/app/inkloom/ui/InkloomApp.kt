@@ -5695,7 +5695,7 @@ private fun ProcreateSidebar(
     var gradientOpen by remember { mutableStateOf(false) }
     val sizeProgress = kotlin.math.sqrt(((brushSize.coerceIn(.5f, 400f) - .5f) / 399.5f).coerceIn(0f, 1f))
     Column(
-        Modifier.width(48.dp).padding(vertical = 10.dp),
+        Modifier.width(64.dp).padding(vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -5713,6 +5713,7 @@ private fun ProcreateSidebar(
                 (if (value < 10f) "%.1f".format(value) else value.toInt().toString()) + " px"
             },
             onProgress = { onSize(.5f + it * it * 399.5f) },
+            onStep = { direction -> onSize((brushSize + direction).coerceIn(.5f, 400f)) },
         )
         IconButton(onClick = onModify, modifier = Modifier.size(32.dp)) {
             Surface(Modifier.size(17.dp), shape = RoundedCornerShape(4.dp), color = Color.Transparent, border = androidx.compose.foundation.BorderStroke(1.5.dp, Ink)) {}
@@ -5734,6 +5735,7 @@ private fun ProcreateSidebar(
             gestureOwnerKey = gestureOwnerKey,
             display = { "${((.05f + it * .95f) * 100).toInt()}%" },
             onProgress = { onOpacity(.05f + it * .95f) },
+            onStep = { direction -> onOpacity((brushOpacity + direction * .01f).coerceIn(.05f, 1f)) },
         )
         IconButton(onClick = onUndo, modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.Undo, tr("Undo", "撤销"), Modifier.size(20.dp), tint = Ink) }
         IconButton(onClick = onRedo, modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.Redo, tr("Redo", "重做"), Modifier.size(20.dp), tint = Ink) }

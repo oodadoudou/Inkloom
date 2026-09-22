@@ -1,10 +1,14 @@
 package app.inkloom.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -12,6 +16,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import app.inkloom.ui.theme.Paper
@@ -47,6 +55,7 @@ internal fun BrushMasterSlider(
     gestureOwnerKey: String,
     display: (Float) -> String,
     onProgress: (Float) -> Unit,
+    onStep: (Int) -> Unit,
 ) {
     val currentProgress by rememberUpdatedState(progress.coerceIn(0f, 1f))
     val commit by rememberUpdatedState(onProgress)
@@ -59,6 +68,7 @@ internal fun BrushMasterSlider(
         return true
     }
     Box {
+        Row(verticalAlignment = Alignment.CenterVertically) {
         Canvas(
             Modifier.width(34.dp).height(118.dp)
                 .semantics {
@@ -116,6 +126,18 @@ internal fun BrushMasterSlider(
             drawRoundRect(Ink, Offset(centerX - 4f, thumbY), Size(8f, bottom - thumbY), CornerRadius(4f))
             drawCircle(Color.White, 7f, Offset(centerX, thumbY))
             drawCircle(Color(0xFF262626), 7f, Offset(centerX, thumbY), style = Stroke(1.5f))
+        }
+        Column(Modifier.height(118.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            for (direction in listOf(1, -1)) {
+                val label = if (direction > 0) "Increase $description" else "Decrease $description"
+                Box(Modifier.width(28.dp).height(28.dp)
+                    .clickable { onStep(direction) }
+                    .semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
+                    Icon(if (direction > 0) Icons.Outlined.Add else Icons.Outlined.Remove,
+                        null, Modifier.width(15.dp).height(15.dp), tint = Ink)
+                }
+            }
+        }
         }
         draft?.let { value ->
             val gap = with(LocalDensity.current) { 12.dp.roundToPx() }
