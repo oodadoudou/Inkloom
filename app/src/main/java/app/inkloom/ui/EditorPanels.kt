@@ -393,10 +393,20 @@ internal fun EditorPanels(
                                     .fillMaxHeight().graphicsLayer { alpha=if(individual && panel==d?.panel) 0f else 1f }.background(if(panel==active) SageContainer else Color.Transparent)
                                     .semantics { contentDescription=language.text("Drag ${title(panel).lowercase()} panel","拖动${title(panel)}面板") }
                                     .clickable { state.commit(EditorPanelLayouts.select(state.layout,panel)) }
-                                    .pointerInput(tabs.id,panel) {
-                                        detectDragGestures(onDragStart={ begin(currentSlot,panel) },onDragEnd={ finish() },onDragCancel={ cancel() }) { change,delta->change.consume() }
-                                    }.padding(horizontal=7.dp), contentAlignment=androidx.compose.ui.Alignment.CenterStart) {
-                                    Text(title(panel),fontSize=11.sp,lineHeight=14.sp,color=Ink,maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                    .then(if(tabs.panels.size == 1) Modifier.pointerInput(tabs.id,panel) {
+                                        detectDragGestures(onDragStart={ begin(currentSlot,panel) },onDragEnd={ finish() },onDragCancel={ cancel() }) { change,_ -> change.consume() }
+                                    } else Modifier)
+                                    .padding(horizontal=if(tabs.panels.size > 1) 2.dp else 7.dp), contentAlignment=androidx.compose.ui.Alignment.CenterStart) {
+                                    Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                        if(tabs.panels.size > 1 && !layout.locked) Icon(Icons.Outlined.DragIndicator,
+                                            language.text("Move ${title(panel).lowercase()} tab","移动${title(panel)}标签"),
+                                            Modifier.size(18.dp).pointerInput(tabs.id,panel) {
+                                                // Only this explicit grip may detach a tab. The label area remains
+                                                // owned by horizontalScroll even during a long swipe.
+                                                detectDragGestures(onDragStart={ begin(currentSlot,panel) },onDragEnd={ finish() },onDragCancel={ cancel() }) { change,_ -> change.consume() }
+                                            },tint=MutedInk)
+                                        Text(title(panel),fontSize=11.sp,lineHeight=14.sp,color=Ink,maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                    }
                                 }
                             }
                         }

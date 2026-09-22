@@ -607,7 +607,7 @@ class ColorWindowInputContractTest {
         tap("Colors"); tap("Mix"); SystemClock.sleep(500)
         val before=bounds("Color mixing board")
         stroke(Offset(before.left+before.width()*.2f,before.exactCenterY()),Offset(before.exactCenterX(),before.exactCenterY()))
-        val grip=center("Drag mix panel")
+        val grip=center("Move mix tab")
         val close=bounds("Close mix panel")
         // Release outside the source block. Its visible right edge is now an
         // intentional split target, matching CSP-style block composition.

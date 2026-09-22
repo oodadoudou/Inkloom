@@ -57,10 +57,10 @@ class EditorPanelsWindowTest {
         }
         compose.waitForIdle()
         val before=state.layout
-        val start=point("Drag layers panel")
+        val start=point("Move layers tab")
         drag(start,start+Offset(80f,100f),cancel=true)
         assertEquals(before,state.layout)
-        drag(point("Drag layers panel"),point("Drag layers panel")+Offset(60f,90f))
+        drag(point("Move layers tab"),point("Move layers tab")+Offset(60f,90f))
         val moved=state.layout.floating.last()
         assertTrue(EditorPanel.LAYERS in EditorPanelLayouts.members(moved.node))
         assertNotEquals(before.floating[2].rect,moved.rect)
@@ -71,14 +71,14 @@ class EditorPanelsWindowTest {
         compose.waitForIdle()
         assertEquals(moved.rect,state.layout.floating.last().rect)
         val layerPoint=point("Drag layers panel")
-        drag(point("Drag brushes panel"),layerPoint)
+        drag(point("Move brushes tab"),layerPoint)
         val group=state.layout.floating.first { EditorPanel.LAYERS in EditorPanelLayouts.members(it.node) }
         assertTrue(EditorPanel.BRUSHES in EditorPanelLayouts.members(group.node))
         compose.onAllNodesWithText("Body BRUSHES").assertCountEquals(1)
         // Detach an individual tab into ordinary canvas space.
         val root=compose.onRoot().fetchSemanticsNode()
         val canvasCorner=root.boundsInWindow.bottomRight+root.positionOnScreen-root.positionInWindow-Offset(200f,350f)
-        drag(point("Drag brushes panel"),canvasCorner)
+        drag(point("Move brushes tab"),canvasCorner)
         assertEquals("After individual detach: ${state.layout}", 1,EditorPanelLayouts.members(state.layout.floating.last().node).size)
         val all=EditorPanelLayouts.members(state.layout.dock)+state.layout.floating.flatMap { EditorPanelLayouts.members(it.node) }
         assertEquals(EditorPanel.entries.size,all.size);assertEquals(EditorPanel.entries.size,all.toSet().size)
@@ -224,7 +224,7 @@ class EditorPanelsWindowTest {
             compose.activity.setContent { MaterialTheme { ResizeHost(state) } }
         }
         compose.onNodeWithContentDescription("Drag nearby panel").performScrollTo()
-        val start = point("Drag nearby panel")
+        val start = point("Move nearby tab")
         val density = compose.activity.resources.displayMetrics.density
         drag(start, start + Offset(340f * density, 100f * density))
         val moved = state.layout.floating.last()
@@ -232,6 +232,22 @@ class EditorPanelsWindowTest {
         assertEquals("Scrolled tabs must not jump sideways", 440f, moved.rect.x, 3f)
         assertEquals(200f, moved.rect.y, 3f)
         compose.onAllNodesWithText("Body NEARBY").assertCountEquals(1)
+    }
+
+    @Test fun swipingCrowdedTabStripScrollsWithoutDetachingAPalette() {
+        lateinit var state: EditorPanelState
+        val original = EditorPanelLayout(open = setOf(EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY))
+            .let { layout -> layout.copy(floating = layout.floating.map { it.copy(rect = PanelRect(100f, 100f, 240f, 340f)) }) }
+        compose.runOnUiThread {
+            state = EditorPanelState(compose.activity, AppSettings()); state.layout = original
+            compose.activity.setContent { MaterialTheme { ResizeHost(state) } }
+        }
+        val before = state.layout
+        val density = compose.activity.resources.displayMetrics.density
+        val start = point("Drag wheel panel") + Offset(12f * density, 0f)
+        drag(start, start - Offset(150f * density, 0f), holdMillis = 0)
+        assertEquals("Scrolling tabs must not move or detach the palette group", before, state.layout)
+        compose.onNodeWithContentDescription("Drag nearby panel").assertIsDisplayed()
     }
 
     @Test fun nestedDockDividerResizesBothNeighborsAndCancelRestoresTheSplit() {
@@ -272,7 +288,7 @@ class EditorPanelsWindowTest {
         return node.boundsInWindow.center+node.positionOnScreen-node.positionInWindow
     }
     private fun tap(point:Offset) { val time=SystemClock.uptimeMillis();event(0,point,time);event(1,point,time);compose.waitForIdle() }
-    private fun drag(a:Offset,b:Offset,cancel:Boolean=false,stylus:Boolean=false,holdMillis:Long=500) {
+    private fun drag(a:Offset,b:Offset,cancel:Boolean=false,stylus:Boolean=false,holdMillis:Long=650) {
         val time=SystemClock.uptimeMillis();event(0,a,time,stylus);SystemClock.sleep(holdMillis)
         for(i in 1..24) { event(2,a+(b-a)*(i/24f),time,stylus);SystemClock.sleep(16) }
         instrumentation.uiAutomation.executeShellCommand("screencap -p /data/local/tmp/panel-during-drag.png").close()
