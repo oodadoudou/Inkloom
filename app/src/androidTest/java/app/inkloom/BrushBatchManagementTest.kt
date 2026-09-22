@@ -135,6 +135,19 @@ class BrushBatchManagementTest {
         composeRule.onNodeWithText("No previous versions yet. Edit and save this brush to create one.").assertIsDisplayed()
     }
 
+    @Test fun choosingBrushPersistsRecentSelectionWithoutRewritingEntirePresetLibrary() {
+        openBrushes()
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE)
+        val metadataBefore = requireNotNull(preferences.getString("imported_brushes", null))
+        composeRule.onNodeWithContentDescription("Brush preset Batch A").performClick()
+        composeRule.waitUntil(5_000) {
+            app.inkloom.settings.BrushUsageStore(context).load().recentIds.firstOrNull() == "batch-a"
+        }
+        assertEquals("Selecting a brush must not serialize its full imported library", metadataBefore,
+            preferences.getString("imported_brushes", null))
+    }
+
     @Test fun persistentImportIssueIsReachableFromTheBrushMenu() {
         openBrushes()
         composeRule.onNodeWithContentDescription("Add brush or group").performClick()

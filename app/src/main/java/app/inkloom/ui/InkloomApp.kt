@@ -1937,7 +1937,9 @@ private fun EditorScreen(
         }
         exitCanvasNavigation()
         val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
-        onUpdateBrush(usedBrush)
+        // Selection history lives in BrushUsageStore below. Rewriting the entire imported brush
+        // JSON (including hundreds of large preset descriptors) on every tap blocked the UI
+        // before the brush could become active. Preset edits still use onUpdateBrush explicitly.
         selectedBrushId = usedBrush.id
         activeBrush = usedBrush
         val chosenTool = BrushRoleClassifier.editorTool(usedBrush)
