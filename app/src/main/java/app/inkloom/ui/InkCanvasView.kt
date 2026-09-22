@@ -679,24 +679,30 @@ class InkCanvasView(context: Context) : View(context) {
     var rotateNavigation: Boolean = false
     var externalViewportGestures: Boolean = false
     var viewportScale: Float = 1f
-        set(value) { field = value.takeIf(Float::isFinite)?.coerceIn(ViewportTransform.MINIMUM_SCALE, ViewportTransform.MAXIMUM_SCALE) ?: 1f; invalidate() }
+        set(value) {
+            val next = value.takeIf(Float::isFinite)?.coerceIn(ViewportTransform.MINIMUM_SCALE, ViewportTransform.MAXIMUM_SCALE) ?: 1f
+            if (field == next) return
+            field = next; invalidate()
+        }
     var viewportPanX: Float = 0f
-        set(value) { field = value.takeIf(Float::isFinite) ?: 0f; invalidate() }
+        set(value) { val next = value.takeIf(Float::isFinite) ?: 0f; if (field == next) return; field = next; invalidate() }
     var viewportPanY: Float = 0f
-        set(value) { field = value.takeIf(Float::isFinite) ?: 0f; invalidate() }
+        set(value) { val next = value.takeIf(Float::isFinite) ?: 0f; if (field == next) return; field = next; invalidate() }
     var viewportRotationDegrees: Float = 0f
-        set(value) { field = ViewportTransform.normalizeDegrees(value.takeIf(Float::isFinite) ?: 0f); invalidate() }
+        set(value) { val next = ViewportTransform.normalizeDegrees(value.takeIf(Float::isFinite) ?: 0f); if (field == next) return; field = next; invalidate() }
     var inkColor: Int = Color.rgb(17, 17, 17)
         set(value) { if (field == value) return; field = value; if (selectionColorFillEnabled) updateSelectionColorFill() }
     var secondaryInkColor: Int = Color.WHITE
     var baseWidth: Float = 5f
         set(value) {
+            if (field == value) return
             field = value
             if (hoverCursorVisible && !hoverCursorUsesEraser) invalidateInternalHoverCursor()
             onHoverCursorStyleChanged?.invoke()
         }
     var brushSizeSyncViewScale: Boolean = false
         set(value) {
+            if (field == value) return
             field = value
             if (hoverCursorVisible) invalidateInternalHoverCursor()
             onHoverCursorStyleChanged?.invoke()
@@ -817,24 +823,28 @@ class InkCanvasView(context: Context) : View(context) {
     var threeFingerTapRedo: Boolean = true
     var twoFingerRotationEnabled: Boolean = false
     var rulerEnabled: Boolean = false
-        set(value) { field = value; if (!value) rulerGestureMode = null; invalidate() }
+        set(value) { if (field == value) return; field = value; if (!value) rulerGestureMode = null; invalidate() }
     var rulerAssisted: Boolean = true
     var rulerGuide: RulerGuideState = RulerGuideState()
-        set(value) { field = value.normalized(); invalidate() }
+        set(value) { val next = value.normalized(); if (field == next) return; field = next; invalidate() }
     var onRulerGuideChanged: (RulerGuideState) -> Unit = {}
     var canvasGuideState: CanvasGuideState = CanvasGuideState()
-        set(value) { field = value.normalized(); if (!field.alignmentGuidesEnabled) canvasGuideGestureMode = null; invalidate() }
+        set(value) { val next = value.normalized(); if (field == next) return; field = next; if (!field.alignmentGuidesEnabled) canvasGuideGestureMode = null; invalidate() }
     var onCanvasGuideChanged: (CanvasGuideState) -> Unit = {}
     var perspectiveGuideState: PerspectiveGuideState = PerspectiveGuideState()
         set(value) {
-            field = value.normalized()
+            val next = value.normalized()
+            if (field == next) return
+            field = next
             if (!field.editing || field.mode == PerspectiveGuideMode.NONE) perspectiveGuideGesturePoint = null
             invalidate()
         }
     var onPerspectiveGuideChanged: (PerspectiveGuideState) -> Unit = {}
     var specialRulerState: SpecialRulerState = SpecialRulerState()
         set(value) {
-            field = value.normalized()
+            val next = value.normalized()
+            if (field == next) return
+            field = next
             if (!field.editing || field.mode == SpecialRulerMode.NONE) specialRulerGestureHandle = null
             invalidate()
         }
@@ -933,9 +943,9 @@ class InkCanvasView(context: Context) : View(context) {
     var fillAreaScalingPixels: Float = 0f
         set(value) { field = value.coerceIn(-64f, 64f) }
     var symmetryMode: SymmetryMode = SymmetryMode.NONE
-        set(value) { field = value; if (value == SymmetryMode.NONE) symmetryGuideGesture = null; invalidate() }
+        set(value) { if (field == value) return; field = value; if (value == SymmetryMode.NONE) symmetryGuideGesture = null; invalidate() }
     var symmetryGuide: SymmetryGuideState = SymmetryGuideState()
-        set(value) { field = value.normalized(); invalidate() }
+        set(value) { val next = value.normalized(); if (field == next) return; field = next; invalidate() }
     var symmetryAssisted: Boolean = true
     var onSymmetryGuideChanged: (SymmetryGuideState) -> Unit = {}
     var onViewportScale: (Float, Float, Float) -> Unit = { _, _, _ -> }
@@ -1217,7 +1227,11 @@ class InkCanvasView(context: Context) : View(context) {
         protectedLayerIds.addAll(value)
     }
 
-    fun setPageBackground(bitmap: Bitmap?) { backgroundBitmap = bitmap; invalidate() }
+    fun setPageBackground(bitmap: Bitmap?) {
+        if (backgroundBitmap === bitmap) return
+        backgroundBitmap = bitmap
+        invalidate()
+    }
 
     fun setLayerElementBitmaps(value: Map<String, LayerElementBitmaps>, elements: List<PageElement>? = null) {
         if(elements != null) mixedElementExpected.toMap().forEach { (layer,edit) ->
