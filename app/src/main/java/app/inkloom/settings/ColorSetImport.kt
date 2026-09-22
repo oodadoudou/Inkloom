@@ -21,6 +21,8 @@ import kotlin.math.roundToInt
 
 data class ImportedColorSet(val name: String, val swatches: List<ColorSetSwatch>, val sourceFormat: String)
 
+enum class ColorSetImportMode { APPEND, REPLACE }
+
 /** Bounded palette decoder. Unsupported proprietary payloads fail with a visible reason. */
 object ColorSetImport {
     const val MAX_FILE_BYTES = 16 * 1024 * 1024
@@ -57,6 +59,26 @@ object ColorSetImport {
             result = result.insertSwatch(setId, swatch.color, swatch.name, beforeIndex = index)
         }
         return result.validated()
+    }
+
+    /** Decode first, then atomically edit the palette selected when the file picker opened. */
+    fun applyTo(library: ColorSetLibrary, imported: ImportedColorSet, mode: ColorSetImportMode, targetSetId: String?): ColorSetLibrary {
+        require(imported.swatches.isNotEmpty()) { "Imported palette is empty" }
+        require(imported.swatches.size <= ColorSetLibrary.MAX_SWATCHES_PER_SET) { "Palette contains too many colors" }
+        if (targetSetId == null) {
+            require(mode == ColorSetImportMode.APPEND) { "Choose a color set to replace" }
+            return addTo(library, imported)
+        }
+        val target = requireNotNull(library.sets.firstOrNull { it.id == targetSetId }) { "Selected color set no longer exists" }
+        val swatches = imported.swatches.map { it.copy(id = UUID.randomUUID().toString()) }
+        val updated = when (mode) {
+            ColorSetImportMode.APPEND -> {
+                require(target.swatches.size + swatches.size <= ColorSetLibrary.MAX_SWATCHES_PER_SET) { "Color set tile limit reached" }
+                target.copy(swatches = target.swatches + swatches)
+            }
+            ColorSetImportMode.REPLACE -> target.copy(swatches = swatches, selectedSwatchId = null)
+        }
+        return library.copy(sets = library.sets.map { if (it.id == targetSetId) updated else it }).validated()
     }
 
     private fun decodeStructured(baseName: String, bytes: ByteArray, format: String): ImportedColorSet {

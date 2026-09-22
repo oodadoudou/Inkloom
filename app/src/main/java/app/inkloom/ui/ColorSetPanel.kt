@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import app.inkloom.settings.ColorSetImport
+import app.inkloom.settings.ColorSetImportMode
 import app.inkloom.settings.ColorSetSwatch
 import app.inkloom.settings.ImagePaletteExtractor
 import app.inkloom.settings.ImportedColorSet
@@ -52,6 +53,8 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.util.UUID
+
+private data class PendingColorSetImport(val mode: ColorSetImportMode, val targetSetId: String?)
 
 /** Color-set identity and selection survive tab disposal; editing never sorts by color. */
 @Composable
@@ -79,6 +82,13 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
     var deletion by remember { mutableStateOf(false) }
     var tileMenu by remember { mutableStateOf<String?>(null) }
     var importBusy by remember { mutableStateOf(false) }
+    var importSource by remember { mutableStateOf<String?>(null) }
+    var pendingImport by remember { mutableStateOf<PendingColorSetImport?>(null) }
+    fun commitImport(imported: ImportedColorSet, request: PendingColorSetImport) {
+        runCatching { store.update(tr("Saved colors", "已存颜色")) { ColorSetImport.applyTo(it, imported, request.mode, request.targetSetId) } }
+            .onSuccess { library = it; error = null }
+            .onFailure { error = it.message ?: tr("Color palette could not be imported", "无法导入色板") }
+    }
     val set = library.activeSet
     val bounds = remember { mutableMapOf<String, Rect>() }
     val gridState = rememberLazyGridState()
@@ -86,7 +96,8 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
     var target by remember { mutableStateOf<String?>(null) }
     var position by remember { mutableStateOf(Offset.Zero) }
     val palettePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
+        val request = pendingImport.also { pendingImport = null }
+        if (uri != null && request != null) {
             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             scope.launch {
                 importBusy = true
@@ -99,14 +110,15 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
                             .use { it.readPaletteBytes() }
                         ColorSetImport.decode(displayName, bytes)
                     }
-                }.onSuccess { imported -> edit { ColorSetImport.addTo(it, imported) } }
+                }.onSuccess { imported -> commitImport(imported, request) }
                     .onFailure { failure -> error = failure.message ?: tr("Color palette could not be imported", "无法导入色板") }
                 importBusy = false
             }
         }
     }
     val imagePalettePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) scope.launch {
+        val request = pendingImport.also { pendingImport = null }
+        if (uri != null && request != null) scope.launch {
             importBusy = true
             runCatching {
                 withContext(Dispatchers.IO) {
@@ -122,7 +134,7 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
                         "Image",
                     )
                 }
-            }.onSuccess { imported -> edit { ColorSetImport.addTo(it, imported) } }
+            }.onSuccess { imported -> commitImport(imported, request) }
                 .onFailure { failure -> error = failure.message ?: tr("Colors could not be extracted from the image", "无法从图片提取颜色") }
             importBusy = false
         }
@@ -148,12 +160,12 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
                     DropdownMenuItem(
                         text = { Text(tr("Import color set from file", "从文件导入色板")) },
                         enabled = !importBusy,
-                        onClick = { menu = false; palettePicker.launch(arrayOf("application/octet-stream", "application/zip", "application/json", "text/xml", "*/*")) },
+                        onClick = { menu = false; importSource = "file" },
                     )
                     DropdownMenuItem(
                         text = { Text(tr("New color set from image", "从图片新建色板")) },
                         enabled = !importBusy,
-                        onClick = { menu = false; imagePalettePicker.launch(arrayOf("image/*")) },
+                        onClick = { menu = false; importSource = "image" },
                     )
                     DropdownMenuItem(text = { Text(tr("Add starter color set", "添加基础色板")) }, onClick = { menu = false; starterPicker = true })
                     if (set != null) {
@@ -217,6 +229,32 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
         if (importBusy) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp), color = Ink, trackColor = OutlineSoft)
         error?.let { Text(it, color = Ink, fontSize = 11.sp) }
     }
+    if (importSource != null) AlertDialog(
+        onDismissRequest = { importSource = null },
+        title = { Text(tr("Import into color set", "导入到色板")) },
+        text = { Text(set?.name ?: tr("A new color set will be created", "将创建新色板")) },
+        confirmButton = {
+            TextButton(onClick = {
+                val source = importSource
+                pendingImport = PendingColorSetImport(ColorSetImportMode.APPEND, set?.id)
+                importSource = null
+                if (source == "image") imagePalettePicker.launch(arrayOf("image/*"))
+                else palettePicker.launch(arrayOf("application/octet-stream", "application/zip", "application/json", "text/xml", "*/*"))
+            }) { Text(tr("Append colors", "追加颜色")) }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = { importSource = null }) { Text(tr("Cancel", "取消")) }
+                if (set != null) TextButton(onClick = {
+                    val source = importSource
+                    pendingImport = PendingColorSetImport(ColorSetImportMode.REPLACE, set.id)
+                    importSource = null
+                    if (source == "image") imagePalettePicker.launch(arrayOf("image/*"))
+                    else palettePicker.launch(arrayOf("application/octet-stream", "application/zip", "application/json", "text/xml", "*/*"))
+                }) { Text(tr("Replace colors", "替换颜色")) }
+            }
+        },
+    )
     if (starterPicker) AlertDialog(onDismissRequest = { starterPicker = false },
         title = { Text(tr("Inkloom color sets", "Inkloom 基础色板")) },
         text = {

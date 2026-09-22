@@ -48,6 +48,22 @@ class ColorSetWindowTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    @Test fun importingFileOrImageOffersAppendReplaceAndCancelBeforeOpeningPicker() {
+        openNewNotebook("Palette import choice ${SystemClock.uptimeMillis()}")
+        tap("Colors")
+        tap("Palettes")
+        tap("Color set menu")
+        tap("Import color set from file")
+        bounds("Append colors")
+        bounds("Replace colors")
+        tap("Cancel")
+        tap("Color set menu")
+        tap("New color set from image")
+        bounds("Append colors")
+        bounds("Replace colors")
+        tap("Cancel")
+    }
+
     @Test fun namedSetsPreserveDuplicateTilesAndRealLongPressOrderAfterReopening() {
         val suffix = SystemClock.uptimeMillis()
         val notebookName = "Color set recovery $suffix"

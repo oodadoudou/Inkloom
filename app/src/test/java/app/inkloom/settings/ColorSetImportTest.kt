@@ -63,6 +63,33 @@ class ColorSetImportTest {
         assertEquals("Shade", result.activeSet?.swatches?.single()?.name)
     }
 
+    @Test fun appendAndReplaceAffectOnlyThePaletteSelectedBeforePickingFile() {
+        val first = ColorSetLibrary().createSet("Ink", "ink").insertSwatch("ink", 0xff101010.toInt(), "Old", id = "old")
+        val original = first.createSet("Paper", "paper").insertSwatch("paper", 0xffffffff.toInt(), "White", id = "white")
+        val imported = ImportedColorSet("Imported", listOf(ColorSetSwatch("source", 0xff224466.toInt(), "New")), "fixture")
+
+        val appended = ColorSetImport.applyTo(original, imported, ColorSetImportMode.APPEND, "ink")
+        assertEquals(listOf("Old", "New"), appended.sets.first { it.id == "ink" }.swatches.map { it.name })
+        assertEquals("paper", appended.activeSetId)
+        assertEquals(original.sets.first { it.id == "paper" }, appended.sets.first { it.id == "paper" })
+        assertEquals("Old", original.sets.first { it.id == "ink" }.swatches.single().name)
+
+        val replaced = ColorSetImport.applyTo(appended, imported, ColorSetImportMode.REPLACE, "ink")
+        assertEquals("Ink", replaced.sets.first { it.id == "ink" }.name)
+        assertEquals(listOf("New"), replaced.sets.first { it.id == "ink" }.swatches.map { it.name })
+        assertEquals(original.sets.first { it.id == "paper" }, replaced.sets.first { it.id == "paper" })
+        assertTrue(replaced.sets.first { it.id == "ink" }.swatches.single().id != "source")
+    }
+
+    @Test fun failedOrStaleReplacementLeavesTheLibraryUnchanged() {
+        val original = ColorSetLibrary().createSet("Ink", "ink").insertSwatch("ink", 0xff101010.toInt(), id = "old")
+        val empty = ImportedColorSet("Empty", emptyList(), "fixture")
+        val imported = ImportedColorSet("New", listOf(ColorSetSwatch("source", 0xff123456.toInt())), "fixture")
+        assertTrue(runCatching { ColorSetImport.applyTo(original, empty, ColorSetImportMode.REPLACE, "ink") }.isFailure)
+        assertTrue(runCatching { ColorSetImport.applyTo(original, imported, ColorSetImportMode.REPLACE, "missing") }.isFailure)
+        assertEquals(listOf("old"), original.activeSet?.swatches?.map { it.id })
+    }
+
     private fun aco(out: DataOutputStream, space: Int, components: IntArray, name: String) {
         out.writeShort(space)
         components.forEach(out::writeShort)

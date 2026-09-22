@@ -18,7 +18,7 @@
 
 - [x] **C01 当前主／副色写入**：色环、混色、色板、近似色及吸管选择颜色后，立即写入当前激活的前景色或背景色；切到另一页签不丢色，绘画取到同一颜色。根因之一是画布吸管始终提交到主色，现按激活色路由。Android 15 真窗口测试依次在色环改主色、近似色改副色、混色改主色、色板改副色、笔在画布上吸色改副色，并读取笔记级颜色存储核对另一色未被覆盖。参考 [CSP 选择颜色](https://help.clip-studio.com/en-us/manual_en/300_color/Selecting_colors.htm) 和 [Procreate 颜色界面](https://help.procreate.com/procreate/handbook/colors/colors-interface)。
 - [x] **C02 色块旁换色**：主／副色交换按钮移至两个色块旁，保留 32 dp 触摸热区；托管色环原本传入空回调的六点缩放柄已移除。Android 15 真窗口测试核对按钮位置、无效控件消失，以及交换后持久化主／副色互换。参考 [CSP 色环](https://help.clip-studio.com/en-us/manual_en/300_color/Color_Wheel_palette.htm) 和 [Procreate 颜色界面](https://help.procreate.com/procreate/handbook/colors/colors-interface)。
-- [ ] **C03 色板导入模式**：导入前选择“追加”或“替换”；替换只作用于明确选中的色板并支持取消，失败不清空旧色板；两种模式的颜色数、顺序、命名可核对。
+- [x] **C03 色板导入模式**：文件和图片导入前均选择“追加颜色”或“替换颜色”，显示目标色板并允许取消；打开系统选择器时锁定目标 ID。解析失败、空色板或目标被删除时保持旧色板；追加保留原顺序与名字，替换保留目标色板身份、替换其颜色内容。JVM 测试覆盖目标隔离和失败不变，Android 15 窗口测试覆盖文件／图片两种导入入口。参考 [CSP 色板管理](https://help.clip-studio.com/en-us/manual_en/300_color/Color_Set_palette.htm) 和 [Procreate 色板导入](https://help.procreate.com/procreate/handbook/colors/colors-palettes)。
 
 ## D. 面板与笔刷控制
 
