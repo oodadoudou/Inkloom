@@ -27,6 +27,30 @@ class RasterLayerPersistenceTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
     private val assets = DocumentAssetService(context)
 
+    @Test fun olderLowResolutionInkReopensWithoutNearestNeighborSquares() {
+        val source = PixelTileSurface(4, 4)
+        source.beginWrite("legacy ink edge").run {
+            setPixel(1, 1, Color.BLACK)
+            commit().close()
+        }
+        val reference = assets.saveRasterTileSurface(source)
+        val page = InkPage(width = 4f, height = 4f, layers = defaultInkLayers() +
+            InkLayer(id = "legacy", name = "Legacy ink", rasterTileSurface = reference))
+        try {
+            val originalSize = assets.renderRasterLayerBitmap(page, "legacy", 4)
+            val enlarged = assets.renderRasterLayerBitmap(page, "legacy", 8)
+            try {
+                assertEquals("Native-resolution source must stay unchanged", Color.BLACK, originalSize.getPixel(1, 1))
+                val edgeAlphas = (0 until 8).flatMap { y -> (0 until 8).map { x -> Color.alpha(enlarged.getPixel(x, y)) } }
+                assertTrue("Reopening a smaller legacy raster must filter its edge instead of showing square texels",
+                    edgeAlphas.any { it in 1..254 })
+            } finally {
+                originalSize.recycle()
+                enlarged.recycle()
+            }
+        } finally { assets.releaseRasterTileReservation(reference) }
+    }
+
     @Test fun editableRasterProjectionDoesNotBakePageObjectsIntoPaintPixels() {
         val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
         val page = app.inkloom.document.InkPage(elements = listOf(app.inkloom.document.PageElement.Shape(

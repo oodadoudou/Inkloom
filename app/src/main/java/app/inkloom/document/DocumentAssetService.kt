@@ -498,16 +498,24 @@ class DocumentAssetService(private val context: Context) {
                 rotatedRect.right,
             )
         }
-        val sourceWidth = if (turns % 2 == 0) targetWidth else targetHeight
-        val sourceHeight = if (turns % 2 == 0) targetHeight else targetWidth
-        val materialized = PixelTileBitmapAdapter.render(
-            snapshot,
-            source = sourceRect,
-            targetWidth = sourceWidth,
-            targetHeight = sourceHeight,
-        )
-        if (turns == 0) return materialized
-        return requireNotNull(rotateQuarterTurns(materialized, turns))
+        // Keep source pixels at their authored resolution through the crop and rotation. The
+        // previous path asked the tile adapter to scale first; its exact-pixel nearest sampler
+        // made legacy 1200 px ink reopen as visible square texels on a 1600 px editing surface.
+        val materialized = PixelTileBitmapAdapter.render(snapshot, source = sourceRect)
+        val oriented = if (turns == 0) materialized else requireNotNull(rotateQuarterTurns(materialized, turns))
+        if (oriented.width == targetWidth && oriented.height == targetHeight) return oriented
+        return try {
+            Bitmap.createBitmap(targetWidth, targetHeight, oriented.config ?: Bitmap.Config.ARGB_8888).also { resized ->
+                Canvas(resized).drawBitmap(
+                    oriented,
+                    null,
+                    android.graphics.Rect(0, 0, targetWidth, targetHeight),
+                    Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
+                )
+            }
+        } finally {
+            oriented.recycle()
+        }
     }
 
     /**
