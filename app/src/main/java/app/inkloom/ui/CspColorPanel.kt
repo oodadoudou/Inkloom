@@ -77,6 +77,7 @@ internal fun CspColorPanel(
     onDraftChange: (ColorPickerDraft) -> Unit = {},
     maximumHeight: Dp = 420.dp,
     colorPair: ColorPairControls? = null,
+    onSwapColors: (() -> Unit)? = null,
     language: UiLanguage = UiLanguage.ENGLISH,
 ) {
     SideEffect { ColorPickerInteractionTrace.panelComposition() }
@@ -203,6 +204,9 @@ internal fun CspColorPanel(
                             .border(if (!pair.secondarySelected) 2.dp else 1.dp, if (!pair.secondarySelected) Ink else MutedInk, RoundedCornerShape(2.dp))
                             .semantics { contentDescription = tr("Edit primary color", "编辑主色"); onClick { pair.select(false); true } })
                     } else Box(Modifier.align(Alignment.Center).size(24.dp).background(Color(draft.color)).border(1.dp, MutedInk))
+                }
+                if (pair != null && onSwapColors != null) IconButton(onClick = onSwapColors, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Outlined.SwapHoriz, tr("Swap foreground and background colors", "交换前景色和背景色"), Modifier.size(17.dp), tint = Ink)
                 }
                 Row(Modifier.weight(1f).fillMaxHeight().semantics { contentDescription = tr("Color channel values", "颜色通道数值") }
                     .combinedClickable(onClick = { rgbValues = !rgbValues; preferences.edit { putBoolean("wheelRgbValues", rgbValues) } }, onLongClick = { editStart = draft }),

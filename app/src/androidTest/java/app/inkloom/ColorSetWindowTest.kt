@@ -174,6 +174,23 @@ class ColorSetWindowTest {
         bounds("Intermediate color 4, 4")
     }
 
+    @Test fun colorSwapSitsBesideSwatchesAndUnusedSixDotHandleIsAbsent() {
+        val title = "Wheel swap ${SystemClock.uptimeMillis()}"
+        openNewNotebook(title)
+        val documentId = FileDocumentStore(context.filesDir).list().first { it.title == title }.id
+        tap("Colors")
+        val pair = bounds("Edit secondary color")
+        val swap = bounds("Swap foreground and background colors")
+        assertTrue("Swap must be next to the two color squares", swap.left in pair.right - 2..pair.right + 80)
+        assertTrue("The hosted wheel has no independent width drag; its dead six-dot handle must disappear",
+            findBounds("Resize color picker") == null)
+        val before = DrawingColorStore(context).load(documentId)
+        tap("Swap foreground and background colors")
+        val after = DrawingColorStore(context).load(documentId)
+        assertEquals(before.foreground, after.background)
+        assertEquals(before.background, after.foreground)
+    }
+
     @Test fun wheelNearbyMixAndPaletteWriteTheCurrentlySelectedDrawingColor() {
         val title = "Active color ${SystemClock.uptimeMillis()}"
         openNewNotebook(title)

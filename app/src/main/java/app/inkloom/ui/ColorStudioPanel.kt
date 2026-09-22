@@ -46,7 +46,7 @@ internal fun ColorStudioPanel(
     language: UiLanguage,
     onColorPreview: (Int) -> Unit,
     onColorCommit: (Int) -> Unit,
-    onResizeWidth: (Float) -> Unit,
+    onResizeWidth: ((Float) -> Unit)?,
     colorPair: ColorPairControls? = null,
     fixedTab: Int? = null,
     onSwapColors: (() -> Unit)? = null,
@@ -67,9 +67,6 @@ internal fun ColorStudioPanel(
     Column(Modifier.fillMaxWidth()) {
         if (fixedTab != null) Row(Modifier.fillMaxWidth().height(22.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(if (colorPair?.secondarySelected == true) tr("Secondary color", "副色") else tr("Primary color", "主色"), color = MutedInk, fontSize = 11.sp, modifier = Modifier.weight(1f))
-            onSwapColors?.let { swap -> IconButton(swap, Modifier.size(22.dp)) {
-                Icon(Icons.Outlined.SwapHoriz, tr("Swap foreground and background colors", "交换前景色和背景色"), Modifier.size(16.dp), tint = Ink)
-            } }
         }
         if (fixedTab == null) Row(Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
             listOf(tr("Wheel", "色环"), tr("Palettes", "色板"), tr("Mix", "混色"), tr("Nearby", "近似色")).forEachIndexed { index, label ->
@@ -87,7 +84,7 @@ internal fun ColorStudioPanel(
             key(tab) {
                 Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                     when (tab) {
-                        0 -> CspColorPanel(color, onColorPreview, ::pick, onResizeWidth = onResizeWidth, showHeader = false, initialDraft = draft, onDraftChange = { draft = it }, maximumHeight = visibleContentHeight, colorPair = colorPair, language = language)
+                        0 -> CspColorPanel(color, onColorPreview, ::pick, onResizeWidth = onResizeWidth, showHeader = false, initialDraft = draft, onDraftChange = { draft = it }, maximumHeight = visibleContentHeight, colorPair = colorPair, onSwapColors = onSwapColors, language = language)
                         1 -> ColorSetPanel(color, language, visibleContentHeight, ::pick)
                         2 -> {
                             val mixingView = remember(context, state) { ColorMixingView(context, state.mixing) }

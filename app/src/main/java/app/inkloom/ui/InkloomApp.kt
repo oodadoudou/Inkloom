@@ -3518,7 +3518,7 @@ private fun EditorScreen(
                             }
                         },
                         onColorCommit = if (editSecondaryColor) ::changeBackgroundColor else ::changeBrushColor,
-                        onResizeWidth = {},
+                        onResizeWidth = null,
                         fixedTab = panel.ordinal - EditorPanel.WHEEL.ordinal,
                         onSwapColors = ::swapDrawingColors,
                         availableHeight = maxHeight,
