@@ -58,7 +58,8 @@ data class PanelSlot(val node: PanelNode, val rect: PanelRect, val rootId: Strin
 object EditorPanelLayouts {
     fun compactThreshold(panel: EditorPanel): Float = when (panel) {
         EditorPanel.PAGES -> 144f
-        EditorPanel.BRUSHES -> 260f
+        // 56 dp categories + 24 dp splitter + a useful 112 dp brush preview.
+        EditorPanel.BRUSHES -> 196f
         EditorPanel.LAYERS, EditorPanel.SUBTOOLS, EditorPanel.PROPERTIES -> 200f
         EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY -> 180f
     }

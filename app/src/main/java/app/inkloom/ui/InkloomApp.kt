@@ -7330,7 +7330,7 @@ private fun ProcreateBrushLibrary(
         contentColor = Ink,
     ) {
         Column {
-            Row(Modifier.fillMaxWidth().height(46.dp).padding(start = 16.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).height(46.dp).padding(start = 8.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box {
                     IconButton(onClick = { quickPropertiesOpen = !quickPropertiesOpen }, enabled = quickBrush != null,
                         modifier = Modifier.size(38.dp)) {

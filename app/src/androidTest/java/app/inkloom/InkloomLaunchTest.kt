@@ -783,6 +783,23 @@ class InkloomLaunchTest {
         assertEquals(adjusted, brushRect())
     }
 
+    @Test fun brushPanelKeepsItsCategoryAndPresetListsAtTwoHundredDp() {
+        createNotebookAndOpenEditor()
+        val preferences = composeRule.activity.getSharedPreferences("inkloom_editor_panels", android.content.Context.MODE_PRIVATE)
+        fun width(): Float {
+            val layout = kotlinx.serialization.json.Json.decodeFromString(app.inkloom.settings.EditorPanelLayout.serializer(), requireNotNull(preferences.getString("layout", null)))
+            return layout.floating.first { app.inkloom.settings.EditorPanel.BRUSHES in app.inkloom.settings.EditorPanelLayouts.members(it.node) }.rect.width
+        }
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        val distance = (width() - 205f) * composeRule.activity.resources.displayMetrics.density
+        composeRule.onNodeWithContentDescription("Resize brushes panel · left edge").performTouchInput {
+            swipe(center, center + Offset(distance, 0f), durationMillis = 500)
+        }
+        composeRule.waitForIdle()
+        assertTrue("The window should accept a usable narrow width", width() in 195f..215f)
+        composeRule.onNodeWithContentDescription("Resize brush categories").assertIsDisplayed()
+    }
+
     @Test fun openingLayersKeepsTheIndependentBrushPalette() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Brushes").performClick()

@@ -23,7 +23,7 @@
 ## D. 面板与笔刷控制
 
 - [x] **D01 标签滑动不误拖**：多标签组合现在仅从每个标签左侧的移动抓手拆出；标签文字区域保留点选和横向滚动。Android 15 面板交互测试覆盖横向滑动不拆组、滚动后从抓手拆出、拖动取消和停靠回退；真机多指中断触感仍待验收。参考 [CSP 面板标签](https://help.clip-studio.com/en-us/manual_en/690_interface/Palettes.htm) 和 [Photoshop 移动面板](https://helpx.adobe.com/photoshop/desktop/get-started/learn-the-basics/move-panels.html)。
-- [ ] **D02 笔刷面板窄宽阈值**：缩窄时内容先自适应、分类文字省略；到确实无法使用时才折叠。浮窗和停靠都能调窄、重新加宽并记住尺寸。
+- [x] **D02 笔刷面板窄宽阈值**：完整分类＋笔刷列表保留至约 196 dp（分类 56、分隔 24、预览约 112）；顶部操作栏超宽时横向滚动，分类名称省略仍可见。Android 15 真窗口测试把笔刷窗缩到约 205 dp，确认分栏仍存在；JVM 测试固定阈值，窗口宽度仍由既有布局持久化。主设备反复缩窄／停靠手感待验收。参考 [CSP 面板](https://help.clip-studio.com/en-us/manual_en/690_interface/Palettes.htm) 和 [Photoshop 面板尺寸](https://helpx.adobe.com/photoshop/desktop/get-started/learn-the-basics/stack-floating-panels.html)。
 - [ ] **D03 笔刷大小／透明度微调**：两条进度条旁分别有小号 ±，大小按有限像素步长、透明度按百分点微调；长按连续微调不越界，当前数值与实际笔迹一致。
 - [ ] **D04 笔刷记忆标记**：每支笔刷的大小和透明度各最多四个持久标记；进度条预览中的 + 添加，标记可点选、接近时吸附、再次点选后 − 删除。切笔、重启、笔／涂抹／橡皮状态分别核对；拖动时仍可精确越过标记。
 

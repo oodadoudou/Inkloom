@@ -69,6 +69,7 @@ class EditorPanelLayoutTest {
         assertEquals(72f, EditorPanelLayouts.minimumWidth(PanelNode.Tabs("brush", listOf(EditorPanel.BRUSHES))))
         assertEquals(72f, EditorPanelLayouts.minimumHeight(PanelNode.Tabs("layers", listOf(EditorPanel.LAYERS))))
         assertTrue(EditorPanelLayouts.compactThreshold(EditorPanel.BRUSHES) > EditorPanelLayouts.minimumWidth(PanelNode.Tabs("brush", listOf(EditorPanel.BRUSHES))))
+        assertTrue("Brush list should remain usable near 200 dp", EditorPanelLayouts.compactThreshold(EditorPanel.BRUSHES) <= 200f)
     }
 
     @Test fun everyVisibleBlockEdgeIsAFullSplitTargetAndTitleRemainsATabTarget() {
