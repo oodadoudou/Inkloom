@@ -572,6 +572,17 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("2/2").assertIsDisplayed()
     }
 
+    @Test fun addPageButtonRemainsVisibleAfterScrollingPages() {
+        createNotebookAndOpenEditor()
+        repeat(8) {
+            composeRule.onNodeWithContentDescription("Add page using current template").performClick()
+            composeRule.waitForIdle()
+        }
+        composeRule.onNodeWithContentDescription("Page list").performScrollToIndex(7)
+        composeRule.onNodeWithContentDescription("Add page").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Choose template for new page").assertIsDisplayed()
+    }
+
     @Test fun longPressPagesEntersMultiSelectManagement() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Add page").performClick()

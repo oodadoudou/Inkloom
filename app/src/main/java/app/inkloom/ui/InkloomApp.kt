@@ -3775,24 +3775,13 @@ private fun PageRail(
     var selectedPageIds by remember(document.id) { mutableStateOf(emptySet<String>()) }
     val currentSelectedPageIds by rememberUpdatedState(selectedPageIds)
     val pageManagementDescription = tr("Page management: ${selectedPageIds.size} selected", "页面管理：已选择 ${selectedPageIds.size} 页")
-    LazyColumn(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-
-        item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+    Column(modifier) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             IconButton(onClick = { addTemplateOpen = true }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, tr("Add page", "添加页面")) }
         }
-            if (addTemplateOpen) PageTemplatePickerDialog(
-                library = pageTemplates,
-                documentId = document.id,
-                title = tr("Choose template for new page", "选择新页面模板"),
-                currentBackground = null,
-                onDismiss = { addTemplateOpen = false },
-                onChoose = { template, paperColor -> onAdd(template.id, paperColor); addTemplateOpen = false },
-                onImport = onImportTemplates,
-                onToggleFavorite = onToggleTemplateFavorite,
-                onSetDefault = { templateId, paperColor -> onSetDefaultTemplate(document.id, templateId, paperColor) },
-                onDelete = onDeleteTemplate, onCreateCustomTemplate = onCreateCustomTemplate,
-            )
-        }
+        val pageListDescription = tr("Page list", "页面列表")
+        LazyColumn(Modifier.fillMaxWidth().weight(1f).semantics { contentDescription = pageListDescription }, horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (managingPages) stickyHeader(key = "page-management") {
             Column(Modifier.fillMaxWidth().background(Paper, RoundedCornerShape(4.dp)).padding(4.dp)) {
                 Row(Modifier.semantics { contentDescription = pageManagementDescription }, verticalAlignment = Alignment.CenterVertically) {
@@ -4024,6 +4013,19 @@ private fun PageRail(
             )
         }
     }
+    }
+    if (addTemplateOpen) PageTemplatePickerDialog(
+        library = pageTemplates,
+        documentId = document.id,
+        title = tr("Choose template for new page", "选择新页面模板"),
+        currentBackground = null,
+        onDismiss = { addTemplateOpen = false },
+        onChoose = { template, paperColor -> onAdd(template.id, paperColor); addTemplateOpen = false },
+        onImport = onImportTemplates,
+        onToggleFavorite = onToggleTemplateFavorite,
+        onSetDefault = { templateId, paperColor -> onSetDefaultTemplate(document.id, templateId, paperColor) },
+        onDelete = onDeleteTemplate, onCreateCustomTemplate = onCreateCustomTemplate,
+    )
     if (batchTemplateOpen) PageTemplatePickerDialog(
         library = pageTemplates,
         documentId = document.id,
