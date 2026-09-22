@@ -3009,8 +3009,35 @@ private fun EditorScreen(
                         }
                 }
                 val currentPageIndex = document.pages.indexOfFirst { it.id == selectedPage.id }.coerceAtLeast(0)
+                val navigatorPreferences = remember(context) { context.getSharedPreferences("inkloom_page_navigator", android.content.Context.MODE_PRIVATE) }
+                var navigatorX by remember { mutableFloatStateOf(navigatorPreferences.getFloat("x", 1f).coerceIn(0f, 1f)) }
+                var navigatorY by remember { mutableFloatStateOf(navigatorPreferences.getFloat("y", 1f).coerceIn(0f, 1f)) }
+                var navigatorWidth by remember { mutableIntStateOf(0) }
+                var navigatorHeight by remember { mutableIntStateOf(0) }
+                var pageJumpOpen by remember(document.id) { mutableStateOf(false) }
+                val navigatorDensity = LocalDensity.current
+                val navigatorMargin = with(navigatorDensity) { 14.dp.toPx() }
+                val navigatorTravelX = (with(navigatorDensity) { maxWidth.toPx() } - navigatorWidth - navigatorMargin * 2f).coerceAtLeast(0f)
+                val navigatorTravelY = (with(navigatorDensity) { maxHeight.toPx() } - navigatorHeight - navigatorMargin * 2f).coerceAtLeast(0f)
+                val navigatorDescription = tr("Drag page navigator", "拖动页码导航")
+                val pageJumpDescription = tr("Jump to page", "长按跳转页面")
                 Surface(
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp).zIndex(2f),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset { IntOffset((navigatorMargin + navigatorTravelX * navigatorX).roundToInt(), (navigatorMargin + navigatorTravelY * navigatorY).roundToInt()) }
+                        .onGloballyPositioned { navigatorWidth = it.size.width; navigatorHeight = it.size.height }
+                        .pointerInput(navigatorTravelX, navigatorTravelY) {
+                            detectDragGesturesAfterLongPress(
+                                onDragEnd = { navigatorPreferences.edit().putFloat("x", navigatorX).putFloat("y", navigatorY).apply() },
+                                onDrag = { change, amount ->
+                                    change.consume()
+                                    if (navigatorTravelX > 0f) navigatorX = (navigatorX + amount.x / navigatorTravelX).coerceIn(0f, 1f)
+                                    if (navigatorTravelY > 0f) navigatorY = (navigatorY + amount.y / navigatorTravelY).coerceIn(0f, 1f)
+                                },
+                            )
+                        }
+                        .zIndex(2f)
+                        .semantics { contentDescription = navigatorDescription },
                     shape = RoundedCornerShape(22.dp),
                     color = Paper,
                     border = CardDefaults.outlinedCardBorder(),
@@ -3043,7 +3070,15 @@ private fun EditorScreen(
                             enabled = currentPageIndex > 0,
                             modifier = Modifier.size(38.dp),
                         ) { Icon(Icons.Outlined.KeyboardArrowUp, tr("Previous page", "上一页"), Modifier.size(20.dp)) }
-                        Text("${currentPageIndex + 1}/${document.pages.size}", fontSize = 10.sp, color = MutedInk)
+                        Text(
+                            "${currentPageIndex + 1}/${document.pages.size}",
+                            Modifier
+                                .combinedClickable(onClick = { pageJumpOpen = true }, onLongClick = { pageJumpOpen = true })
+                                .semantics { contentDescription = pageJumpDescription }
+                                .padding(horizontal = 6.dp, vertical = 11.dp),
+                            fontSize = 10.sp,
+                            color = MutedInk,
+                        )
                         IconButton(
                             onClick = {
                                 val next = document.pages.getOrNull(currentPageIndex + 1)
@@ -3058,6 +3093,27 @@ private fun EditorScreen(
                                 if (atLastPage) tr("Add page using current template", "按当前模板新增页") else tr("Next page", "下一页"),
                                 Modifier.size(20.dp),
                             )
+                        }
+                    }
+                }
+                if (pageJumpOpen) Dialog(onDismissRequest = { pageJumpOpen = false }) {
+                    val goPageDescription = tr("Go to page", "跳转到第")
+                    Surface(shape = RoundedCornerShape(16.dp), color = Paper, modifier = Modifier.widthIn(max = 360.dp)) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(tr("Go to page", "跳转页面"), Modifier.padding(8.dp), fontWeight = FontWeight.SemiBold, color = Ink)
+                            LazyColumn(Modifier.heightIn(max = 440.dp)) {
+                                items(document.pages) { page ->
+                                    val index = document.pages.indexOf(page)
+                                    Text(
+                                        "${index + 1}  ${page.title.ifBlank { tr("Page", "页面") }}",
+                                        Modifier.fillMaxWidth().semantics { contentDescription = "$goPageDescription ${index + 1}" }.clickable {
+                                            selectPageWithViewport(page.id)
+                                            pageJumpOpen = false
+                                        }.padding(horizontal = 12.dp, vertical = 12.dp),
+                                        color = if (page.id == selectedPage.id) Ink else MutedInk,
+                                    )
+                                }
+                            }
                         }
                     }
                 }

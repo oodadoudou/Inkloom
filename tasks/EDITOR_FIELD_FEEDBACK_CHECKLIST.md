@@ -4,7 +4,7 @@
 
 ## A. 页面与笔记
 
-- [ ] **A01 页码快捷跳转**：长按右下角页码弹出可滚动的页面列表，点选后跳到对应页；页码模块可拖到画布空白处，重开笔记保留位置。验证：多页、末页、横竖屏、放手取消、与缩放操作不冲突。
+- [x] **A01 页码快捷跳转**：长按右下角页码弹出可滚动的页面列表，点选后跳到对应页；整块长按可拖动，位置以画布相对坐标持久化，尺寸变化后保持在可见范围。Android 15 窗口测试覆盖三页跳转与拖动；横竖屏和实机触摸手感仍待用户验收。
 - [x] **A02 切换笔记恢复进度**：从标题旁的快捷笔记列表切到 B，再切回 A，分别恢复各自最后一页；图库进入、进程重启、删掉原最后页后均有明确回退。保持各笔记独立记录。根因：快捷列表把目标笔记第一页作为显式内部链接传入，覆盖了恢复记录。Android 15 真实窗口测试在 B 的第 3 页切出并切回，通过。
 - [x] **A03 Pages 顶部加页按钮**：页面列表滚到中段或底部时，“+”仍固定在面板顶部，点击继续按当前模板加页；长列表与窄面板不遮挡页面项。固定顶栏与滚动列表分层；Android 15 测试滚到第 8 页后仍可打开加页模板。
 
@@ -34,3 +34,4 @@
 - 每次提交检查周额度；剩余接近 50% 时停止新项，完成进行中的修复、验证和交付。实机触感与 120 Hz 性能保持 `DEVICE_PENDING`，直到用户实测。
 
 参考行为：[Procreate 大小与透明度记忆标记](https://help.procreate.com/procreate/handbook/brushes/paint-smudge-erase)、[Procreate 侧边栏精调手势](https://help.procreate.com/procreate/handbook/interface-gestures/interface)、[CSP 面板停靠](https://help.clip-studio.com/en-us/manual_en/690_interface/Palettes.htm)。
+A01 页面导航参考：[Goodnotes 页面侧栏](https://support.goodnotes.com/hc/en-us/articles/9497798035983-Use-the-Sidebar-to-navigate-your-document)、[CSP 页面管理器](https://help.clip-studio.com/en-us/manual_en/570_pages/Page_Manager.htm)。选择用页码入口打开独立可滚动列表，并把可拖控件约束在画布可见区域。

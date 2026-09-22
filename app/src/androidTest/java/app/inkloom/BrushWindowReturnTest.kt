@@ -78,6 +78,28 @@ class BrushWindowReturnTest {
         compose.onNodeWithText("3/3").assertExists()
     }
 
+    @Test fun pageNavigatorLongPressJumpsAndCanBeDragged() {
+        tap("New Note")
+        tap("Create")
+        repeat(2) { compose.onNodeWithContentDescription("Add page using current template").performTouchInput { click() } }
+        compose.onNodeWithText("3/3").assertExists()
+        compose.onNodeWithContentDescription("Jump to page").performTouchInput { down(center); advanceEventTime(700); up() }
+        compose.onNodeWithContentDescription("Go to page 1").performTouchInput { click() }
+        compose.onNodeWithText("1/3").assertExists()
+
+        val navigator = compose.onNodeWithContentDescription("Drag page navigator")
+        val original = navigator.fetchSemanticsNode().boundsInRoot
+        navigator.performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveTo(Offset(center.x - 120f, center.y - 80f))
+            up()
+        }
+        compose.waitForIdle()
+        val moved = navigator.fetchSemanticsNode().boundsInRoot
+        assertTrue("Navigator must move from its initial position", moved.left < original.left - 20f && moved.top < original.top - 20f)
+    }
+
     @Test fun lastPagePlusCreatesBlankMatchingTemplateAndNormalNextStillNavigates() {
         tap("New Note")
         tap("New note template Grid · Medium")
