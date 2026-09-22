@@ -32,6 +32,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -46,6 +47,9 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.inkloom.ui.theme.Ink
+import app.inkloom.settings.BrushSliderMemory
+import app.inkloom.settings.BrushSliderMemoryStore
+import kotlin.math.abs
 
 /** A local gesture draft prevents MOVE writes and discards interrupted adjustments. */
 @Composable
@@ -53,10 +57,15 @@ internal fun BrushMasterSlider(
     progress: Float,
     description: String,
     gestureOwnerKey: String,
+    memoryKind: String,
     display: (Float) -> String,
     onProgress: (Float) -> Unit,
     onStep: (Int) -> Unit,
 ) {
+    val context = LocalContext.current
+    val memoryStore = remember(context) { BrushSliderMemoryStore(context) }
+    var marks by remember(gestureOwnerKey, memoryKind) { mutableStateOf(memoryStore.load(gestureOwnerKey, memoryKind)) }
+    val currentMarks by rememberUpdatedState(marks)
     val currentProgress by rememberUpdatedState(progress.coerceIn(0f, 1f))
     val commit by rememberUpdatedState(onProgress)
     var draft by remember { mutableStateOf<Float?>(null) }
@@ -96,16 +105,26 @@ internal fun BrushMasterSlider(
                         down.consume()
                         fun valueAt(y: Float) = (1f - (y - 10f) / (size.height - 20f).coerceAtLeast(1f)).coerceIn(0f, 1f)
                         draft = valueAt(down.position.y)
+                        var lastMovement = down.position
+                        var lastMovementAt = down.uptimeMillis
                         try {
                             while (true) {
                                 val event = awaitPointerEvent()
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                 if (change.isConsumed || event.changes.any { it.id != down.id && it.pressed }) break
+                                if ((change.position - lastMovement).getDistance() > viewConfiguration.touchSlop) {
+                                    lastMovement = change.position
+                                    lastMovementAt = change.uptimeMillis
+                                }
                                 draft = valueAt(change.position.y)
                                 val up = change.changedToUpIgnoreConsumed()
                                 change.consume()
                                 if (up) {
-                                    val value = requireNotNull(draft)
+                                    val bypass = abs(change.position.x - down.position.x) > 24.dp.toPx()
+                                    val value = BrushSliderMemory.snap(currentMarks, requireNotNull(draft), bypass)
+                                    if (change.uptimeMillis - lastMovementAt >= viewConfiguration.longPressTimeoutMillis) {
+                                        marks = memoryStore.toggle(gestureOwnerKey, memoryKind, value)
+                                    }
                                     if (value != currentProgress) commit(value)
                                     break
                                 }
@@ -124,6 +143,10 @@ internal fun BrushMasterSlider(
             drawRoundRect(Color(0xFFD4D4D4), Offset(centerX - 4f, top), Size(8f, bottom - top), CornerRadius(4f))
             val thumbY = bottom - (bottom - top) * (draft ?: progress).coerceIn(0f, 1f)
             drawRoundRect(Ink, Offset(centerX - 4f, thumbY), Size(8f, bottom - thumbY), CornerRadius(4f))
+            marks.forEach { mark ->
+                val y = bottom - (bottom - top) * mark
+                drawLine(Ink, Offset(centerX - 10f, y), Offset(centerX + 10f, y), strokeWidth = 2.dp.toPx())
+            }
             drawCircle(Color.White, 7f, Offset(centerX, thumbY))
             drawCircle(Color(0xFF262626), 7f, Offset(centerX, thumbY), style = Stroke(1.5f))
         }

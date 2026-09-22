@@ -23,6 +23,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.ui.InkCanvasView
 import app.inkloom.importer.BrushMetadataStore
+import app.inkloom.settings.BrushSliderMemoryStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -46,9 +47,13 @@ class BrushMasterSettingsWindowTest {
             app.inkloom.settings.BrushUsageStore(context).save(app.inkloom.settings.BrushUsageState())
             context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE).edit().clear().commit()
             context.getSharedPreferences("brush_preset_sizes", Context.MODE_PRIVATE).edit().clear().commit()
+            context.getSharedPreferences("brush_slider_memories", Context.MODE_PRIVATE).edit().clear().commit()
             context.filesDir.resolve("library.json").delete()
             try { base.evaluate() }
-            finally { context.getSharedPreferences("brush_preset_sizes", Context.MODE_PRIVATE).edit().clear().commit() }
+            finally {
+                context.getSharedPreferences("brush_preset_sizes", Context.MODE_PRIVATE).edit().clear().commit()
+                context.getSharedPreferences("brush_slider_memories", Context.MODE_PRIVATE).edit().clear().commit()
+            }
         }
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
@@ -141,6 +146,50 @@ class BrushMasterSettingsWindowTest {
         tap("Increase Brush opacity")
         assertEquals(400f, canvas().baseWidth, .001f)
         assertEquals(1f, canvas().inkOpacity, .001f)
+    }
+
+    @Test fun fourBrushSpecificMarksSurviveReopenAndSnapNearAStoredSize() {
+        openPencil()
+        tap("Close brushes panel")
+        val store = BrushSliderMemoryStore(context)
+        val owner = "PEN:system-hb-pencil"
+        fun hold(label: String, progress: Float) {
+            val rect = bounds(label)
+            val point = Offset(rect.exactCenterX(), rect.top + rect.height() * (1f - progress))
+            val down = SystemClock.uptimeMillis()
+            event(MotionEvent.ACTION_DOWN, point, down, MotionEvent.TOOL_TYPE_FINGER)
+            SystemClock.sleep(650)
+            event(MotionEvent.ACTION_UP, point, down, MotionEvent.TOOL_TYPE_FINGER)
+            compose.waitForIdle()
+        }
+        listOf(.2f, .4f, .6f, .8f).forEach { hold("Brush size", it) }
+        val saved = store.load(owner, "size")
+        assertEquals(4, saved.size)
+        hold("Brush size", .95f)
+        assertEquals("A fifth mark must not silently replace another", saved, store.load(owner, "size"))
+        val target = saved[1]
+        val rect = bounds("Brush size")
+        val near = Offset(rect.exactCenterX(), rect.top + rect.height() * (1f - target - .015f))
+        val down = SystemClock.uptimeMillis()
+        event(MotionEvent.ACTION_DOWN, near, down, MotionEvent.TOOL_TYPE_FINGER)
+        event(MotionEvent.ACTION_UP, near, down, MotionEvent.TOOL_TYPE_FINGER)
+        compose.waitForIdle()
+        assertEquals(.5f + target * target * 399.5f, canvas().baseWidth, 2f)
+        hold("Brush size", target)
+        assertEquals(3, store.load(owner, "size").size)
+        assertTrue(store.load(owner, "opacity").isEmpty())
+        hold("Brush opacity", .55f)
+        assertEquals(1, store.load(owner, "opacity").size)
+        tap("Brushes"); tap("Brush preset H Pencil")
+        assertTrue(store.load("PEN:system-h-pencil", "size").isEmpty())
+        tap("Brush preset HB Pencil")
+        tap("Close brushes panel")
+        compose.activityRule.scenario.recreate()
+        compose.waitForIdle()
+        assertEquals(3, store.load(owner, "size").size)
+        assertEquals(1, store.load(owner, "opacity").size)
+        tap("Eraser")
+        assertTrue(store.load("ERASER:system-hb-pencil", "size").isEmpty())
     }
 
     @Test fun sizeDragShowsPixelReadoutOutsideTheNarrowDockWithoutCommittingEarly() {

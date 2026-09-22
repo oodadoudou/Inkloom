@@ -5708,6 +5708,7 @@ private fun ProcreateSidebar(
             progress = sizeProgress,
             description = tr("Brush size", "笔刷大小"),
             gestureOwnerKey = gestureOwnerKey,
+            memoryKind = "size",
             display = { progress ->
                 val value = .5f + progress * progress * 399.5f
                 (if (value < 10f) "%.1f".format(value) else value.toInt().toString()) + " px"
@@ -5733,6 +5734,7 @@ private fun ProcreateSidebar(
             progress = ((brushOpacity.coerceIn(.05f, 1f) - .05f) / .95f),
             description = tr("Brush opacity", "笔刷不透明度"),
             gestureOwnerKey = gestureOwnerKey,
+            memoryKind = "opacity",
             display = { "${((.05f + it * .95f) * 100).toInt()}%" },
             onProgress = { onOpacity(.05f + it * .95f) },
             onStep = { direction -> onOpacity((brushOpacity + direction * .01f).coerceIn(.05f, 1f)) },

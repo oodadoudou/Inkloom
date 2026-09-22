@@ -25,7 +25,7 @@
 - [x] **D01 标签滑动不误拖**：多标签组合现在仅从每个标签左侧的移动抓手拆出；标签文字区域保留点选和横向滚动。Android 15 面板交互测试覆盖横向滑动不拆组、滚动后从抓手拆出、拖动取消和停靠回退；真机多指中断触感仍待验收。参考 [CSP 面板标签](https://help.clip-studio.com/en-us/manual_en/690_interface/Palettes.htm) 和 [Photoshop 移动面板](https://helpx.adobe.com/photoshop/desktop/get-started/learn-the-basics/move-panels.html)。
 - [x] **D02 笔刷面板窄宽阈值**：完整分类＋笔刷列表保留至约 196 dp（分类 56、分隔 24、预览约 112）；顶部操作栏超宽时横向滚动，分类名称省略仍可见。Android 15 真窗口测试把笔刷窗缩到约 205 dp，确认分栏仍存在；JVM 测试固定阈值，窗口宽度仍由既有布局持久化。主设备反复缩窄／停靠手感待验收。参考 [CSP 面板](https://help.clip-studio.com/en-us/manual_en/690_interface/Palettes.htm) 和 [Photoshop 面板尺寸](https://helpx.adobe.com/photoshop/desktop/get-started/learn-the-basics/stack-floating-panels.html)。
 - [x] **D03 笔刷大小／透明度微调**：两条侧边进度条右侧各有小号 ±；每次点击大小变化 1 px、透明度变化 1 个百分点，并限制在 0.5–400 px／5–100%。Android 15 窗口测试核对笔刷引擎实际宽度、不透明度以及最大值不越界；长按连调并非这次用户明确要求，维持逐次精调。参考 [Procreate 侧边栏](https://help.procreate.com/procreate/handbook/brushes/paint-smudge-erase) 与 [CSP 工具滑块](https://help.clip-studio.com/en-us/manual_en/240_brushes/Tool_Slider_palette.htm)。
-- [ ] **D04 笔刷记忆标记**：每支笔刷的大小和透明度各最多四个持久标记；进度条预览中的 + 添加，标记可点选、接近时吸附、再次点选后 − 删除。切笔、重启、笔／涂抹／橡皮状态分别核对；拖动时仍可精确越过标记。
+- [x] **D04 笔刷记忆标记**：在大小或透明度滑块上停住长按，添加该位置的记忆标记；同一标记再次长按即移除。每支笔刷、每种控制、绘画／涂抹／橡皮角色各自保存，最多四个；普通拖动靠近标记会吸附，横向移开手指可绕过吸附。Android 15 窗口测试验证添加四个、第五个不覆盖、吸附、移除、切笔隔离、大小／透明度隔离、重开保留及橡皮角色隔离；真机长按手感仍待验收。参考 [Procreate 大小与透明度记忆标记](https://help.procreate.com/procreate/handbook/brushes/paint-smudge-erase) 与 [CSP 笔刷大小预设](https://help.clip-studio.com/en-us/manual_en/240_brushes/Customizing_the_brush_size_palette.htm)。
 
 ## 每项提交与最终交付
 
