@@ -7438,8 +7438,11 @@ private fun ProcreateBrushLibrary(
             }
             BrushLibrarySplitLayout(settings.brushCategoryWidthDp,onBrushCategoryWidth,
                 tr("Resize brush categories", "调整笔刷分类栏宽度"),Modifier.weight(1f)) { categoryWidth, divider ->
+                val brushCategoriesDescription = tr("Brush categories", "笔刷分类")
                 LazyColumn(
-                    Modifier.width(categoryWidth).fillMaxHeight().onGloballyPositioned { categoryViewport[0] = it.boundsInWindow() }.background(Paper),
+                    Modifier.width(categoryWidth).fillMaxHeight()
+                        .semantics { contentDescription = brushCategoriesDescription }
+                        .onGloballyPositioned { categoryViewport[0] = it.boundsInWindow() }.background(Paper),
                     state = categoryListState,
                     contentPadding = PaddingValues(vertical = 7.dp),
                 ) {

@@ -21,6 +21,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.performScrollToKey
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -55,7 +56,9 @@ class BrushBatchManagementTest {
         object : Statement() {
             override fun evaluate() {
                 val context = ApplicationProvider.getApplicationContext<Context>()
+                context.getSharedPreferences("inkloom_editor_panels", Context.MODE_PRIVATE).edit().clear().commit()
                 context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE).edit()
+                    .clear()
                     .putString("language", "ENGLISH")
                     .putInt("studioWorkspaceVersion", 2)
                     .putBoolean("showBrushPanel", false)
@@ -206,6 +209,7 @@ class BrushBatchManagementTest {
         composeRule.onNodeWithContentDescription("Select multiple brushes").performClick()
         composeRule.onNodeWithContentDescription("Brush preset Batch A").performClick()
         composeRule.onNodeWithContentDescription("Brush preset Batch B").performClick()
+        composeRule.onNodeWithContentDescription("Brush categories").performScrollToKey("Target")
         val row = composeRule.onNodeWithContentDescription("Brush preset Batch A")
         val rowBounds = row.fetchSemanticsNode().boundsInRoot
         val target = composeRule.onNodeWithContentDescription("Brush group Target").fetchSemanticsNode().boundsInRoot.center
