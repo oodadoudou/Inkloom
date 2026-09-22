@@ -18,7 +18,6 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -188,22 +187,19 @@ internal fun CspColorPanel(
             }
             Row(Modifier.fillMaxWidth().height(38.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 val pair = colorPair
-                Box(Modifier.size(44.dp, 32.dp).pointerInput(pair) {
-                    if (pair != null) detectTapGestures { point ->
-                        // Resolve the overlapping swatches once, without two expanded touch targets.
-                        pair.select(!(point.x <= 23.dp.toPx() && point.y <= 23.dp.toPx()))
-                    }
-                }) {
+                Row(Modifier.width(68.dp).height(32.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (pair != null) {
                         val primary = if (!pair.secondarySelected) draft.color else pair.foreground
                         val secondary = if (pair.secondarySelected) draft.color else pair.background
-                        Box(Modifier.align(Alignment.BottomEnd).size(23.dp).background(Color(secondary), RoundedCornerShape(2.dp))
-                            .border(if (pair.secondarySelected) 2.dp else 1.dp, if (pair.secondarySelected) Ink else MutedInk, RoundedCornerShape(2.dp))
-                            .semantics { contentDescription = tr("Edit secondary color", "编辑副色"); onClick { pair.select(true); true } })
-                        Box(Modifier.align(Alignment.TopStart).size(23.dp).background(Color(primary), RoundedCornerShape(2.dp))
+                        Box(Modifier.size(32.dp).background(Color(primary), RoundedCornerShape(2.dp))
                             .border(if (!pair.secondarySelected) 2.dp else 1.dp, if (!pair.secondarySelected) Ink else MutedInk, RoundedCornerShape(2.dp))
-                            .semantics { contentDescription = tr("Edit primary color", "编辑主色"); onClick { pair.select(false); true } })
-                    } else Box(Modifier.align(Alignment.Center).size(24.dp).background(Color(draft.color)).border(1.dp, MutedInk))
+                            .clickable { pair.select(false) }
+                            .semantics { contentDescription = tr("Edit primary color", "编辑主色") })
+                        Box(Modifier.size(32.dp).background(Color(secondary), RoundedCornerShape(2.dp))
+                            .border(if (pair.secondarySelected) 2.dp else 1.dp, if (pair.secondarySelected) Ink else MutedInk, RoundedCornerShape(2.dp))
+                            .clickable { pair.select(true) }
+                            .semantics { contentDescription = tr("Edit secondary color", "编辑副色") })
+                    } else Box(Modifier.size(32.dp).background(Color(draft.color)).border(1.dp, MutedInk))
                 }
                 if (pair != null && onSwapColors != null) IconButton(onClick = onSwapColors, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Outlined.SwapHoriz, tr("Swap foreground and background colors", "交换前景色和背景色"), Modifier.size(17.dp), tint = Ink)
