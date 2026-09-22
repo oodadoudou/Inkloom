@@ -2653,7 +2653,9 @@ private fun EditorScreen(
                     documents = documents,
                     onOpenInternalLink = onOpenInternalLink,
                     onInputDiagnostic = { kind, pressure, tilt, buttons -> inputDiagnostic = "$kind  pressure ${"%.3f".format(pressure)}  tilt ${"%.2f".format(Math.toDegrees(tilt.toDouble()))}°  buttons $buttons" },
-                    onColorSampled = ::changeBrushColor,
+                    onColorSampled = { sampled ->
+                        if (editSecondaryColor) changeBackgroundColor(sampled) else changeBrushColor(sampled)
+                    },
                     onBrushSizeAdjusted = { raw ->
                         changeCurrentBrushSize(raw)
                     },

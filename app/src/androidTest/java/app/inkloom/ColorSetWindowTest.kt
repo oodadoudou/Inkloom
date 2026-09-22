@@ -18,6 +18,9 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.settings.ColorSetLibrary
 import app.inkloom.settings.ColorSetLibraryStore
+import app.inkloom.settings.DrawingColorStore
+import app.inkloom.document.FileDocumentStore
+import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -169,6 +172,65 @@ class ColorSetWindowTest {
         tap("Intermediate")
         bounds("Intermediate corner 1")
         bounds("Intermediate color 4, 4")
+    }
+
+    @Test fun wheelNearbyMixAndPaletteWriteTheCurrentlySelectedDrawingColor() {
+        val title = "Active color ${SystemClock.uptimeMillis()}"
+        openNewNotebook(title)
+        val documentId = FileDocumentStore(context.filesDir).list().first { it.title == title }.id
+        val colors = DrawingColorStore(context)
+        val original = colors.load(documentId)
+        tap("Colors")
+        val field = bounds("Saturation and brightness field")
+        tapAt(ColorWheelTestCoordinates.triangle(field, .8f, .7f))
+        compose.waitUntil(5_000) { colors.load(documentId).foreground != original.foreground }
+        assertEquals(original.background, colors.load(documentId).background)
+        val wheelForeground = colors.load(documentId).foreground
+
+        tap("Edit secondary color")
+        bounds("Secondary color")
+        tap("Nearby")
+        bounds("Secondary color")
+        tap("Nearby color 4, 7")
+        assertTrue("Nearby selection originalForeground=${wheelForeground.toUInt().toString(16)} foreground=${colors.load(documentId).foreground.toUInt().toString(16)} background=${colors.load(documentId).background.toUInt().toString(16)}",
+            colors.load(documentId).background != original.background)
+        val secondary = colors.load(documentId).background
+        val primary = colors.load(documentId).foreground
+        tap("Wheel")
+        tap("Edit primary color")
+        tap("Mix")
+        tap("Mixing color #E53935")
+        compose.waitUntil(5_000) { colors.load(documentId).foreground == 0xffe53935.toInt() }
+        assertEquals(secondary, colors.load(documentId).background)
+        tap("Palettes")
+        createSet("Color routing $title")
+        tap("Save current color")
+        tap("Wheel")
+        tap("Edit secondary color")
+        tap("Palettes")
+        tap("Color tile 1")
+        compose.waitUntil(5_000) { colors.load(documentId).background == 0xffe53935.toInt() }
+        assertEquals(0xffe53935.toInt(), colors.load(documentId).foreground)
+        assertNotEquals(primary, colors.load(documentId).foreground)
+
+        tap("Eyedropper")
+        val canvas = requireNotNull(findCanvas(compose.activity.window.decorView))
+        val location = IntArray(2).also(canvas::getLocationOnScreen)
+        val samplePoint = Offset(location[0] + canvas.width / 2f, location[1] + canvas.height / 2f)
+        val down = SystemClock.uptimeMillis()
+        event(MotionEvent.ACTION_DOWN, samplePoint, down, MotionEvent.TOOL_TYPE_STYLUS)
+        event(MotionEvent.ACTION_UP, samplePoint, down, MotionEvent.TOOL_TYPE_STYLUS)
+        assertTrue("Eyedropper result ${colors.load(documentId).background.toUInt().toString(16)} tool=${canvas.tool}",
+            colors.load(documentId).background != 0xffe53935.toInt())
+        assertEquals(0xffe53935.toInt(), colors.load(documentId).foreground)
+    }
+
+    private fun findCanvas(root: android.view.View): InkCanvasView? {
+        if (root is InkCanvasView) return root
+        if (root is android.view.ViewGroup) repeat(root.childCount) { index ->
+            findCanvas(root.getChildAt(index))?.let { return it }
+        }
+        return null
     }
 
     private fun library(): ColorSetLibrary = ColorSetLibraryStore(context).load()
