@@ -1935,17 +1935,21 @@ class InkCanvasView(context: Context) : View(context) {
     ): Boolean {
         if (!includeElements || layerFilter != null) return false
         val through = boundDocumentLayers?.any { it.role == app.inkloom.document.LayerRole.FOLDER && it.passThrough } == true
+        val hasAdjustments = boundDocumentLayers?.any {
+            it.role == app.inkloom.document.LayerRole.ADJUSTMENT && it.visible && it.adjustment != null
+        } == true
         val hasElements = layerElementBitmaps.isNotEmpty() || mixedElementOverrides.values.any { it != null }
-        if (hasElements && !through) return false
-        if (rasterLayerTileSurfaces.isEmpty() && (!through || !hasElements)) return false
+        if (hasElements && !through && !hasAdjustments) return false
+        if (rasterLayerTileSurfaces.isEmpty() && (!hasElements || (!through && !hasAdjustments))) return false
         if (layerMasks.any { (layerId, mask) ->
                 layerId in rasterLayerTileSurfaces && mask.enabled && layerMaskSurfaces[layerId] == null
             }) return false
 
-        val contentIds = rasterLayerTileSurfaces.keys + if (through) (layerElementBitmaps.keys + mixedElementOverrides.keys) else emptySet()
+        val contentIds = rasterLayerTileSurfaces.keys + if (through || hasAdjustments)
+            (layerElementBitmaps.keys + mixedElementOverrides.keys) else emptySet()
         val orderedIds = (layerOrder.filter(contentIds::contains) + contentIds.filterNot(layerOrder::contains)).distinct()
         if (orderedIds.isEmpty()) return false
-        val directSourceOverStack = boundDocumentLayers?.none { it.role == app.inkloom.document.LayerRole.FOLDER } != false && orderedIds.all { layerId ->
+        val directSourceOverStack = !hasAdjustments && boundDocumentLayers?.none { it.role == app.inkloom.document.LayerRole.FOLDER } != false && orderedIds.all { layerId ->
             (layerOpacities[layerId] ?: 1f) >= .999f &&
                 (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL) == LayerBlendMode.NORMAL &&
                 layerMasks[layerId]?.enabled != true && layerId !in clippedLayers
@@ -2020,7 +2024,11 @@ class InkCanvasView(context: Context) : View(context) {
                 clipToBaseBelow = layerId in clippedLayers)
         } } finally { contentCache?.endFrame() }
         val nodes = boundDocumentLayers?.let { layers -> LayerCompositingTree.project<PixelProjectionNode>(layers,
-            paint = { layer -> PixelProjectionNode.Paint((inputs[layer.id] ?: PixelLayerProjectionInput(layer.id,
+            paint = { layer -> if (layer.role == app.inkloom.document.LayerRole.ADJUSTMENT && layer.adjustment != null)
+                PixelProjectionNode.Adjustment(layer.id, layer.adjustment,
+                    layerOpacities[layer.id] ?: layer.opacity,
+                    layerMasks[layer.id]?.takeIf { it.enabled }?.let { layerMaskSurfaces[layer.id] }, layer.visible)
+            else PixelProjectionNode.Paint((inputs[layer.id] ?: PixelLayerProjectionInput(layer.id,
                 cache.emptySnapshot, opacity = layer.opacity, blendMode = layer.blendMode.toPixelBlendMode(),
                 clipToBaseBelow = layer.clippedToBelow)).copy(visible = layer.visible)) },
             group = { layer, children -> PixelProjectionNode.Group(layer.id, children,

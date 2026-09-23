@@ -1137,12 +1137,15 @@ class DocumentAssetService(private val context: Context) {
         if (!includeRaster || !applyLayerEffects) return false
         if (includedLayerIds != null || includedContentIds != null) return false
         val through = projectedPage.layers.any { it.role == LayerRole.FOLDER && it.passThrough }
+        val hasAdjustments = projectedPage.layers.any {
+            it.role == LayerRole.ADJUSTMENT && it.visible && it.adjustment != null
+        }
         val hasElements = projectedPage.elements.any { element -> visibleLayers.any { it.id == element.layerId } }
-        if (hasElements && !through) return false
+        if (hasElements && !through && !hasAdjustments) return false
         val rasterLayers = visibleLayers.filter { layer ->
             layer.isPaintSurfaceLayer() && layer.rasterTileSurface != null
         }
-        if (rasterLayers.isEmpty() && (!through || !hasElements)) return false
+        if (rasterLayers.isEmpty() && (!hasElements || (!through && !hasAdjustments))) return false
         if (rasterLayers.any { it.mask?.enabled == true && it.mask.surface == null }) return false
 
         val surfaces = rasterLayers.map { layer ->
@@ -1180,7 +1183,11 @@ class DocumentAssetService(private val context: Context) {
         } } finally { contentCache?.endFrame() }
         val visibleIds = visibleLayers.mapTo(hashSetOf()) { it.id }
         val nodes = LayerCompositingTree.project<PixelProjectionNode>(projectedPage.layers,
-            paint = { layer -> PixelProjectionNode.Paint((inputs[layer.id] ?: PixelLayerProjectionInput(layer.id,
+            paint = { layer -> if (layer.role == LayerRole.ADJUSTMENT && layer.adjustment != null)
+                PixelProjectionNode.Adjustment(layer.id, layer.adjustment, layer.opacity,
+                    layer.mask?.takeIf { it.enabled }?.surface?.let { loadMaskTileSurface(it).snapshot() },
+                    layer.id in visibleIds)
+            else PixelProjectionNode.Paint((inputs[layer.id] ?: PixelLayerProjectionInput(layer.id,
                 projection.emptySnapshot, opacity = layer.opacity, clipToBaseBelow = layer.clippedToBelow))
                 .copy(visible = layer.id in visibleIds)) },
             group = { layer, children -> PixelProjectionNode.Group(layer.id, children, layer.opacity,
