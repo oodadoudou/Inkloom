@@ -847,6 +847,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onSaveImagePaper = viewModel::saveImagePaperTemplate,
             onImportCover = viewModel::importNotebookCover,
             onDeleteCover = viewModel::deleteNotebookCover,
+            onChangeCover = viewModel::changeNotebookCover,
             onImport = { documentPicker.launch(arrayOf("application/pdf", "image/*", "application/zip")) },
             onFavorite = viewModel::toggleFavorite,
             onArchive = viewModel::toggleArchive,
@@ -1027,7 +1028,7 @@ fun InkloomApp(initialIntent: Intent?) {
 }
 
 @Composable
-private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkloom.document.ImagePaperDraft, onSaveImagePaper: (PageTemplate) -> PageTemplate, onCreateCustomTemplate: (String, Int, Int, PageBackground.Paper) -> PageTemplate?, documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long, String?) -> Boolean, onImportCover: (Uri, String) -> NotebookCoverTemplate, onDeleteCover: (String) -> Unit, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
+private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkloom.document.ImagePaperDraft, onSaveImagePaper: (PageTemplate) -> PageTemplate, onCreateCustomTemplate: (String, Int, Int, PageBackground.Paper) -> PageTemplate?, documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long, String?) -> Boolean, onImportCover: (Uri, String, PageCrop) -> NotebookCoverTemplate, onDeleteCover: (String) -> Unit, onChangeCover: (String, CoverStyle, String?) -> Boolean, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
     var filter by remember { mutableStateOf(LibraryFilter.ALL) }
     var search by remember { mutableStateOf("") }
     var folderId by remember { mutableStateOf<String?>(null) }
@@ -1044,23 +1045,20 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
     var newNoteCoverId by remember { mutableStateOf<String?>(null) }
     var coverImporting by remember { mutableStateOf(false) }
     var coverImportError by remember { mutableStateOf(false) }
+    var editingCoverDocumentId by remember { mutableStateOf<String?>(null) }
+    var editingCoverStyle by remember { mutableStateOf(CoverStyle.MINIMAL) }
+    var editingCoverId by remember { mutableStateOf<String?>(null) }
+    var coverImportTargetId by remember { mutableStateOf<String?>(null) }
+    var coverCropCandidate by remember { mutableStateOf<Triple<Uri, String, String?>?>(null) }
     val coverScope = rememberCoroutineScope()
     val coverContext = LocalContext.current
     val currentCoverImport by rememberUpdatedState(onImportCover)
     val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) coverScope.launch {
-            coverImporting = true; coverImportError = false
-            try {
-                val cover = withContext(Dispatchers.IO) {
-                    val filename = coverContext.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
-                        if (it.moveToFirst()) it.getString(0) else null
-                    }?.substringBeforeLast('.') ?: libraryLanguage.text("Cover", "封面")
-                    currentCoverImport(uri, filename)
-                }
-                newNoteCover = CoverStyle.CUSTOM_IMAGE; newNoteCoverId = cover.id
-            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-            catch (_: Exception) { coverImportError = true }
-            finally { coverImporting = false }
+        if (uri != null) {
+            val name = runCatching { coverContext.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                if (it.moveToFirst()) it.getString(0) else null
+            }?.substringBeforeLast('.') }.getOrNull() ?: libraryLanguage.text("Cover", "封面")
+            coverCropCandidate = Triple(uri, name, coverImportTargetId)
         }
     }
 
@@ -1186,7 +1184,12 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
             Spacer(Modifier.height(12.dp))
             when (layout) {
                 LibraryLayout.LIST -> LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(visible, key = { it.id }) { NotebookCard(it, Modifier.libraryDocumentDrag(it).fillMaxWidth().height(220.dp), onOpen, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder) }
+                    items(visible, key = { it.id }) { NotebookCard(it, Modifier.libraryDocumentDrag(it).fillMaxWidth().height(220.dp), onOpen, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder, onEditCover = { document ->
+                        editingCoverDocumentId = document.id
+                        editingCoverStyle = document.coverStyle
+                        editingCoverId = pageTemplates.customCovers.firstOrNull { it.assetPath == document.coverImagePath }?.id
+                        coverImportError = false
+                    }) }
                 }
                 LibraryLayout.GRID, LibraryLayout.COMPACT_GRID -> LazyVerticalGrid(
                     columns = GridCells.Adaptive(if (layout == LibraryLayout.COMPACT_GRID) 140.dp else 180.dp),
@@ -1194,7 +1197,12 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                     verticalArrangement = Arrangement.spacedBy(if (layout == LibraryLayout.COMPACT_GRID) 10.dp else 16.dp),
                 ) {
                     items(visible, key = { it.id }) {
-                        NotebookCard(it, Modifier.libraryDocumentDrag(it).height(if (layout == LibraryLayout.COMPACT_GRID) 210.dp else 250.dp), onOpen, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder)
+                        NotebookCard(it, Modifier.libraryDocumentDrag(it).height(if (layout == LibraryLayout.COMPACT_GRID) 210.dp else 250.dp), onOpen, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder, onEditCover = { document ->
+                            editingCoverDocumentId = document.id
+                            editingCoverStyle = document.coverStyle
+                            editingCoverId = pageTemplates.customCovers.firstOrNull { it.assetPath == document.coverImagePath }?.id
+                            coverImportError = false
+                        })
                     }
                 }
             }
@@ -1232,7 +1240,7 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                     keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { finishName() }))
                 NotebookCoverPicker(newNoteTitle, pageTemplates.customCovers, newNoteCover, newNoteCoverId, coverImporting, LocalUiLanguage.current,
                     onSelect = { style, id -> finishName(); newNoteCover = style; newNoteCoverId = id },
-                    onImport = { finishName(); coverPicker.launch(arrayOf("image/*")) },
+                    onImport = { finishName(); coverImportTargetId = null; coverPicker.launch(arrayOf("image/*")) },
                     onBrowse = finishName,
                     onDelete = { id ->
                         onDeleteCover(id)
@@ -1312,6 +1320,55 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
         }
         }
         }
+    }
+    editingCoverDocumentId?.let { documentId ->
+        val document = documents.firstOrNull { it.id == documentId }
+        if (document != null && coverCropCandidate == null) AlertDialog(
+            onDismissRequest = { if (!coverImporting) editingCoverDocumentId = null },
+            title = { Text(tr("Change cover", "更换封面")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NotebookCoverPicker(document.title, pageTemplates.customCovers, editingCoverStyle, editingCoverId,
+                        coverImporting, LocalUiLanguage.current,
+                        onSelect = { style, id -> editingCoverStyle = style; editingCoverId = id },
+                        onImport = { coverImportTargetId = documentId; coverPicker.launch(arrayOf("image/*")) },
+                        onBrowse = {},
+                        onDelete = { id ->
+                            onDeleteCover(id)
+                            if (editingCoverId == id) { editingCoverId = null; editingCoverStyle = CoverStyle.MINIMAL }
+                        })
+                    if (coverImportError) Text(tr("Could not save this cover", "无法保存此封面"), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            confirmButton = { TextButton(enabled = !coverImporting, onClick = {
+                if (onChangeCover(documentId, editingCoverStyle, editingCoverId)) editingCoverDocumentId = null
+                else coverImportError = true
+            }) { Text(tr("Apply", "应用")) } },
+            dismissButton = { TextButton(enabled = !coverImporting, onClick = { editingCoverDocumentId = null }) { Text(tr("Cancel", "取消")) } },
+        )
+    }
+    coverCropCandidate?.let { candidate ->
+        NotebookCoverCropDialog(candidate.first, LocalUiLanguage.current,
+            onDismiss = { coverCropCandidate = null },
+            onConfirm = { crop ->
+                coverCropCandidate = null
+                coverImporting = true; coverImportError = false
+                coverScope.launch {
+                    try {
+                        val cover = withContext(Dispatchers.IO) { currentCoverImport(candidate.first, candidate.second, crop) }
+                        val targetDocumentId = candidate.third
+                        if (targetDocumentId == null) {
+                            newNoteCover = CoverStyle.CUSTOM_IMAGE; newNoteCoverId = cover.id
+                        } else {
+                            editingCoverStyle = CoverStyle.CUSTOM_IMAGE; editingCoverId = cover.id
+                            if (onChangeCover(targetDocumentId, CoverStyle.CUSTOM_IMAGE, cover.id)) editingCoverDocumentId = null
+                            else coverImportError = true
+                        }
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (_: Exception) { coverImportError = true }
+                    finally { coverImporting = false }
+                }
+            })
     }
 }
 
@@ -1410,7 +1467,7 @@ private fun BrandMark(subtitle: String? = null) {
 }
 
 @Composable
-private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (InkDocument) -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, folders: List<InkFolder>, onMoveToFolder: (String, String?) -> Unit) {
+private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (InkDocument) -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, folders: List<InkFolder>, onMoveToFolder: (String, String?) -> Unit, onEditCover: (InkDocument) -> Unit) {
     var menu by remember { mutableStateOf(false) }
     var renameOpen by remember { mutableStateOf(false) }
     var tagsOpen by remember { mutableStateOf(false) }
@@ -1428,6 +1485,7 @@ private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (Ink
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     if (document.trashedAt == null) {
                         DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameOpen = true })
+                        DropdownMenuItem(text = { Text(tr("Change cover", "更换封面")) }, onClick = { menu = false; onEditCover(document) })
                         DropdownMenuItem(text = { Text(tr("Edit tags", "编辑标签")) }, onClick = { menu = false; tagsOpen = true })
                         DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(document.id) })
                         folders.forEach { folder -> DropdownMenuItem(text = { Text("${tr("Move to", "移动到")} ${folder.name}") }, onClick = { menu = false; onMoveToFolder(document.id, folder.id) }) }
@@ -1460,11 +1518,12 @@ internal fun NotebookCover(document: InkDocument, modifier: Modifier = Modifier)
         } }
     }
     val coverBitmap = coverBitmapState.value
-    DisposableEffect(coverBitmap) { onDispose { coverBitmap?.recycle() } }
+    // Rendering may replay one more frame after this card leaves composition.
+    // Previews are bounded to 512 px; allow GC to release them after that frame.
     val light = document.coverStyle in setOf(CoverStyle.MINIMAL, CoverStyle.PAPER, CoverStyle.GRID, CoverStyle.WHITE, CoverStyle.WHITE_GRID)
     Box(modifier.background(if (light) Color(0xFFF4F4F4) else Color(document.coverArgb))) {
         if (document.coverStyle == CoverStyle.CUSTOM_IMAGE && coverBitmap != null) {
-            Image(requireNotNull(coverBitmap).asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            Image(requireNotNull(coverBitmap).asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
         } else Canvas(Modifier.fillMaxSize().padding(14.dp)) {
             val line = if (light) Color.Black.copy(alpha = .42f) else Color.White.copy(alpha = .7f)
             when (document.coverStyle) {

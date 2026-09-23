@@ -269,7 +269,7 @@ class DocumentAssetService(private val context: Context) {
         pageTemplates: PageTemplateLibrary = PageTemplateLibrary(),
     ): Int = assetLifecycle.garbageCollect(documents, pageTemplates)
 
-    fun importCoverImage(uri: Uri): String {
+    fun importCoverImage(uri: Uri, crop: PageCrop? = null): String {
         val extension = context.contentResolver.getType(uri)?.substringAfterLast('/')?.take(8).orEmpty().ifBlank { "image" }
         val asset = copyAsset(uri, extension)
         try { CoverImageDecoder.decode(asset, 64).recycle() }
@@ -278,7 +278,26 @@ class DocumentAssetService(private val context: Context) {
             // The normal reference-aware collector will remove it only if it is unused.
             throw IllegalArgumentException("Selected cover could not be decoded", failure)
         }
-        return asset.absolutePath
+        if (crop == null) return asset.absolutePath
+        require(crop.left >= 0f && crop.top >= 0f && crop.right <= 1f && crop.bottom <= 1f &&
+            crop.right > crop.left && crop.bottom > crop.top) { "Invalid cover crop" }
+        val source = CoverImageDecoder.decode(asset, 2048)
+        try {
+            val left = (crop.left * source.width).toInt().coerceIn(0, source.width - 1)
+            val top = (crop.top * source.height).toInt().coerceIn(0, source.height - 1)
+            val right = (crop.right * source.width).toInt().coerceIn(left + 1, source.width)
+            val bottom = (crop.bottom * source.height).toInt().coerceIn(top + 1, source.height)
+            val cropped = Bitmap.createBitmap(source, left, top, right - left, bottom - top)
+            try {
+                val temporary = File(directory, ".${UUID.randomUUID()}.tmp")
+                try {
+                    temporary.outputStream().use { check(cropped.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+                    val target = File(directory, "${UUID.randomUUID()}.png")
+                    check(temporary.renameTo(target)) { "Could not save cropped cover" }
+                    return target.absolutePath
+                } finally { temporary.delete() }
+            } finally { if (cropped !== source) cropped.recycle() }
+        } finally { source.recycle() }
     }
 
     fun renderBackground(background: PageBackground, targetWidth: Int, rotationQuarterTurns: Int = 0, crop: PageCrop = PageCrop()): Bitmap? {

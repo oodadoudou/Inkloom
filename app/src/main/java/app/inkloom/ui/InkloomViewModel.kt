@@ -74,8 +74,8 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         paperColorArgb: Long = PaperColorCatalog.WHITE,
     ): InkDocument = createNoteDocument(title, coverStyle, null, templateId, paperColorArgb)
 
-    fun importNotebookCover(uri: Uri, name: String): NotebookCoverTemplate {
-        val cover = NotebookCoverTemplate(name = name.trim().ifBlank { "Cover" }.take(80), assetPath = assets.importCoverImage(uri))
+    fun importNotebookCover(uri: Uri, name: String, crop: PageCrop): NotebookCoverTemplate {
+        val cover = NotebookCoverTemplate(name = name.trim().ifBlank { "Cover" }.take(80), assetPath = assets.importCoverImage(uri, crop))
         mutablePageTemplates.value = pageTemplateStore.addCover(cover)
         return cover
     }
@@ -83,6 +83,20 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun deleteNotebookCover(id: String) {
         mutablePageTemplates.value = pageTemplateStore.deleteCover(id)
         scheduleAssetGarbageCollection()
+    }
+
+    fun changeNotebookCover(documentId: String, style: CoverStyle, coverId: String?): Boolean {
+        val path = if (style == CoverStyle.CUSTOM_IMAGE) {
+            val cover = mutablePageTemplates.value.customCovers.firstOrNull { it.id == coverId } ?: return false
+            cover.assetPath.takeIf { File(it).isFile } ?: return false
+        } else null
+        if (store.get(documentId) == null) return false
+        update(documentId) { document ->
+            document.copy(coverStyle = style, coverArgb = NotebookCoverCatalog.defaultArgb(style),
+                coverImagePath = path, updatedAt = System.currentTimeMillis())
+        }
+        scheduleAssetGarbageCollection()
+        return true
     }
 
     fun createNoteUsingCover(title: String, coverId: String, templateId: String, paperColorArgb: Long): InkDocument {

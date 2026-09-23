@@ -65,7 +65,9 @@ internal fun NotebookCoverPicker(
                 }
             } else items(NotebookCoverCatalog.creationStyles) { candidate ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Card(Modifier.size(92.dp, 120.dp).selectable(selected = coverId == null && style == candidate, onClick = { onSelect(candidate, null) }),
+                    Card(Modifier.size(92.dp, 120.dp)
+                        .semantics { contentDescription = "${tr("Use cover", "使用封面")} ${NotebookCoverCatalog.displayName(candidate, language)}" }
+                        .selectable(selected = coverId == null && style == candidate, onClick = { onSelect(candidate, null) }),
                         border = if (coverId == null && style == candidate) BorderStroke(2.dp, Ink) else CardDefaults.outlinedCardBorder()) {
                         NotebookCover(InkDocument(title = title, coverStyle = candidate, coverArgb = NotebookCoverCatalog.defaultArgb(candidate)), Modifier.fillMaxSize())
                     }

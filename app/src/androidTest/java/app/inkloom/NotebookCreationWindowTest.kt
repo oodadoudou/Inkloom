@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsDisplayed
@@ -173,6 +174,9 @@ class NotebookCreationWindowTest {
             nativeNode { (it.contentDescription?.toString() == "List view" && clickNative(it)) || it.contentDescription?.toString() == "Grid view" }
             nativeNode { it.text?.toString() == "$name.png" && clickNative(it) }
             nativeNode { (it.text?.toString()?.equals("Open", ignoreCase = true) == true && clickNative(it)) || it.packageName?.toString() == "app.inkloom" }
+            compose.waitUntil(10_000) { hasText("Crop cover") }
+            assertTrue("Crop preview must not save before confirmation", templates.load().customCovers.isEmpty())
+            notebookTap("Use cover")
             compose.waitUntil(10_000) { templates.load().customCovers.size == 1 || hasText("Could not import this cover image") }
             assertEquals("Cover import failed after returning from the system picker", 1, templates.load().customCovers.size)
             compose.waitForIdle()
@@ -217,6 +221,54 @@ class NotebookCreationWindowTest {
         } catch (failure: Throwable) {
             android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand("screencap -p /data/local/tmp/inkloom-cover-failed.png")).use { it.readBytes() }
             throw failure
+        } finally { resolver.delete(uri, null, null) }
+    }
+
+    @Test fun existingNotebookCanChangeCoverWithoutChangingPages() {
+        val documents = FileDocumentStore(compose.activity.filesDir)
+        val before = documents.list().associateBy { it.id }
+        val firstAction = compose.onAllNodesWithContentDescription("Document actions")[0].fetchSemanticsNode()
+        tapAt(screenCenter(firstAction))
+        tap("Change cover")
+        compose.onNodeWithContentDescription("Use cover Paper").performScrollTo()
+        tap("Use cover Paper")
+        tap("Apply")
+        compose.waitUntil(5_000) { documents.list().any { it.coverStyle == CoverStyle.PAPER } }
+        val changed = documents.list().single { it.coverStyle == CoverStyle.PAPER }
+        assertEquals(before.getValue(changed.id).pages, changed.pages)
+        compose.activityRule.scenario.recreate()
+        compose.waitForIdle()
+        assertEquals(CoverStyle.PAPER, documents.get(changed.id)?.coverStyle)
+    }
+
+    @Test fun importedCoverCropKeepsTheChosenPartAfterSourceIsRemoved() {
+        val context = compose.activity
+        val resolver = context.contentResolver
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "inkloom-crop-${SystemClock.uptimeMillis()}.png")
+            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/png")
+            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+        }
+        val uri = requireNotNull(resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values))
+        try {
+            val source = android.graphics.Bitmap.createBitmap(160, 100, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(source)
+            canvas.drawColor(android.graphics.Color.RED)
+            canvas.drawRect(80f, 0f, 160f, 100f, android.graphics.Paint().apply { color = android.graphics.Color.BLUE })
+            requireNotNull(resolver.openOutputStream(uri)).use { source.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            source.recycle()
+            val crop = CoverCropGeometry.rect(160, 100, 1f, .8f, .5f)
+            val retained = DocumentAssetService(context).importCoverImage(uri, crop)
+            val bitmap = requireNotNull(android.graphics.BitmapFactory.decodeFile(retained))
+            try {
+                assertEquals(android.graphics.Color.BLUE, bitmap.getPixel(bitmap.width / 2, bitmap.height / 2))
+                assertEquals(CoverCropGeometry.ASPECT, bitmap.width.toFloat() / bitmap.height, .02f)
+            } finally { bitmap.recycle() }
+            resolver.delete(uri, null, null)
+            assertTrue(java.io.File(retained).isFile)
+            val reopened = requireNotNull(android.graphics.BitmapFactory.decodeFile(retained))
+            assertTrue(reopened.width > 0)
+            reopened.recycle()
         } finally { resolver.delete(uri, null, null) }
     }
 
