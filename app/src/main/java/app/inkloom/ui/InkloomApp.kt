@@ -1876,22 +1876,24 @@ private fun EditorScreen(
     }
     val drawingColorStore = remember { DrawingColorStore(context) }
     var drawingColors by remember(document.id) { mutableStateOf(drawingColorStore.load(document.id)) }
+    var drawingColorHistory by remember(document.id) { mutableStateOf(drawingColorStore.loadHistory(document.id)) }
     val colorPreview = remember(document.id) { DrawingColorPreview() }
     val brushColor = drawingColors.foreground
     val backgroundColor = drawingColors.background
     var offeredContinueFillColor by remember { mutableStateOf<Int?>(null) }
     var continueFilling by remember { mutableStateOf(false) }
     var continueFillStartedWithTool by remember { mutableStateOf<EditorTool?>(null) }
-    fun commitDrawingColors(colors: DrawingColors) {
+    fun commitDrawingColors(colors: DrawingColors, selectedColor: Int? = null) {
         colorPreview.clear()
         drawingColors = colors
         // The next pen sample can arrive before AndroidView recomposes.
         canvasView?.inkColor = colors.foreground
         canvasView?.secondaryInkColor = colors.background
         drawingColorStore.save(document.id, colors)
+        if (selectedColor != null) drawingColorHistory = drawingColorStore.recordColor(document.id, selectedColor)
     }
-    fun changeBrushColor(value: Int) = commitDrawingColors(drawingColors.copy(foreground = value))
-    fun changeBackgroundColor(value: Int) = commitDrawingColors(drawingColors.copy(background = value))
+    fun changeBrushColor(value: Int) = commitDrawingColors(drawingColors.copy(foreground = value), value)
+    fun changeBackgroundColor(value: Int) = commitDrawingColors(drawingColors.copy(background = value), value)
     fun swapDrawingColors() = commitDrawingColors(
         drawingColors.let { it.copy(foreground = it.background, background = it.foreground) },
     )
@@ -3751,6 +3753,11 @@ private fun EditorScreen(
                         onResizeWidth = null,
                         fixedTab = panel.ordinal - EditorPanel.WHEEL.ordinal,
                         onSwapColors = ::swapDrawingColors,
+                        colorHistory = drawingColorHistory,
+                        onClearColorHistory = {
+                            drawingColorStore.clearHistory(document.id)
+                            drawingColorHistory = emptyList()
+                        },
                         availableHeight = maxHeight,
                     )
                     }

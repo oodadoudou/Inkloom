@@ -5,11 +5,40 @@ import android.content.SharedPreferences
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.settings.DrawingColors
 import app.inkloom.settings.DrawingColorStore
+import app.inkloom.settings.DrawingColorHistory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class DrawingColorStoreTest {
+    @Test fun recentColorsAreArgbPreservingBoundedAndNotebookLocal() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val firstId = "color-history-first"
+        val secondId = "color-history-second"
+        val store = DrawingColorStore(context)
+        store.remove(firstId)
+        store.remove(secondId)
+        try {
+            val values = (0..DrawingColorHistory.LIMIT).map { index ->
+                ((index * 17) shl 24) or (index * 0x010101)
+            }
+            values.forEach { store.recordColor(firstId, it) }
+            assertEquals(values.reversed().take(DrawingColorHistory.LIMIT), store.loadHistory(firstId))
+            assertEquals(emptyList<Int>(), store.loadHistory(secondId))
+            assertEquals(values[3], store.recordColor(firstId, values[3]).first())
+            assertEquals(DrawingColorHistory.LIMIT, DrawingColorStore(context).loadHistory(firstId).size)
+            store.recordColor(secondId, 0x8044aaff.toInt())
+            store.clearHistory(firstId)
+            assertEquals(emptyList<Int>(), store.loadHistory(firstId))
+            assertEquals(listOf(0x8044aaff.toInt()), store.loadHistory(secondId))
+            store.remove(secondId)
+            assertEquals(emptyList<Int>(), store.loadHistory(secondId))
+        } finally {
+            store.remove(firstId)
+            store.remove(secondId)
+        }
+    }
+
     @Test fun notebookColorPairsPreserveAlphaAcrossReadersAndDeletion() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val firstId = "color-store-first"

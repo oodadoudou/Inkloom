@@ -52,6 +52,34 @@ class ColorSetWindowTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    @Test fun recentColorTileRestoresTheActiveChannelAndClearKeepsCurrentColor() {
+        val title = "Color history ${SystemClock.uptimeMillis()}"
+        openNewNotebook(title)
+        val documentId = FileDocumentStore(context.filesDir).list().first { it.title == title }.id
+        val colors = DrawingColorStore(context)
+        tap("Colors")
+        tap("Palettes")
+        fun choose(hex: String) {
+            tap("Edit current color")
+            compose.onNodeWithContentDescription("Hex color").performTextReplacement(hex)
+            compose.onNodeWithText("Apply").performClick()
+            compose.waitUntil(5_000) { findBounds("Choose color") == null }
+        }
+        choose("#314159")
+        choose("#A04080")
+        compose.waitUntil(5_000) { colors.loadHistory(documentId).size == 2 }
+        tap("Recent color 2")
+        assertEquals(0xff314159.toInt(), colors.load(documentId).foreground)
+        tap("Wheel")
+        tap("Edit secondary color")
+        tap("Recent color 2")
+        assertEquals(0xffa04080.toInt(), colors.load(documentId).background)
+        val beforeClear = colors.load(documentId)
+        tap("Clear color history")
+        assertEquals(emptyList<Int>(), colors.loadHistory(documentId))
+        assertEquals(beforeClear, colors.load(documentId))
+    }
+
     @Test fun paletteAndNearbyCurrentColorSquaresOpenPrecisePickerForTheActiveColor() {
         val title = "Quick color ${SystemClock.uptimeMillis()}"
         openNewNotebook(title)

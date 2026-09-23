@@ -50,6 +50,8 @@ internal fun ColorStudioPanel(
     colorPair: ColorPairControls? = null,
     fixedTab: Int? = null,
     onSwapColors: (() -> Unit)? = null,
+    colorHistory: List<Int> = emptyList(),
+    onClearColorHistory: (() -> Unit)? = null,
     availableHeight: androidx.compose.ui.unit.Dp? = null,
 ) {
     val context = LocalContext.current
@@ -57,8 +59,9 @@ internal fun ColorStudioPanel(
     val state = LocalColorStudioState.current
     val tab = fixedTab ?: state.tab
     val nearbyFooterHeight = if (tab == 3) 38.dp else 0.dp
-    val contentHeight = availableHeight?.let { (it - 22.dp - nearbyFooterHeight).coerceAtLeast(100.dp) }
-        ?: (LocalConfiguration.current.screenHeightDp - 200).coerceIn(160, 420).dp - nearbyFooterHeight
+    val historyHeight = if (colorHistory.isEmpty()) 0.dp else 32.dp
+    val contentHeight = availableHeight?.let { (it - 22.dp - nearbyFooterHeight - historyHeight).coerceAtLeast(100.dp) }
+        ?: (LocalConfiguration.current.screenHeightDp - 200).coerceIn(160, 420).dp - nearbyFooterHeight - historyHeight
     val density = LocalDensity.current
     var visibleContentHeight by remember { mutableStateOf(contentHeight) }
     var draft by if (fixedTab != null) state.draftState(colorPair?.secondarySelected == true, color) else remember { mutableStateOf(ColorPickerDraft.fromColor(color)) }
@@ -96,6 +99,21 @@ internal fun ColorStudioPanel(
                         3 -> NearbyColorPalette(draft, language, ::pick, onOpenQuickPicker = { pickerStart = it })
                     }
                 }
+            }
+        }
+        if (colorHistory.isNotEmpty()) Row(Modifier.fillMaxWidth().height(historyHeight).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(tr("History", "历史"), color = MutedInk, fontSize = 10.sp)
+            Spacer(Modifier.width(5.dp))
+            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                colorHistory.forEachIndexed { index, recent ->
+                    Box(Modifier.size(24.dp).background(Color(recent), RoundedCornerShape(2.dp))
+                        .border(if (recent == color) 2.dp else .5.dp, if (recent == color) Ink else OutlineSoft, RoundedCornerShape(2.dp))
+                        .semantics { contentDescription = tr("Recent color ${index + 1}", "历史颜色 ${index + 1}"); selected = recent == color }
+                        .combinedClickable(onClick = { pick(recent) }, onLongClick = { pickerStart = recent }))
+                }
+            }
+            if (onClearColorHistory != null) IconButton(onClick = onClearColorHistory, modifier = Modifier.size(26.dp)) {
+                Icon(Icons.Outlined.ClearAll, tr("Clear color history", "清空颜色历史"), Modifier.size(17.dp), tint = MutedInk)
             }
         }
         if (tab == 3) Row(Modifier.fillMaxWidth().height(nearbyFooterHeight).padding(start = 7.dp), verticalAlignment = Alignment.CenterVertically) {

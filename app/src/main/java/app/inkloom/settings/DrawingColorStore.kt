@@ -9,8 +9,18 @@ data class DrawingColors(
     val background: Int = 0xffffffff.toInt(),
 )
 
+/** Recent committed drawing colors, newest first; previews never enter this list. */
+object DrawingColorHistory {
+    const val LIMIT = 10
+
+    fun record(history: List<Int>, color: Int): List<Int> =
+        (listOf(color) + history.filterNot { it == color }).take(LIMIT)
+}
+
 class DrawingColorStore(context: Context) {
     private val preferences = context.getSharedPreferences("inkloom_drawing_colors", Context.MODE_PRIVATE)
+
+    private fun historyKey(documentId: String) = "history:$documentId"
 
     fun load(documentId: String): DrawingColors {
         val packed = preferences.getLong(documentId, pack(DrawingColors()))
@@ -22,8 +32,21 @@ class DrawingColorStore(context: Context) {
         if (load(documentId) != colors) preferences.edit { putLong(documentId, pack(colors)) }
     }
 
+    fun loadHistory(documentId: String): List<Int> =
+        ColorPaletteCodec.decode(preferences.getString(historyKey(documentId), null)).take(DrawingColorHistory.LIMIT)
+
+    fun recordColor(documentId: String, color: Int): List<Int> {
+        val updated = DrawingColorHistory.record(loadHistory(documentId), color)
+        preferences.edit { putString(historyKey(documentId), ColorPaletteCodec.encode(updated)) }
+        return updated
+    }
+
+    fun clearHistory(documentId: String) {
+        preferences.edit { remove(historyKey(documentId)) }
+    }
+
     fun remove(documentId: String) {
-        preferences.edit { remove(documentId) }
+        preferences.edit { remove(documentId); remove(historyKey(documentId)) }
     }
 
     private fun pack(colors: DrawingColors): Long =
