@@ -1,28 +1,28 @@
 {
-  "version": "0.205.0",
-  "versionCode": 205,
+  "version": "0.206.0",
+  "versionCode": 206,
   "variant": "debug",
-  "commit": "99232a0e56c18766a4656c6c00430468005c5a99",
-  "sha256": "3c48595f8c8d1ac4acd6ce013445c6e22e06c69c9c8b298d0a10d16a1a18ba28",
-  "bytes": 100852861,
-  "generatedUtc": "2026-09-21T18:32:52Z",
+  "commit": "67d418449c3d077455c4b29ca818e3e66891b416",
+  "sha256": "7bd6327e1e024c3481ef13462835519e5ede5da6564964bcb8c8718cf1a93e65",
+  "bytes": 100830349,
+  "generatedUtc": "2026-09-23T00:30:52Z",
   "verification": {
     "JVM": {
-      "tests": 859,
+      "tests": 890,
       "failures": 0,
       "errors": 0,
       "skipped": 8
     },
     "Android15Full": {
-      "tests": 668,
+      "tests": 698,
       "failures": 0,
       "errors": 0,
       "skipped": 0
     },
-    "lint": "PASS; 0 errors, 102 warnings",
+    "lint": "PASS; 0 errors, 108 warnings",
     "diffCheck": "PASS",
     "signature": "PASS v2",
-    "ordinaryDebugSmoke": "Android 15 install and cold start (1340 ms): PASS"
+    "ordinaryDebugSmoke": "Android 15 install and cold start (1177 ms): PASS"
   },
   "deviceStatus": "DEVICE_PENDING",
   "evidenceRoot": "app/build/test-results and app/build/outputs/androidTest-results/connected/debug"

@@ -1,6 +1,6 @@
 # Inkloom 当前需求与待排优先级
 
-核对日期：2026-09-23。最新已验证交付 Debug **0.205.0**；2026-09-23 的页面、颜色和笔刷控制修复已在 `main` 上逐项提交，新版 Debug 待最终全量回归后交付。真机适配状态仍按下述边界记录。
+核对日期：2026-09-23。最新已验证交付 Debug **0.206.0**；2026-09-23 的页面、颜色和笔刷控制修复已在 `main` 上逐项提交。真机适配状态仍按下述边界记录。
 
 **本文件是当前需求状态的唯一入口。** 用户下一步填写 Priority；下表顺序不是开发顺序。细项不丢弃，见 [REQUESTED_FEATURE_CATALOG.md](REQUESTED_FEATURE_CATALOG.md)，但其原编号和历史目标不代表未完成状态。旧版本计划、旧额度阈值、旧勾选和分支上的未交付代码均不作为当前依据。
 
@@ -11,6 +11,8 @@
 本轮逐项复现、测试和提交记录见 [EDITOR_FIELD_FEEDBACK_CHECKLIST.md](tasks/EDITOR_FIELD_FEEDBACK_CHECKLIST.md)。右下角页码可长按跳页并拖动；标题旁快捷切换会恢复每本笔记的最后页；Pages 加页按钮固定在滚动列表顶部。颜色选择会写入当前激活的主／副色，交换按钮已移到色块旁；文件和图片色板导入均可选追加或替换。组合面板标签可滑动，仅抓手会拆出标签；笔刷窗可缩得更窄，大小／透明度各有 ± 微调和每支笔刷独立的四个长按记忆标记。
 
 笔迹模糊、缩放卡顿和切笔卡顿仍标为**部分修复、`DEVICE_PENDING`**：旧像素层放大已从最近邻改为过滤采样，缩放时重复失效请求已移除，切笔时不再同步重写整份笔刷库。仍须在 MovinkPad 上对同一笔记关开前后的笔迹、120 Hz 缩放帧时间和复杂笔刷首次切换耗时作对照，不能把模拟器回归当成实机性能结论。
+
+本轮完整验证：JVM 890 项（0 失败、8 跳过）、Android 15 全量 698 项（0 失败／跳过）、lint 0 错误、`git diff --check`、Debug 0.206.0 v2 签名、安装及冷启动通过；交付证据见 [0.206.0](dist/Inkloom-0.206.0-67d41844-debug.json)。
 
 ## 待排 Priority 的开发需求
 
@@ -38,7 +40,7 @@
 | R20 | 9 | 封面与笔记管理小尾项 | **部分实现。** 图片纸张／参数纸张、预设与我的模板、自定义封面库已存在；每本笔记独立记录最后关闭页，再次打开恢复该页，删除页后会校验并回退到仍存在的页面。2026-09-22 修复了标题旁快捷切换误将目标第一页当作内部链接传入的缺陷，现回到每本笔记的最后页。还缺封面裁剪编辑器、已有笔记更换封面的完整管理入口；批量文件夹／笔记／页面跨本流程、大 PDF 和损坏备份恢复需专项验收，发现实际缺口后再拆开发任务。 |
 | R21 | 待填写 | 工程 legacy 清理 | **部分完成。** 前一轮已清理过时文档；旧设置字段、不可达 UI／历史入口、备份字段及重复状态所有权仍需按真实引用审计后删除。不得把文档归档当作生产代码清理完成，也不以此重建整个绘画引擎。 |
 
-## 本轮 layout、输入与清晰度验收清单
+## 上一轮 layout、输入与清晰度验收清单（0.205.0）
 
 - [x] 页面／笔刷／图层浮窗四边、四角缩放；固定对边，拖动量不因重绘丢失。
 - [x] 左／右／上／下停靠后均可调整宽高；独立面板可缩短，嵌套分隔同时调整相邻面板。
@@ -90,7 +92,7 @@
 | 混合变换／网格 | [MixedSelectionDraft.kt](app/src/main/java/app/inkloom/ui/MixedSelectionDraft.kt)、[SelectionTransformGeometry.kt](app/src/main/java/app/inkloom/engine/v5/tools/SelectionTransformGeometry.kt)、[SelectionTransformTest.kt](app/src/androidTest/java/app/inkloom/SelectionTransformTest.kt)、[SelectionMeshRasterTest.kt](app/src/androidTest/java/app/inkloom/SelectionMeshRasterTest.kt) |
 | 图片模板 | [ImagePaperTemplateTest.kt](app/src/androidTest/java/app/inkloom/ImagePaperTemplateTest.kt)、[PageTemplateStore.kt](app/src/main/java/app/inkloom/document/PageTemplateStore.kt) |
 | 导出限制 | [DocumentAssetService.kt](app/src/main/java/app/inkloom/document/DocumentAssetService.kt) |
-| 最新交付 | [0.205.0 交付证据](dist/Inkloom-0.205.0-99232a0-debug.json)：859 项 JVM（0 失败、8 跳过）、668 项 Android 15（0 失败／跳过）、lint（0 错误）、签名、安装、冷启动、SHA-256 与 Drive Desktop 本地副本校验通过。 |
+| 最新交付 | [0.206.0 交付证据](dist/Inkloom-0.206.0-67d41844-debug.json)：890 项 JVM（0 失败、8 跳过）、698 项 Android 15（0 失败／跳过）、lint（0 错误）、签名、安装、冷启动、SHA-256 与 Drive Desktop 本地副本校验通过。 |
 
 代码路径核对与既有测试报告支持此状态；本轮未逐一复测细项索引的全部条目。没有足够证据的高级子项保留“待核对”，不硬判完成。
 
