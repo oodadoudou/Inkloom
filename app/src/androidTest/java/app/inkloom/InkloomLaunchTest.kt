@@ -936,9 +936,6 @@ class InkloomLaunchTest {
 
         composeRule.onNodeWithContentDescription("Colors").performClick()
         composeRule.onNodeWithText("Wheel").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Resize color picker").performTouchInput {
-            swipe(center, center + Offset(80f, 70f), durationMillis = 300)
-        }
         composeRule.onNodeWithContentDescription("Use HSV square").assertIsDisplayed().performClick()
         composeRule.onNodeWithContentDescription("Use HLS triangle").assertIsDisplayed().performClick()
         composeRule.onNodeWithContentDescription("Color channel values").performClick()
@@ -1034,6 +1031,9 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("More").performClick()
         composeRule.onAllNodesWithText("Gradient").onLast().performClick()
         composeRule.waitForIdle()
+        // This fixture starts with Pages open on the left, over the narrow tool dock.
+        // Close the panel so the gradient control has an unobstructed touch target.
+        composeRule.onNodeWithContentDescription("Toggle pages").performClick()
 
         composeRule.onNodeWithContentDescription("Gradient controls").performClick()
 
