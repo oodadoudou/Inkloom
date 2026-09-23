@@ -213,7 +213,7 @@ class LibraryBackupService(private val filesRoot: File) {
             }
             val issues = mutableListOf<String>()
             fun <T> validItems(items: List<T>, describe: (T) -> String, verify: (T) -> Unit): List<T> = items.filter { item ->
-                val failure = runCatching { verify(item) }.exceptionOrNull()
+                val failure = try { verify(item); null } catch (error: Exception) { error }
                 if (failure != null) issues += "${describe(item)}: ${failure.message ?: "damaged asset"}"
                 failure == null
             }

@@ -676,9 +676,11 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
                     restored
                 }
             }
-            result.getOrNull()?.let { restored ->
+            val accepted = result.getOrNull()
+            if (accepted != null) {
                 refresh()
-                restored.documents.firstOrNull()?.let { select(it.id) }
+                val firstDocument = accepted.documents.firstOrNull()
+                if (firstDocument != null) select(firstDocument.id)
             }
             onComplete(result)
         }
