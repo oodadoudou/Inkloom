@@ -1,6 +1,6 @@
 # Inkloom 当前需求与待排优先级
 
-核对日期：2026-09-23。最新已验证交付 Debug **0.207.0**，证据见 [0.207.0](dist/Inkloom-0.207.0-1f3071ed-debug.json)；R12 调整图层的生产链与图层窗口已接通。Drive Desktop 的本地副本已核对 SHA-256，远端云下载尚未核验。真机适配状态仍按下述边界记录。
+核对日期：2026-09-23。最新已验证交付 Debug **0.208.0**，证据见 [0.208.0](dist/Inkloom-0.208.0-2fdc63ca-debug.json)；本轮新增视图恢复、精确选色，以及工作区布局与快捷键文件入口。Drive Desktop 的本地副本已核对 SHA-256，远端云下载尚未核验。真机适配状态仍按下述边界记录。
 
 **本文件是当前需求状态的唯一入口。** 用户下一步填写 Priority；下表顺序不是开发顺序。细项不丢弃，见 [REQUESTED_FEATURE_CATALOG.md](REQUESTED_FEATURE_CATALOG.md)，但其原编号和历史目标不代表未完成状态。旧版本计划、旧额度阈值、旧勾选和分支上的未交付代码均不作为当前依据。
 
@@ -18,7 +18,7 @@
 
 笔迹模糊、缩放卡顿和切笔卡顿仍标为**部分修复、`DEVICE_PENDING`**：旧像素层放大已从最近邻改为过滤采样，缩放时重复失效请求已移除，切笔时不再同步重写整份笔刷库。仍须在 MovinkPad 上对同一笔记关开前后的笔迹、120 Hz 缩放帧时间和复杂笔刷首次切换耗时作对照，不能把模拟器回归当成实机性能结论。
 
-本轮完整验证：JVM 890 项（0 失败、8 跳过）、Android 15 全量 698 项（0 失败／跳过）、lint 0 错误、`git diff --check`、Debug 0.206.0 v2 签名、安装及冷启动通过；交付证据见 [0.206.0](dist/Inkloom-0.206.0-67d41844-debug.json)。
+本轮完整验证：JVM 903 项（0 失败、8 跳过）、Android 15 全量 707 项（0 失败／跳过）、lint 0 错误／108 警告、`git diff --check`、Debug 0.208.0 v2 签名、安装及冷启动通过；交付证据见 [0.208.0](dist/Inkloom-0.208.0-2fdc63ca-debug.json)。模拟器性能断言使用独立虚拟设备预算并保留原始耗时；物理设备原门槛未放宽，120 Hz 仍为 `DEVICE_PENDING`。
 
 ## 待排 Priority 的开发需求
 
@@ -98,7 +98,7 @@
 | 混合变换／网格 | [MixedSelectionDraft.kt](app/src/main/java/app/inkloom/ui/MixedSelectionDraft.kt)、[SelectionTransformGeometry.kt](app/src/main/java/app/inkloom/engine/v5/tools/SelectionTransformGeometry.kt)、[SelectionTransformTest.kt](app/src/androidTest/java/app/inkloom/SelectionTransformTest.kt)、[SelectionMeshRasterTest.kt](app/src/androidTest/java/app/inkloom/SelectionMeshRasterTest.kt) |
 | 图片模板 | [ImagePaperTemplateTest.kt](app/src/androidTest/java/app/inkloom/ImagePaperTemplateTest.kt)、[PageTemplateStore.kt](app/src/main/java/app/inkloom/document/PageTemplateStore.kt) |
 | 导出限制 | [DocumentAssetService.kt](app/src/main/java/app/inkloom/document/DocumentAssetService.kt) |
-| 最新交付 | [0.206.0 交付证据](dist/Inkloom-0.206.0-67d41844-debug.json)：890 项 JVM（0 失败、8 跳过）、698 项 Android 15（0 失败／跳过）、lint（0 错误）、签名、安装、冷启动、SHA-256 与 Drive Desktop 本地副本校验通过。 |
+| 最新交付 | [0.208.0 交付证据](dist/Inkloom-0.208.0-2fdc63ca-debug.json)：903 项 JVM（0 失败、8 跳过）、707 项 Android 15（0 失败／跳过）、lint（0 错误）、签名、安装、冷启动、SHA-256 与 Drive Desktop 本地副本校验通过。 |
 
 代码路径核对与既有测试报告支持此状态；本轮未逐一复测细项索引的全部条目。没有足够证据的高级子项保留“待核对”，不硬判完成。
 

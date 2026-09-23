@@ -37,6 +37,7 @@
 
 ## 每项提交与最终交付
 
+- 本轮交付：Debug 0.208.0，源提交 `2fdc63ca`；JVM 903 项（0 失败、8 跳过）、Android 15 全量 707 项（0 失败／跳过）、lint 0 错误、安装冷启动与 v2 签名通过。交付证据见 `dist/Inkloom-0.208.0-2fdc63ca-debug.json`；Drive Desktop 本地副本 SHA-256 已核对。模拟器性能基准按虚拟设备预算验收，真机预算保持原值，触控和 120 Hz 仍为 `DEVICE_PENDING`。
 - 每项修复单独提交并推送 `main`，提交说明写明复现与验收证据；任何未通过验证的项保持未勾选。
 - 相关 JVM 与 Android 交互／栅格测试、Android 15 冒烟、lint、`git diff --check` 全通过后再打最新 Debug APK；仅保留该包，核对源码 commit 与 SHA-256，按仓库脚本同步 Google Drive Desktop。
 - 每次提交检查周额度；剩余接近 50% 时停止新项，完成进行中的修复、验证和交付。实机触感与 120 Hz 性能保持 `DEVICE_PENDING`，直到用户实测。
