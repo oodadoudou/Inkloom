@@ -31,6 +31,21 @@ class RasterImageFilterTest {
         assertEquals(0xFF000000.toInt(), result.pixelAt(25, 20))
     }
 
+    @Test fun lineWidthCorrectionChangesInkFootprintAcrossTileEdge() {
+        val source = PixelTileSurface(128, 64, tileSize = 64)
+        source.beginWrite("thin line").run {
+            for (y in 10..40) setPixel(63, y, 0xFF102030.toInt())
+            commit().close()
+        }
+        val thickened = RasterImageFilter.apply(source.snapshot(),
+            RasterImageFilter.Effect.AdjustLineWidth(1f, grow = true))
+        assertEquals(0xFF102030.toInt(), thickened.pixelAt(64, 20))
+        val thinned = RasterImageFilter.apply(source.snapshot(),
+            RasterImageFilter.Effect.AdjustLineWidth(1f, grow = false))
+        assertEquals(0, thinned.pixelAt(63, 20))
+        assertEquals(0, source.pixelAt(64, 20))
+    }
+
     @Test fun waveUsesSourceAcrossTileBoundaryAndPreservesTransparency() {
         val source = PixelTileSurface(128, 128, tileSize = 64)
         source.beginWrite("wave").run {

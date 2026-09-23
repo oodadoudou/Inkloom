@@ -28,6 +28,8 @@ internal object RasterImageFilter {
         data class Denoise(override val sigma: Float) : Effect
         /** Removes isolated low-alpha specks while preserving connected ink. */
         data class CleanLineArt(override val sigma: Float) : Effect
+        /** Grows or shrinks transparent ink edges with a bounded neighborhood. */
+        data class AdjustLineWidth(override val sigma: Float, val grow: Boolean) : Effect
         /** A bounded horizontal wave; unlike a mesh transform it does not alter layer structure. */
         data class Wave(override val sigma: Float, val wavelength: Float) : Effect
     }
@@ -62,6 +64,7 @@ internal object RasterImageFilter {
             is Effect.GaussianBlur, is Effect.UnsharpMask -> radii.sum()
             is Effect.Denoise -> effect.sigma.roundToInt().coerceIn(1, 3)
             is Effect.CleanLineArt -> 1
+            is Effect.AdjustLineWidth -> effect.sigma.roundToInt().coerceIn(1, 3)
             is Effect.Wave -> effect.sigma.toInt() + 2
         }
 
@@ -185,6 +188,24 @@ internal object RasterImageFilter {
                                 val removeAtOrBelow = (effect.sigma.roundToInt() - 1).coerceIn(0, 3)
                                 val keep = if (neighbors <= removeAtOrBelow) (1f - weight) else 1f
                                 for (channel in 0..3) changed[channel] = (old[channel] * keep).roundToInt()
+                            }
+                            is Effect.AdjustLineWidth -> {
+                                var selected = original
+                                var selectedAlpha = original ushr 24
+                                for (dy in -radius..radius) for (dx in -radius..radius) {
+                                    val yy = (y + radius + dy).coerceIn(0, paddedHeight - 1)
+                                    val xx = (x + radius + dx).coerceIn(0, paddedWidth - 1)
+                                    val candidate = input[yy * paddedWidth + xx]
+                                    val alpha = candidate ushr 24
+                                    if ((effect.grow && alpha > selectedAlpha) || (!effect.grow && alpha < selectedAlpha)) {
+                                        selected = candidate
+                                        selectedAlpha = alpha
+                                    }
+                                }
+                                for (channel in 0..3) {
+                                    val sample = selected ushr (24 - channel * 8) and 255
+                                    changed[channel] = (old[channel] + (sample - old[channel]) * weight).roundToInt()
+                                }
                             }
                             is Effect.Wave -> {
                                 val offset = (kotlin.math.sin((tile.top + y) * 2.0 * Math.PI / effect.wavelength) * effect.sigma).roundToInt()
