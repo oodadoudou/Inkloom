@@ -1,6 +1,6 @@
 # Inkloom 0.208.0 Debug：视图、精确选色和工作区文件
 
-源代码：`2fdc63ca0a60e4343e134cdf79670f7add9b83c8`；只交付 Debug。逐项验收见 `tasks/EDITOR_FIELD_FEEDBACK_CHECKLIST.md`。
+源代码：`2fdc63ca0a60e4343e134cdf79670f7add9b83c8`；只交付 Debug。逐项提交与验证结果保留在对应 Git 历史中；当前进度见 `CURRENT_REQUIREMENTS.md` 与 `REQUESTED_FEATURE_CATALOG.md`。
 
 ## 本轮完成
 
