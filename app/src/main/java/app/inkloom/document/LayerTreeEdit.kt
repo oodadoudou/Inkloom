@@ -93,7 +93,7 @@ data class LayerTreeEdit(
                     val copies = original.filter { it.id in subtree }.map { source ->
                         source.copy(id = mapping.getValue(source.id),
                             name = if (source.id == targetId) uniqueCopyName(source.name, original.map(InkLayer::name)) else source.name,
-                            role = if (source.role == LayerRole.FOLDER) LayerRole.FOLDER else LayerRole.CUSTOM,
+                            role = source.role,
                             parentId = source.parentId?.let { mapping[it] ?: it })
                     }
                     afterLayers = original.toMutableList().apply { addAll(original.indexOf(target) + 1, copies) }
@@ -104,9 +104,9 @@ data class LayerTreeEdit(
                     nextSelection = mapping.getValue(targetId)
                 }
                 LayerTreeAction.DELETE -> {
-                    if (target.role !in setOf(LayerRole.CUSTOM, LayerRole.FOLDER)) reject(LayerTreeRejection.BACKGROUND)
+                    if (target.role !in setOf(LayerRole.CUSTOM, LayerRole.FOLDER, LayerRole.ADJUSTMENT)) reject(LayerTreeRejection.BACKGROUND)
                     val subtree = descendants(targetId)
-                    if (original.filter { it.id in subtree }.any { it.role !in setOf(LayerRole.CUSTOM, LayerRole.FOLDER) })
+                    if (original.filter { it.id in subtree }.any { it.role !in setOf(LayerRole.CUSTOM, LayerRole.FOLDER, LayerRole.ADJUSTMENT) })
                         reject(LayerTreeRejection.PROTECTED_CHILD)
                     if (original.filter { it.id in subtree }.any { LayerHierarchy.effectiveLocked(original, it) }) reject(LayerTreeRejection.LOCKED)
                     afterLayers = original.filterNot { it.id in subtree }

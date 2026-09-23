@@ -48,4 +48,17 @@ class LayerInsertionEditTest {
         assertNull(edit.apply(added.copy(layers = added.layers + child.copy(id = "newChild", parentId = "new")), true))
         assertNull(edit.apply(added))
     }
+
+    @Test fun adjustmentCreationPreservesItsRoleParametersAndFolderPlacementAcrossUndo() {
+        val correction = LayerAdjustment(kind = LayerAdjustmentKind.HUE_SATURATION, saturation = .35f)
+        val edit = requireNotNull(LayerInsertionEdit.create(page, child.id, false, "correction", correction))
+        assertEquals(LayerRole.ADJUSTMENT, edit.layer.role)
+        assertEquals(correction, edit.layer.adjustment)
+        assertEquals(folder.id, edit.layer.parentId)
+        val added = requireNotNull(edit.apply(page))
+        assertEquals(listOf("folder", "child", "correction", "upper"), added.layers.takeLast(4).map { it.id })
+        assertEquals(page, edit.apply(added, true))
+        assertEquals(added, edit.apply(requireNotNull(edit.apply(added, true))))
+        assertNull(LayerInsertionEdit.create(page, child.id, true, "invalid", correction))
+    }
 }

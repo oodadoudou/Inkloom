@@ -30,17 +30,28 @@ data class LayerInsertionEdit(
     }
 
     companion object {
-        fun create(page: InkPage, targetId: String, folder: Boolean, id: String = java.util.UUID.randomUUID().toString()): LayerInsertionEdit? {
+        fun create(page: InkPage, targetId: String, folder: Boolean, id: String = java.util.UUID.randomUUID().toString(),
+            adjustment: LayerAdjustment? = null): LayerInsertionEdit? {
+            if (folder && adjustment != null) return null
             val target = page.layers.firstOrNull { it.id == targetId } ?: return null
             val parentId = if (target.role == LayerRole.FOLDER) target.id else target.parentId
             val parent = parentId?.let { parent -> page.layers.firstOrNull { it.id == parent && it.role == LayerRole.FOLDER } ?: return null }
             if (parent != null && LayerHierarchy.effectiveLocked(page.layers, parent)) return null
-            val role = if (folder) LayerRole.FOLDER else LayerRole.CUSTOM
-            val prefix = if (folder) "Folder" else "Layer"
+            val role = when {
+                folder -> LayerRole.FOLDER
+                adjustment != null -> LayerRole.ADJUSTMENT
+                else -> LayerRole.CUSTOM
+            }
+            val prefix = when (role) {
+                LayerRole.FOLDER -> "Folder"
+                LayerRole.ADJUSTMENT -> "Adjustment"
+                else -> "Layer"
+            }
             val names = page.layers.mapTo(hashSetOf()) { it.name }
             var suffix = 1
             while ("$prefix $suffix" in names) suffix++
-            val created = InkLayer(id = id, name = "$prefix $suffix", role = role, parentId = parentId)
+            val created = InkLayer(id = id, name = "$prefix $suffix", role = role, parentId = parentId,
+                adjustment = adjustment)
             val below = if (target.role == LayerRole.FOLDER) page.layers.lastOrNull { it.parentId == target.id }?.id else target.id
             return LayerInsertionEdit(created, targetId, below, parent?.takeIf { it.collapsed }?.id)
         }

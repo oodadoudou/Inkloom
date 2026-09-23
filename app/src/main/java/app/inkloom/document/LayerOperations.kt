@@ -22,7 +22,7 @@ object LayerOperations {
         val duplicate = source.copy(
             id = duplicateId,
             name = uniqueCopyName(source.name, page.layers.map(InkLayer::name)),
-            role = LayerRole.CUSTOM,
+            role = source.role,
         )
         val layers = page.layers.toMutableList().apply { add(sourceIndex + 1, duplicate) }
         val copiedElements = page.elements.filter { it.layerId == sourceLayerId }.map { element ->

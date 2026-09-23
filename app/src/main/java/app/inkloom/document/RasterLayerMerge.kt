@@ -54,7 +54,7 @@ object RasterLayerMerge {
             RasterLayerMergeOperation.APPLY_MASK -> {
                 val target = request.primaryLayerId?.let(byId::get)
                     ?: return rejected(Rejection.INVALID_SELECTION)
-                if (target.role == LayerRole.BACKGROUND || target.mask == null)
+                if (target.role in setOf(LayerRole.BACKGROUND, LayerRole.ADJUSTMENT) || target.mask == null)
                     return rejected(Rejection.INVALID_SELECTION)
                 setOf(target.id)
             }
@@ -74,7 +74,8 @@ object RasterLayerMerge {
                 }.takeIf { it.size >= 2 } ?: return rejected(Rejection.NOT_ENOUGH_LAYERS)
             RasterLayerMergeOperation.MERGE_VISIBLE,
             RasterLayerMergeOperation.MERGE_VISIBLE_COPY -> page.layers.filterTo(linkedSetOf()) {
-                it.isPaintSurfaceLayer() && LayerHierarchy.effectiveVisible(page.layers, it) && !it.draft
+                (it.isPaintSurfaceLayer() || it.role == LayerRole.ADJUSTMENT) &&
+                    LayerHierarchy.effectiveVisible(page.layers, it) && !it.draft
             }.mapTo(linkedSetOf(), InkLayer::id).takeIf(Set<String>::isNotEmpty)
                 ?: return rejected(Rejection.NO_VISIBLE_LAYERS)
             RasterLayerMergeOperation.FLATTEN -> page.layers.filterTo(linkedSetOf()) {
@@ -152,7 +153,8 @@ object RasterLayerMerge {
         val prototype = bottom.second.copy(
             id = resultId,
             name = resultName,
-            role = bottom.second.role.takeIf { it != LayerRole.FOLDER } ?: LayerRole.CUSTOM,
+            role = bottom.second.role.takeIf { it != LayerRole.FOLDER && it != LayerRole.ADJUSTMENT } ?: LayerRole.CUSTOM,
+            adjustment = null,
             rasterTileSurface = null,
             rasterRotationQuarterTurns = 0,
             visible = true,

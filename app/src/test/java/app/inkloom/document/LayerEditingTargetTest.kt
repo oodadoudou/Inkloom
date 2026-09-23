@@ -34,4 +34,14 @@ class LayerEditingTargetTest {
         assertEquals(LayerEditingTarget.Rejection.BACKGROUND, LayerEditingTarget.rejection(layers, paper.id))
         assertEquals(LayerEditingTarget.Rejection.MISSING, LayerEditingTarget.rejection(layers, "removed"))
     }
+
+    @Test fun correctionIsSelectableAndMaskableButCannotReceivePaint() {
+        val correction = InkLayer(id = "correction", name = "Correction", role = LayerRole.ADJUSTMENT,
+            adjustment = LayerAdjustment())
+        val withCorrection = listOf(paper, correction, other)
+        assertEquals(correction.id, LayerEditingTarget.retainSelection(withCorrection, correction.id))
+        assertEquals(other.id, LayerEditingTarget.retainSelection(withCorrection, "removed"))
+        assertEquals(LayerEditingTarget.Rejection.ADJUSTMENT, LayerEditingTarget.rejection(withCorrection, correction.id))
+        assertNull(LayerEditingTarget.maskRejection(withCorrection, correction.id))
+    }
 }

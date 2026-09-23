@@ -82,6 +82,31 @@ class RasterLayerMergeTest {
         assertEquals(original.layers.size + 1, copied.layers.size)
     }
 
+    @Test fun visibleMergeConsumesVisibleCorrectionsAndNeverLeavesAnAdjustmentRoleOnRasterResult() {
+        val adjustment = InkLayer(id = "correction", name = "Brightness", role = LayerRole.ADJUSTMENT,
+            adjustment = LayerAdjustment(brightness = .4f))
+        val hiddenAdjustment = adjustment.copy(id = "hidden-correction", visible = false)
+        val original = page.copy(layers = defaultInkLayers() + adjustment + upper + hiddenAdjustment)
+        val visible = requireNotNull(RasterLayerMerge.plan(original,
+            RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_VISIBLE)).plan)
+        assertTrue(adjustment.id in visible.removedLayerIds)
+        assertFalse(hiddenAdjustment.id in visible.removedLayerIds)
+        val selected = requireNotNull(RasterLayerMerge.plan(original,
+            RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_SELECTED, adjustment.id,
+                setOf(adjustment.id, upper.id))).plan)
+        assertEquals(LayerRole.CUSTOM, selected.resultPrototype.role)
+        assertNull(selected.resultPrototype.adjustment)
+        val baked = RasterLayerMerge.edit(original, selected, reference).apply(original, false)
+        assertEquals(original, RasterLayerMerge.edit(original, selected, reference).apply(baked, true))
+
+        val masked = original.copy(layers = original.layers.map {
+            if (it.id == adjustment.id) it.copy(mask = LayerMask()) else it
+        })
+        assertEquals(RasterLayerMerge.Rejection.INVALID_SELECTION,
+            RasterLayerMerge.plan(masked,
+                RasterLayerMergeRequest(RasterLayerMergeOperation.APPLY_MASK, adjustment.id)).rejection)
+    }
+
     @Test fun flattenBakesPaperAndHidesTheStructuralBackground() {
         val plan = requireNotNull(RasterLayerMerge.plan(
             page,

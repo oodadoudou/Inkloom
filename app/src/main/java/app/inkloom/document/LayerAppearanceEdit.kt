@@ -7,6 +7,23 @@ sealed interface LayerAppearanceEdit {
     fun apply(page: InkPage, undo: Boolean = false): InkPage?
 }
 
+/** Parameter edits retain the source pixels and can be previewed before one history commit. */
+data class LayerAdjustmentEdit(
+    override val layerId: String,
+    val before: LayerAdjustment,
+    val after: LayerAdjustment,
+) : LayerAppearanceEdit {
+    override val isNoOp: Boolean get() = before == after
+
+    override fun apply(page: InkPage, undo: Boolean): InkPage? {
+        val layer = page.layers.firstOrNull { it.id == layerId && it.role == LayerRole.ADJUSTMENT } ?: return null
+        if (layer.adjustment != if (undo) after else before) return null
+        return page.copy(layers = page.layers.map {
+            if (it.id == layerId) it.copy(adjustment = if (undo) before else after) else it
+        })
+    }
+}
+
 data class LayerBlendEdit(
     override val layerId: String,
     val before: LayerBlendMode,

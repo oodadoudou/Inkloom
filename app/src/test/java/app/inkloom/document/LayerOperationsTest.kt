@@ -39,4 +39,13 @@ class LayerOperationsTest {
         assertNull(LayerOperations.duplicate(page, LayerIds.BACKGROUND))
     }
 
+    @Test fun duplicateAdjustmentKeepsItsEditableType() {
+        val correction = InkLayer(id = "correction", name = "Levels", role = LayerRole.ADJUSTMENT,
+            adjustment = LayerAdjustment(kind = LayerAdjustmentKind.LEVELS, inputGamma = 1.4f))
+        val page = InkPage(layers = defaultInkLayers() + correction)
+        val copied = requireNotNull(LayerOperations.duplicate(page, correction.id) { "copy" })
+        assertEquals(LayerRole.ADJUSTMENT, copied.page.layers.last().role)
+        assertEquals(correction.adjustment, copied.page.layers.last().adjustment)
+    }
+
 }

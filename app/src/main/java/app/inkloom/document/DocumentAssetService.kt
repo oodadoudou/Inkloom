@@ -1184,7 +1184,7 @@ class DocumentAssetService(private val context: Context) {
         val visibleIds = visibleLayers.mapTo(hashSetOf()) { it.id }
         val nodes = LayerCompositingTree.project<PixelProjectionNode>(projectedPage.layers,
             paint = { layer -> if (layer.role == LayerRole.ADJUSTMENT && layer.adjustment != null)
-                PixelProjectionNode.Adjustment(layer.id, layer.adjustment, layer.opacity,
+                PixelProjectionNode.Adjustment(layer.id, layer.adjustment, layer.opacity, layer.blendMode.toPixelBlendMode(),
                     layer.mask?.takeIf { it.enabled }?.surface?.let { loadMaskTileSurface(it).snapshot() },
                     layer.id in visibleIds)
             else PixelProjectionNode.Paint((inputs[layer.id] ?: PixelLayerProjectionInput(layer.id,

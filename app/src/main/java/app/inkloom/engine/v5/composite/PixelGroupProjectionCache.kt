@@ -12,6 +12,7 @@ sealed interface PixelProjectionNode {
         val id: String,
         val adjustment: LayerAdjustment,
         val opacity: Float = 1f,
+        val blendMode: PixelBlendMode = PixelBlendMode.NORMAL,
         val mask: MaskTileSurfaceSnapshot? = null,
         val visible: Boolean = true,
     ) : PixelProjectionNode
@@ -70,7 +71,8 @@ class PixelGroupProjectionCache(
                     val cache = adjustments.getOrPut(node.id) {
                         PixelAdjustmentProjectionCache(width, height, tileSize, format, "$surfaceId/adjustment/${node.id}")
                     }
-                    val result = count(cache.update(before, node.adjustment, node.opacity.coerceIn(0f, 1f), node.mask))
+                    val result = count(cache.update(before, node.adjustment, node.opacity.coerceIn(0f, 1f), node.mask,
+                        node.blendMode))
                     inputs.clear()
                     inputs += PixelLayerProjectionInput(node.id, result, isClippingBase = false)
                 }

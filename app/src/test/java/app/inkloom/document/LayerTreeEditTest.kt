@@ -79,4 +79,24 @@ class LayerTreeEditTest {
             fail("Locked group cannot be deleted")
         } catch (error: LayerTreeRejected) { assertEquals(LayerTreeRejection.LOCKED, error.reason) }
     }
+
+    @Test fun `adjustment within a group survives duplicate delete and one-step undo`() {
+        val adjustment = InkLayer(id = "adjustment", name = "Hue", role = LayerRole.ADJUSTMENT,
+            parentId = nested.id, adjustment = LayerAdjustment(kind = LayerAdjustmentKind.HUE_SATURATION,
+                hueDegrees = 20f))
+        val source = page.copy(layers = page.layers + adjustment)
+        val ids = ArrayDeque(listOf("folder-copy", "nested-copy", "paint-copy", "adjustment-copy", "image-copy"))
+        val duplicate = LayerTreeEdit.create(source, LayerTreeAction.DUPLICATE, folder.id, nextId = ids::removeFirst)
+        val copied = requireNotNull(duplicate.apply(source, false))
+        val copiedAdjustment = copied.layers.first { it.id == "adjustment-copy" }
+        assertEquals(LayerRole.ADJUSTMENT, copiedAdjustment.role)
+        assertEquals(adjustment.adjustment, copiedAdjustment.adjustment)
+        assertEquals("nested-copy", copiedAdjustment.parentId)
+        assertEquals(source, duplicate.apply(copied, true))
+
+        val delete = LayerTreeEdit.create(source, LayerTreeAction.DELETE, folder.id)
+        val removed = requireNotNull(delete.apply(source, false))
+        assertTrue(removed.layers.none { it.id == adjustment.id })
+        assertEquals(source, delete.apply(removed, true))
+    }
 }
