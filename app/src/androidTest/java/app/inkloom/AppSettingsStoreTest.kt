@@ -36,6 +36,25 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AppSettingsStoreTest {
+    @Test fun eyedropperSourceAndPaperSettingSurviveReloadWithoutChangingFillSource() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            AppSettingsStore(context).save(AppSettings(
+                referenceTarget = ReferenceTarget.REFERENCE_LAYERS,
+                eyedropperReferenceTarget = ReferenceTarget.ACTIVE_LAYER,
+                eyedropperIncludePaper = false,
+            ))
+            val restored = AppSettingsStore(context).load()
+            assertEquals(ReferenceTarget.REFERENCE_LAYERS, restored.referenceTarget)
+            assertEquals(ReferenceTarget.ACTIVE_LAYER, restored.eyedropperReferenceTarget)
+            assertFalse(restored.eyedropperIncludePaper)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
     @Test fun persistentDrawingSelectionSurvivesReload() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)

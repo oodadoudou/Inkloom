@@ -227,7 +227,12 @@ internal fun WorkspaceToolPropertiesPanel(
                         app.inkloom.settings.ReferenceTarget.ALL_VISIBLE -> language.text("All visible layers", "全部可见图层")
                         app.inkloom.settings.ReferenceTarget.ACTIVE_LAYER -> language.text("Current layer", "当前图层")
                         app.inkloom.settings.ReferenceTarget.REFERENCE_LAYERS -> language.text("Reference layers", "参考图层")
-                    }, target == settings.referenceTarget) { onSettings(settings.copy(referenceTarget=target)) } }
+                    }, target == settings.eyedropperReferenceTarget) { onSettings(settings.copy(eyedropperReferenceTarget=target)) } }
+                    if (settings.eyedropperReferenceTarget == app.inkloom.settings.ReferenceTarget.ALL_VISIBLE) {
+                        WorkspacePropertySwitch(language.text("Include paper", "包含纸张"), settings.eyedropperIncludePaper) {
+                            onSettings(settings.copy(eyedropperIncludePaper = it))
+                        }
+                    }
                 }
                 EditorTool.SHAPE -> {
                     Text(language.text("Shape", "形状"), color = Ink, fontSize = 11.sp)

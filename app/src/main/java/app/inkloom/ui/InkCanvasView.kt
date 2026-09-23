@@ -870,6 +870,8 @@ class InkCanvasView(context: Context) : View(context) {
     var selectionMode: SelectionMode = SelectionMode.REPLACE
     var selectionFilter: SelectionFilter = SelectionFilter.ALL
     var referenceTarget: ReferenceTarget = ReferenceTarget.ALL_VISIBLE
+    var eyedropperReferenceTarget: ReferenceTarget = ReferenceTarget.ALL_VISIBLE
+    var eyedropperIncludePaper: Boolean = true
     var referenceLayerIds: Set<String> = emptySet()
     var draftLayerIds: Set<String> = emptySet()
     var liquifyMode: LiquifyMode = LiquifyMode.PUSH
@@ -1583,13 +1585,15 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    private fun drawPageContent(canvas: Canvas, includeInteractionOverlays: Boolean = true, referencedLayerIds: Set<String>? = null) {
-        backgroundBitmap?.let { bitmap -> backgroundDestination.set(0, 0, width, height); canvas.drawBitmap(bitmap, null, backgroundDestination, null) }
-            ?: pagePaperColor?.let { color ->
-                paperFillPaint.color = color
-                canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paperFillPaint)
-                pagePaperPattern?.let { drawPaperPattern(canvas, it) }
-            }
+    private fun drawPageContent(canvas: Canvas, includeInteractionOverlays: Boolean = true, referencedLayerIds: Set<String>? = null, includePageBackground: Boolean = true) {
+        if (includePageBackground) {
+            backgroundBitmap?.let { bitmap -> backgroundDestination.set(0, 0, width, height); canvas.drawBitmap(bitmap, null, backgroundDestination, null) }
+                ?: pagePaperColor?.let { color ->
+                    paperFillPaint.color = color
+                    canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paperFillPaint)
+                    pagePaperPattern?.let { drawPaperPattern(canvas, it) }
+                }
+        }
         if (includeInteractionOverlays) drawSnapGrid(canvas)
         drawV5LayerComposition(canvas, includeElements = true, layerFilter = referencedLayerIds)
         if (includeInteractionOverlays) drawLayerMaskOverlay(canvas)
@@ -2603,7 +2607,7 @@ class InkCanvasView(context: Context) : View(context) {
                     return true
                 }
                 if (activeTool == EditorTool.EYEDROPPER) {
-                    onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
+                    sampleRenderedColor(inputPoint.first, inputPoint.second)?.let(onColorSampled)
                     return true
                 }
                 if (activeTool == EditorTool.SELECT) {
@@ -2733,7 +2737,7 @@ class InkCanvasView(context: Context) : View(context) {
                     v5PaintFinishedWithDamageInvalidation = true
                 }
                 else if (activeTool == EditorTool.EYEDROPPER) {
-                    onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
+                    sampleRenderedColor(inputPoint.first, inputPoint.second)?.let(onColorSampled)
                 }
                 else if (activeTool == EditorTool.SELECT) {
                     if (automaticSelectionDraft != null) {
@@ -2835,7 +2839,7 @@ class InkCanvasView(context: Context) : View(context) {
                     v5PaintFinishedWithDamageInvalidation = true
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.EYEDROPPER) {
-                    onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
+                    sampleRenderedColor(inputPoint.first, inputPoint.second)?.let(onColorSampled)
                 } else if (activeTool == EditorTool.SELECT) {
                     if (selectionShape == SelectionShape.SMART_BORDER || selectionShape == SelectionShape.MAGIC_WAND) {
                         updateAutomaticSelection(event.getX(pointerIndex))
@@ -2890,12 +2894,25 @@ class InkCanvasView(context: Context) : View(context) {
         return true
     }
 
-    private fun sampleRenderedColor(x: Float, y: Float): Int {
+    private fun sampleRenderedColor(x: Float, y: Float): Int? {
+        val availableLayers = layerOrder.ifEmpty {
+            (rasterLayerTileSurfaces.keys + layerElementBitmaps.keys).distinct()
+        }.toSet()
+        val referenced = when (eyedropperReferenceTarget) {
+            ReferenceTarget.ALL_VISIBLE -> null
+            ReferenceTarget.ACTIVE_LAYER -> setOf(activeLayerId).intersect(availableLayers)
+            ReferenceTarget.REFERENCE_LAYERS -> referenceLayerIds.intersect(availableLayers)
+        }
+        if (referenced != null && referenced.isEmpty()) return null
         colorSampleBitmap.eraseColor(Color.TRANSPARENT)
         val sampleCanvas = Canvas(colorSampleBitmap)
         sampleCanvas.translate(-x.coerceIn(0f, (width - 1).coerceAtLeast(0).toFloat()), -y.coerceIn(0f, (height - 1).coerceAtLeast(0).toFloat()))
-        drawPageContent(sampleCanvas, includeInteractionOverlays = false)
-        return RenderedColorSampling.opaqueOverWhite(colorSampleBitmap.getPixel(0, 0))
+        synchronized(renderLock) {
+            drawPageContent(sampleCanvas, includeInteractionOverlays = false,
+                referencedLayerIds = referenced,
+                includePageBackground = eyedropperReferenceTarget == ReferenceTarget.ALL_VISIBLE && eyedropperIncludePaper)
+        }
+        return RenderedColorSampling.pick(colorSampleBitmap.getPixel(0, 0))
     }
 
     private fun beginBrushSizeDrag(x: Float, y: Float, startSize: Float) {

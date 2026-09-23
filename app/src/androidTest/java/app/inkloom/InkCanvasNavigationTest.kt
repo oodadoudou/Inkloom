@@ -17,6 +17,7 @@ import app.inkloom.settings.ShortcutChord
 import app.inkloom.settings.ShortcutPhase
 import app.inkloom.settings.ShortcutTrigger
 import app.inkloom.settings.StylusButtonAction
+import app.inkloom.settings.ReferenceTarget
 import app.inkloom.ui.InkCanvasView
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import java.util.IdentityHashMap
@@ -623,6 +624,52 @@ class InkCanvasNavigationTest {
 
         assertEquals(sampledRed, sampled)
         assertEquals("Eyedropper input must never leave ink", 0L, paintSurface(view).revision)
+    }
+
+    @Test fun eyedropperSampleSourceAndPaperSwitchChangeTheActualPixel() {
+        val view = canvas().apply {
+            tool = EditorTool.EYEDROPPER
+            pagePaperColor = android.graphics.Color.WHITE
+        }
+        val reference = PixelTileSurface(1000, 1000)
+        paintSurface(view).beginWrite("sample active").use { write ->
+            for (y in 100..140) for (x in 100..140) write.setPixel(x, y, 0xFFFF0000.toInt())
+            for (y in 300..340) for (x in 300..340) write.setPixel(x, y, 0x80800000.toInt())
+            write.commit().close()
+        }
+        reference.beginWrite("sample reference").use { write ->
+            for (y in 200..240) for (x in 200..240) write.setPixel(x, y, 0xFF0000FF.toInt())
+            write.commit().close()
+        }
+        view.setRasterLayerSurfaces(mapOf("paint" to paintSurface(view), "reference" to reference))
+        view.layerOrder = listOf("paint", "reference")
+        view.referenceLayerIds = setOf("reference")
+        var sampled: Int? = null
+        view.onColorSampled = { sampled = it }
+        fun pick(x: Float, y: Float): Int? {
+            sampled = null
+            sendStylus(view, 0L, MotionEvent.ACTION_DOWN, x, y)
+            sendStylus(view, 20L, MotionEvent.ACTION_UP, x, y)
+            return sampled
+        }
+
+        view.eyedropperReferenceTarget = ReferenceTarget.ALL_VISIBLE
+        assertEquals(android.graphics.Color.WHITE, pick(500f, 500f))
+        view.eyedropperIncludePaper = false
+        assertEquals(null, pick(500f, 500f))
+        assertEquals(0xFF0000FF.toInt(), pick(220f, 220f))
+
+        view.eyedropperReferenceTarget = ReferenceTarget.ACTIVE_LAYER
+        assertEquals(0xFFFF0000.toInt(), pick(120f, 120f))
+        assertEquals(null, pick(220f, 220f))
+        val translucent = requireNotNull(pick(320f, 320f))
+        assertEquals(128, translucent ushr 24)
+        assertTrue(android.graphics.Color.red(translucent) > 240)
+
+        view.eyedropperReferenceTarget = ReferenceTarget.REFERENCE_LAYERS
+        assertEquals(0xFF0000FF.toInt(), pick(220f, 220f))
+        assertEquals(null, pick(120f, 120f))
+        assertEquals("Sampling must never create a paint transaction", 1L, paintSurface(view).revision)
     }
 
     @Test fun ctrlAltStylusDragAdjustsBrushSizeWithoutCommittingInk() {

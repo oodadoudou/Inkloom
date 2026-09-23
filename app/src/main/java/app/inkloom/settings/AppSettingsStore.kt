@@ -146,6 +146,8 @@ data class AppSettings(
     val selectionMode: SelectionMode = SelectionMode.REPLACE,
     val selectionFilter: SelectionFilter = SelectionFilter.ALL,
     val referenceTarget: ReferenceTarget = ReferenceTarget.ALL_VISIBLE,
+    val eyedropperReferenceTarget: ReferenceTarget = ReferenceTarget.ALL_VISIBLE,
+    val eyedropperIncludePaper: Boolean = true,
     val correctLineMode: CorrectLineMode = CorrectLineMode.SMOOTH,
     val correctLineAmount: Float = .55f,
     val nonDestructiveEraser: Boolean = false,
@@ -346,6 +348,8 @@ class AppSettingsStore(context: Context) {
             selectionMode = enumValue(preferences.getString("selectionMode", null), SelectionMode.REPLACE),
             selectionFilter = enumValue(preferences.getString("selectionFilter", null), SelectionFilter.ALL),
             referenceTarget = enumValue(preferences.getString("referenceTarget", null), ReferenceTarget.ALL_VISIBLE),
+            eyedropperReferenceTarget = enumValue(preferences.getString("eyedropperReferenceTarget", null), ReferenceTarget.ALL_VISIBLE),
+            eyedropperIncludePaper = preferences.getBoolean("eyedropperIncludePaper", true),
             correctLineMode = enumValue(preferences.getString("correctLineMode", null), CorrectLineMode.SMOOTH),
             correctLineAmount = preferences.getFloat("correctLineAmount", .55f).coerceIn(0f, 1f),
             nonDestructiveEraser = preferences.getBoolean("nonDestructiveEraser", false),
@@ -514,6 +518,8 @@ class AppSettingsStore(context: Context) {
             .putString("selectionMode", persisted.selectionMode.name)
             .putString("selectionFilter", persisted.selectionFilter.name)
             .putString("referenceTarget", persisted.referenceTarget.name)
+            .putString("eyedropperReferenceTarget", persisted.eyedropperReferenceTarget.name)
+            .putBoolean("eyedropperIncludePaper", persisted.eyedropperIncludePaper)
             .putString("correctLineMode", persisted.correctLineMode.name)
             .putFloat("correctLineAmount", persisted.correctLineAmount.coerceIn(0f, 1f))
             .putBoolean("nonDestructiveEraser", persisted.nonDestructiveEraser)

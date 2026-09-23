@@ -5264,6 +5264,8 @@ internal fun InkCanvasView.applyBrushConfiguration(
     selectionMode = settings.selectionMode
     selectionFilter = settings.selectionFilter
     referenceTarget = settings.referenceTarget
+    eyedropperReferenceTarget = settings.eyedropperReferenceTarget
+    eyedropperIncludePaper = settings.eyedropperIncludePaper
     fillSensitivity = settings.fillSensitivity
     fillSubTool = settings.fillSubTool
     fillCloseGapPixels = settings.fillCloseGapPixels
