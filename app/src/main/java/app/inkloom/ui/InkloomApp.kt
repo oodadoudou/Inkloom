@@ -860,6 +860,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onCreateFolder = viewModel::createFolder,
             onRenameFolder = viewModel::renameFolder,
             onMoveToFolder = viewModel::moveToFolder,
+            onMoveNotesToFolder = viewModel::moveNotesToFolder,
             onDeleteFolder = viewModel::deleteFolder,
             onSettings = { settingsOpen = true },
         )
@@ -924,6 +925,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onMovePage = viewModel::movePage,
             onReorderPages = viewModel::reorderPages,
             onTransferPage = viewModel::transferPage,
+            onTransferPages = viewModel::transferPages,
             onApplyPageTemplate = viewModel::applyPageTemplate,
             onApplyPageTemplates = viewModel::applyPageTemplateToPages,
             onImportPageTemplates = { pageTemplatePicker.launch(arrayOf("application/pdf", "image/*")) },
@@ -1028,12 +1030,15 @@ fun InkloomApp(initialIntent: Intent?) {
 }
 
 @Composable
-private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkloom.document.ImagePaperDraft, onSaveImagePaper: (PageTemplate) -> PageTemplate, onCreateCustomTemplate: (String, Int, Int, PageBackground.Paper) -> PageTemplate?, documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long, String?) -> Boolean, onImportCover: (Uri, String, PageCrop) -> NotebookCoverTemplate, onDeleteCover: (String) -> Unit, onChangeCover: (String, CoverStyle, String?) -> Boolean, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
+private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkloom.document.ImagePaperDraft, onSaveImagePaper: (PageTemplate) -> PageTemplate, onCreateCustomTemplate: (String, Int, Int, PageBackground.Paper) -> PageTemplate?, documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long, String?) -> Boolean, onImportCover: (Uri, String, PageCrop) -> NotebookCoverTemplate, onDeleteCover: (String) -> Unit, onChangeCover: (String, CoverStyle, String?) -> Boolean, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onMoveToFolder: (String, String?) -> Unit, onMoveNotesToFolder: (Set<String>, String?) -> Boolean, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
     var filter by remember { mutableStateOf(LibraryFilter.ALL) }
     var search by remember { mutableStateOf("") }
     var folderId by remember { mutableStateOf<String?>(null) }
     var newNoteOpen by remember { mutableStateOf(false) }
     var newNoteCreateFailed by remember { mutableStateOf(false) }
+    var managingNotes by remember { mutableStateOf(false) }
+    var selectedNoteIds by remember { mutableStateOf(emptySet<String>()) }
+    var batchMoveOpen by remember { mutableStateOf(false) }
     var draggingDocumentId by remember { mutableStateOf<String?>(null) }
     var documentDragPosition by remember { mutableStateOf<Offset?>(null) }
     val documentCardBounds = remember { mutableStateMapOf<String, Rect>() }
@@ -1082,6 +1087,7 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
         documentDragPosition = null
     }
     fun Modifier.libraryDocumentDrag(document: InkDocument): Modifier = this
+        .then(if (managingNotes) Modifier else Modifier
         .onGloballyPositioned { coordinates -> documentCardBounds[document.id] = coordinates.boundsInWindow() }
         .graphicsLayer { alpha = if (draggingDocumentId == document.id) .66f else 1f }
         .semantics {
@@ -1106,7 +1112,7 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                     documentDragPosition = null
                 },
             )
-        }
+        })
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val compact = maxWidth < 700.dp
         Row(Modifier.fillMaxSize()) {
@@ -1143,6 +1149,9 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                     Text(tr("Continue a note or start with a fresh page.", "继续书写，或从空白页开始。"), color = MutedInk)
                 }
                 IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, tr("Settings", "设置")) }
+                TextButton(onClick = { managingNotes = !managingNotes; selectedNoteIds = emptySet() }) {
+                    Text(if (managingNotes) tr("Done", "完成") else tr("Select", "选择"))
+                }
                 Spacer(Modifier.width(4.dp))
                 OutlinedButton(onClick = onImport, shape = RoundedCornerShape(50)) { Icon(Icons.Outlined.FileDownload, null); Spacer(Modifier.width(8.dp)); Text(tr("Import", "导入")) }
                 Spacer(Modifier.width(10.dp))
@@ -1182,9 +1191,22 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                 }
             }
             Spacer(Modifier.height(12.dp))
+            if (managingNotes) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(tr("${selectedNoteIds.size} selected", "已选择 ${selectedNoteIds.size} 本"), Modifier.weight(1f))
+                    TextButton(onClick = { selectedNoteIds = visible.mapTo(linkedSetOf(), InkDocument::id) }) { Text(tr("All", "全选")) }
+                    TextButton(enabled = selectedNoteIds.isNotEmpty() && filter != LibraryFilter.TRASH, onClick = { batchMoveOpen = true }) { Text(tr("Move", "移动")) }
+                    TextButton(enabled = selectedNoteIds.isNotEmpty(), onClick = {
+                        selectedNoteIds.forEach { id ->
+                            if (filter == LibraryFilter.TRASH) onRestore(id) else onTrash(id)
+                        }
+                        selectedNoteIds = emptySet(); managingNotes = false
+                    }) { Text(if (filter == LibraryFilter.TRASH) tr("Restore", "恢复") else tr("Trash", "废纸篓")) }
+                }
+            }
             when (layout) {
                 LibraryLayout.LIST -> LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(visible, key = { it.id }) { NotebookCard(it, Modifier.libraryDocumentDrag(it).fillMaxWidth().height(220.dp), onOpen, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder, onEditCover = { document ->
+                    items(visible, key = { it.id }) { NotebookCard(it, Modifier.libraryDocumentDrag(it).fillMaxWidth().height(220.dp), { note -> if (managingNotes) selectedNoteIds = if (note.id in selectedNoteIds) selectedNoteIds - note.id else selectedNoteIds + note.id else onOpen(note) }, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder, selectionMode = managingNotes, selected = it.id in selectedNoteIds, onEditCover = { document ->
                         editingCoverDocumentId = document.id
                         editingCoverStyle = document.coverStyle
                         editingCoverId = pageTemplates.customCovers.firstOrNull { it.assetPath == document.coverImagePath }?.id
@@ -1197,7 +1219,7 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                     verticalArrangement = Arrangement.spacedBy(if (layout == LibraryLayout.COMPACT_GRID) 10.dp else 16.dp),
                 ) {
                     items(visible, key = { it.id }) {
-                        NotebookCard(it, Modifier.libraryDocumentDrag(it).height(if (layout == LibraryLayout.COMPACT_GRID) 210.dp else 250.dp), onOpen, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder, onEditCover = { document ->
+                        NotebookCard(it, Modifier.libraryDocumentDrag(it).height(if (layout == LibraryLayout.COMPACT_GRID) 210.dp else 250.dp), { note -> if (managingNotes) selectedNoteIds = if (note.id in selectedNoteIds) selectedNoteIds - note.id else selectedNoteIds + note.id else onOpen(note) }, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder, selectionMode = managingNotes, selected = it.id in selectedNoteIds, onEditCover = { document ->
                             editingCoverDocumentId = document.id
                             editingCoverStyle = document.coverStyle
                             editingCoverId = pageTemplates.customCovers.firstOrNull { it.assetPath == document.coverImagePath }?.id
@@ -1209,6 +1231,19 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
         }
         }
     }
+    if (batchMoveOpen) AlertDialog(
+        onDismissRequest = { batchMoveOpen = false },
+        title = { Text(tr("Move selected notebooks", "移动所选笔记本")) },
+        text = { LazyColumn(Modifier.heightIn(max = 360.dp)) {
+            item { ListItem(headlineContent = { Text(tr("Library root", "资料库根目录")) }, modifier = Modifier.clickable {
+                if (onMoveNotesToFolder(selectedNoteIds, null)) { selectedNoteIds = emptySet(); managingNotes = false; batchMoveOpen = false }
+            }) }
+            items(folders, key = { it.id }) { folder -> ListItem(headlineContent = { Text(folder.name) }, modifier = Modifier.clickable {
+                if (onMoveNotesToFolder(selectedNoteIds, folder.id)) { selectedNoteIds = emptySet(); managingNotes = false; batchMoveOpen = false }
+            }) }
+        } },
+        confirmButton = { TextButton(onClick = { batchMoveOpen = false }) { Text(tr("Cancel", "取消")) } },
+    )
     if (customNoteTemplateOpen) CustomPageTemplateDialog(
         language = LocalUiLanguage.current,
         base = pageTemplates.template(newNoteTemplateId) ?: PageTemplateCatalog.blank,
@@ -1467,17 +1502,20 @@ private fun BrandMark(subtitle: String? = null) {
 }
 
 @Composable
-private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (InkDocument) -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, folders: List<InkFolder>, onMoveToFolder: (String, String?) -> Unit, onEditCover: (InkDocument) -> Unit) {
+private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (InkDocument) -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, folders: List<InkFolder>, onMoveToFolder: (String, String?) -> Unit, selectionMode: Boolean = false, selected: Boolean = false, onEditCover: (InkDocument) -> Unit) {
     var menu by remember { mutableStateOf(false) }
     var renameOpen by remember { mutableStateOf(false) }
     var tagsOpen by remember { mutableStateOf(false) }
     var title by remember(document.title) { mutableStateOf(document.title) }
     var tags by remember(document.tags) { mutableStateOf(document.tags.joinToString(", ")) }
-    Card(modifier.clickable { onOpen(document) }, colors = CardDefaults.cardColors(containerColor = Paper), border = CardDefaults.outlinedCardBorder()) {
+    Card(modifier.then(if (selected) Modifier.border(2.dp, Ink, RoundedCornerShape(12.dp)) else Modifier).clickable { onOpen(document) }, colors = CardDefaults.cardColors(containerColor = Paper), border = CardDefaults.outlinedCardBorder()) {
         Box(Modifier.fillMaxWidth().weight(1f)) {
             NotebookCover(document, Modifier.fillMaxSize())
             if (document.pages.any { it.background is PageBackground.Pdf }) Surface(Modifier.padding(12.dp), shape = RoundedCornerShape(4.dp), color = Paper) { Text("PDF", Modifier.padding(7.dp, 4.dp), fontSize = 10.sp) }
-            Box(Modifier.align(Alignment.TopEnd)) {
+            if (selectionMode) Surface(Modifier.align(Alignment.TopEnd).padding(8.dp), shape = CircleShape, color = if (selected) Ink else Paper) {
+                Icon(if (selected) Icons.Outlined.Check else Icons.Outlined.RadioButtonUnchecked, tr("Select notebook", "选择笔记本"), Modifier.padding(4.dp), tint = if (selected) Paper else Ink)
+            }
+            if (!selectionMode) Box(Modifier.align(Alignment.TopEnd)) {
                 IconButton(
                     onClick = { menu = true },
                     modifier = Modifier.padding(6.dp).size(36.dp).background(Color.Black.copy(alpha = .48f), CircleShape),
@@ -1590,6 +1628,7 @@ private fun EditorScreen(
     onMovePage: (String, String, Int) -> Unit,
     onReorderPages: (String, List<String>) -> Unit,
     onTransferPage: (String, String, String, Boolean) -> Unit,
+    onTransferPages: (String, Set<String>, String, Boolean) -> Boolean,
     onApplyPageTemplate: (String, String, String, Long?) -> Unit,
     onApplyPageTemplates: (String, Set<String>, String, Long?) -> Unit,
     onImportPageTemplates: () -> Unit,
@@ -3514,7 +3553,7 @@ private fun EditorScreen(
                 document, documents, selectedPage.id, assets,
                 onClose = { onPanelVisibilityChange(EditorPanel.PAGES, false) },
                 pageTemplates = pageTemplates,
-                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage,
+                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage, onTransferPages = onTransferPages,
                 onApplyTemplate = onApplyPageTemplate, onApplyTemplates = onApplyPageTemplates, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate, onCreateCustomTemplate = onCreateCustomTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -3959,6 +3998,7 @@ private fun PageRail(
     onMove: (String, String, Int) -> Unit,
     onReorder: (String, List<String>) -> Unit,
     onTransfer: (String, String, String, Boolean) -> Unit,
+    onTransferPages: (String, Set<String>, String, Boolean) -> Boolean,
     onApplyTemplate: (String, String, String, Long?) -> Unit,
     onApplyTemplates: (String, Set<String>, String, Long?) -> Unit,
     onImportTemplates: () -> Unit,
@@ -3984,6 +4024,7 @@ private fun PageRail(
     val transferTargets = documents.filter { it.id != document.id && it.trashedAt == null }
     var addTemplateOpen by remember(document.id) { mutableStateOf(false) }
     var batchTemplateOpen by remember(document.id) { mutableStateOf(false) }
+    var batchTransferOpen by remember(document.id) { mutableStateOf(false) }
     var managingPages by remember(document.id) { mutableStateOf(false) }
     var selectedPageIds by remember(document.id) { mutableStateOf(emptySet<String>()) }
     val currentSelectedPageIds by rememberUpdatedState(selectedPageIds)
@@ -4005,6 +4046,9 @@ private fun PageRail(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     IconButton(onClick = { batchTemplateOpen = true }, enabled = selectedPageIds.isNotEmpty(), modifier = Modifier.size(28.dp)) {
                         Icon(Icons.Outlined.Description, tr("Replace selected page templates", "批量替换所选页面模板"), Modifier.size(16.dp))
+                    }
+                    IconButton(onClick = { batchTransferOpen = true }, enabled = selectedPageIds.isNotEmpty() && transferTargets.isNotEmpty(), modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Outlined.DriveFileMove, tr("Move or copy selected pages to another notebook", "移动或复制所选页面到其他笔记本"), Modifier.size(16.dp))
                     }
                     IconButton(onClick = { document.pages.filter { it.id in selectedPageIds }.forEach { onDuplicate(document.id, it.id) }; managingPages = false; selectedPageIds = emptySet() }, enabled = selectedPageIds.isNotEmpty(), modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.ContentCopy, tr("Duplicate selected pages", "复制所选页面"), Modifier.size(16.dp)) }
                     IconButton(onClick = {
@@ -4255,6 +4299,21 @@ private fun PageRail(
         onToggleFavorite = onToggleTemplateFavorite,
         onSetDefault = { templateId, paperColor -> onSetDefaultTemplate(document.id, templateId, paperColor) },
         onDelete = onDeleteTemplate, onCreateCustomTemplate = onCreateCustomTemplate,
+    )
+    if (batchTransferOpen) AlertDialog(
+        onDismissRequest = { batchTransferOpen = false },
+        title = { Text(tr("Move or copy ${selectedPageIds.size} pages", "移动或复制 ${selectedPageIds.size} 页")) },
+        text = { LazyColumn(Modifier.widthIn(min = 360.dp, max = 560.dp).heightIn(max = 360.dp)) {
+            items(transferTargets, key = { it.id }) { target -> ListItem(
+                headlineContent = { Text(target.title, maxLines = 1) },
+                supportingContent = { Text(tr("${target.pages.size} pages", "${target.pages.size} 页")) },
+                trailingContent = { Row {
+                    TextButton(onClick = { if (onTransferPages(document.id, selectedPageIds, target.id, false)) { batchTransferOpen = false; managingPages = false; selectedPageIds = emptySet() } }) { Text(tr("Move", "移动")) }
+                    TextButton(onClick = { if (onTransferPages(document.id, selectedPageIds, target.id, true)) { batchTransferOpen = false; managingPages = false; selectedPageIds = emptySet() } }) { Text(tr("Copy", "复制")) }
+                } },
+            ) }
+        } },
+        confirmButton = { TextButton(onClick = { batchTransferOpen = false }) { Text(tr("Cancel", "取消")) } },
     )
 }
 

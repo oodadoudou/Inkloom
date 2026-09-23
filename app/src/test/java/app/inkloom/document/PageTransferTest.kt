@@ -71,4 +71,26 @@ class PageTransferTest {
         assertEquals(ShapeKind.FREEFORM, copied.kind)
         assertEquals(path, copied.path)
     }
+
+    @Test fun batchMoveAppendsInSourceOrderAndKeepsRemainingSourcePage() {
+        val source = InkDocument(id = "source", title = "Source", pages = listOf(InkPage(id = "a"), InkPage(id = "b"), InkPage(id = "c")))
+        val target = InkDocument(id = "target", title = "Target", pages = listOf(InkPage(id = "d")))
+        val moved = PageTransfer.applyMany(source, target, linkedSetOf("c", "a"), copy = false)!!
+        assertEquals(listOf("b"), moved.source.pages.map(InkPage::id))
+        assertEquals(listOf("d", "a", "c"), moved.target.pages.map(InkPage::id))
+        assertEquals(listOf("a", "c"), moved.transferredPageIds)
+    }
+
+    @Test fun batchCopyRemapsLinksBetweenCopiedPagesAndRejectsPartialSelection() {
+        val a = InkPage(id = "a", pdfGotoLinks = listOf(PdfGotoLink(emptyList(), destinationPageId = "b")))
+        val b = InkPage(id = "b")
+        val source = InkDocument(id = "source", title = "Source", pages = listOf(a, b))
+        val target = InkDocument(id = "target", title = "Target", pages = listOf(InkPage(id = "d")))
+        val ids = ArrayDeque(listOf("copy-a", "copy-b"))
+        val copied = PageTransfer.applyMany(source, target, setOf("a", "b"), copy = true, nextId = ids::removeFirst)!!
+        assertEquals(source, copied.source)
+        assertEquals(listOf("copy-a", "copy-b"), copied.transferredPageIds)
+        assertEquals("copy-b", copied.target.pages[1].pdfGotoLinks.single().destinationPageId)
+        assertNull(PageTransfer.applyMany(source, target, setOf("a", "missing"), copy = false))
+    }
 }

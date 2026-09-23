@@ -205,6 +205,16 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun moveToFolder(documentId: String, folderId: String?) = update(documentId) {
         LibraryFolderOperations.moveDocument(it, mutableState.value.folders, folderId)
     }
+    fun moveNotesToFolder(documentIds: Set<String>, folderId: String?): Boolean {
+        if (documentIds.isEmpty() || (folderId != null && mutableState.value.folders.none { it.id == folderId })) return false
+        val selected = store.list().filter { it.id in documentIds && it.trashedAt == null }
+        if (selected.size != documentIds.size) return false
+        selected.map { LibraryFolderOperations.moveDocument(it, mutableState.value.folders, folderId) }
+            .filterIndexed { index, updated -> updated != selected[index] }
+            .forEach(store::save)
+        refresh()
+        return true
+    }
     fun createFolder(name: String, parentId: String? = null) {
         val updated = LibraryFolderOperations.create(mutableState.value.folders, name, parentId)
         if (updated == mutableState.value.folders) return
@@ -285,15 +295,20 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun transferPage(sourceDocumentId: String, pageId: String, targetDocumentId: String, copy: Boolean) {
-        if (sourceDocumentId == targetDocumentId) return
-        val source = store.get(sourceDocumentId) ?: return
-        val target = store.get(targetDocumentId) ?: return
-        val result = PageTransfer.apply(source, target, pageId, copy) ?: return
+        transferPages(sourceDocumentId, setOf(pageId), targetDocumentId, copy)
+    }
+
+    fun transferPages(sourceDocumentId: String, pageIds: Set<String>, targetDocumentId: String, copy: Boolean): Boolean {
+        if (sourceDocumentId == targetDocumentId) return false
+        val source = store.get(sourceDocumentId) ?: return false
+        val target = store.get(targetDocumentId) ?: return false
+        val result = PageTransfer.applyMany(source, target, pageIds, copy) ?: return false
         store.save(result.target)
         if (!copy) store.save(result.source)
         refresh()
         mutableState.value = mutableState.value.copy(selectedDocumentId = targetDocumentId, selectedPageId = result.transferredPageId)
         notebookResumeStore.remember(targetDocumentId,result.transferredPageId)
+        return true
     }
 
     fun applyPageTemplate(documentId: String, pageId: String, templateId: String, paperColorArgb: Long? = null) = update(documentId) { document ->

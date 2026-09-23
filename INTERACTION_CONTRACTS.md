@@ -52,6 +52,15 @@
 
 ## 核心官方参考
 
+### 批量笔记、跨本页面与大文件恢复（2026-09-23）
+
+本轮核对 [Goodnotes 多选移动文档](https://support.goodnotes.com/hc/en-us/articles/7353712019599-Move-documents-and-folders-in-your-Goodnotes-library)、[Notability 笔记管理](https://support.gingerlabs.com/hc/en-us/articles/206061237-Create-and-Edit-Notes)、[Goodnotes 跨文档移动页面](https://support.goodnotes.com/hc/en-us/articles/7353728016655-Copy-or-move-pages-from-one-document-to-another)、[Notability 页面批量操作](https://support.gingerlabs.com/hc/en-us/articles/206059167-Content-Manager-and-Bulk-Actions)、[Notability 大文件导入故障说明](https://support.gingerlabs.com/hc/en-us/articles/226961367-Troubleshooting-Import-Errors) 与 [Notability 损坏 PDF 背景恢复](https://support.gingerlabs.com/hc/en-us/articles/360044382131-Troubleshooting-PDF-Backgrounds)。
+
+- 资料库进入显式多选模式后，点按卡片只选中/取消选中；退出模式清空选择。批量移动先选目的文件夹再确认，取消或无效目的地不修改任何笔记；归档、收藏、回收站操作提供明确目标和结果。
+- 跨笔记页面多选按源笔记顺序追加到目的笔记。移动从源删除、复制保留源并产生新页面及对象 ID；两者保留 PDF/图片等资源引用。源笔记不能变成零页。确认后打开目的笔记的第一张转入页。
+- 长 PDF 的文件复制、页面元数据解析与保存不阻塞主线程；显示进度与取消。取消和失败不发布半成品笔记，并报告明确原因。文字索引另在后台进行。
+- 备份导入先在暂存区完整核验清单、所有引用资产与完整性，再发布到资料库。缺资源或损坏的备份明确拒绝，已有笔记不被覆盖；不能出现“成功”提示或半恢复内容。
+
 - [CSP 图层](https://help.clip-studio.com/en-us/manual_en/180_layers/Using_layers.htm)、[文件夹](https://help.clip-studio.com/en-us/manual_en/180_layers/Layer_folders.htm)、[蒙版](https://help.clip-studio.com/en-us/manual_en/180_layers/Layer_masks.htm)。
 - [Photoshop 图层组合并](https://helpx.adobe.com/photoshop/using/layers.html)、[面板组合](https://helpx.adobe.com/photoshop/desktop/get-started/learn-the-basics/manipulate-panel-groups.html)。
 - [CSP 工作区](https://help.clip-studio.com/en-us/manual_en/690_interface/Register_and_manage_your_workspace.htm)、[工具与子工具](https://help.clip-studio.com/en-us/manual_en/150_tools/Customizing_the_Tool_and_Sub_Tool_palettes.htm)。
