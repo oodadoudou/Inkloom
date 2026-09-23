@@ -49,6 +49,30 @@ class NamedPanelLayoutWindowTest {
         assertTrue(reopened.namedLayouts.entries.any { it.name == "Docked drawing" })
     }
 
+    @Test fun portableWorkspaceFileRestoresGeometryAndNamedLayouts() {
+        val state = EditorPanelState(compose.activity, AppSettings())
+        val original = state.layout.copy(
+            floating = state.layout.floating.mapIndexed { index, root ->
+                if (index == 0) root.copy(rect = app.inkloom.settings.PanelRect(51f, 18f, 187f, 446f)) else root
+            },
+            open = setOf(EditorPanel.PAGES, EditorPanel.NEARBY),
+        )
+        compose.runOnIdle {
+            state.commit(original)
+            state.saveNamedLayout("Sketch", AppSettings())
+        }
+        val rail = app.inkloom.settings.ToolRailLayout.capture(AppSettings())
+        val exported = app.inkloom.settings.WorkspaceLayoutCodec.encode(state.backup(), rail)
+        compose.runOnIdle { state.commit(app.inkloom.settings.EditorPanelLayout()) }
+        val imported = app.inkloom.settings.WorkspaceLayoutCodec.decode(exported).getOrThrow()
+        compose.runOnIdle {
+            state.restoreBackup(imported.workspace.copy(namedLayouts = app.inkloom.settings.WorkspaceLayoutCodec.mergeNamedLayouts(state.namedLayouts, imported.workspace.namedLayouts)))
+        }
+        val reopened = EditorPanelState(compose.activity, AppSettings())
+        org.junit.Assert.assertEquals(original, reopened.layout)
+        assertTrue(reopened.namedLayouts.entries.any { it.name == "Sketch" })
+    }
+
     @Test fun layoutLockCanBeSavedRestoredAndUnlockedWithoutClosingPanels() {
         compose.onNodeWithText("New Note").performClick()
         compose.onNodeWithText("Create").performClick()
@@ -131,5 +155,15 @@ class NamedPanelLayoutWindowTest {
         compose.onNodeWithContentDescription("Hide Layers view").performScrollTo().performClick()
         compose.waitForIdle()
         org.junit.Assert.assertFalse(app.inkloom.settings.AppSettingsStore(compose.activity).load().showLayerPanel)
+    }
+
+    @Test fun workspaceAndShortcutFilesAreReachableFromTheEditorActionsMenu() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithText("Export workspace layout…").performScrollTo().assertExists()
+        compose.onNodeWithText("Import workspace layout…").performScrollTo().assertExists()
+        compose.onNodeWithText("Export shortcuts…").performScrollTo().assertExists()
+        compose.onNodeWithText("Import shortcuts…").performScrollTo().assertExists()
     }
 }

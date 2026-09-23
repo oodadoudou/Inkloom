@@ -10,6 +10,11 @@
 - 布局支持边缘拆分、标签组合、标签排序、命名保存恢复；工具条位置纳入布局。
 - 面板标题移动、尺寸调整、列表滚动、内容拖动不能争抢接触，也不能在画布留下误笔。
 - 色环与混色可以同时打开；来回选色不会关闭混色或丢失混色会话。默认数值模式 RGB。
+- 色板、近似色、混色等面板中代表「当前绘画颜色」的小色块，点击或长按打开同一个标准选色弹窗；色环中的前／后景小色块短按切换编辑目标，长按打开该目标的选色弹窗。选色弹窗有色环、精确数值和十六进制输入，确认只写入当前目标色，取消保持原色。近似色、和谐色和中间色的生成色块短按直接选色，长按可从该颜色继续精细调整；保存色板与混色常用色条的色块长按也打开精确选色，拖动排序仍可用，删除、替换、命名等管理动作保留在明确的工具按钮／菜单中。
+  参考：[Procreate Color interface](https://help.procreate.com/procreate/handbook/colors/colors-interface) 区分短按色块设为当前色与完整选色工具；[CSP Color Set palette](https://help.clip-studio.com/en-us/manual_en/300_color/Color_Set_palette.htm) 提供色块管理；[Photoshop Color Picker](https://helpx.adobe.com/photoshop/desktop/adjust-color/choose-colors/choose-colors-with-the-adobe-color-picker.html) 通过色块打开精确数值选色。Inkloom 为触屏补充色块长按快捷入口，并在独立按钮中保留管理行为。
+- 编辑器「操作 → 视图」始终列出页面、笔刷、图层、子工具、工具属性、色环、色板、混色与近似色。已显示项有明确勾选；点击隐藏项立即显示并聚焦，点击已显示项关闭，列表保持打开便于连续调整。恢复隐藏面板须沿用其原有停靠／浮动位置、尺寸与标签顺序，不能重置整个布局；布局锁定不阻止显隐操作。页面、笔刷、图层的开关还须同步各自持久设置。
+  参考：[CSP Palettes](https://help.clip-studio.com/en-us/manual_en/690_interface/Palettes.htm) 说明关闭后从 Window 菜单恢复；[Photoshop Layers panel](https://helpx.adobe.com/photoshop/desktop/create-manage-layers/get-started-layers/work-with-the-layers-panel.html) 说明从 Window > Layers 打开面板。Inkloom 采用触屏友好的集中列表，不复制产品图标或外观。
+- 「视图」中的当前布局与命名布局可导出为独立文件并再次导入；文件记录面板的停靠树、开关、尺寸、标签顺序、锁定状态和工具栏位置。导入前完整校验，失败不更改当前布局；成功后保留未重名的本机命名布局，重名布局按导入文件替换。快捷键另用独立配置文件导入导出，包含按键、设备轴／按钮、笔刷组和工具快捷位，不混入布局文件；两个入口都可从编辑器菜单直接找到。参考：[CSP Workspace](https://help.clip-studio.com/en-us/manual_en/690_interface/Register_and_manage_your_workspace.htm) 的注册与工作区加载、[Photoshop Save custom workspaces](https://helpx.adobe.com/photoshop/desktop/get-started/learn-the-basics/save-custom-workspaces.html) 的面板位置与快捷键保存。Inkloom 拆分布局和快捷键文件，避免导入一种配置时意外覆盖另一种。
 
 ## 图层与蒙版
 

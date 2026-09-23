@@ -173,6 +173,9 @@ import app.inkloom.settings.ShortcutMatchMode
 import app.inkloom.settings.ShortcutPhase
 import app.inkloom.settings.ShortcutProfile
 import app.inkloom.settings.ShortcutProfileCodec
+import app.inkloom.settings.WorkspaceLayoutCodec
+import app.inkloom.settings.ToolRailLayout
+import app.inkloom.settings.PanelWorkspaceBackup
 import app.inkloom.settings.ShortcutTrigger
 import app.inkloom.settings.ShortcutBrushGroup
 import app.inkloom.settings.ShortcutBrushSelection
@@ -991,6 +994,8 @@ fun InkloomApp(initialIntent: Intent?) {
             onOpenNotebook = viewModel::select,
             onSettings = { settingsOpen = true },
             onSettingsChange = ::updateSettings,
+            onExportShortcuts = { shortcutProfileExportPicker.launch("Inkloom-toolbox.${ShortcutProfileCodec.FILE_EXTENSION}") },
+            onImportShortcuts = { shortcutProfileImportPicker.launch(arrayOf(ShortcutProfileCodec.MIME_TYPE, "text/plain", "application/octet-stream")) },
         )
     }
     }
@@ -1582,6 +1587,8 @@ private fun EditorScreen(
     onOpenNotebook: (String) -> Unit,
     onSettings: () -> Unit,
     onSettingsChange: (AppSettings) -> Unit,
+    onExportShortcuts: () -> Unit,
+    onImportShortcuts: () -> Unit,
 ) {
     if (document == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }; return }
     val context = LocalContext.current
@@ -2059,6 +2066,25 @@ private fun EditorScreen(
             showLayerPanel = EditorPanel.LAYERS in layout.open,
         ))
     }
+    val workspaceLayoutExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(WorkspaceLayoutCodec.MIME_TYPE)) { uri ->
+        if (uri != null) runCatching {
+            val bytes = WorkspaceLayoutCodec.encode(panelState.backup(), ToolRailLayout.capture(settings))
+            context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
+                ?: error("Unable to open the workspace layout destination")
+            Toast.makeText(context, settings.language.text("Workspace layout saved.", "工作区布局已导出。"), Toast.LENGTH_LONG).show()
+        }.onFailure { Toast.makeText(context, it.message ?: "Could not export workspace layout", Toast.LENGTH_LONG).show() }
+    }
+    val workspaceLayoutImportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching {
+            val imported = context.contentResolver.openInputStream(uri)?.use { WorkspaceLayoutCodec.decode(it).getOrThrow() }
+                ?: error("Unable to open the workspace layout")
+            val merged = WorkspaceLayoutCodec.mergeNamedLayouts(panelState.namedLayouts, imported.workspace.namedLayouts)
+            val layout = imported.workspace.copy(namedLayouts = merged).also(PanelWorkspaceBackup::validate)
+            panelState.restoreBackup(layout)
+            syncRestoredPanelSettings(app.inkloom.settings.NamedPanelLayout("Imported", layout.layout, imported.toolRail))
+            Toast.makeText(context, settings.language.text("Workspace layout restored.", "工作区布局已恢复。"), Toast.LENGTH_LONG).show()
+        }.onFailure { Toast.makeText(context, it.message ?: "Could not import workspace layout", Toast.LENGTH_LONG).show() }
+    }
     fun applyWorkspaceSnapshot(snapshot: app.inkloom.settings.ToolboxWorkspaceSnapshot) =
         applyWorkspaceSettings(settings.applyToolboxWorkspace(snapshot))
     fun applyBuiltInWorkspace(workspace: BuiltInWorkspace) {
@@ -2146,6 +2172,14 @@ private fun EditorScreen(
                         leadingIcon = { Icon(Icons.Outlined.Save, null) }, onClick = {
                             workspaceMenu = false; renamingPanelLayout = null; panelLayoutName = ""; savePanelLayoutOpen = true
                         })
+                    DropdownMenuItem(text = { Text(tr("Export workspace layout…", "导出工作区布局…")) },
+                        onClick = { workspaceMenu = false; workspaceLayoutExportPicker.launch("Inkloom-workspace.${WorkspaceLayoutCodec.FILE_EXTENSION}") })
+                    DropdownMenuItem(text = { Text(tr("Import workspace layout…", "导入工作区布局…")) },
+                        onClick = { workspaceMenu = false; workspaceLayoutImportPicker.launch(arrayOf(WorkspaceLayoutCodec.MIME_TYPE, "text/plain", "application/octet-stream")) })
+                    DropdownMenuItem(text = { Text(tr("Export shortcuts…", "导出快捷键…")) },
+                        onClick = { workspaceMenu = false; onExportShortcuts() })
+                    DropdownMenuItem(text = { Text(tr("Import shortcuts…", "导入快捷键…")) },
+                        onClick = { workspaceMenu = false; onImportShortcuts() })
                     panelState.namedLayouts.entries.forEach { saved ->
                         DropdownMenuItem(text = { Text(saved.name) },
                             leadingIcon = { Icon(Icons.Outlined.DashboardCustomize, null) }, onClick = {
