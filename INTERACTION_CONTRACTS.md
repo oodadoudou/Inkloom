@@ -16,6 +16,14 @@
   参考：[CSP Palettes](https://help.clip-studio.com/en-us/manual_en/690_interface/Palettes.htm) 说明关闭后从 Window 菜单恢复；[Photoshop Layers panel](https://helpx.adobe.com/photoshop/desktop/create-manage-layers/get-started-layers/work-with-the-layers-panel.html) 说明从 Window > Layers 打开面板。Inkloom 采用触屏友好的集中列表，不复制产品图标或外观。
 - 「视图」中的当前布局与命名布局可导出为独立文件并再次导入；文件记录面板的停靠树、开关、尺寸、标签顺序、锁定状态和工具栏位置。导入前完整校验，失败不更改当前布局；成功后保留未重名的本机命名布局，重名布局按导入文件替换。快捷键另用独立配置文件导入导出，包含按键、设备轴／按钮、笔刷组和工具快捷位，不混入布局文件；两个入口都可从编辑器菜单直接找到。参考：[CSP Workspace](https://help.clip-studio.com/en-us/manual_en/690_interface/Register_and_manage_your_workspace.htm) 的注册与工作区加载、[Photoshop Save custom workspaces](https://helpx.adobe.com/photoshop/desktop/get-started/learn-the-basics/save-custom-workspaces.html) 的面板位置与快捷键保存。Inkloom 拆分布局和快捷键文件，避免导入一种配置时意外覆盖另一种。
 
+## R11 取色与色彩管理（2026-09-23 复核）
+
+参考 [CSP 吸管子工具设置](https://help.clip-studio.com/en-us/manual_en/810_subtools/E.htm) 的当前层／画面取样及排除纸层、[CSP 色彩配置预览](https://help.clip-studio.com/en-us/manual_en/210_file/Preview_of_color_profile.htm) 的 RGB 文档配置与独立 CMYK 预览，以及 [Photoshop 软打样](https://helpx.adobe.com/photoshop/using/proofing-colors.html) 的输出设备配置、开关和渲染意图。Inkloom 不复制这些产品的图标或界面。
+
+- 吸管的「全部可见」「当前图层」「参考图层」必须真正改变取样源，且不受选区边框、悬停圈、变换手柄等交互覆盖影响。全部可见可选择是否包含纸张；当前／参考图层永不隐式混入纸色。没有命中有色像素时不修改当前主／副色。半透明像素保留其 alpha 数值，不先压在白纸上假装不透明。取样结果仍写入当前激活的主色或副色。
+- RGB 文档配置描述像素数值的工作色域；「指定配置」只改变解释，「转换配置」必须调整颜色数值以保留外观，且不能通过 8 位 `Int` 默默丢失高精度。任何当前生产链无法保证的格式／配置应明确拒绝。
+- CMYK 是以实际打印配置文件为目标的预览或输出转换，不能凭 RGB→CMYK 四个滑条算成 ICC 输出。软打样仅影响显示预览，开关前后文档像素和撤销记录相同；缺打印配置时不展示伪精确的 CMYK 结果。导出要明确记录嵌入配置与实际像素格式。
+
 ## 图层与蒙版
 
 - 固定混合模式／透明度条，紧凑命令条；眼睛只改可见性，组箭头只折叠，层名选层，内容与蒙版缩略图分别切换目标。主活动层与辅助多选明确区分，不用一支笔作为选中标志。
