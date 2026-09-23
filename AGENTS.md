@@ -2,7 +2,7 @@
 
 ## Current documentation
 
-- Read `CURRENT_REQUIREMENTS.md` for current status and user priorities; `REQUESTED_FEATURE_CATALOG.md` retains requested leaf items without completion claims.
+- Read `CURRENT_REQUIREMENTS.md` for release status and user priorities; `REQUESTED_FEATURE_CATALOG.md` is the leaf-level checklist. Mark a leaf complete only after its full stated behavior has a production path and automated evidence; leave partial or unverified behavior unchecked.
 - Use `INTERACTION_CONTRACTS.md` for interaction constraints and `DOCUMENTATION.md` for document ownership. Update the current status file instead of creating a competing versioned gap matrix.
 - Historical plans are archived outside the repository. Old reports, branches, stashes and test artifacts are not evidence that a feature is currently shipped.
 - Usage thresholds belong only to the task round specified by the user; do not embed old limits in long-lived product plans.
