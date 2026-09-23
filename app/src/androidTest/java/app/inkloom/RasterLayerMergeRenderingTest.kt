@@ -125,8 +125,10 @@ class RasterLayerMergeRenderingTest {
         repeat(turns) { page = PageGeometry.rotateClockwise(page) }
         if (cropped) page = page.copy(crop = PageCrop(.2f, .1f, .85f, .9f))
         try {
-            val ref = assets.saveRasterTileSurface(assets.renderMergedLayerPair(page, upper.id)).also { references += it }
-            val edit = RasterLayerMerge.edit(page, upper.id, ref)
+            val plan = requireNotNull(RasterLayerMerge.plan(page,
+                RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_DOWN, upper.id)).plan)
+            val ref = assets.saveRasterTileSurface(assets.renderLayerMergeSurface(plan)).also { references += it }
+            val edit = RasterLayerMerge.edit(page, plan, ref)
             val result = edit.apply(page, false)
             assertTrue(result.elements.none { it.layerId == lower.id || it.layerId == upper.id })
             compare(page, result)

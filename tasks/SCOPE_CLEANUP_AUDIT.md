@@ -14,6 +14,7 @@
 | `WorkspaceLayoutProfiles`、布局备份字段 | NEEDS_REVIEW | 命名布局、文件导入导出、旧用户设置仍引用；需先做单一状态所有者迁移 |
 | importer 与失败账本 | KEEP | 用户真实 SUT／ABR／Procreate 导入和显式失败回报 |
 | `RasterLayerMergeEdit` 旧 `source`／`target`／`originalElements` 便捷属性 | DELETE | 无生产调用的源与元素别名已删除；`target` 旧检查会错误拒绝“可见副本”，改为按操作阶段验证来源或结果 ID |
+| `RasterLayerMerge` 与 `DocumentAssetService` 的旧 Merge Down 便捷接口 | DELETE | 生产路径已使用 `Plan`／`renderLayerMergeSurface`；旧单层 ID 重载只剩旧测试引用，已迁走并删除 |
 | 现有 OCR 与搜索 | KEEP | 已在笔记范围内，不扩展为 AI 产品 |
 | 旧阶段 checklist、设计渲染脚本和参考截图 | DELETE | 已从当前文档入口移除；生成稿移至项目外可恢复归档 |
 

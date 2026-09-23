@@ -183,24 +183,12 @@ object RasterLayerMerge {
         ))
     }
 
-    /** Compatibility used by the existing Merge Down action and older tests. */
-    fun rejection(page: InkPage, sourceId: String): Rejection? =
-        plan(page, RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_DOWN, sourceId)).rejection
-
-    fun renderWidth(page: InkPage, sourceId: String): Int =
-        plan(page, RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_DOWN, sourceId)).plan?.renderWidth ?: 0
-
     fun renderWidth(page: InkPage, layerIds: Set<String>): Int = maxOf(
         page.width.toInt().coerceAtLeast(1),
         layerIds.mapNotNull { id -> page.layers.firstOrNull { it.id == id }?.let { layer ->
             layer.rasterTileSurface?.let { if (layer.rasterRotationQuarterTurns.mod(2) == 0) it.logicalWidth else it.logicalHeight }
         } }.maxOrNull() ?: 0,
     )
-
-    fun edit(page: InkPage, sourceId: String, merged: RasterTileSurfaceRef): RasterLayerMergeEdit {
-        val plan = requireNotNull(plan(page, RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_DOWN, sourceId)).plan)
-        return edit(page, plan, merged)
-    }
 
     fun edit(page: InkPage, plan: Plan, merged: RasterTileSurfaceRef): RasterLayerMergeEdit {
         val result = plan.resultPrototype.copy(rasterTileSurface = merged)

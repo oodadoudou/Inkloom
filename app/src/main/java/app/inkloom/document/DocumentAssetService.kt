@@ -381,15 +381,6 @@ class DocumentAssetService(private val context: Context) {
         } finally { bitmap.recycle() }
     }
 
-    /** Compatibility entry point for the original Merge Down action. */
-    fun renderMergedLayerPair(page: InkPage, sourceId: String): PixelTileSurface {
-        val plan = requireNotNull(RasterLayerMerge.plan(
-            page,
-            RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_DOWN, sourceId),
-        ).plan)
-        return renderLayerMergeSurface(plan)
-    }
-
     /** Small isolated preview: hidden layers remain identifiable without changing document state. */
     fun renderLayerThumbnail(page: InkPage, layerId: String, size: Int = 96): Bitmap {
         require(size in 16..256)
