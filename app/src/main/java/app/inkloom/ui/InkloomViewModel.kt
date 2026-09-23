@@ -264,10 +264,35 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         if (updated == mutableState.value.folders) return
         saveFolders(updated); refresh()
     }
+    fun moveFolders(folderIds: Set<String>, destinationId: String?): Boolean {
+        val current = mutableState.value.folders
+        val moved = LibraryFolderOperations.moveFolders(current, folderIds, destinationId) ?: return false
+        return runCatching { if (moved != current) saveFolders(moved); refresh(); true }
+            .getOrElse { refresh(); false }
+    }
+
+    fun deleteFolders(folderIds: Set<String>): Boolean {
+        val originalFolders = mutableState.value.folders
+        val originalDocuments = store.list()
+        val result = LibraryFolderOperations.removeMany(originalFolders, originalDocuments, folderIds) ?: return false
+        val changed = result.documents.mapIndexedNotNull { index, document ->
+            originalDocuments[index].takeIf { it != document }?.let { old -> old to document }
+        }
+        val published = mutableListOf<InkDocument>()
+        return try {
+            changed.forEach { (old, updated) -> store.save(updated); published += old }
+            saveFolders(result.folders)
+            refresh()
+            true
+        } catch (_: Exception) {
+            published.asReversed().forEach { old -> runCatching { store.save(old) } }
+            runCatching { saveFolders(originalFolders) }
+            refresh()
+            false
+        }
+    }
     fun deleteFolder(folderId: String) {
-        val result = LibraryFolderOperations.remove(mutableState.value.folders, store.list(), folderId)
-        result.documents.filter { document -> store.get(document.id) != document }.forEach(store::save)
-        saveFolders(result.folders); refresh()
+        deleteFolders(setOf(folderId))
     }
 
     fun addPage(documentId: String, templateId: String? = null, paperColorArgb: Long? = null) = update(documentId) { document ->

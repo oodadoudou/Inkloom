@@ -50,4 +50,39 @@ class LibraryFolderOperationsTest {
         assertEquals(listOf("target", "target", null), moved.map(InkDocument::folderId))
         assertEquals(notes[2], moved[2])
     }
+
+    @Test fun batchFolderMoveKeepsDescendantsAndRejectsCyclesOrNameConflicts() {
+        val a = InkFolder(id = "a", name = "Art")
+        val child = InkFolder(id = "child", name = "Drafts", parentId = "a")
+        val grandchild = InkFolder(id = "grandchild", name = "Ink", parentId = "child")
+        val b = InkFolder(id = "b", name = "Notes")
+        val target = InkFolder(id = "target", name = "Target")
+        val folders = listOf(a, child, grandchild, b, target)
+
+        val moved = LibraryFolderOperations.moveFolders(folders, setOf("a", "child", "b"), "target")!!
+        assertEquals("target", moved.first { it.id == "a" }.parentId)
+        assertEquals("a", moved.first { it.id == "child" }.parentId)
+        assertEquals("child", moved.first { it.id == "grandchild" }.parentId)
+        assertEquals("target", moved.first { it.id == "b" }.parentId)
+        assertNull(LibraryFolderOperations.moveFolders(folders, setOf("a"), "grandchild"))
+        assertNull(LibraryFolderOperations.moveFolders(folders, setOf("a", "missing"), "target"))
+        assertNull(LibraryFolderOperations.moveFolders(folders + InkFolder(id = "collision", name = "Art", parentId = "target"), setOf("a"), "target"))
+    }
+
+    @Test fun removingNestedFoldersPreservesAllNotebooksAtLibraryRoot() {
+        val folders = listOf(
+            InkFolder(id = "root", name = "Root"),
+            InkFolder(id = "child", name = "Child", parentId = "root"),
+            InkFolder(id = "grandchild", name = "Grandchild", parentId = "child"),
+            InkFolder(id = "other", name = "Other"),
+        )
+        val notes = listOf(
+            InkDocument(id = "deep", title = "Deep", folderId = "grandchild"),
+            InkDocument(id = "safe", title = "Safe", folderId = "other"),
+        )
+        val removed = LibraryFolderOperations.removeMany(folders, notes, setOf("root"))!!
+        assertEquals(listOf(folders.last()), removed.folders)
+        assertNull(removed.documents.first().folderId)
+        assertEquals("other", removed.documents.last().folderId)
+    }
 }
