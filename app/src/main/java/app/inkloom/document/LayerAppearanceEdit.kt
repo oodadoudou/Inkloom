@@ -7,6 +7,28 @@ sealed interface LayerAppearanceEdit {
     fun apply(page: InkPage, undo: Boolean = false): InkPage?
 }
 
+/** One persisted raster filter result; the original checkpoint remains available for undo. */
+data class LayerRasterFilterEdit(
+    override val layerId: String,
+    val before: RasterTileSurfaceRef?,
+    val after: RasterTileSurfaceRef,
+    val beforeRotation: Int,
+) : LayerAppearanceEdit {
+    override val isNoOp: Boolean get() = before == after && beforeRotation == 0
+
+    override fun apply(page: InkPage, undo: Boolean): InkPage? {
+        val layer = page.layers.firstOrNull { it.id == layerId && it.isPaintSurfaceLayer() } ?: return null
+        val expected = if (undo) after else before
+        val expectedRotation = if (undo) 0 else beforeRotation.mod(4)
+        if (layer.rasterTileSurface != expected || layer.rasterRotationQuarterTurns != expectedRotation) return null
+        return page.copy(layers = page.layers.map {
+            if (it.id == layerId) it.copy(rasterTileSurface = if (undo) before else after,
+                rasterRotationQuarterTurns = if (undo) beforeRotation.mod(4) else 0)
+            else it
+        })
+    }
+}
+
 /** Parameter edits retain the source pixels and can be previewed before one history commit. */
 data class LayerAdjustmentEdit(
     override val layerId: String,
