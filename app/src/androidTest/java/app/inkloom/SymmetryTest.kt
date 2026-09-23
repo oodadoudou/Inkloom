@@ -83,6 +83,8 @@ class SymmetryTest {
             pageModelWidth = 100f
             pageModelHeight = 200f
             symmetryMode = SymmetryMode.RADIAL_4
+            // Keep the movable symmetry guide's rotation handle away from the test stroke.
+            symmetryGuide = SymmetryGuideState(angleDegrees = 90f)
         }
 
         send(view, 0L, MotionEvent.ACTION_DOWN, 300f, 200f)
