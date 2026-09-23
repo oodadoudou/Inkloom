@@ -145,12 +145,11 @@ class LayerTargetWindowTest {
         tap("Edit adjustment Adjustment 1")
         compose.onNodeWithContentDescription("Brightness adjustment").performSemanticsAction(SemanticsActions.SetProgress) { it(.3f) }
         tap("Apply")
-        compose.waitUntil(10_000) { model.currentPage()!!.layers.single { it.id == id }.adjustment!!.brightness > .25f }
-        val time = SystemClock.uptimeMillis()
-        instrumentation.sendKeySync(android.view.KeyEvent(time, time, android.view.KeyEvent.ACTION_DOWN,
-            android.view.KeyEvent.KEYCODE_Z, 0, android.view.KeyEvent.META_CTRL_ON))
-        instrumentation.sendKeySync(android.view.KeyEvent(time, time + 1, android.view.KeyEvent.ACTION_UP,
-            android.view.KeyEvent.KEYCODE_Z, 0, android.view.KeyEvent.META_CTRL_ON))
+        compose.waitUntil(10_000) {
+            model.currentPage()!!.layers.single { it.id == id }.adjustment!!.brightness > .25f &&
+                !canvas().selectionLayerTransferPending
+        }
+        tap("Undo")
         compose.waitUntil(10_000) { model.currentPage()!!.layers.single { it.id == id }.adjustment!!.brightness == 0f }
         tap("Layer actions Adjustment 1"); tap("Mask"); tap("Mask selection")
         compose.waitUntil(10_000) { model.currentPage()!!.layers.single { it.id == id }.mask?.surface != null }
