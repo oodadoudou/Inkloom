@@ -48,6 +48,7 @@
 - 纸张模板与封面分别管理；预设与用户保存分组。图片纸张是背景资产，不是可擦除绘画图层；原图移动后本地资产仍应可用。
 - 导入预览允许取消、设名称和宽高、保留比例、完整显示／裁切及底色；取消不能误建笔记。追加页继承当前页模板。
 - 删除模板库条目不删除已有笔记仍引用的资产。
+- 封面由资料库的笔记操作进入更换；可选择预设、我的封面或导入图片。导入图片先预览并在固定封面比例内拖动画面、缩放裁切，确认后才加入我的封面并应用；取消不改笔记。更换已有笔记封面不改页面、笔迹和最后阅读页；从我的封面删除条目不影响已使用该图片的笔记。参考 [Goodnotes 更换封面](https://support.goodnotes.com/hc/en-us/articles/7353696186511-Change-a-notebook-cover-in-Goodnotes)、[Goodnotes 图片裁剪](https://support.goodnotes.com/hc/en-us/articles/7353727617295-Insert-images-into-Goodnotes) 与 [Notability 图片裁剪](https://support.gingerlabs.com/hc/en-us/articles/205270648-Add-and-Edit-Media)。Inkloom 封面是独立元数据，不照搬 Goodnotes 将第一页当封面的存储模型。
 
 ## 核心官方参考
 
