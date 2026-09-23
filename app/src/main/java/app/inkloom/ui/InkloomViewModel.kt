@@ -239,12 +239,17 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         LibraryFolderOperations.moveDocument(it, mutableState.value.folders, folderId)
     }
     fun moveNotesToFolder(documentIds: Set<String>, folderId: String?): Boolean {
-        if (documentIds.isEmpty() || (folderId != null && mutableState.value.folders.none { it.id == folderId })) return false
-        val selected = store.list().filter { it.id in documentIds && it.trashedAt == null }
-        if (selected.size != documentIds.size) return false
-        selected.map { LibraryFolderOperations.moveDocument(it, mutableState.value.folders, folderId) }
-            .filterIndexed { index, updated -> updated != selected[index] }
-            .forEach(store::save)
+        val existing = store.list()
+        val moved = LibraryFolderOperations.moveDocuments(existing, mutableState.value.folders, documentIds, folderId) ?: return false
+        val changed = moved.mapIndexedNotNull { index, document -> existing[index].takeIf { it != document }?.let { old -> old to document } }
+        val published = mutableListOf<InkDocument>()
+        try {
+            changed.forEach { (old, updated) -> store.save(updated); published += old }
+        } catch (_: Exception) {
+            published.asReversed().forEach { old -> runCatching { store.save(old) } }
+            refresh()
+            return false
+        }
         refresh()
         return true
     }

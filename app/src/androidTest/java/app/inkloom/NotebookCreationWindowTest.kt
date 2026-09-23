@@ -17,6 +17,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performClick
 import app.inkloom.document.*
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
@@ -239,6 +240,21 @@ class NotebookCreationWindowTest {
         compose.activityRule.scenario.recreate()
         compose.waitForIdle()
         assertEquals(CoverStyle.PAPER, documents.get(changed.id)?.coverStyle)
+    }
+
+    @Test fun libraryBatchSelectionMovesTwoNotebooksToTrashAndRestoresThem() {
+        val documents = FileDocumentStore(compose.activity.filesDir)
+        val selected = documents.list().filter { it.trashedAt == null }.take(2)
+        assertEquals(2, selected.size)
+        compose.onNodeWithText("Select").performClick()
+        selected.forEach { compose.onNodeWithText(it.title).performClick() }
+        compose.onNodeWithContentDescription("Trash selected notebooks").performClick()
+        compose.waitUntil(5_000) { selected.all { documents.get(it.id)?.trashedAt != null } }
+        compose.onNodeWithText("Trash").performClick()
+        compose.onNodeWithText("Select").performClick()
+        selected.forEach { compose.onNodeWithText(it.title).performClick() }
+        compose.onNodeWithContentDescription("Restore selected notebooks").performClick()
+        compose.waitUntil(5_000) { selected.all { documents.get(it.id)?.trashedAt == null } }
     }
 
     @Test fun importedCoverCropKeepsTheChosenPartAfterSourceIsRemoved() {

@@ -26,6 +26,12 @@ object LibraryFolderOperations {
         return document.copy(folderId = folderId, updatedAt = System.currentTimeMillis())
     }
 
+    fun moveDocuments(documents: List<InkDocument>, folders: List<InkFolder>, documentIds: Set<String>, folderId: String?): List<InkDocument>? {
+        if (documentIds.isEmpty() || (folderId != null && folders.none { it.id == folderId })) return null
+        if (documents.count { it.id in documentIds && it.trashedAt == null } != documentIds.size) return null
+        return documents.map { if (it.id in documentIds) moveDocument(it, folders, folderId) else it }
+    }
+
     fun remove(folders: List<InkFolder>, documents: List<InkDocument>, folderId: String): Removal {
         if (folders.none { it.id == folderId }) return Removal(folders, documents)
         val removedIds = buildSet {

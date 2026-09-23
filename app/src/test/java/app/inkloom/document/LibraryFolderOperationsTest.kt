@@ -2,6 +2,7 @@ package app.inkloom.document
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class LibraryFolderOperationsTest {
@@ -38,5 +39,15 @@ class LibraryFolderOperationsTest {
         assertEquals(listOf(outside), result.folders)
         assertEquals(null, result.documents.first { it.id == nestedDocument.id }.folderId)
         assertEquals(outside.id, result.documents.first { it.id == outsideDocument.id }.folderId)
+    }
+
+    @Test fun batchMoveValidatesAllNotesBeforeChangingAny() {
+        val folder = InkFolder(id = "target", name = "Target")
+        val notes = listOf(InkDocument(id = "a", title = "A"), InkDocument(id = "b", title = "B"), InkDocument(id = "c", title = "C"))
+        assertNull(LibraryFolderOperations.moveDocuments(notes, listOf(folder), setOf("a", "missing"), folder.id))
+        assertNull(LibraryFolderOperations.moveDocuments(notes, listOf(folder), setOf("a", "b"), "missing"))
+        val moved = LibraryFolderOperations.moveDocuments(notes, listOf(folder), setOf("b", "a"), folder.id)!!
+        assertEquals(listOf("target", "target", null), moved.map(InkDocument::folderId))
+        assertEquals(notes[2], moved[2])
     }
 }

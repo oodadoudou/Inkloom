@@ -1090,6 +1090,7 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
     var managingNotes by remember { mutableStateOf(false) }
     var selectedNoteIds by remember { mutableStateOf(emptySet<String>()) }
     var batchMoveOpen by remember { mutableStateOf(false) }
+    var batchMoveError by remember { mutableStateOf(false) }
     var draggingDocumentId by remember { mutableStateOf<String?>(null) }
     var documentDragPosition by remember { mutableStateOf<Offset?>(null) }
     val documentCardBounds = remember { mutableStateMapOf<String, Rect>() }
@@ -1129,6 +1130,7 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
     val visible = remember(documents, filter, folderId, search) {
         LibraryDocumentQuery.visible(documents, filter, folderId, search)
     }
+    LaunchedEffect(filter, folderId, search) { selectedNoteIds = emptySet() }
     fun finishDocumentDrag() {
         val documentId = draggingDocumentId
         val position = documentDragPosition
@@ -1246,8 +1248,8 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(tr("${selectedNoteIds.size} selected", "已选择 ${selectedNoteIds.size} 本"), Modifier.weight(1f))
                     TextButton(onClick = { selectedNoteIds = visible.mapTo(linkedSetOf(), InkDocument::id) }) { Text(tr("All", "全选")) }
-                    TextButton(enabled = selectedNoteIds.isNotEmpty() && filter != LibraryFilter.TRASH, onClick = { batchMoveOpen = true }) { Text(tr("Move", "移动")) }
-                    TextButton(enabled = selectedNoteIds.isNotEmpty(), onClick = {
+                    TextButton(enabled = selectedNoteIds.isNotEmpty() && filter != LibraryFilter.TRASH, onClick = { batchMoveError = false; batchMoveOpen = true }) { Text(tr("Move", "移动")) }
+                    TextButton(enabled = selectedNoteIds.isNotEmpty(), modifier = Modifier.semantics { contentDescription = if (filter == LibraryFilter.TRASH) "Restore selected notebooks" else "Trash selected notebooks" }, onClick = {
                         selectedNoteIds.forEach { id ->
                             if (filter == LibraryFilter.TRASH) onRestore(id) else onTrash(id)
                         }
@@ -1285,13 +1287,16 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
     if (batchMoveOpen) AlertDialog(
         onDismissRequest = { batchMoveOpen = false },
         title = { Text(tr("Move selected notebooks", "移动所选笔记本")) },
-        text = { LazyColumn(Modifier.heightIn(max = 360.dp)) {
+        text = { Column {
+          if (batchMoveError) Text(tr("The destination is unavailable; no notebooks were moved.", "目标文件夹不可用；笔记本未移动。"), color = MaterialTheme.colorScheme.error)
+          LazyColumn(Modifier.heightIn(max = 360.dp)) {
             item { ListItem(headlineContent = { Text(tr("Library root", "资料库根目录")) }, modifier = Modifier.clickable {
-                if (onMoveNotesToFolder(selectedNoteIds, null)) { selectedNoteIds = emptySet(); managingNotes = false; batchMoveOpen = false }
+                if (onMoveNotesToFolder(selectedNoteIds, null)) { selectedNoteIds = emptySet(); managingNotes = false; batchMoveOpen = false } else batchMoveError = true
             }) }
             items(folders, key = { it.id }) { folder -> ListItem(headlineContent = { Text(folder.name) }, modifier = Modifier.clickable {
-                if (onMoveNotesToFolder(selectedNoteIds, folder.id)) { selectedNoteIds = emptySet(); managingNotes = false; batchMoveOpen = false }
+                if (onMoveNotesToFolder(selectedNoteIds, folder.id)) { selectedNoteIds = emptySet(); managingNotes = false; batchMoveOpen = false } else batchMoveError = true
             }) }
+          }
         } },
         confirmButton = { TextButton(onClick = { batchMoveOpen = false }) { Text(tr("Cancel", "取消")) } },
     )
