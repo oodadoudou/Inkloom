@@ -438,27 +438,27 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun toggleLayerAlphaLock(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
         val existingContentIds = page.elements.filter { it.layerId == layerId }.map(PageElement::id)
         page.copy(layers = page.layers.map { layer ->
-            if (layer.id != layerId || layer.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) layer
+            if (layer.id != layerId || !layer.isPaintSurfaceLayer()) layer
             else if (layer.alphaLock) layer.copy(alphaLock = false, alphaLockBaseContentIds = emptyList())
             else layer.copy(alphaLock = true, alphaLockBaseContentIds = existingContentIds)
         })
     }
 
     fun toggleLayerClippedToBelow(documentId: String, pageId: String, layerId: String) = updateLayerStructure(documentId, pageId) { page ->
-        page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(clippedToBelow = !it.clippedToBelow) else it })
+        page.copy(layers = page.layers.map { if (it.id == layerId && it.isPaintSurfaceLayer()) it.copy(clippedToBelow = !it.clippedToBelow) else it })
     }
 
     fun toggleLayerReference(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
-        page.copy(layers = page.layers.map { if (it.id == layerId && it.role != LayerRole.BACKGROUND) it.copy(reference = !it.reference) else it })
+        page.copy(layers = page.layers.map { if (it.id == layerId && it.isPaintSurfaceLayer()) it.copy(reference = !it.reference) else it })
     }
 
     fun toggleLayerDraft(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
-        page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(draft = !it.draft) else it })
+        page.copy(layers = page.layers.map { if (it.id == layerId && it.isPaintSurfaceLayer()) it.copy(draft = !it.draft) else it })
     }
 
     fun toggleLayerDrawingAssist(documentId: String, pageId: String, layerId: String, guide: app.inkloom.document.LayerDrawingGuide) = updatePage(documentId, pageId) { page ->
         page.copy(layers = page.layers.map { layer ->
-            if (layer.id != layerId || layer.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) layer
+            if (layer.id != layerId || !layer.isPaintSurfaceLayer()) layer
             else if (layer.drawingAssist) layer.copy(drawingAssist = false)
             else layer.copy(drawingAssist = true, drawingGuide = guide)
         })
@@ -466,7 +466,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
 
     fun updateLayerDrawingGuide(documentId: String, pageId: String, layerId: String, guide: app.inkloom.document.LayerDrawingGuide) = updatePage(documentId, pageId) { page ->
         page.copy(layers = page.layers.map { layer ->
-            if (layer.id == layerId && layer.drawingAssist && layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) layer.copy(drawingGuide = guide) else layer
+            if (layer.id == layerId && layer.drawingAssist && layer.isPaintSurfaceLayer()) layer.copy(drawingGuide = guide) else layer
         })
     }
 
@@ -502,7 +502,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         val layer = page.layers.firstOrNull { it.id == layerId } ?: return@updateLayerStructure page
         when (layer.role) {
             LayerRole.FOLDER -> LayerHierarchy.removeFolder(page, layerId)
-            LayerRole.CUSTOM -> page.copy(
+            LayerRole.CUSTOM, LayerRole.ADJUSTMENT -> page.copy(
                 layers = page.layers.filterNot { it.id == layerId },
                 elements = page.elements.map { element -> if (element.layerId == layerId) element.withLayer(LayerIds.OBJECTS) else element },
             )

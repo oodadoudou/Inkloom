@@ -34,18 +34,20 @@ internal fun Modifier.layerCheckerboard() = drawBehind {
 @Composable
 internal fun LayerQuickActions(
     layer: InkLayer?, layers: List<InkLayer>, language: app.inkloom.settings.UiLanguage, onAdd: () -> Unit, onFolder: () -> Unit,
+    onAdjustment: (LayerAdjustmentKind) -> Unit,
     onLock: () -> Unit, onAlphaLock: () -> Unit, onClip: () -> Unit,
     onReference: () -> Unit, onDraft: () -> Unit, onMask: (LayerMaskCommand) -> Unit,
     onDuplicate: () -> Unit, onMerge: () -> Unit, onDelete: () -> Unit,
 ) {
     fun tr(en: String, zh: String) = language.text(en, zh)
-    val content = layer != null && layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)
+    val content = layer?.isPaintSurfaceLayer() == true
     val editable = layer != null && layer.role != LayerRole.BACKGROUND && !LayerHierarchy.effectiveLocked(layers, layer)
     var maskOpen by remember(layer?.id) { mutableStateOf(false) }
+    var adjustmentOpen by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().height(34.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceEvenly) {
         LayerQuickIcon(Icons.Outlined.ContentCut, tr("Toggle clipping", "切换剪贴"), editable && content, layer?.clippedToBelow == true, onClip)
-        LayerQuickIcon(Icons.Outlined.Lightbulb, tr("Toggle reference", "切换参考图层"), editable, layer?.reference == true, onReference)
+        LayerQuickIcon(Icons.Outlined.Lightbulb, tr("Toggle reference", "切换参考图层"), editable && content, layer?.reference == true, onReference)
         LayerQuickIcon(Icons.Outlined.EditNote, tr("Toggle draft", "切换草稿图层"), editable && content, layer?.draft == true, onDraft)
         LayerQuickIcon(Icons.Outlined.Lock, tr("Toggle layer lock", "切换图层锁定"), layer != null && layer.role != LayerRole.BACKGROUND, layer?.locked == true, onLock)
         LayerQuickIcon(Icons.Outlined.GridOn, tr("Toggle alpha lock", "切换透明度锁定"), editable && content, layer?.alphaLock == true, onAlphaLock)
@@ -53,6 +55,15 @@ internal fun LayerQuickActions(
     Row(Modifier.fillMaxWidth().height(36.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceEvenly) {
         LayerQuickIcon(Icons.Outlined.NoteAdd, tr("Add layer", "添加图层"), true, false, onAdd)
+        Box {
+            LayerQuickIcon(Icons.Outlined.Tune, tr("Add adjustment layer", "添加调整图层"), true, false) { adjustmentOpen = true }
+            DropdownMenu(adjustmentOpen, { adjustmentOpen = false }) {
+                LayerAdjustmentKind.entries.forEach { kind ->
+                    DropdownMenuItem(text = { Text(adjustmentName(kind, language)) },
+                        onClick = { adjustmentOpen = false; onAdjustment(kind) })
+                }
+            }
+        }
         LayerQuickIcon(Icons.Outlined.CreateNewFolder, tr("Add layer group", "添加图层组"), true, false, onFolder)
         LayerQuickIcon(Icons.Outlined.ContentCopy, tr("Duplicate active layer", "复制当前图层"), editable, false, onDuplicate)
         LayerQuickIcon(Icons.Outlined.MergeType, tr("Merge active layer down", "当前图层向下合并"), editable && content, false, onMerge)
@@ -62,7 +73,7 @@ internal fun LayerQuickActions(
                 layer?.let { LayerMaskMenuItems(it) { command -> maskOpen = false; onMask(command) } }
             }
         }
-        LayerQuickIcon(Icons.Outlined.Delete, tr("Delete active layer", "删除当前图层"), editable && layer?.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER), false, onDelete)
+        LayerQuickIcon(Icons.Outlined.Delete, tr("Delete active layer", "删除当前图层"), editable && layer?.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER, LayerRole.ADJUSTMENT), false, onDelete)
     }
 }
 

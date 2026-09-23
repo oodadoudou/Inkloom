@@ -1653,6 +1653,7 @@ private fun EditorScreen(
     var selectionActive by remember(document.id, selectedPage.id) { mutableStateOf(false) }
     var selectionTransformState by remember(document.id, selectedPage.id) { mutableStateOf<SelectionTransformUiState?>(null) }
     var activeLayerId by rememberSaveable(document.id, selectedPage.id) { mutableStateOf(LayerIds.INK) }
+    var adjustmentDialogId by remember(document.id, selectedPage.id) { mutableStateOf<String?>(null) }
     var editingMaskId by remember(document.id, selectedPage.id) { mutableStateOf<String?>(null) }
     val maskAssets = remember(context) { DocumentAssetService(context) }
     val maskFailurePrefix by rememberUpdatedState(tr("Could not edit mask", "无法编辑蒙版"))
@@ -1664,6 +1665,9 @@ private fun EditorScreen(
     }
     DisposableEffect(maskEditor) { onDispose { maskEditor.close() } }
     fun createLayer(folder: Boolean) { canvasView?.onLayerCreationRequested?.invoke(activeLayerId, folder) }
+    fun createAdjustmentLayer(kind: LayerAdjustmentKind) {
+        canvasView?.onAdjustmentLayerCreationRequested?.invoke(activeLayerId, LayerAdjustment(kind)) { adjustmentDialogId = it }
+    }
     fun performLayerMaskCommand(layerId: String, command: LayerMaskCommand) {
         maskEditor.execute(layerId, command)
     }
@@ -3402,6 +3406,8 @@ private fun EditorScreen(
                 onSelectContents = ::selectLayerContents,
                 onAdd = { createLayer(folder = false) },
                 onAddFolder = { createLayer(folder = true) },
+                onAddAdjustment = ::createAdjustmentLayer,
+                onEditAdjustment = { adjustmentDialogId = it },
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
@@ -3602,6 +3608,19 @@ private fun EditorScreen(
                 tool = EditorTool.SELECT
             }) { Text(tr("Insert", "插入")) } },
             dismissButton = { TextButton(onClick = { linkInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
+        )
+    }
+    adjustmentDialogId?.let { layerId ->
+        val adjustmentLayer = selectedPage.layers.firstOrNull { it.id == layerId && it.role == LayerRole.ADJUSTMENT }
+        if (adjustmentLayer != null) AdjustmentLayerDialog(
+            layer = adjustmentLayer,
+            onDismiss = { appearanceEditor.cancelAdjustment(layerId); adjustmentDialogId = null },
+            onPreview = { appearanceEditor.previewAdjustment(layerId, it) },
+            onApply = { value ->
+                appearanceEditor.previewAdjustment(layerId, value)
+                appearanceEditor.commitAdjustment(layerId)
+                adjustmentDialogId = null
+            },
         )
     }
     if (shapeInsertOpen) AlertDialog(
@@ -4502,6 +4521,14 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 { id -> onSelectionTransferLayerChosen(id); view.selectLayerContent(id) }, gradientCommitScope,
                 { Toast.makeText(context, settings.language.text("Could not create or restore layer; finish the current operation or unlock its folder", "无法新建或恢复图层，请完成当前操作或解锁目标文件夹"), Toast.LENGTH_SHORT).show() }
             ).create(view, targetId, folder)
+        }
+        view.onAdjustmentLayerCreationRequested = { targetId, adjustment, onCreated ->
+            LayerCreationEditor(documentId, page.id, { currentMergePage }, rasterSurfaceRuntime,
+                pendingRasterSaves, rasterCommitMutex, latestRasterAssets,
+                { edit, undo -> onApplyLayerInsertion(documentId, page.id, edit, undo) },
+                { id -> onSelectionTransferLayerChosen(id); view.selectLayerContent(id) }, gradientCommitScope,
+                { Toast.makeText(context, settings.language.text("Could not add adjustment layer", "无法添加调整图层"), Toast.LENGTH_SHORT).show() }
+            ).create(view, targetId, folder = false, adjustment = adjustment, onCreated = onCreated)
         }
         view.onLayerMergeRequested = { request ->
             LayerMergeController(context, documentId, assets, rasterSurfaceRuntime, rasterCommitMutex,
@@ -6330,7 +6357,7 @@ internal fun LayerMaskMenuItems(
             text = { Text(tr("Load mask as selection", "从蒙版载入选区")) },
             onClick = { onCommand(LayerMaskCommand.LOAD_AS_SELECTION) },
         )
-        DropdownMenuItem(
+        if (layer.role != LayerRole.ADJUSTMENT) DropdownMenuItem(
             text = { Text(tr("Apply layer mask", "应用图层蒙版")) },
             onClick = { onCommand(LayerMaskCommand.APPLY) },
         )
@@ -6415,6 +6442,8 @@ private fun LayerPanel(
     onSelectContents: (String) -> Unit,
     onAdd: () -> Unit,
     onAddFolder: () -> Unit,
+    onAddAdjustment: (LayerAdjustmentKind) -> Unit,
+    onEditAdjustment: (String) -> Unit,
     onRename: (String, String) -> Unit,
     onVisibility: (String) -> Unit,
     onLock: (String) -> Unit,
@@ -6453,6 +6482,8 @@ private fun LayerPanel(
             onSelectContents = onSelectContents,
             onAdd = onAdd,
             onAddFolder = onAddFolder,
+            onAddAdjustment = onAddAdjustment,
+            onEditAdjustment = onEditAdjustment,
             onRename = onRename,
             onVisibility = onVisibility,
             onLock = onLock,
@@ -6507,6 +6538,8 @@ private fun PaintingLayerPanel(
     onSelectContents: (String) -> Unit,
     onAdd: () -> Unit,
     onAddFolder: () -> Unit,
+    onAddAdjustment: (LayerAdjustmentKind) -> Unit,
+    onEditAdjustment: (String) -> Unit,
     onRename: (String, String) -> Unit,
     onVisibility: (String) -> Unit,
     onLock: (String) -> Unit,
@@ -6625,7 +6658,7 @@ private fun PaintingLayerPanel(
                 language = LocalUiLanguage.current,
                 onOpacity = { onOpacity(activeLayerId, it) },
                 onMode = { onBlendMode(activeLayerId, it) }, onThrough = { onThrough(activeLayerId) })
-            LayerQuickActions(propertyLayer, page.layers, LocalUiLanguage.current, onAdd, onAddFolder,
+            LayerQuickActions(propertyLayer, page.layers, LocalUiLanguage.current, onAdd, onAddFolder, onAddAdjustment,
                 onLock = { onLock(activeLayerId) }, onAlphaLock = { onToggleAlphaLock(activeLayerId) },
                 onClip = { onToggleClippedToBelow(activeLayerId) }, onReference = { onToggleReference(activeLayerId) },
                 onDraft = { onToggleDraft(activeLayerId) }, onMask = { onMaskCommand(activeLayerId, it) },
@@ -6654,7 +6687,7 @@ private fun PaintingLayerPanel(
                         onMerge(RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_SELECTED, activeLayerId, selectedLayerIds + activeLayerId))
                         onSecondarySelection(emptySet())
                     }, Modifier.size(32.dp)) { Icon(Icons.Outlined.MergeType, tr("Merge selected layers", "合并所选图层"), Modifier.size(17.dp)) }
-                    IconButton({ selectedLayerIds.mapNotNull { id -> page.layers.firstOrNull { it.id == id } }.filter { it.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER) }.forEach { onDelete(it.id) }; onSecondarySelection(emptySet()) }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Delete, tr("Delete selected custom layers", "删除所选自定义图层"), Modifier.size(17.dp)) }
+                    IconButton({ selectedLayerIds.mapNotNull { id -> page.layers.firstOrNull { it.id == id } }.filter { it.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER, LayerRole.ADJUSTMENT) }.forEach { onDelete(it.id) }; onSecondarySelection(emptySet()) }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Delete, tr("Delete selected custom layers", "删除所选自定义图层"), Modifier.size(17.dp)) }
                     IconButton({ onSecondarySelection(emptySet()) }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Close, tr("Exit layer selection", "退出图层多选"), Modifier.size(17.dp)) }
                 }
             }
@@ -6683,7 +6716,7 @@ private fun PaintingLayerPanel(
                     val swipeActions = buildList<Pair<String, () -> Unit>> {
                         add((if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) to { onLock(layer.id) })
                         if (layer.role != LayerRole.BACKGROUND) add(tr("Duplicate", "复制") to { onDuplicate(layer.id) })
-                        if (layer.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER)) add(tr("Delete", "删除") to { onDelete(layer.id) })
+                        if (layer.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER, LayerRole.ADJUSTMENT)) add(tr("Delete", "删除") to { onDelete(layer.id) })
                     }
                     val layerRowDescription = tr("Select layer", "选择图层")
                     val rowInk = if (layer.id == activeLayerId) Color.White else Ink
@@ -6726,10 +6759,23 @@ private fun PaintingLayerPanel(
                         }
                         Spacer(Modifier.width((4 + depth * 16).dp))
                         if (settings.layerShowThumbnails) {
-                            val thumbnailDescription = if (layer.role == LayerRole.FOLDER) "${tr("Toggle folder", "折叠或展开文件夹")} ${layer.name}" else "${tr("Layer content", "图层内容")} ${layer.name}"
-                            Surface(Modifier.size(thumbnailSize).semantics { contentDescription = thumbnailDescription }.clickable { if (layer.role == LayerRole.FOLDER) onToggleFolderCollapsed(layer.id) else { onSecondarySelection(emptySet()); onSelect(layer.id) } }, shape = RoundedCornerShape(1.dp), color = Paper, border = androidx.compose.foundation.BorderStroke(
+                            val thumbnailDescription = when (layer.role) {
+                                LayerRole.FOLDER -> "${tr("Toggle folder", "折叠或展开文件夹")} ${layer.name}"
+                                LayerRole.ADJUSTMENT -> "${tr("Edit adjustment", "编辑调整参数")} ${layer.name}"
+                                else -> "${tr("Layer content", "图层内容")} ${layer.name}"
+                            }
+                            Surface(Modifier.size(thumbnailSize).semantics { contentDescription = thumbnailDescription }.clickable {
+                                when (layer.role) {
+                                    LayerRole.FOLDER -> onToggleFolderCollapsed(layer.id)
+                                    LayerRole.ADJUSTMENT -> if (!LayerHierarchy.effectiveLocked(page.layers, layer)) { onSecondarySelection(emptySet()); onSelect(layer.id); onEditAdjustment(layer.id) }
+                                    else -> { onSecondarySelection(emptySet()); onSelect(layer.id) }
+                                }
+                            }, shape = RoundedCornerShape(1.dp), color = Paper, border = androidx.compose.foundation.BorderStroke(
                                 if (layer.id == activeLayerId && editingMaskId != layer.id) 2.dp else 1.dp, if (selected) Ink else MutedInk)) {
-                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) LayerContentPreview(page, layer, Modifier.fillMaxSize())
+                                if (layer.role == LayerRole.ADJUSTMENT) Box(Modifier.fillMaxSize().background(Workspace), contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Outlined.Tune, null, Modifier.size(24.dp), tint = Ink)
+                                }
+                                else if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) LayerContentPreview(page, layer, Modifier.fillMaxSize())
                                 else if (layer.role == LayerRole.BACKGROUND) Box(Modifier.fillMaxSize().background(Color(
                                     (page.background as? PageBackground.Paper)?.colorArgb?.toInt() ?: android.graphics.Color.WHITE)))
                                 else Box(contentAlignment = Alignment.Center) {
@@ -6792,12 +6838,13 @@ private fun PaintingLayerPanel(
                             }
                             DropdownMenu(menu, { menu = false }) {
                                 DropdownMenuItem(text = { Text(if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) }, onClick = { menu = false; onLock(layer.id) })
-                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.alphaLock) tr("Unlock alpha", "解锁透明度") else tr("Lock alpha", "锁定透明度")) }, onClick = { menu = false; onToggleAlphaLock(layer.id) })
-                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.clippedToBelow) tr("Stop clipping", "取消剪贴") else tr("Clipping mask", "剪贴蒙版")) }, onClick = { menu = false; onToggleClippedToBelow(layer.id) })
-                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(if (layer.reference) tr("Unset reference layer", "取消参考图层") else tr("Set as reference layer", "设为参考图层")) }, onClick = { menu = false; onToggleReference(layer.id) })
-                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.draft) tr("Unset draft layer", "取消草稿图层") else tr("Set as draft layer", "设为草稿图层")) }, onClick = { menu = false; onToggleDraft(layer.id) })
-                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.drawingAssist) tr("Turn off Drawing Assist", "关闭绘图辅助") else tr("Turn on Drawing Assist", "开启绘图辅助")) }, onClick = { menu = false; onToggleDrawingAssist(layer.id) })
-                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Select contents", "选取内容")) }, onClick = { menu = false; onSelectContents(layer.id) })
+                                if (layer.role == LayerRole.ADJUSTMENT) DropdownMenuItem(text = { Text(tr("Edit adjustment", "编辑调整参数")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditAdjustment(layer.id) })
+                                if (layer.isPaintSurfaceLayer()) DropdownMenuItem(text = { Text(if (layer.alphaLock) tr("Unlock alpha", "解锁透明度") else tr("Lock alpha", "锁定透明度")) }, onClick = { menu = false; onToggleAlphaLock(layer.id) })
+                                if (layer.isPaintSurfaceLayer()) DropdownMenuItem(text = { Text(if (layer.clippedToBelow) tr("Stop clipping", "取消剪贴") else tr("Clipping mask", "剪贴蒙版")) }, onClick = { menu = false; onToggleClippedToBelow(layer.id) })
+                                if (layer.isPaintSurfaceLayer()) DropdownMenuItem(text = { Text(if (layer.reference) tr("Unset reference layer", "取消参考图层") else tr("Set as reference layer", "设为参考图层")) }, onClick = { menu = false; onToggleReference(layer.id) })
+                                if (layer.isPaintSurfaceLayer()) DropdownMenuItem(text = { Text(if (layer.draft) tr("Unset draft layer", "取消草稿图层") else tr("Set as draft layer", "设为草稿图层")) }, onClick = { menu = false; onToggleDraft(layer.id) })
+                                if (layer.isPaintSurfaceLayer()) DropdownMenuItem(text = { Text(if (layer.drawingAssist) tr("Turn off Drawing Assist", "关闭绘图辅助") else tr("Turn on Drawing Assist", "开启绘图辅助")) }, onClick = { menu = false; onToggleDrawingAssist(layer.id) })
+                                if (layer.isPaintSurfaceLayer()) DropdownMenuItem(text = { Text(tr("Select contents", "选取内容")) }, onClick = { menu = false; onSelectContents(layer.id) })
                                 if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Mask", "蒙版")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; maskMenu = true })
                                 DropdownMenuItem(text = { Text(tr("Palette color", "图层颜色标签")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; paletteColorMenu = true })
                                 DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
@@ -6809,8 +6856,8 @@ private fun PaintingLayerPanel(
                                 DropdownMenuItem(text = { Text(tr("Move up", "上移")) }, enabled = siblingDrop(layer, 1) != null, onClick = { menu = false; siblingDrop(layer, 1)?.let { onRelocate(layer.id, setOf(layer.id), it) } })
                                 DropdownMenuItem(text = { Text(tr("Move down", "下移")) }, enabled = siblingDrop(layer, -1) != null, onClick = { menu = false; siblingDrop(layer, -1)?.let { onRelocate(layer.id, setOf(layer.id), it) } })
                                 if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(layer.id) })
-                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Merge down", "向下合并")) }, onClick = { menu = false; onMergeDown(layer.id) })
-                                if (layer.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Delete", "删除")) }, onClick = { menu = false; onDelete(layer.id) })
+                                if (layer.isPaintSurfaceLayer()) DropdownMenuItem(text = { Text(tr("Merge down", "向下合并")) }, onClick = { menu = false; onMergeDown(layer.id) })
+                                if (layer.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER, LayerRole.ADJUSTMENT)) DropdownMenuItem(text = { Text(tr("Delete", "删除")) }, onClick = { menu = false; onDelete(layer.id) })
                             }
                         }
                     }

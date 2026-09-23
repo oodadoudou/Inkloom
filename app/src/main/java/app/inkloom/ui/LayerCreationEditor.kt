@@ -20,7 +20,8 @@ internal class LayerCreationEditor(
     private val scope: CoroutineScope,
     private val rejected: () -> Unit,
 ) {
-    fun create(view: InkCanvasView, targetId: String, folder: Boolean) {
+    fun create(view: InkCanvasView, targetId: String, folder: Boolean, adjustment: LayerAdjustment? = null,
+        onCreated: ((String) -> Unit)? = null) {
         if (view.selectionLayerTransferPending || view.hasActivePaintContact() ||
             !view.isBoundToSelectionPage(documentId, pageId)) { rejected(); return }
         view.finishSelectionTransform(apply = true)
@@ -29,13 +30,14 @@ internal class LayerCreationEditor(
             try {
                 awaitPublication(view)
                 mutex.withLock {
-                    val edit = checkNotNull(LayerInsertionEdit.create(page(), targetId, folder))
+                    val edit = checkNotNull(LayerInsertionEdit.create(page(), targetId, folder, adjustment = adjustment))
                     val createdPage = checkNotNull(edit.apply(page()))
                     check(apply(edit, false))
                     // Install and retain the same surface that later paint-history records mutate.
                     // Recreating it on redo would detach those records from the displayed pixels.
-                    val surface = if (folder) null else runtime.retainCreatedLayerForHistory(createdPage, edit.layer)
+                    val surface = if (folder || adjustment != null) null else runtime.retainCreatedLayerForHistory(createdPage, edit.layer)
                     select(edit.layer.id)
+                    onCreated?.invoke(edit.layer.id)
                     fun restore(undo: Boolean) {
                         view.selectionLayerTransferPending = true
                         scope.launch {

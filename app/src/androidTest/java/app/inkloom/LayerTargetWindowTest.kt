@@ -19,6 +19,8 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.ui.InkCanvasView
@@ -128,6 +130,32 @@ class LayerTargetWindowTest {
         tap("Layer actions $drawingLayerName")
         tap("Turn off Drawing Assist")
         compose.waitUntil { !model.currentPage()!!.layers.first { it.name == drawingLayerName }.drawingAssist }
+    }
+
+    @Test fun adjustmentCreationPreviewCancelApplyAndHistoryUseTheWindowControls() {
+        tap("New Note"); tap("Create")
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync { model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java] }
+        tap("Layers"); tap("Add adjustment layer"); tap("Brightness / Contrast")
+        compose.waitUntil(10_000) { model.currentPage()?.layers?.any { it.role == app.inkloom.document.LayerRole.ADJUSTMENT } == true }
+        val id = model.currentPage()!!.layers.single { it.role == app.inkloom.document.LayerRole.ADJUSTMENT }.id
+        compose.onNodeWithContentDescription("Brightness adjustment").performSemanticsAction(SemanticsActions.SetProgress) { it(.3f) }
+        tap("Cancel")
+        assertEquals(0f, model.currentPage()!!.layers.single { it.id == id }.adjustment!!.brightness)
+        tap("Edit adjustment Adjustment 1")
+        compose.onNodeWithContentDescription("Brightness adjustment").performSemanticsAction(SemanticsActions.SetProgress) { it(.3f) }
+        tap("Apply")
+        compose.waitUntil(10_000) { model.currentPage()!!.layers.single { it.id == id }.adjustment!!.brightness > .25f }
+        val time = SystemClock.uptimeMillis()
+        instrumentation.sendKeySync(android.view.KeyEvent(time, time, android.view.KeyEvent.ACTION_DOWN,
+            android.view.KeyEvent.KEYCODE_Z, 0, android.view.KeyEvent.META_CTRL_ON))
+        instrumentation.sendKeySync(android.view.KeyEvent(time, time + 1, android.view.KeyEvent.ACTION_UP,
+            android.view.KeyEvent.KEYCODE_Z, 0, android.view.KeyEvent.META_CTRL_ON))
+        compose.waitUntil(10_000) { model.currentPage()!!.layers.single { it.id == id }.adjustment!!.brightness == 0f }
+        tap("Layer actions Adjustment 1"); tap("Mask"); tap("Mask selection")
+        compose.waitUntil(10_000) { model.currentPage()!!.layers.single { it.id == id }.mask?.surface != null }
+        compose.activityRule.scenario.recreate()
+        compose.waitUntil(10_000) { model.currentPage()?.layers?.singleOrNull { it.id == id }?.mask?.surface != null }
     }
 
     @Test fun creationFollowsSelectedSiblingOrFolderAndSharesPaintHistory() {

@@ -6,6 +6,8 @@ import androidx.compose.runtime.setValue
 import app.inkloom.document.InkPage
 import app.inkloom.document.LayerOpacityEdit
 import app.inkloom.document.LayerAppearanceEdit
+import app.inkloom.document.LayerAdjustment
+import app.inkloom.document.LayerAdjustmentEdit
 import app.inkloom.document.LayerBlendEdit
 import app.inkloom.document.LayerBlendMode
 import app.inkloom.document.LayerHierarchy
@@ -81,6 +83,25 @@ internal class LayerAppearanceEditor(
                 LayerPaletteColorEdit(layerId, it.paletteColor, color)
             }) commit()
         rejectedGesture = false
+    }
+
+    fun previewAdjustment(layerId: String, value: LayerAdjustment) {
+        if (closed || finishing) return
+        if (preview == null) {
+            val layer = page().layers.firstOrNull { it.id == layerId && it.role == LayerRole.ADJUSTMENT && it.adjustment != null }
+            if (layer == null) { rejected(); return }
+            if (!begin(layerId) { LayerAdjustmentEdit(layerId, requireNotNull(layer.adjustment), value) }) return
+        }
+        val current = preview as? LayerAdjustmentEdit ?: return
+        if (current.layerId == layerId) preview = current.copy(after = value)
+    }
+
+    fun commitAdjustment(layerId: String) {
+        if (preview is LayerAdjustmentEdit && preview?.layerId == layerId) commit()
+    }
+
+    fun cancelAdjustment(layerId: String) {
+        if (preview is LayerAdjustmentEdit && preview?.layerId == layerId) cancel()
     }
 
     fun move(primaryId: String, selected: Set<String>, drop: app.inkloom.document.LayerDrop) {

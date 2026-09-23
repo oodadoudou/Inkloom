@@ -1198,6 +1198,7 @@ class InkCanvasView(context: Context) : View(context) {
         onPaintCapabilityRejected(when (reason) {
             app.inkloom.document.LayerEditingTarget.Rejection.MISSING -> if (chinese) "此图层已不存在，请选择图层" else "This layer no longer exists. Select a layer."
             app.inkloom.document.LayerEditingTarget.Rejection.FOLDER -> if (chinese) "请选择文件夹内的图层进行绘画" else "Select a layer inside the folder to paint."
+            app.inkloom.document.LayerEditingTarget.Rejection.ADJUSTMENT -> if (chinese) "调整图层只能编辑参数或蒙版，请选择绘画图层" else "Edit the adjustment or its mask, or select a paint layer."
             app.inkloom.document.LayerEditingTarget.Rejection.BACKGROUND -> if (chinese) "纸张不能直接绘画，请选择绘画图层" else "Select a paint layer instead of the paper."
             app.inkloom.document.LayerEditingTarget.Rejection.LOCKED -> if (chinese) "请先解锁此图层或所属文件夹" else "Unlock this layer or its parent folder first."
             app.inkloom.document.LayerEditingTarget.Rejection.HIDDEN -> if (chinese) "请先显示此图层及所属文件夹" else "Show this layer and its parent folder first."
@@ -2027,6 +2028,7 @@ class InkCanvasView(context: Context) : View(context) {
             paint = { layer -> if (layer.role == app.inkloom.document.LayerRole.ADJUSTMENT && layer.adjustment != null)
                 PixelProjectionNode.Adjustment(layer.id, layer.adjustment,
                     layerOpacities[layer.id] ?: layer.opacity,
+                    (layerBlendModes[layer.id] ?: layer.blendMode).toPixelBlendMode(),
                     layerMasks[layer.id]?.takeIf { it.enabled }?.let { layerMaskSurfaces[layer.id] }, layer.visible)
             else PixelProjectionNode.Paint((inputs[layer.id] ?: PixelLayerProjectionInput(layer.id,
                 cache.emptySnapshot, opacity = layer.opacity, blendMode = layer.blendMode.toPixelBlendMode(),
@@ -6306,6 +6308,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     var onLayerCreationRequested: ((String, Boolean) -> Unit)? = null
+    var onAdjustmentLayerCreationRequested: ((String, app.inkloom.document.LayerAdjustment, (String) -> Unit) -> Unit)? = null
     var onLayerMergeRequested: (app.inkloom.document.RasterLayerMergeRequest) -> Unit = {}
     var onLayerTreeRequested: (app.inkloom.document.LayerTreeAction, String, Set<String>) -> Unit = { _, _, _ -> }
     private var pendingPaintPublicationsForMerge = 0

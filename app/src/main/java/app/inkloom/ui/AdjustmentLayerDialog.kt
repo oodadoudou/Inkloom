@@ -1,0 +1,95 @@
+package app.inkloom.ui
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import app.inkloom.document.*
+import app.inkloom.settings.UiLanguage
+import app.inkloom.settings.text
+import java.util.Locale
+
+internal fun adjustmentName(kind: LayerAdjustmentKind, language: UiLanguage): String = when (kind) {
+    LayerAdjustmentKind.BRIGHTNESS_CONTRAST -> language.text("Brightness / Contrast", "亮度／对比度")
+    LayerAdjustmentKind.HUE_SATURATION -> language.text("Hue / Saturation", "色相／饱和度")
+    LayerAdjustmentKind.LEVELS -> language.text("Levels", "色阶")
+    LayerAdjustmentKind.CURVES -> language.text("Curves", "曲线")
+    LayerAdjustmentKind.COLOR_BALANCE -> language.text("Color Balance", "色彩平衡")
+    LayerAdjustmentKind.GRADIENT_MAP -> language.text("Gradient Map", "渐变映射")
+}
+
+@Composable
+internal fun AdjustmentLayerDialog(layer: InkLayer, onDismiss: () -> Unit, onPreview: (LayerAdjustment) -> Unit, onApply: (LayerAdjustment) -> Unit) {
+    val language = LocalUiLanguage.current
+    var value by remember(layer.id) { mutableStateOf(layer.adjustment ?: LayerAdjustment()) }
+    fun update(next: LayerAdjustment) { value = next; onPreview(next) }
+    @Composable fun parameter(label: String, current: Float, range: ClosedFloatingPointRange<Float>, update: (Float) -> Unit) {
+        Text("$label  ${String.format(Locale.ROOT, "%.2f", current)}", style = MaterialTheme.typography.labelMedium)
+        Slider(current.coerceIn(range.start, range.endInclusive), update, valueRange = range,
+            modifier = Modifier.fillMaxWidth().height(34.dp).semantics { contentDescription = "$label adjustment" })
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(adjustmentName(value.kind, language)) },
+        text = {
+            Column(Modifier.widthIn(min = 270.dp, max = 430.dp).heightIn(max = 490.dp).verticalScroll(rememberScrollState())) {
+                when (value.kind) {
+                    LayerAdjustmentKind.BRIGHTNESS_CONTRAST -> {
+                        parameter(language.text("Brightness", "亮度"), value.brightness, -1f..1f) { update(value.copy(brightness = it)) }
+                        parameter(language.text("Contrast", "对比度"), value.contrast, -.95f..0.95f) { update(value.copy(contrast = it)) }
+                    }
+                    LayerAdjustmentKind.HUE_SATURATION -> {
+                        parameter(language.text("Hue", "色相"), value.hueDegrees, -180f..180f) { update(value.copy(hueDegrees = it)) }
+                        parameter(language.text("Saturation", "饱和度"), value.saturation, -1f..1f) { update(value.copy(saturation = it)) }
+                    }
+                    LayerAdjustmentKind.LEVELS -> {
+                        parameter(language.text("Input black", "输入黑场"), value.inputBlack, 0f..(value.inputWhite - .01f).coerceAtLeast(0f)) { update(value.copy(inputBlack = it)) }
+                        parameter(language.text("Gamma", "伽马"), value.inputGamma, .2f..4f) { update(value.copy(inputGamma = it)) }
+                        parameter(language.text("Input white", "输入白场"), value.inputWhite, (value.inputBlack + .01f).coerceAtMost(1f)..1f) { update(value.copy(inputWhite = it)) }
+                        parameter(language.text("Output black", "输出黑场"), value.outputBlack, 0f..value.outputWhite) { update(value.copy(outputBlack = it)) }
+                        parameter(language.text("Output white", "输出白场"), value.outputWhite, value.outputBlack..1f) { update(value.copy(outputWhite = it)) }
+                    }
+                    LayerAdjustmentKind.CURVES -> {
+                        listOf(.25f, .5f, .75f).forEach { x ->
+                            val current = value.curve.firstOrNull { kotlin.math.abs(it.input - x) < .001f }?.output ?: x
+                            parameter("${(x * 100).toInt()}%", current, 0f..1f) { output ->
+                                update(value.copy(curve = (value.curve.filterNot { kotlin.math.abs(it.input - x) < .001f } + AdjustmentCurvePoint(x, output)).sortedBy(AdjustmentCurvePoint::input)))
+                            }
+                        }
+                    }
+                    LayerAdjustmentKind.COLOR_BALANCE -> {
+                        parameter(language.text("Shadows · Red", "暗部 · 红"), value.shadowsRed, -.5f..0.5f) { update(value.copy(shadowsRed = it)) }
+                        parameter(language.text("Shadows · Green", "暗部 · 绿"), value.shadowsGreen, -.5f..0.5f) { update(value.copy(shadowsGreen = it)) }
+                        parameter(language.text("Shadows · Blue", "暗部 · 蓝"), value.shadowsBlue, -.5f..0.5f) { update(value.copy(shadowsBlue = it)) }
+                        parameter(language.text("Midtones · Red", "中间调 · 红"), value.midtonesRed, -.5f..0.5f) { update(value.copy(midtonesRed = it)) }
+                        parameter(language.text("Midtones · Green", "中间调 · 绿"), value.midtonesGreen, -.5f..0.5f) { update(value.copy(midtonesGreen = it)) }
+                        parameter(language.text("Midtones · Blue", "中间调 · 蓝"), value.midtonesBlue, -.5f..0.5f) { update(value.copy(midtonesBlue = it)) }
+                        parameter(language.text("Highlights · Red", "亮部 · 红"), value.highlightsRed, -.5f..0.5f) { update(value.copy(highlightsRed = it)) }
+                        parameter(language.text("Highlights · Green", "亮部 · 绿"), value.highlightsGreen, -.5f..0.5f) { update(value.copy(highlightsGreen = it)) }
+                        parameter(language.text("Highlights · Blue", "亮部 · 蓝"), value.highlightsBlue, -.5f..0.5f) { update(value.copy(highlightsBlue = it)) }
+                    }
+                    LayerAdjustmentKind.GRADIENT_MAP -> {
+                        value.gradient.take(2).forEachIndexed { index, stop ->
+                            var hex by remember(layer.id, index) { mutableStateOf("%06X".format(Locale.ROOT, stop.colorArgb and 0xFFFFFF)) }
+                            OutlinedTextField(hex, { raw ->
+                                hex = raw.take(6).uppercase(Locale.ROOT)
+                                val color = hex.toLongOrNull(16)
+                                if (hex.length == 6 && color != null) update(value.copy(gradient = value.gradient.toMutableList().apply {
+                                    this[index] = this[index].copy(colorArgb = 0xFF000000L or color)
+                                }))
+                            }, label = { Text(if (index == 0) language.text("Dark color · RGB hex", "暗部颜色 · RGB 十六进制") else language.text("Light color · RGB hex", "亮部颜色 · RGB 十六进制")) },
+                                singleLine = true, modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton({ onApply(value) }) { Text(language.text("Apply", "应用")) } },
+        dismissButton = { TextButton(onDismiss) { Text(language.text("Cancel", "取消")) } },
+    )
+}
