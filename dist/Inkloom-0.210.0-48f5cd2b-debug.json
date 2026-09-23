@@ -1,0 +1,31 @@
+{
+  "version": "0.210.0",
+  "versionCode": 210,
+  "variant": "debug",
+  "commit": "48f5cd2bd1e5915d319f6dd23d24737b2e37c651",
+  "sha256": "fdfbaf88bbd78a8bfe554696516424a2e50f2568ea1106c4e609e3ee6c01c820",
+  "bytes": 101223565,
+  "generatedUtc": "2026-09-23T18:38:55.253881+00:00",
+  "verification": {
+    "JVM": {
+      "tests": 914,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 8
+    },
+    "Android15Focused": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "scope": "cover picker cancellation and reuse, existing notebook cover change and persistence, baked crop independent of source image"
+    },
+    "lint": "PASS; 0 errors, 108 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS v2",
+    "ordinaryDebugSmoke": "Android 15 install and cold start (4590 ms): PASS",
+    "DriveDesktop": "Local sync-folder copy SHA-256 verified; remote cloud download not verified"
+  },
+  "deviceStatus": "DEVICE_PENDING",
+  "evidenceRoot": "app/build/test-results and app/build/outputs/androidTest-results/connected/debug"
+}
