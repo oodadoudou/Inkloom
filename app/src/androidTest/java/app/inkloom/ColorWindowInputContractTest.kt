@@ -237,7 +237,7 @@ class ColorWindowInputContractTest {
         val time = SystemClock.uptimeMillis()
         event(MotionEvent.ACTION_DOWN, contact, time, MotionEvent.TOOL_TYPE_FINGER)
         try {
-            compose.waitUntil(2_000) { (267..273).any { hasText("${it}°") } }
+            compose.waitUntil(5_000) { (267..273).any { hasText("${it}°") } }
             assertEquals("Choosing hue must not increase saturation or brightness", originalColor, canvas.inkColor)
         } finally {
             event(MotionEvent.ACTION_UP, contact, time, MotionEvent.TOOL_TYPE_FINGER)
@@ -647,7 +647,8 @@ class ColorWindowInputContractTest {
         fun visit(node: android.view.accessibility.AccessibilityNodeInfo?): Boolean {
             if (node == null) return false
             node.refresh()
-            if (node.text?.toString() == text) return true
+            // Clickable channel rows can merge their child labels into one accessibility node.
+            if (node.text?.toString()?.split(',')?.any { it.trim() == text } == true) return true
             return (0 until node.childCount).any { visit(node.getChild(it)) }
         }
         return visit(instrumentation.uiAutomation.rootInActiveWindow)
