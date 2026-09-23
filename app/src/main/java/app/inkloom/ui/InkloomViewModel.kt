@@ -484,7 +484,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun applyRasterLayerMerge(documentId: String, pageId: String, edit: RasterLayerMergeEdit, undo: Boolean, expected: InkPage?): Boolean {
         val current = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return false
         if (expected != null && current != expected) return false
-        if (current.layers.none { it.id == edit.target.id }) return false
+        if (!edit.canApply(current, undo)) return false
         updatePage(documentId, pageId) { edit.apply(it, undo) }
         return true
     }

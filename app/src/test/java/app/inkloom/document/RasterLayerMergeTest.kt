@@ -22,7 +22,9 @@ class RasterLayerMergeTest {
             elements = listOf(PageElement.Text(id = "note", x = .1f, y = .1f, text = "Test", layerId = upper.id)),
         )
         val edit = RasterLayerMerge.edit(original, upper.id, reference)
+        assertTrue(edit.canApply(original, undo = false))
         val merged = edit.apply(original, false)
+        assertTrue(edit.canApply(merged, undo = true))
         assertFalse(merged.layers.any { it.id == upper.id })
         assertTrue(merged.elements.isEmpty())
         assertEquals(1f, merged.layers.last().opacity)
@@ -78,8 +80,13 @@ class RasterLayerMergeTest {
             RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_VISIBLE_COPY),
         ).plan)
         assertTrue(copy.removedLayerIds.isEmpty())
-        val copied = RasterLayerMerge.edit(original, copy, reference).apply(original, false)
+        val copyEdit = RasterLayerMerge.edit(original, copy, reference)
+        assertTrue(copyEdit.canApply(original, undo = false))
+        val copied = copyEdit.apply(original, false)
         assertEquals(original.layers.size + 1, copied.layers.size)
+        assertFalse(copyEdit.canApply(copied, undo = false))
+        assertTrue(copyEdit.canApply(copied, undo = true))
+        assertEquals(original, copyEdit.apply(copied, true))
     }
 
     @Test fun visibleMergeConsumesVisibleCorrectionsAndNeverLeavesAnAdjustmentRoleOnRasterResult() {

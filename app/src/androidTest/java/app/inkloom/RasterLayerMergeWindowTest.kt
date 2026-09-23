@@ -92,6 +92,28 @@ class RasterLayerMergeWindowTest {
         org.junit.Assert.assertArrayEquals(merged, pixels(restored))
     }
 
+    @Test fun visibleCopyAddsOneLayerAndUndoRestoresTheOriginalTree() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync {
+            model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java]
+        }
+        stroke(pagePoint(view, .25f, .4f), pagePoint(view, .7f, .4f))
+        tap("Layers")
+        val before = requireNotNull(model.currentPage()).layers
+        tap("Layer merge commands"); tap("Merge visible to new layer")
+        compose.waitUntil(15_000) {
+            model.currentPage()?.layers?.size == before.size + 1 && !view.selectionLayerTransferPending
+        }
+        val copied = requireNotNull(model.currentPage()).layers
+        assertTrue(copied.containsAll(before))
+        tap("Undo")
+        compose.waitUntil(15_000) { model.currentPage()?.layers == before }
+        tap("Redo")
+        compose.waitUntil(15_000) { model.currentPage()?.layers == copied }
+    }
+
     private fun tapLayerActions(name: String) {
         val row = center(name)
         val candidates = mutableListOf<Offset>()

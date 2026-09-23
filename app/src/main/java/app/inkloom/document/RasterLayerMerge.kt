@@ -259,10 +259,13 @@ data class RasterLayerMergeEdit(
     val backgroundBefore: InkLayer? = null,
     val backgroundAfter: InkLayer? = null,
 ) {
-    /** Legacy conveniences retained while callers migrate to the operation-neutral model. */
-    val source: InkLayer get() = removedLayers.maxByOrNull(LayerAt::index)?.layer ?: merged
-    val target: InkLayer get() = removedLayers.minByOrNull(LayerAt::index)?.layer ?: merged
-    val originalElements: List<PageElement> get() = removedElements.map(ElementAt::element)
+    /** A visible copy has no removed source, so its new ID must be absent before Apply. */
+    fun canApply(page: InkPage, undo: Boolean): Boolean {
+        val presentIds = page.layers.mapTo(hashSetOf(), InkLayer::id)
+        return if (undo) merged.id in presentIds else
+            removedLayers.all { it.layer.id in presentIds } &&
+                (removedLayers.isNotEmpty() || merged.id !in presentIds)
+    }
 
     fun apply(page: InkPage, undo: Boolean): InkPage = if (undo) undo(page) else forward(page)
 
