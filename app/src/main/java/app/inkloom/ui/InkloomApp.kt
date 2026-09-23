@@ -861,11 +861,11 @@ fun InkloomApp(initialIntent: Intent?) {
         onDismissRequest = {},
         title = { Text(tr("Importing PDF", "正在导入 PDF")) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(if (progress.total > 0) tr("Page ${progress.completed} of ${progress.total}", "第 ${progress.completed} / ${progress.total} 页") else tr("Copying PDF…", "正在复制 PDF…"))
+            Text(if (progress.committing) tr("Saving notebook…", "正在保存笔记本…") else if (progress.total > 0) tr("Page ${progress.completed} of ${progress.total}", "第 ${progress.completed} / ${progress.total} 页") else tr("Copying PDF…", "正在复制 PDF…"))
             if (progress.total > 0) LinearProgressIndicator(progress = { progress.completed.toFloat() / progress.total }, modifier = Modifier.fillMaxWidth())
             else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         } },
-        confirmButton = { TextButton(onClick = viewModel::cancelPdfImport) { Text(tr("Cancel", "取消")) } },
+        confirmButton = { TextButton(enabled = !progress.committing, onClick = viewModel::cancelPdfImport) { Text(tr("Cancel", "取消")) } },
     ) }
     Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
     if (libraryState.migratingLegacyFills) {

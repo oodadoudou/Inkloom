@@ -59,7 +59,8 @@ class PdfTextIndexTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val source = File(context.cacheDir, "long-${System.nanoTime()}.pdf")
         val pdf = PdfDocument()
-        repeat(120) { index ->
+        val pageCount = 512
+        repeat(pageCount) { index ->
             val page = pdf.startPage(PdfDocument.PageInfo.Builder(600, 800, index + 1).create())
             pdf.finishPage(page)
         }
@@ -69,14 +70,14 @@ class PdfTextIndexTest {
             val service = DocumentAssetService(context)
             var completed = 0
             val failure = runCatching { service.importPdf(Uri.fromFile(source), "long.pdf", indexText = false,
-                onProgress = { count, total -> assertEquals(120, total); completed = count },
+                onProgress = { count, total -> assertEquals(pageCount, total); completed = count },
                 checkCancelled = { if (completed >= 25) throw CancellationException("cancel test") }) }
             assertTrue(failure.exceptionOrNull() is CancellationException)
             assertEquals(25, completed)
             val imported = service.importPdf(Uri.fromFile(source), "long.pdf", indexText = false,
-                onProgress = { count, total -> assertEquals(120, total); completed = count })
-            assertEquals(120, imported.pages.size)
-            assertEquals(120, completed)
+                onProgress = { count, total -> assertEquals(pageCount, total); completed = count })
+            assertEquals(pageCount, imported.pages.size)
+            assertEquals(pageCount, completed)
         } finally { source.delete() }
     }
 }

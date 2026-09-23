@@ -12,6 +12,7 @@ import app.inkloom.engine.v5.storage.RecoveryJournalEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,7 +36,7 @@ data class LibraryUiState(
     val legacyFillMigrationError: String? = null,
 )
 
-data class PdfImportProgress(val completed: Int, val total: Int)
+data class PdfImportProgress(val completed: Int, val total: Int, val committing: Boolean = false)
 
 class InkloomViewModel(application: Application) : AndroidViewModel(application) {
     private val store = FileDocumentStore(application.filesDir)
@@ -154,13 +155,13 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             val result = try {
                 val document = withContext(Dispatchers.IO) {
                     val running = coroutineContext
-                    val imported = assets.importPdf(uri, title, indexText = false,
+                    assets.importPdf(uri, title, indexText = false,
                         onProgress = { completed, total -> mutablePdfImportProgress.value = PdfImportProgress(completed, total) },
                         checkCancelled = { running.ensureActive() })
-                    running.ensureActive()
-                    store.save(imported)
-                    imported
                 }
+                coroutineContext.ensureActive()
+                mutablePdfImportProgress.value = PdfImportProgress(document.pages.size, document.pages.size, committing = true)
+                withContext(Dispatchers.IO + NonCancellable) { store.save(document) }
                 Result.success(document)
             } catch (failure: Throwable) { Result.failure(failure) }
             mutablePdfImportProgress.value = null
@@ -169,7 +170,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             pdfImportJob = null
         }
     }
-    fun cancelPdfImport() { pdfImportJob?.cancel(CancellationException("PDF import cancelled")) }
+    fun cancelPdfImport() { if (mutablePdfImportProgress.value?.committing != true) pdfImportJob?.cancel(CancellationException("PDF import cancelled")) }
     fun importImage(uri: Uri, title: String) = assets.importImage(uri, title).also { store.save(it); refresh(); select(it.id) }
     fun importBundle(uri: Uri) = assets.importBundle(uri).also { store.save(it); refresh(); select(it.id) }
     fun insertImage(uri: Uri) {
