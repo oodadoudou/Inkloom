@@ -21,6 +21,7 @@
 参考 [CSP 吸管子工具设置](https://help.clip-studio.com/en-us/manual_en/810_subtools/E.htm) 的当前层／画面取样及排除纸层、[CSP 色彩配置预览](https://help.clip-studio.com/en-us/manual_en/210_file/Preview_of_color_profile.htm) 的 RGB 文档配置与独立 CMYK 预览，以及 [Photoshop 软打样](https://helpx.adobe.com/photoshop/using/proofing-colors.html) 的输出设备配置、开关和渲染意图。Inkloom 不复制这些产品的图标或界面。
 
 参考 [CSP 颜色历史](https://help.clip-studio.com/en-us/manual_en/300_color/Color_History_palette.htm) 和 [Procreate 颜色面板](https://help.procreate.com/procreate/handbook/colors/colors-interface)：已提交的绘画颜色按最近使用顺序显示；点色块立即设为当前正在编辑的主色或副色；预览拖动不写历史，清空只影响当前笔记的历史，不修改画面或当前颜色。历史最多保留十个不同的 ARGB 色值，主副色共用，切换笔记不会串色。
+数值编辑沿用 RGB 作为默认通道视图，同时提供明确的 0–255 Alpha 通道；调整 RGB／HSV／HLS 时原有 Alpha 保持不变。预览可取消，确定才写入当前激活的主色或副色及颜色历史。
 
 - 吸管的「全部可见」「当前图层」「参考图层」必须真正改变取样源，且不受选区边框、悬停圈、变换手柄等交互覆盖影响；此设置独立于填色工具的参考源。全部可见可选择是否包含纸张；当前／参考图层永不隐式混入纸色。没有命中有色像素时不修改当前主／副色。半透明像素保留其 alpha 数值，不先压在白纸上假装不透明。取样结果仍写入当前激活的主色或副色。
 - RGB 文档配置描述像素数值的工作色域；当前 sRGB 编辑链解码带标签的图片对象时先转换到 sRGB，保留原始资源文件。「指定配置」只改变解释，「转换配置」必须调整颜色数值以保留外观，且不能通过 8 位 `Int` 默默丢失高精度。任何当前生产链无法保证的格式／配置应明确拒绝。

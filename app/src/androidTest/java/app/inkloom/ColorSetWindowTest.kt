@@ -80,6 +80,28 @@ class ColorSetWindowTest {
         assertEquals(beforeClear, colors.load(documentId))
     }
 
+    @Test fun numericAlphaCommitsOnlyToTheSelectedDrawingColor() {
+        val title = "Color alpha ${SystemClock.uptimeMillis()}"
+        openNewNotebook(title)
+        val documentId = FileDocumentStore(context.filesDir).list().first { it.title == title }.id
+        val colors = DrawingColorStore(context)
+        tap("Colors")
+        val before = colors.load(documentId)
+        tap("Edit color values")
+        compose.onNodeWithContentDescription("Color value A").performTextReplacement("128")
+        compose.onNodeWithText("Done").performClick()
+        compose.waitUntil(5_000) { colors.load(documentId).foreground ushr 24 == 128 }
+        assertEquals(before.foreground and 0x00ffffff, colors.load(documentId).foreground and 0x00ffffff)
+        assertEquals(before.background, colors.load(documentId).background)
+
+        tap("Edit secondary color")
+        tap("Edit color values")
+        compose.onNodeWithContentDescription("Color value A").performTextReplacement("64")
+        compose.onNodeWithText("Done").performClick()
+        compose.waitUntil(5_000) { colors.load(documentId).background ushr 24 == 64 }
+        assertEquals(128, colors.load(documentId).foreground ushr 24)
+    }
+
     @Test fun paletteAndNearbyCurrentColorSquaresOpenPrecisePickerForTheActiveColor() {
         val title = "Quick color ${SystemClock.uptimeMillis()}"
         openNewNotebook(title)

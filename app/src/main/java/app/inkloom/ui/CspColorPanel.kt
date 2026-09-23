@@ -256,6 +256,9 @@ internal fun CspColorPanel(
                         ColorValueInput("V", draft.value * 100, 100f) { update(draft.withHsv(value = it / 100)) }
                     }
                 }
+                ColorValueInput("A", AndroidColor.alpha(draft.color).toFloat(), 255f) { value ->
+                    update(draft.withColor((draft.color and 0x00ffffff) or (value.roundToInt() shl 24)))
+                }
             }
         }, confirmButton = {
             ColorDialogButton(tr("Done", "完成")) { publish(draft); editStart = null }
