@@ -49,36 +49,42 @@ class DocumentAssetService(private val context: Context) {
     @androidx.annotation.VisibleForTesting
     internal var v5RasterProjectionExportCount: Int = 0
 
-    fun importPdf(uri: Uri, title: String, indexText: Boolean = true): InkDocument {
-        val asset = copyAsset(uri, "pdf")
+    fun importPdf(uri: Uri, title: String, indexText: Boolean = true, onProgress: (Int, Int) -> Unit = { _, _ -> }, checkCancelled: () -> Unit = {}): InkDocument {
+        val asset = copyAsset(uri, "pdf", checkCancelled)
         val descriptor = ParcelFileDescriptor.open(asset, ParcelFileDescriptor.MODE_READ_ONLY)
-        val renderer = PdfRenderer(descriptor)
-        val pageIds = List(renderer.pageCount) { UUID.randomUUID().toString() }
-        val destinationPages = pageIds.mapIndexed { index, id ->
-            renderer.openPage(index).use { page ->
-                index to PdfDestinationPage(id, page.width.toFloat(), page.height.toFloat())
-            }
-        }.toMap()
-        val pages = (0 until renderer.pageCount).map { index ->
-            renderer.openPage(index).use { page ->
-                val textBlocks = if (indexText) extractPdfText(page) else null
-                val gotoLinks = if (indexText) extractPdfGotoLinks(page, destinationPages) else null
-                InkPage(
-                    id = pageIds[index],
-                    title = "Page ${index + 1}",
-                    width = page.width.toFloat(),
-                    height = page.height.toFloat(),
-                    background = PageBackground.Pdf(asset.absolutePath, index),
-                    pdfTextBlocks = textBlocks.orEmpty(),
-                    pdfTextIndexVersion = if (textBlocks != null) PDF_TEXT_INDEX_VERSION else 0,
-                    pdfGotoLinks = gotoLinks.orEmpty(),
-                    pdfLinkIndexVersion = if (gotoLinks != null) PDF_LINK_INDEX_VERSION else 0,
-                )
-            }
-        }
-        renderer.close(); descriptor.close()
-        require(pages.isNotEmpty()) { "PDF contains no pages" }
-        return InkDocument(title = title.substringBeforeLast('.').ifBlank { "Imported PDF" }, coverArgb = 0xFF707070, pages = pages)
+        try {
+            val renderer = PdfRenderer(descriptor)
+            try {
+                val count = renderer.pageCount
+                require(count in 1..MAX_IMPORT_PDF_PAGES) { "PDF has $count pages; the supported limit is $MAX_IMPORT_PDF_PAGES" }
+                val pageIds = List(count) { UUID.randomUUID().toString() }
+                val destinationPages = if (indexText) pageIds.mapIndexed { index, id ->
+                    checkCancelled()
+                    renderer.openPage(index).use { page -> index to PdfDestinationPage(id, page.width.toFloat(), page.height.toFloat()) }
+                }.toMap() else emptyMap()
+                val pages = ArrayList<InkPage>(count)
+                onProgress(0, count)
+                for (index in 0 until count) {
+                    checkCancelled()
+                    pages += renderer.openPage(index).use { page ->
+                        val textBlocks = if (indexText) extractPdfText(page) else null
+                        val gotoLinks = if (indexText) extractPdfGotoLinks(page, destinationPages) else null
+                        InkPage(
+                            id = pageIds[index], title = "Page ${index + 1}",
+                            width = page.width.toFloat(), height = page.height.toFloat(),
+                            background = PageBackground.Pdf(asset.absolutePath, index),
+                            pdfTextBlocks = textBlocks.orEmpty(),
+                            pdfTextIndexVersion = if (textBlocks != null) PDF_TEXT_INDEX_VERSION else 0,
+                            pdfGotoLinks = gotoLinks.orEmpty(),
+                            pdfLinkIndexVersion = if (gotoLinks != null) PDF_LINK_INDEX_VERSION else 0,
+                        )
+                    }
+                    onProgress(index + 1, count)
+                }
+                checkCancelled()
+                return InkDocument(title = title.substringBeforeLast('.').ifBlank { "Imported PDF" }, coverArgb = 0xFF707070, pages = pages)
+            } finally { renderer.close() }
+        } finally { descriptor.close() }
     }
 
     fun indexPdfText(document: InkDocument): InkDocument {
@@ -1269,6 +1275,7 @@ class DocumentAssetService(private val context: Context) {
         const val MAX_DYNAMIC_GRAIN_VARIANTS_PER_STROKE = 64
         const val PDF_TEXT_INDEX_VERSION = 1
         const val PDF_LINK_INDEX_VERSION = 1
+        const val MAX_IMPORT_PDF_PAGES = 20_000
         const val MAX_PDF_TEXT_CHARACTERS_PER_PAGE = 1_000_000
         const val MAX_PDF_TEXT_BLOCKS_PER_PAGE = 20_000
         const val MAX_PDF_BOUNDS_PER_BLOCK = 4_096
@@ -1278,17 +1285,25 @@ class DocumentAssetService(private val context: Context) {
         const val MAX_PDF_BOUNDS_PER_LINK = 16
     }
 
-    private fun copyAsset(uri: Uri, extension: String): File {
+    private fun copyAsset(uri: Uri, extension: String, checkCancelled: () -> Unit = {}): File {
         val digest = MessageDigest.getInstance("SHA-256")
         val temporary = File(directory, ".${System.nanoTime()}.tmp")
-        context.contentResolver.openInputStream(uri)?.use { input -> temporary.outputStream().use { output ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count); output.write(buffer, 0, count) }
-        } } ?: error("Selected asset is unreadable")
-        val hash = digest.digest().joinToString("") { "%02x".format(it) }
-        val target = File(directory, "$hash.${extension.lowercase().filter(Char::isLetterOrDigit).ifBlank { "asset" }}")
-        if (target.exists()) temporary.delete() else check(temporary.renameTo(target)) { "Could not retain imported asset" }
-        return target
+        try {
+            context.contentResolver.openInputStream(uri)?.use { input -> temporary.outputStream().use { output ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    checkCancelled()
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count); output.write(buffer, 0, count)
+                }
+            } } ?: error("Selected asset is unreadable")
+            checkCancelled()
+            val hash = digest.digest().joinToString("") { "%02x".format(it) }
+            val target = File(directory, "$hash.${extension.lowercase().filter(Char::isLetterOrDigit).ifBlank { "asset" }}")
+            if (target.exists()) temporary.delete() else check(temporary.renameTo(target)) { "Could not retain imported asset" }
+            return target
+        } finally { temporary.delete() }
     }
 
 }

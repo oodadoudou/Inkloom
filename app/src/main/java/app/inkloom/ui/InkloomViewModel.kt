@@ -10,11 +10,13 @@ import app.inkloom.settings.DrawingColorStore
 import app.inkloom.engine.v5.selection.DocumentSelectionRuntime
 import app.inkloom.engine.v5.storage.RecoveryJournalEntry
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -33,6 +35,8 @@ data class LibraryUiState(
     val legacyFillMigrationError: String? = null,
 )
 
+data class PdfImportProgress(val completed: Int, val total: Int)
+
 class InkloomViewModel(application: Application) : AndroidViewModel(application) {
     private val store = FileDocumentStore(application.filesDir)
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
@@ -47,6 +51,9 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     val state = mutableState.asStateFlow()
     private val mutablePageTemplates = MutableStateFlow(pageTemplateStore.load())
     val pageTemplates = mutablePageTemplates.asStateFlow()
+    private val mutablePdfImportProgress = MutableStateFlow<PdfImportProgress?>(null)
+    val pdfImportProgress = mutablePdfImportProgress.asStateFlow()
+    private var pdfImportJob: Job? = null
     private var assetGarbageCollectionJob: Job? = null
 
     override fun onCleared() {
@@ -137,6 +144,32 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         select(document.id)
         indexPdfText(document.id)
     }
+    fun importPdfAsync(uri: Uri, title: String, onComplete: (Result<InkDocument>) -> Unit) {
+        if (pdfImportJob?.isActive == true) {
+            onComplete(Result.failure(IllegalStateException("A PDF import is already running")))
+            return
+        }
+        mutablePdfImportProgress.value = PdfImportProgress(0, 0)
+        pdfImportJob = viewModelScope.launch {
+            val result = try {
+                val document = withContext(Dispatchers.IO) {
+                    val running = coroutineContext
+                    val imported = assets.importPdf(uri, title, indexText = false,
+                        onProgress = { completed, total -> mutablePdfImportProgress.value = PdfImportProgress(completed, total) },
+                        checkCancelled = { running.ensureActive() })
+                    running.ensureActive()
+                    store.save(imported)
+                    imported
+                }
+                Result.success(document)
+            } catch (failure: Throwable) { Result.failure(failure) }
+            mutablePdfImportProgress.value = null
+            result.onSuccess { document -> refresh(); select(document.id); indexPdfText(document.id) }
+            onComplete(result)
+            pdfImportJob = null
+        }
+    }
+    fun cancelPdfImport() { pdfImportJob?.cancel(CancellationException("PDF import cancelled")) }
     fun importImage(uri: Uri, title: String) = assets.importImage(uri, title).also { store.save(it); refresh(); select(it.id) }
     fun importBundle(uri: Uri) = assets.importBundle(uri).also { store.save(it); refresh(); select(it.id) }
     fun insertImage(uri: Uri) {

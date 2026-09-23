@@ -462,6 +462,7 @@ fun InkloomApp(initialIntent: Intent?) {
     val viewModel: InkloomViewModel = viewModel()
     val colorStudioState: ColorStudioState = viewModel()
     val libraryState by viewModel.state.collectAsState()
+    val pdfImportProgress by viewModel.pdfImportProgress.collectAsState()
     val pageTemplates by viewModel.pageTemplates.collectAsState()
     val repository = remember { BrushImportRepository(context) }
     var pendingBrushExport by remember { mutableStateOf<ImportedBrush?>(null) }
@@ -673,7 +674,13 @@ fun InkloomApp(initialIntent: Intent?) {
             val name = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null } ?: settings.language.text("Imported document", "导入的文档")
             when {
                 name.endsWith(".inkloom.zip", true) || name.endsWith(".inkloom", true) -> viewModel.importBundle(uri)
-                name.endsWith(".pdf", true) -> viewModel.importPdf(uri, name)
+                name.endsWith(".pdf", true) -> {
+                    viewModel.importPdfAsync(uri, name) { result ->
+                        result.onSuccess { destination = AppDestination.EDITOR }
+                            .onFailure { if (it !is kotlinx.coroutines.CancellationException) importError = it.message }
+                    }
+                    return@runCatching
+                }
                 else -> viewModel.importImage(uri, name)
             }
             destination = AppDestination.EDITOR
@@ -802,7 +809,10 @@ fun InkloomApp(initialIntent: Intent?) {
                 val name = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null } ?: uri.lastPathSegment.orEmpty()
                 when {
                     name.endsWith(".inkloom.zip", true) || name.endsWith(".inkloom", true) -> viewModel.importBundle(uri)
-                    type == "application/pdf" || name.endsWith(".pdf", true) -> viewModel.importPdf(uri, name)
+                    type == "application/pdf" || name.endsWith(".pdf", true) -> viewModel.importPdfAsync(uri, name) { result ->
+                        result.onSuccess { destination = AppDestination.EDITOR }
+                            .onFailure { if (it !is kotlinx.coroutines.CancellationException) importError = it.message }
+                    }
                     type.startsWith("image/") -> viewModel.importImage(uri, name)
                     else -> repository.importAll(uri).getOrNull()?.let { brushes -> importedBrushes = BrushGroupOperations.mergeImports(importedBrushes, brushes) }
                 }
@@ -816,6 +826,16 @@ fun InkloomApp(initialIntent: Intent?) {
     }
 
     CompositionLocalProvider(LocalUiLanguage provides settings.language, LocalColorStudioState provides colorStudioState) {
+    pdfImportProgress?.let { progress -> AlertDialog(
+        onDismissRequest = {},
+        title = { Text(tr("Importing PDF", "正在导入 PDF")) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(if (progress.total > 0) tr("Page ${progress.completed} of ${progress.total}", "第 ${progress.completed} / ${progress.total} 页") else tr("Copying PDF…", "正在复制 PDF…"))
+            if (progress.total > 0) LinearProgressIndicator(progress = { progress.completed.toFloat() / progress.total }, modifier = Modifier.fillMaxWidth())
+            else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        } },
+        confirmButton = { TextButton(onClick = viewModel::cancelPdfImport) { Text(tr("Cancel", "取消")) } },
+    ) }
     Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
     if (libraryState.migratingLegacyFills) {
         Surface(Modifier.fillMaxSize(), color = Paper) {

@@ -16,6 +16,7 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.util.concurrent.CancellationException
 
 @RunWith(AndroidJUnit4::class)
 class PdfTextIndexTest {
@@ -52,5 +53,30 @@ class PdfTextIndexTest {
         pdf.finishPage(page)
         target.outputStream().use(pdf::writeTo)
         pdf.close()
+    }
+
+    @Test fun longPdfReportsProgressAndCanCancelBeforePublishing() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val source = File(context.cacheDir, "long-${System.nanoTime()}.pdf")
+        val pdf = PdfDocument()
+        repeat(120) { index ->
+            val page = pdf.startPage(PdfDocument.PageInfo.Builder(600, 800, index + 1).create())
+            pdf.finishPage(page)
+        }
+        source.outputStream().use(pdf::writeTo)
+        pdf.close()
+        try {
+            val service = DocumentAssetService(context)
+            var completed = 0
+            val failure = runCatching { service.importPdf(Uri.fromFile(source), "long.pdf", indexText = false,
+                onProgress = { count, total -> assertEquals(120, total); completed = count },
+                checkCancelled = { if (completed >= 25) throw CancellationException("cancel test") }) }
+            assertTrue(failure.exceptionOrNull() is CancellationException)
+            assertEquals(25, completed)
+            val imported = service.importPdf(Uri.fromFile(source), "long.pdf", indexText = false,
+                onProgress = { count, total -> assertEquals(120, total); completed = count })
+            assertEquals(120, imported.pages.size)
+            assertEquals(120, completed)
+        } finally { source.delete() }
     }
 }
