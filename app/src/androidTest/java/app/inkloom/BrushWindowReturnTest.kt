@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithText
@@ -49,6 +50,10 @@ class BrushWindowReturnTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    private fun awaitPageLabel(label: String) {
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty() }
+    }
+
     @Test fun editorTitleSwitchesNotebooksWithoutReturningToGallery() {
         val title = "Switcher ${System.nanoTime()}"
         tap("New Note")
@@ -65,19 +70,19 @@ class BrushWindowReturnTest {
         compose.onNodeWithText("Distributed Systems").performScrollTo().performTouchInput { click() }
         compose.waitForIdle()
         compose.onNodeWithText("Distributed Systems").assertExists()
-        compose.onNodeWithText("1/3").assertExists()
+        awaitPageLabel("1/3")
         compose.onNodeWithContentDescription("Next page").performTouchInput { click() }
         compose.onNodeWithContentDescription("Next page").performTouchInput { click() }
-        compose.onNodeWithText("3/3").assertExists()
+        awaitPageLabel("3/3")
         compose.onNodeWithContentDescription("Switch notebook").performTouchInput { click() }
         compose.waitForIdle()
         compose.onNodeWithText(title).performScrollTo().performTouchInput { click() }
         compose.waitForIdle()
-        compose.onNodeWithText("1/1").assertExists()
+        awaitPageLabel("1/1")
         compose.onNodeWithContentDescription("Switch notebook").performTouchInput { click() }
         compose.onNodeWithText("Distributed Systems").performScrollTo().performTouchInput { click() }
         compose.waitForIdle()
-        compose.onNodeWithText("3/3").assertExists()
+        awaitPageLabel("3/3")
     }
 
     @Test fun pageNavigatorLongPressJumpsAndCanBeDragged() {
