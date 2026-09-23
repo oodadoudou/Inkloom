@@ -632,7 +632,16 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun currentDocument(): InkDocument? = mutableState.value.selectedDocumentId?.let(store::get)
     fun currentPage(): InkPage? = currentDocument()?.pages?.firstOrNull { it.id == mutableState.value.selectedPageId }
     fun exportCurrent(uri: Uri) { currentDocument()?.let { assets.exportPdf(it, uri) } }
-    fun exportCurrentPage(uri: Uri) { currentPage()?.let { assets.exportPagePng(it, uri) } }
+    fun exportCurrentPage(uri: Uri, onComplete: (Result<Unit>) -> Unit) {
+        val page = currentPage() ?: run {
+            onComplete(Result.failure(IllegalStateException("No page is open for export")))
+            return
+        }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { assets.exportPagePng(page, uri) } }
+            onComplete(result)
+        }
+    }
     fun exportCurrentBundle(uri: Uri) { currentDocument()?.let { assets.exportBundle(it, uri) } }
 
     fun exportLibraryBackup(uri: Uri, brushes: List<ImportedBrush>, brushGroups: List<String>, preferences: ByteArray?, onComplete: (Result<Unit>) -> Unit) {

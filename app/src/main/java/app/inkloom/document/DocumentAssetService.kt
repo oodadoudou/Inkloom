@@ -373,15 +373,24 @@ class DocumentAssetService(private val context: Context) {
     }
 
     fun exportPagePng(page: InkPage, uri: Uri) {
-        val width = 1600
-        val bitmap = renderPageBitmap(page, width)
-        context.contentResolver.openOutputStream(uri)?.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } ?: error("Could not open image destination")
-        bitmap.recycle()
+        val size = PagePngExportSize.from(page)
+        val bitmap = renderPageBitmap(page, size.width, size.height)
+        try {
+            context.contentResolver.openOutputStream(uri)?.use { output ->
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) { "PNG encoding failed" }
+            } ?: error("Could not open image destination")
+        } finally {
+            bitmap.recycle()
+        }
     }
 
     fun renderPageBitmap(page: InkPage, width: Int): Bitmap {
         require(width in 1..8192) { "Render width must be between 1 and 8192 pixels" }
         val height = (width * PageCropTransform.visibleHeight(page) / PageCropTransform.visibleWidth(page).coerceAtLeast(1f)).toInt().coerceAtLeast(1)
+        return renderPageBitmap(page, width, height)
+    }
+
+    private fun renderPageBitmap(page: InkPage, width: Int, height: Int): Bitmap {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         drawPage(Canvas(bitmap), page, width, height)
         return bitmap
