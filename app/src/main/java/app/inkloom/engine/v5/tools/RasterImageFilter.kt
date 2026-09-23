@@ -36,13 +36,13 @@ internal object RasterImageFilter {
         source: PixelTileSurfaceSnapshot,
         effect: Effect,
         selection: MaskTileSurfaceSnapshot? = null,
+        cancelled: () -> Boolean = { false },
     ): PixelTileSurface {
         require(source.pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888) {
             "Image filters require an RGBA8 pixel layer"
         }
-        require(selection == null ||
-            (selection.logicalWidth == source.logicalWidth && selection.logicalHeight == source.logicalHeight)) {
-            "Selection and pixel layer dimensions differ"
+        require(selection == null || (selection.logicalWidth > 0 && selection.logicalHeight > 0)) {
+            "Selection mask has invalid dimensions"
         }
         require(effect.sigma.isFinite() && effect.sigma in 1f..20f) {
             "Filter strength must be between 1 and 20 pixels"
@@ -83,6 +83,7 @@ internal object RasterImageFilter {
         val write = result.beginWrite("image filter")
         try {
             candidateTiles.forEach { key ->
+                if (cancelled()) throw java.util.concurrent.CancellationException("Image filter preview superseded")
                 val tile = PixelRect(
                     key.column * source.tileSize,
                     key.row * source.tileSize,
@@ -107,15 +108,16 @@ internal object RasterImageFilter {
                         (y + 1) * copied.width,
                     )
                 }
-                var current = FloatArray(input.size * 4)
-                input.forEachIndexed { index, color ->
-                    val base = index * 4
-                    current[base] = (color ushr 24 and 255).toFloat()
-                    current[base + 1] = (color ushr 16 and 255).toFloat()
-                    current[base + 2] = (color ushr 8 and 255).toFloat()
-                    current[base + 3] = (color and 255).toFloat()
-                }
-                if (effect is Effect.GaussianBlur || effect is Effect.UnsharpMask) {
+                val blurredEffect = effect is Effect.GaussianBlur || effect is Effect.UnsharpMask
+                val current = if (blurredEffect) FloatArray(input.size * 4) else FloatArray(0)
+                if (blurredEffect) {
+                    input.forEachIndexed { index, color ->
+                        val base = index * 4
+                        current[base] = (color ushr 24 and 255).toFloat()
+                        current[base + 1] = (color ushr 16 and 255).toFloat()
+                        current[base + 2] = (color ushr 8 and 255).toFloat()
+                        current[base + 3] = (color and 255).toFloat()
+                    }
                     val alternate = FloatArray(current.size)
                     for (boxRadius in radii) {
                         boxPass(current, alternate, paddedWidth, paddedHeight, boxRadius, horizontal = true)
@@ -126,9 +128,12 @@ internal object RasterImageFilter {
                 write.editTile(key, local) { pixels, stride ->
                     val old = IntArray(4)
                     val changed = IntArray(4)
+                    val medianValues = IntArray((radius * 2 + 1) * (radius * 2 + 1))
                     for (y in 0 until tile.height) for (x in 0 until tile.width) {
                         val original = input[(y + radius) * paddedWidth + x + radius]
-                        val weight = (selection?.alphaAt(tile.left + x, tile.top + y) ?: 255) / 255f
+                        val maskX = selection?.let { ((tile.left + x).toLong() * it.logicalWidth / source.logicalWidth).toInt() }
+                        val maskY = selection?.let { ((tile.top + y).toLong() * it.logicalHeight / source.logicalHeight).toInt() }
+                        val weight = (if (selection != null) selection.alphaAt(checkNotNull(maskX), checkNotNull(maskY)) else 255) / 255f
                         if (weight == 0f) {
                             pixels[y * stride + x] = original
                             continue
@@ -157,17 +162,16 @@ internal object RasterImageFilter {
                                 }
                             }
                             is Effect.Denoise -> {
-                                val values = IntArray((radius * 2 + 1) * (radius * 2 + 1))
                                 for (channel in 0..3) {
                                     var count = 0
                                     for (dy in -radius..radius) for (dx in -radius..radius) {
                                         val yy = (y + radius + dy).coerceIn(0, paddedHeight - 1)
                                         val xx = (x + radius + dx).coerceIn(0, paddedWidth - 1)
                                         val color = input[yy * paddedWidth + xx]
-                                        values[count++] = color ushr (24 - channel * 8) and 255
+                                        medianValues[count++] = color ushr (24 - channel * 8) and 255
                                     }
-                                    values.sort(0, count)
-                                    changed[channel] = (old[channel] + (values[count / 2] - old[channel]) * weight).roundToInt()
+                                    medianValues.sort(0, count)
+                                    changed[channel] = (old[channel] + (medianValues[count / 2] - old[channel]) * weight).roundToInt()
                                 }
                             }
                             is Effect.CleanLineArt -> {
@@ -178,7 +182,8 @@ internal object RasterImageFilter {
                                     if (yy in 0 until paddedHeight && xx in 0 until paddedWidth &&
                                         input[yy * paddedWidth + xx] ushr 24 >= 32) neighbors++
                                 }
-                                val keep = if (neighbors <= 1) (1f - weight) else 1f
+                                val removeAtOrBelow = (effect.sigma.roundToInt() - 1).coerceIn(0, 3)
+                                val keep = if (neighbors <= removeAtOrBelow) (1f - weight) else 1f
                                 for (channel in 0..3) changed[channel] = (old[channel] * keep).roundToInt()
                             }
                             is Effect.Wave -> {

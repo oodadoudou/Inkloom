@@ -81,6 +81,24 @@ class RasterImageFilterTest {
         assertEquals(0xFF4080C0.toInt(), source.pixelAt(30, 20))
     }
 
+    @Test fun lowerResolutionSelectionMapsToFullResolutionWithoutFilteringOutsideIt() {
+        val source = PixelTileSurface(128, 128, tileSize = 64)
+        source.beginWrite("spot").run {
+            setPixel(96, 96, 0xFFFFFFFF.toInt())
+            setPixel(24, 24, 0xFFFFFFFF.toInt())
+            commit().close()
+        }
+        val mask = MaskTileSurface(64, 64, tileSize = 64, initialDefaultAlpha = 0)
+        mask.beginWrite("quarter").run {
+            for (y in 32 until 64) for (x in 32 until 64) setAlpha(x, y, 255)
+            commit().close()
+        }
+        val filtered = RasterImageFilter.apply(source.snapshot(),
+            RasterImageFilter.Effect.GaussianBlur(2f), mask.snapshot())
+        assertEquals(0xFFFFFFFF.toInt(), filtered.pixelAt(24, 24))
+        assertTrue(filtered.pixelAt(96, 96) ushr 24 < 255)
+    }
+
     @Test fun unsharpKeepsOriginalAlphaAndRejectsUnsupportedParameters() {
         val source = PixelTileSurface(64, 64, tileSize = 64)
         source.beginWrite("gray edge").run {

@@ -6310,6 +6310,8 @@ class InkCanvasView(context: Context) : View(context) {
     var onLayerCreationRequested: ((String, Boolean) -> Unit)? = null
     var onAdjustmentLayerCreationRequested: ((String, app.inkloom.document.LayerAdjustment, (String) -> Unit) -> Unit)? = null
     var onLayerMergeRequested: (app.inkloom.document.RasterLayerMergeRequest) -> Unit = {}
+    internal var onRasterFilterPreviewRequested: (app.inkloom.engine.v5.tools.RasterImageFilter.Effect) -> Unit = {}
+    internal var onRasterFilterFinished: (Boolean) -> Unit = {}
     var onLayerTreeRequested: (app.inkloom.document.LayerTreeAction, String, Set<String>) -> Unit = { _, _, _ -> }
     private var pendingPaintPublicationsForMerge = 0
     internal fun hasPendingPaintPublicationForMerge() = pendingPaintPublicationsForMerge > 0 || pendingMaskPublications > 0 || hasActivePaintContact()

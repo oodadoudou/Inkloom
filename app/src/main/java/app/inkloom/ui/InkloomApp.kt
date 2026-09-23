@@ -963,6 +963,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onToggleLayerFolderCollapsed = viewModel::toggleLayerFolderCollapsed,
             onDuplicateLayer = viewModel::duplicateLayer,
             onApplyRasterLayerMerge = viewModel::applyRasterLayerMerge,
+            onApplyRasterLayerFilter = viewModel::applyRasterLayerFilter,
             onApplyLayerTreeEdit = viewModel::applyLayerTreeEdit,
             onDeleteLayer = { documentId, pageId, layerId ->
                 viewModel.deleteLayer(documentId, pageId, layerId)?.let { rejection ->
@@ -1563,6 +1564,7 @@ private fun EditorScreen(
     onToggleLayerFolderCollapsed: (String, String, String) -> Unit,
     onDuplicateLayer: (String, String, String) -> String?,
     onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean,
+    onApplyRasterLayerFilter: (String, String, RasterLayerFilterEdit, Boolean, InkPage?) -> Boolean,
     onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean,
     onDeleteLayer: (String, String, String) -> Unit,
     onElement: (String, String, PageElement) -> Unit,
@@ -1661,6 +1663,7 @@ private fun EditorScreen(
     var selectionTransformState by remember(document.id, selectedPage.id) { mutableStateOf<SelectionTransformUiState?>(null) }
     var activeLayerId by rememberSaveable(document.id, selectedPage.id) { mutableStateOf(LayerIds.INK) }
     var adjustmentDialogId by remember(document.id, selectedPage.id) { mutableStateOf<String?>(null) }
+    var rasterFilterDialogOpen by remember(document.id, selectedPage.id) { mutableStateOf(false) }
     var editingMaskId by remember(document.id, selectedPage.id) { mutableStateOf<String?>(null) }
     val maskAssets = remember(context) { DocumentAssetService(context) }
     val maskFailurePrefix by rememberUpdatedState(tr("Could not edit mask", "无法编辑蒙版"))
@@ -2146,6 +2149,9 @@ private fun EditorScreen(
                     DropdownMenuItem(text = { Text(tr("Notebook settings", "笔记设置")) }, leadingIcon = { Icon(Icons.Outlined.Settings, null) }, onClick = { workspaceMenu = false; onSettings() })
                     DropdownMenuItem(text = { Text(tr("Page outline", "页面大纲")) }, leadingIcon = { Icon(Icons.Outlined.FormatListBulleted, null) }, onClick = { workspaceMenu = false; outlineOpen = true })
                     DropdownMenuItem(text = { Text(tr("Export PDF", "导出 PDF")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { workspaceMenu = false; onExport() })
+                    DropdownMenuItem(text = { Text(tr("Image filter…", "图像滤镜…")) },
+                        leadingIcon = { Icon(Icons.Outlined.Tune, null) },
+                        onClick = { workspaceMenu = false; rasterFilterDialogOpen = true })
                     HorizontalDivider()
                     DropdownMenuItem(
                         text = { Text(tr("Drawing workspace", "绘画工作区")) },
@@ -2596,6 +2602,7 @@ private fun EditorScreen(
                 val toolbarAreaHeight = maxHeight
                 PaperCanvas(
                     onApplyRasterLayerMerge = onApplyRasterLayerMerge,
+                    onApplyRasterLayerFilter = onApplyRasterLayerFilter,
                     onApplyLayerInsertion = onApplyLayerInsertion,
                     onApplyLayerTreeEdit = onApplyLayerTreeEdit,
                     onApplySelectionLayerTransfer = onApplySelectionLayerTransfer,
@@ -3686,6 +3693,11 @@ private fun EditorScreen(
             },
         )
     }
+    if (rasterFilterDialogOpen) RasterFilterDialog(
+        onPreview = { effect -> canvasView?.onRasterFilterPreviewRequested?.invoke(effect) },
+        onApply = { canvasView?.onRasterFilterFinished?.invoke(true); rasterFilterDialogOpen = false },
+        onCancel = { canvasView?.onRasterFilterFinished?.invoke(false); rasterFilterDialogOpen = false },
+    )
     if (shapeInsertOpen) AlertDialog(
         onDismissRequest = { shapeInsertOpen = false },
         title = { Text(tr("Draw shape", "绘制形状")) },
@@ -4395,7 +4407,7 @@ private inline fun <reified T : Enum<T>> enumOrDefault(name: String, fallback: T
     enumValues<T>().firstOrNull { it.name == name } ?: fallback
 
 @Composable
-private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, onBeginQuickShapeEdit: () -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onBackKey: () -> Boolean, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, transformLayerIds: Set<String>, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onSymmetryGuideChange: (SymmetryGuideState) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
+private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerFilter: (String, String, RasterLayerFilterEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, onBeginQuickShapeEdit: () -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onBackKey: () -> Boolean, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, transformLayerIds: Set<String>, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onSymmetryGuideChange: (SymmetryGuideState) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val rasterRenderWidth = remember(renderedPage.width, renderedPage.height) {
         CanvasRasterResolution.forDimensions(renderedPage.width, renderedPage.height)
@@ -4426,6 +4438,12 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
         page.layers.associate { layer ->
             layer.id to (layer.rasterTileSurface to layer.rasterRotationQuarterTurns)
         }.toMutableMap()
+    }
+    val filterController = remember(documentId, page.id, rasterSurfaceRuntime) {
+        RasterFilterController(context, documentId, page.id, assets, rasterSurfaceRuntime,
+            rasterCommitMutex, pendingRasterSaves, gradientCommitScope, { currentMergePage },
+            { edit, undo, expected -> onApplyRasterLayerFilter(documentId, page.id, edit, undo, expected) },
+            settings.language)
     }
     LaunchedEffect(page.layers) {
         page.layers.forEach { layer ->
@@ -4599,6 +4617,8 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 { edit, undo, expected -> onApplyRasterLayerMerge(documentId, page.id, edit, undo, expected) },
                 onSelectionTransferLayerChosen, settings.language).merge(view, request)
         }
+        view.onRasterFilterPreviewRequested = { effect -> filterController.preview(view, view.activeLayerId, effect) }
+        view.onRasterFilterFinished = { apply -> filterController.finish(view, apply) }
         view.onLayerTreeRequested = { action, targetId, selectedIds ->
             LayerTreeController(context, documentId, page.id, assets, rasterSurfaceRuntime, rasterCommitMutex,
                 latestRasterAssets, pendingRasterSaves, gradientCommitScope, { currentMergePage },
