@@ -88,4 +88,48 @@ class NamedPanelLayoutWindowTest {
         assertTrue(EditorPanel.LAYERS in restored.layout.open)
         assertTrue(restored.namedLayouts.entries.any { it.name == "Drawing layers" })
     }
+
+    @Test fun windowManagerRestoresNearbyWithoutResettingItsTabGroup() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        val before = EditorPanelState(compose.activity, AppSettings()).layout
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithText("Views…").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Show Nearby view").performScrollTo().performClick()
+        assertTrue(EditorPanel.NEARBY in EditorPanelState(compose.activity, AppSettings()).layout.open)
+        compose.onNodeWithContentDescription("Hide Nearby view").assertExists()
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+            .executeShellCommand("screencap -p /data/local/tmp/inkloom-window-manager.png").close()
+        compose.onNodeWithText("Done").performClick()
+        compose.onNodeWithContentDescription("Close nearby panel").assertExists()
+        compose.onNodeWithContentDescription("Close nearby panel").performClick()
+        assertTrue(EditorPanel.NEARBY !in EditorPanelState(compose.activity, AppSettings()).layout.open)
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithText("Views…").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Show Nearby view").performScrollTo().performClick()
+        val restored = EditorPanelState(compose.activity, AppSettings()).layout
+        assertTrue(EditorPanel.NEARBY in restored.open)
+        org.junit.Assert.assertEquals(before.floating.associate { it.node.id to it.rect }, restored.floating.associate { it.node.id to it.rect })
+        org.junit.Assert.assertEquals(before.floating.flatMap { app.inkloom.settings.EditorPanelLayouts.members(it.node) },
+            restored.floating.flatMap { app.inkloom.settings.EditorPanelLayouts.members(it.node) })
+    }
+
+    @Test fun windowManagerKeepsNotebookAndLayerSettingsInSyncEvenWhenLayoutIsLocked() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithText("Lock layout").performClick()
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithText("Views…").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Show Layers view").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Show Pages view").performScrollTo().performClick()
+        compose.waitForIdle()
+        val settings = app.inkloom.settings.AppSettingsStore(compose.activity).load()
+        assertTrue(settings.showLayerPanel)
+        assertTrue(settings.showPageRail)
+        assertTrue(EditorPanelState(compose.activity, AppSettings()).layout.locked)
+        compose.onNodeWithContentDescription("Hide Layers view").performScrollTo().performClick()
+        compose.waitForIdle()
+        org.junit.Assert.assertFalse(app.inkloom.settings.AppSettingsStore(compose.activity).load().showLayerPanel)
+    }
 }

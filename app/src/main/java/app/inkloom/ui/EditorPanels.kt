@@ -18,14 +18,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DragIndicator
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Brush
-import androidx.compose.material.icons.outlined.Layers
-import androidx.compose.material.icons.outlined.GridView
-import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.BlurOn
-import androidx.compose.material.icons.outlined.Colorize
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -199,25 +191,8 @@ internal fun EditorPanels(
     val density=LocalDensity.current.density
     val context=LocalContext.current
     val language=LocalUiLanguage.current
-    fun title(panel: EditorPanel)=language.text(when(panel) {
-        EditorPanel.PAGES->"Pages"; EditorPanel.BRUSHES->"Brushes"; EditorPanel.LAYERS->"Layers"
-        EditorPanel.SUBTOOLS->"Sub tools"; EditorPanel.PROPERTIES->"Tool property"
-        EditorPanel.WHEEL->"Wheel"; EditorPanel.PALETTES->"Palettes"; EditorPanel.MIX->"Mix"; EditorPanel.NEARBY->"Nearby"
-    },when(panel) {
-        EditorPanel.PAGES->"页面"; EditorPanel.BRUSHES->"笔刷"; EditorPanel.LAYERS->"图层"
-        EditorPanel.SUBTOOLS->"子工具"; EditorPanel.PROPERTIES->"工具属性"
-        EditorPanel.WHEEL->"色环"; EditorPanel.PALETTES->"色板"; EditorPanel.MIX->"混色"; EditorPanel.NEARBY->"近似色"
-    })
-    fun icon(panel: EditorPanel)=when(panel) {
-        EditorPanel.PAGES -> Icons.Outlined.Description
-        EditorPanel.BRUSHES -> Icons.Outlined.Brush
-        EditorPanel.LAYERS -> Icons.Outlined.Layers
-        EditorPanel.SUBTOOLS -> Icons.Outlined.GridView
-        EditorPanel.PROPERTIES -> Icons.Outlined.Tune
-        EditorPanel.WHEEL, EditorPanel.PALETTES -> Icons.Outlined.Palette
-        EditorPanel.MIX -> Icons.Outlined.BlurOn
-        EditorPanel.NEARBY -> Icons.Outlined.Colorize
-    }
+    fun title(panel: EditorPanel) = editorPanelTitle(panel, language)
+    fun icon(panel: EditorPanel) = editorPanelIcon(panel)
     var drag by remember { mutableStateOf<PanelDrag?>(null) }
     var resize by remember { mutableStateOf<PanelResize?>(null) }
     val gestureDown = remember { arrayOf(Offset.Zero) }

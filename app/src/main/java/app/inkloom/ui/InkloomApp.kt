@@ -1752,6 +1752,7 @@ private fun EditorScreen(
     var viewMenu by remember { mutableStateOf(false) }
     var quickZoomMenu by remember { mutableStateOf(false) }
     var workspaceMenu by remember { mutableStateOf(false) }
+    var viewManagerOpen by remember { mutableStateOf(false) }
     var savePanelLayoutOpen by remember { mutableStateOf(false) }
     var managePanelLayoutsOpen by remember { mutableStateOf(false) }
     var panelLayoutName by remember { mutableStateOf("") }
@@ -1991,6 +1992,29 @@ private fun EditorScreen(
         if (open) panelState.focus(EditorPanel.LAYERS)
         onPanelVisibilityChange(EditorPanel.LAYERS, open)
     }
+    fun setManagedPanelVisible(panel: EditorPanel, open: Boolean) {
+        when (panel) {
+            EditorPanel.PAGES -> {
+                panelState.show(panel, open)
+                if (open) panelState.focus(panel)
+                onPanelVisibilityChange(panel, open)
+            }
+            EditorPanel.BRUSHES -> setBrushPanelOpen(open)
+            EditorPanel.LAYERS -> setLayersPanelOpen(open)
+            else -> {
+                panelState.show(panel, open)
+                if (open) panelState.focus(panel)
+                if (panel.ordinal >= EditorPanel.WHEEL.ordinal) {
+                    colorPanelOpen = panelState.layout.open.any { it.ordinal >= EditorPanel.WHEEL.ordinal }
+                    if (!colorPanelOpen) {
+                        colorPreview.clear()
+                        canvasView?.inkColor = brushColor
+                        canvasView?.secondaryInkColor = backgroundColor
+                    }
+                }
+            }
+        }
+    }
     fun selectLayerContents(layerId: String) {
         exitCanvasNavigation()
         rememberSelectionReturnTarget()
@@ -2107,6 +2131,11 @@ private fun EditorScreen(
                         leadingIcon = { Icon(Icons.Outlined.Visibility, null) },
                         onClick = { applyBuiltInWorkspace(BuiltInWorkspace.READING) },
                     )
+                    DropdownMenuItem(
+                        text = { Text(tr("Views…", "视图…")) },
+                        leadingIcon = { Icon(Icons.Outlined.DashboardCustomize, null) },
+                        onClick = { workspaceMenu = false; viewManagerOpen = true },
+                    )
                     HorizontalDivider()
                     DropdownMenuItem(
                         text = { Text(if (panelState.layout.locked) tr("Unlock layout", "解锁布局") else tr("Lock layout", "锁定布局")) },
@@ -2128,23 +2157,18 @@ private fun EditorScreen(
                         text = { Text(tr("Manage panel layouts…", "管理面板布局…")) },
                         onClick = { workspaceMenu = false; managePanelLayoutsOpen = true },
                     )
-
                     HorizontalDivider()
                     DropdownMenuItem(text = { Text(tr("Sub tools", "子工具")) },
                         trailingIcon = { if (EditorPanel.SUBTOOLS in panelState.layout.open) Icon(Icons.Outlined.Check, null) },
                         onClick = {
                             workspaceMenu = false
-                            val open = EditorPanel.SUBTOOLS !in panelState.layout.open
-                            panelState.show(EditorPanel.SUBTOOLS, open)
-                            if (open) panelState.focus(EditorPanel.SUBTOOLS)
+                            setManagedPanelVisible(EditorPanel.SUBTOOLS, EditorPanel.SUBTOOLS !in panelState.layout.open)
                         })
                     DropdownMenuItem(text = { Text(tr("Tool property", "工具属性")) },
                         trailingIcon = { if (EditorPanel.PROPERTIES in panelState.layout.open) Icon(Icons.Outlined.Check, null) },
                         onClick = {
                             workspaceMenu = false
-                            val open = EditorPanel.PROPERTIES !in panelState.layout.open
-                            panelState.show(EditorPanel.PROPERTIES, open)
-                            if (open) panelState.focus(EditorPanel.PROPERTIES)
+                            setManagedPanelVisible(EditorPanel.PROPERTIES, EditorPanel.PROPERTIES !in panelState.layout.open)
                         })
                 }
             }
@@ -2449,6 +2473,11 @@ private fun EditorScreen(
                 }
             }
         }
+        if (viewManagerOpen) EditorViewManagerDialog(
+            openPanels = panelState.layout.open,
+            onToggle = ::setManagedPanelVisible,
+            onDismiss = { viewManagerOpen = false },
+        )
         if (savePanelLayoutOpen) AlertDialog(
             onDismissRequest = { savePanelLayoutOpen = false },
             title = { Text(if (renamingPanelLayout == null) tr("Save panel layout", "保存面板布局") else tr("Rename panel layout", "重命名面板布局")) },
