@@ -1,0 +1,21 @@
+# R13 图像滤镜实施与验收清单（2026-09-23）
+
+## 行为依据
+
+- [Clip Studio Paint 滤镜手册](https://help.clip-studio.com/en-us/manual_en/390_filters/Filters.htm)：滤镜作用于所选栅格层，选区限制作用范围；模糊、锐化、降噪等应在对话框预览并可取消。对非栅格层要解释原因或明确转换，不能空操作。
+- [Photoshop 滤镜操作](https://helpx.adobe.com/photoshop/desktop/effects-filters/get-started-with-filters/apply-filters.html)：先确定目标层和选区，再调参数、预览和确认；保留原始内容时需明确采用何种可回改模型。
+
+## 交互合同
+
+- 从编辑器的滤镜入口选择当前可绘制图层；蒙版、调整层、文件夹、受锁保护的图层必须给出明确结果。
+- 调参过程中画布显示临时结果，关闭／取消恢复原画；确认只产生一项撤销。滤镜不改变笔刷材质设置。
+- 选区外像素逐位保持原样；选区羽化区按遮罩权重混合。邻域采样可越过 tile 边界，但透明画布边缘不得产生黑边或接缝。
+- 异步计算遵循页面与图层 generation 栅栏，取消不能晚到覆盖新画；大画布的运算和峰值内存应有明确上限。
+
+## 增量切片
+
+- [ ] R13a 核心栅格滤镜：高斯模糊、锐化／反锐化、局部降噪，带 tile halo、预乘 alpha 与选区边缘回归。
+- [ ] R13b 生产事务：原层栅格和页面资产快照、异步预览／取消、一次撤销与重做、保存与重开。
+- [ ] R13c 图层菜单和精简参数 UI；每种可见入口都终止为执行或明确原因。
+- [ ] R13d 线稿修正、变形类滤镜逐项设计与实现，不能用同名笔刷参数冒充。
+- [ ] R13e JVM、Android 15 实机窗口与像素回归、lint、diff check；打包 Debug、Drive Desktop SHA 校验，MovinkPad 保持 `DEVICE_PENDING` 直到用户实测。
