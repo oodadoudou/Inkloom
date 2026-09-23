@@ -636,22 +636,32 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun restoreLibraryBackup(uri: Uri, onComplete: (Result<LibraryRestoreResult>) -> Unit) {
+    fun restoreLibraryBackup(uri: Uri, recoverIntactItems: Boolean = false, onComplete: (Result<LibraryRestoreResult>) -> Unit) {
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    val restored = getApplication<Application>().contentResolver.openInputStream(uri)?.use(backupService::restore)
+                    val restored = getApplication<Application>().contentResolver.openInputStream(uri)?.use { backupService.restore(it, recoverIntactItems) }
                         ?: error("Selected backup is unreadable")
-                    restored.documents.forEach(store::save)
-                    saveFolders(loadFolders() + restored.folders)
+                    val existingFolders = loadFolders()
                     val existingTemplates = pageTemplateStore.load()
-                    mutablePageTemplates.value = pageTemplateStore.save(existingTemplates.copy(
-                        customTemplates = (existingTemplates.customTemplates + restored.pageTemplates.customTemplates).distinctBy(PageTemplate::id),
-                        customCovers = (existingTemplates.customCovers + restored.pageTemplates.customCovers).distinctBy(NotebookCoverTemplate::id),
-                        favoriteIds = existingTemplates.favoriteIds + restored.pageTemplates.favoriteIds,
-                        notebookDefaults = existingTemplates.notebookDefaults + restored.pageTemplates.notebookDefaults,
-                        notebookPaperColors = existingTemplates.notebookPaperColors + restored.pageTemplates.notebookPaperColors,
-                    ))
+                    require(restored.documents.none { store.get(it.id) != null }) { "Backup document ID conflicts with the current library" }
+                    val published = mutableListOf<String>()
+                    try {
+                        restored.documents.forEach { document -> store.save(document); published += document.id }
+                        saveFolders(existingFolders + restored.folders)
+                        mutablePageTemplates.value = pageTemplateStore.save(existingTemplates.copy(
+                            customTemplates = (existingTemplates.customTemplates + restored.pageTemplates.customTemplates).distinctBy(PageTemplate::id),
+                            customCovers = (existingTemplates.customCovers + restored.pageTemplates.customCovers).distinctBy(NotebookCoverTemplate::id),
+                            favoriteIds = existingTemplates.favoriteIds + restored.pageTemplates.favoriteIds,
+                            notebookDefaults = existingTemplates.notebookDefaults + restored.pageTemplates.notebookDefaults,
+                            notebookPaperColors = existingTemplates.notebookPaperColors + restored.pageTemplates.notebookPaperColors,
+                        ))
+                    } catch (failure: Throwable) {
+                        published.forEach { id -> if (!store.deletePermanently(id)) failure.addSuppressed(IllegalStateException("Could not roll back restored notebook $id")) }
+                        runCatching { saveFolders(existingFolders) }.onFailure(failure::addSuppressed)
+                        runCatching { mutablePageTemplates.value = pageTemplateStore.save(existingTemplates) }.onFailure(failure::addSuppressed)
+                        throw failure
+                    }
                     restored
                 }
             }

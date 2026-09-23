@@ -59,7 +59,7 @@
 - 资料库进入显式多选模式后，点按卡片只选中/取消选中；退出模式清空选择。批量移动先选目的文件夹再确认，取消或无效目的地不修改任何笔记；归档、收藏、回收站操作提供明确目标和结果。
 - 跨笔记页面多选按源笔记顺序追加到目的笔记。移动从源删除、复制保留源并产生新页面及对象 ID；两者保留 PDF/图片等资源引用。源笔记不能变成零页。确认后打开目的笔记的第一张转入页。
 - 长 PDF 的文件复制、页面元数据解析与保存不阻塞主线程；显示进度与取消。取消和失败不发布半成品笔记，并报告明确原因。文字索引另在后台进行。
-- 备份导入先在暂存区完整核验清单、所有引用资产与完整性，再发布到资料库。缺资源或损坏的备份明确拒绝，已有笔记不被覆盖；不能出现“成功”提示或半恢复内容。
+- 备份导入先在暂存区完整核验清单、所有引用资产与完整性，再发布到资料库。缺资源或损坏时默认拒绝且不发布；用户可明确选择仅救回完整的笔记／笔刷／模板，跳过项目逐项报告。已有笔记不被覆盖；不能把部分救援显示为完整成功。
 
 - [CSP 图层](https://help.clip-studio.com/en-us/manual_en/180_layers/Using_layers.htm)、[文件夹](https://help.clip-studio.com/en-us/manual_en/180_layers/Layer_folders.htm)、[蒙版](https://help.clip-studio.com/en-us/manual_en/180_layers/Layer_masks.htm)。
 - [Photoshop 图层组合并](https://helpx.adobe.com/photoshop/using/layers.html)、[面板组合](https://helpx.adobe.com/photoshop/desktop/get-started/learn-the-basics/manipulate-panel-groups.html)。

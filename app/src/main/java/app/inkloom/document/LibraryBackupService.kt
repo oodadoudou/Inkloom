@@ -5,6 +5,7 @@ package app.inkloom.document
 import app.inkloom.model.ImportedBrush
 import app.inkloom.importer.BrushGroupOperations
 import app.inkloom.engine.v5.storage.PixelTileArchiveStore
+import app.inkloom.engine.v5.storage.PixelTileArchiveCodec
 import app.inkloom.settings.AppSettingsBackupCodec
 import java.io.File
 import java.io.InputStream
@@ -28,6 +29,11 @@ data class LibraryRestoreResult(
     val preferences: ByteArray? = null,
     val brushIdMappings: Map<String, String> = emptyMap(),
     val pageTemplates: PageTemplateLibrary = PageTemplateLibrary(),
+    val skippedItems: List<String> = emptyList(),
+)
+
+class LibraryBackupIntegrityException(val issues: List<String>) : IllegalArgumentException(
+    "Backup contains ${issues.size} damaged item(s): ${issues.take(3).joinToString("; ")}",
 )
 
 /**
@@ -166,18 +172,106 @@ class LibraryBackupService(private val filesRoot: File) {
         }
     }
 
-    fun restore(input: InputStream): LibraryRestoreResult {
+    fun restore(input: InputStream, recoverIntactItems: Boolean = false): LibraryRestoreResult {
         filesRoot.mkdirs()
         val staging = File(filesRoot, ".library-backup-import-${UUID.randomUUID()}").apply { mkdirs() }
         try {
             extractChecked(input, staging)
             val manifestFile = File(staging, MANIFEST)
             require(manifestFile.isFile && manifestFile.length() <= MAX_MANIFEST_BYTES) { "Backup has no valid manifest" }
-            val manifest = json.decodeFromString<LibraryBackupManifest>(manifestFile.readText())
+            var manifest = json.decodeFromString<LibraryBackupManifest>(manifestFile.readText())
             require(manifest.formatVersion == FORMAT_VERSION) { "Backup version ${manifest.formatVersion} is not supported" }
             require(manifest.engineVersion == ENGINE_VERSION) { "Backup engine version ${manifest.engineVersion} is not supported" }
             require(manifest.pageTemplates.customCovers.size <= MAX_PAGE_TEMPLATES) { "Backup has too many covers" }
             require(manifest.documents.size <= MAX_DOCUMENTS && manifest.folders.size <= MAX_FOLDERS && manifest.brushes.size <= MAX_BRUSHES && manifest.brushGroups.size <= MAX_BRUSH_GROUPS && manifest.pageTemplates.customTemplates.size <= MAX_PAGE_TEMPLATES) { "Backup manifest exceeds library limits" }
+            // Preflight the entire referenced closure before retained() or the tile store can publish anything.
+            fun verifyAsset(path: String?, folder: String) {
+                if (path.isNullOrBlank()) return
+                val relative = safeArchivePath(path)
+                require(relative.startsWith("$folder/")) { "Backup asset is in the wrong category: $relative" }
+                val source = File(staging, relative)
+                require(source.canonicalPath.startsWith(staging.canonicalPath + File.separator) && source.isFile) { "Backup is missing $relative" }
+                val expected = source.name.substringBefore('.')
+                require(expected.length == 64 && expected == sha256(source)) { "Backup asset failed its integrity check: $relative" }
+            }
+            fun verifyRaster(reference: RasterTileSurfaceRef?) {
+                if (reference == null) return
+                val relative = safeArchivePath(reference.manifestAssetPath)
+                require(relative.startsWith("$DOCUMENT_ASSETS/pixel-tiles/manifests/")) { "Backup raster manifest is in the wrong category" }
+                val source = File(staging, relative)
+                require(source.isFile && source.canonicalPath.startsWith(staging.canonicalPath + File.separator)) { "Backup is missing $relative" }
+                val expected = source.name.substringBefore('.')
+                require(expected.length == 64 && expected == sha256(source)) { "Backup raster manifest failed its integrity check" }
+                val metadata = PixelTileArchiveCodec.inspect(source.readText())
+                require(metadata.surfaceId == reference.surfaceId && metadata.logicalWidth == reference.logicalWidth &&
+                    metadata.logicalHeight == reference.logicalHeight && metadata.tileSize == reference.tileSize &&
+                    metadata.revision == reference.revision) { "Backup raster reference does not match its manifest" }
+                metadata.blobHashes.forEach { hash -> verifyAsset("$DOCUMENT_ASSETS/pixel-tiles/blobs/$hash.tile", "$DOCUMENT_ASSETS/pixel-tiles/blobs") }
+                PixelTileArchiveCodec.decode(source.readText()) { hash ->
+                    File(staging, "$DOCUMENT_ASSETS/pixel-tiles/blobs/$hash.tile").readBytes()
+                }
+            }
+            val issues = mutableListOf<String>()
+            fun <T> validItems(items: List<T>, describe: (T) -> String, verify: (T) -> Unit): List<T> = items.filter { item ->
+                val failure = runCatching { verify(item) }.exceptionOrNull()
+                if (failure != null) issues += "${describe(item)}: ${failure.message ?: "damaged asset"}"
+                failure == null
+            }
+            val validBrushes = validItems(manifest.brushes, { "Brush ${it.name}" }) { brush ->
+                verifyAsset(brush.sourcePath, BRUSH_SOURCES)
+                verifyAsset(brush.tipPreviewPath, BRUSH_ASSETS)
+                brush.tipPreviewPaths.forEach { verifyAsset(it, BRUSH_ASSETS) }
+                brush.dualTipPreviewPaths.forEach { verifyAsset(it, BRUSH_ASSETS) }
+                verifyAsset(brush.dualGrainPreviewPath, BRUSH_ASSETS)
+                verifyAsset(brush.grainPreviewPath, BRUSH_ASSETS)
+            }
+            val validDocuments = validItems(manifest.documents, { "Notebook ${it.title}" }) { document ->
+                verifyAsset(document.coverImagePath, DOCUMENT_ASSETS)
+                document.pages.forEach { page ->
+                    when (val background = page.background) {
+                        is PageBackground.Pdf -> verifyAsset(background.assetPath, DOCUMENT_ASSETS)
+                        is PageBackground.Image -> verifyAsset(background.assetPath, DOCUMENT_ASSETS)
+                        is PageBackground.Paper -> Unit
+                    }
+                    page.savedSelections.forEach { verifyAsset(it.surface.assetPath, DOCUMENT_ASSETS) }
+                    page.layers.forEach { layer ->
+                        verifyRaster(layer.rasterTileSurface)
+                        verifyAsset(layer.mask?.surface?.assetPath, DOCUMENT_ASSETS)
+                    }
+                    page.elements.forEach { element -> when (element) {
+                        is PageElement.Image -> verifyAsset(element.assetPath, DOCUMENT_ASSETS)
+                        is PageElement.Fill -> verifyAsset(element.maskAssetPath, DOCUMENT_ASSETS)
+                        is PageElement.Shape -> verifyAsset(element.maskAssetPath, DOCUMENT_ASSETS)
+                        else -> Unit
+                    } }
+                }
+            }
+            val validCovers = validItems(manifest.pageTemplates.customCovers, { "Cover ${it.name}" }) { verifyAsset(it.assetPath, DOCUMENT_ASSETS) }
+            val validTemplates = validItems(manifest.pageTemplates.customTemplates, { "Paper ${it.name}" }) { template -> when (val background = template.background) {
+                is PageBackground.Pdf -> verifyAsset(background.assetPath, DOCUMENT_ASSETS)
+                is PageBackground.Image -> verifyAsset(background.assetPath, DOCUMENT_ASSETS)
+                is PageBackground.Paper -> Unit
+            } }
+            val validPreferences = manifest.preferencesEntry?.let { entry ->
+                val failure = runCatching {
+                    require(entry == PREFERENCES) { "Backup preferences entry is invalid" }
+                    require(File(staging, entry).isFile && File(staging, entry).length() in 1..MAX_PREFERENCES_BYTES.toLong()) { "Backup has no valid preferences" }
+                    require(AppSettingsBackupCodec.decode(File(staging, entry).readBytes()).isSuccess) { "Backup preferences are damaged" }
+                }.exceptionOrNull()
+                if (failure != null) issues += "Settings: ${failure.message ?: "damaged preferences"}"
+                if (failure == null) entry else null
+            }
+            if (issues.isNotEmpty() && !recoverIntactItems) throw LibraryBackupIntegrityException(issues)
+            if (recoverIntactItems) {
+                require(validDocuments.isNotEmpty() || validBrushes.isNotEmpty() || validCovers.isNotEmpty() || validTemplates.isNotEmpty()) {
+                    "Backup has no intact notebooks, brushes, covers or paper templates to recover"
+                }
+                manifest = manifest.copy(
+                    documents = validDocuments, brushes = validBrushes,
+                    pageTemplates = manifest.pageTemplates.copy(customCovers = validCovers, customTemplates = validTemplates),
+                    preferencesEntry = validPreferences,
+                )
+            }
 
             fun retained(relativePath: String?, folder: String): String? {
                 if (relativePath.isNullOrBlank()) return null
@@ -305,7 +399,7 @@ class LibraryBackupService(private val filesRoot: File) {
                 require(file.isFile && file.length() in 1..MAX_PREFERENCES_BYTES.toLong()) { "Backup has no valid preferences" }
                 file.readBytes()
             }
-            return LibraryRestoreResult(restoredDocuments, restoredFolders, restoredBrushes, restoredBrushGroups, restoredPreferences, brushIds, restoredPageTemplates)
+            return LibraryRestoreResult(restoredDocuments, restoredFolders, restoredBrushes, restoredBrushGroups, restoredPreferences, brushIds, restoredPageTemplates, issues)
         } finally {
             staging.deleteRecursively()
         }

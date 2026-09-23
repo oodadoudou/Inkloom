@@ -121,7 +121,7 @@ class LibraryBackupServiceTest {
             val document = InkDocument(id = "document-1", title = "Lecture", folderId = folder.id, coverStyle = CoverStyle.CUSTOM_IMAGE, coverImagePath = coverAsset.absolutePath, pages = listOf(page))
             val template = PageTemplate(id = "template-1", name = "Lecture sheet", width = 1200f, height = 1800f, background = PageBackground.Pdf(documentAsset.absolutePath, 0))
             val templates = PageTemplateLibrary(listOf(template), setOf(template.id), mapOf(document.id to template.id), customCovers = listOf(NotebookCoverTemplate(id = "custom-cover", name = "Reusable cover", assetPath = coverAsset.absolutePath)))
-            val preferences = "{\"format\":\"test-preferences\"}".toByteArray()
+            val preferences = AppSettingsBackupCodec.encode(AppSettings())
             val bytes = ByteArrayOutputStream().also { LibraryBackupService(sourceRoot).export(listOf(document), listOf(folder), listOf(brush), it, listOf("Drawing/Ink", "Empty/Erasers"), preferences, templates) }.toByteArray()
             val manifestText = java.util.zip.ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
                 generateSequence { zip.nextEntry }
@@ -217,5 +217,58 @@ class LibraryBackupServiceTest {
             sourceRoot.deleteRecursively()
             restoreRoot.deleteRecursively()
         }
+    }
+
+    @Test fun corruptLaterAssetDoesNotPublishEarlierValidAssets() {
+        val sourceRoot = Files.createTempDirectory("inkloom-backup-atomic-source-").toFile()
+        val restoreRoot = Files.createTempDirectory("inkloom-backup-atomic-target-").toFile()
+        try {
+            val first = File(sourceRoot, "brush-assets/first.png").apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(1, 2, 3)) }
+            val second = File(sourceRoot, "brush-assets/second.png").apply { writeBytes(byteArrayOf(4, 5, 6)) }
+            val brushes = listOf(first, second).map { asset -> ImportedBrush(name = asset.name, format = BrushFormat.IMAGE, compatibility = Compatibility.COMPLETE, sizeBytes = 3, report = emptyList(), tipPreviewPath = asset.absolutePath) }
+            val valid = ByteArrayOutputStream().also { LibraryBackupService(sourceRoot).export(emptyList(), emptyList(), brushes, it) }.toByteArray()
+            val rewritten = ByteArrayOutputStream()
+            var assetCount = 0
+            java.util.zip.ZipInputStream(ByteArrayInputStream(valid)).use { input -> ZipOutputStream(rewritten).use { output ->
+                while (true) {
+                    val entry = input.nextEntry ?: break
+                    output.putNextEntry(ZipEntry(entry.name))
+                    val bytes = input.readBytes()
+                    output.write(if (entry.name.startsWith("brush-assets/") && ++assetCount == 2) byteArrayOf(9, 9, 9) else bytes)
+                    output.closeEntry()
+                }
+            } }
+            val failed = runCatching { LibraryBackupService(restoreRoot).restore(ByteArrayInputStream(rewritten.toByteArray())) }
+            org.junit.Assert.assertTrue(failed.isFailure)
+            org.junit.Assert.assertTrue(File(restoreRoot, "brush-assets").listFiles().isNullOrEmpty())
+            val recovered = LibraryBackupService(restoreRoot).restore(ByteArrayInputStream(rewritten.toByteArray()), recoverIntactItems = true)
+            assertEquals(1, recovered.brushes.size)
+            assertEquals(1, recovered.skippedItems.size)
+            assertEquals(1, File(restoreRoot, "brush-assets").listFiles().orEmpty().size)
+        } finally { sourceRoot.deleteRecursively(); restoreRoot.deleteRecursively() }
+    }
+
+    @Test fun recoverySkipsDamagedNotebookAndKeepsIntactNotebook() {
+        val sourceRoot = Files.createTempDirectory("inkloom-backup-recover-source-").toFile()
+        val restoreRoot = Files.createTempDirectory("inkloom-backup-recover-target-").toFile()
+        try {
+            val image = File(sourceRoot, "document-assets/background.png").apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(1, 2, 3)) }
+            val damaged = InkDocument(id = "damaged", title = "Damaged", pages = listOf(InkPage(background = PageBackground.Image(image.absolutePath))))
+            val intact = InkDocument(id = "intact", title = "Intact", pages = listOf(InkPage()))
+            val backup = ByteArrayOutputStream().also { LibraryBackupService(sourceRoot).export(listOf(damaged, intact), emptyList(), emptyList(), it) }.toByteArray()
+            val rewritten = ByteArrayOutputStream()
+            java.util.zip.ZipInputStream(ByteArrayInputStream(backup)).use { input -> ZipOutputStream(rewritten).use { output ->
+                while (true) {
+                    val entry = input.nextEntry ?: break
+                    if (entry.name.startsWith("document-assets/")) continue
+                    output.putNextEntry(ZipEntry(entry.name)); output.write(input.readBytes()); output.closeEntry()
+                }
+            } }
+            val failed = runCatching { LibraryBackupService(restoreRoot).restore(ByteArrayInputStream(rewritten.toByteArray())) }
+            assertTrue(failed.exceptionOrNull() is LibraryBackupIntegrityException)
+            val recovered = LibraryBackupService(restoreRoot).restore(ByteArrayInputStream(rewritten.toByteArray()), recoverIntactItems = true)
+            assertEquals(listOf("Intact"), recovered.documents.map(InkDocument::title))
+            assertEquals(1, recovered.skippedItems.size)
+        } finally { sourceRoot.deleteRecursively(); restoreRoot.deleteRecursively() }
     }
 }

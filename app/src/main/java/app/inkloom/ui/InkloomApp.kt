@@ -701,9 +701,11 @@ fun InkloomApp(initialIntent: Intent?) {
             }
         }
     }
-    val libraryBackupImportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) viewModel.restoreLibraryBackup(uri) { result ->
+    var damagedBackupUri by remember { mutableStateOf<Uri?>(null) }
+    var damagedBackupIssues by remember { mutableStateOf(emptyList<String>()) }
+    fun handleBackupRestore(uri: Uri, result: Result<app.inkloom.document.LibraryRestoreResult>, offerRecovery: Boolean) {
             result.onSuccess { restored ->
+                damagedBackupUri = null
                 importedBrushes = (importedBrushes + restored.brushes).distinctBy(ImportedBrush::id)
                 brushStore.save(importedBrushes)
                 brushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups + restored.brushGroups, importedBrushes)
@@ -736,7 +738,23 @@ fun InkloomApp(initialIntent: Intent?) {
                     ),
                     Toast.LENGTH_LONG,
                 ).show()
-            }.onFailure { importError = it.message }
+                if (restored.skippedItems.isNotEmpty()) importError = settings.language.text(
+                    "Recovered intact items; skipped ${restored.skippedItems.size} damaged items:\n${restored.skippedItems.joinToString("\n")}",
+                    "已救回完好内容；跳过 ${restored.skippedItems.size} 个损坏项目：\n${restored.skippedItems.joinToString("\n")}",
+                )
+            }.onFailure { error ->
+                if (offerRecovery && error is app.inkloom.document.LibraryBackupIntegrityException) {
+                    damagedBackupUri = uri
+                    damagedBackupIssues = error.issues
+                } else {
+                    damagedBackupUri = null
+                    importError = error.message
+                }
+            }
+    }
+    val libraryBackupImportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.restoreLibraryBackup(uri) { result ->
+            handleBackupRestore(uri, result, offerRecovery = true)
         }
     }
     val shortcutProfileExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(ShortcutProfileCodec.MIME_TYPE)) { uri ->
@@ -826,6 +844,19 @@ fun InkloomApp(initialIntent: Intent?) {
     }
 
     CompositionLocalProvider(LocalUiLanguage provides settings.language, LocalColorStudioState provides colorStudioState) {
+    damagedBackupUri?.let { uri -> AlertDialog(
+        onDismissRequest = { damagedBackupUri = null },
+        title = { Text(tr("Backup is damaged", "备份已损坏")) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(tr("No content was restored. You can recover intact notebooks and brushes while skipping damaged items.", "尚未恢复任何内容。可以跳过损坏项目，只救回完好的笔记和笔刷。"))
+            Text(damagedBackupIssues.take(4).joinToString("\n"), color = MutedInk, fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(onClick = {
+            damagedBackupUri = null
+            viewModel.restoreLibraryBackup(uri, recoverIntactItems = true) { result -> handleBackupRestore(uri, result, offerRecovery = false) }
+        }) { Text(tr("Recover intact items", "救回完好内容")) } },
+        dismissButton = { TextButton(onClick = { damagedBackupUri = null }) { Text(tr("Cancel", "取消")) } },
+    ) }
     pdfImportProgress?.let { progress -> AlertDialog(
         onDismissRequest = {},
         title = { Text(tr("Importing PDF", "正在导入 PDF")) },
