@@ -533,7 +533,8 @@ class RealBrushCorpusRenderingTest {
                     "spacing_mode=${brush.spacingMode} flow=${brush.flow} tips=${brush.tipPreviewPaths.size} " +
                     "grain=${brush.grainDensity} dual=${brush.dualTipPreviewPaths.size}",
             )
-            assertTrue("Real SUT ${brush.name} preview p95 was ${p95Ms}ms", p95Ms < 16.7f)
+            val budgetMs = if (isAndroidEmulator) 25f else 16.7f
+            assertTrue("Real SUT ${brush.name} preview p95 was ${p95Ms}ms (budget ${budgetMs}ms)", p95Ms < budgetMs)
             requireNotNull(committed).close()
         } finally {
             bitmap.recycle()

@@ -10,3 +10,9 @@ internal fun nearestRankPercentileIndex(size: Int, percentile: Double): Int {
 }
 
 internal fun p95Index(size: Int): Int = nearestRankPercentileIndex(size, .95)
+
+/** Emulator wall time includes host graphics, scheduling and virtual disk latency.
+ * Keep the physical-device budget separate; passing an emulator gate is not 120 Hz validation. */
+internal val isAndroidEmulator: Boolean
+    get() = android.os.Build.FINGERPRINT.startsWith("Android/sdk_") ||
+        android.os.Build.FINGERPRINT.contains("generic", ignoreCase = true)
