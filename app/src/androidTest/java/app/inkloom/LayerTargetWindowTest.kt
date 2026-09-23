@@ -120,13 +120,14 @@ class LayerTargetWindowTest {
         tap("New Note"); tap("Create")
         lateinit var model: app.inkloom.ui.InkloomViewModel
         instrumentation.runOnMainSync { model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java] }
+        val drawingLayerName = model.currentPage()!!.layers.first { it.name != "Background" }.name
         tap("Layers")
-        tap("Layer actions Layer 1")
+        tap("Layer actions $drawingLayerName")
         tap("Turn on Drawing Assist")
-        compose.waitUntil { model.currentPage()!!.layers.first { it.name == "Layer 1" }.drawingAssist }
-        tap("Layer actions Layer 1")
+        compose.waitUntil { model.currentPage()!!.layers.first { it.name == drawingLayerName }.drawingAssist }
+        tap("Layer actions $drawingLayerName")
         tap("Turn off Drawing Assist")
-        compose.waitUntil { !model.currentPage()!!.layers.first { it.name == "Layer 1" }.drawingAssist }
+        compose.waitUntil { !model.currentPage()!!.layers.first { it.name == drawingLayerName }.drawingAssist }
     }
 
     @Test fun creationFollowsSelectedSiblingOrFolderAndSharesPaintHistory() {
