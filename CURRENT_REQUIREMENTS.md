@@ -1,6 +1,6 @@
 # Inkloom 当前需求与待排优先级
 
-核对日期：2026-09-23。最新 Debug 版本为 **0.211.0**；本版聚焦批量笔记管理、跨本多页转移、长 PDF 导入与损坏备份救援。JVM、相关 Android 15 测试与 lint 已通过；APK 签名、冷启动和 Google Drive Desktop 同步证据见 `dist/` 的同版交付记录。远端云下载及 MovinkPad 真机仍待核验。
+核对日期：2026-09-23。最新 Debug 版本为 **0.211.0**；本版聚焦批量笔记管理、跨本多页转移、长 PDF 导入与损坏备份救援。JVM、相关 Android 15 测试与 lint 已通过；APK 签名、冷启动和 Google Drive Desktop 同步证据见 [0.211.0 交付记录](dist/Inkloom-0.211.0-eda0f8a1-debug.json)。远端云下载及 MovinkPad 真机仍待核验。
 
 **本文件是版本交付与宏观需求状态的入口。** 下表顺序不是开发顺序。逐项完成情况见 [REQUESTED_FEATURE_CATALOG.md](REQUESTED_FEATURE_CATALOG.md) 的可勾选目录；宏观项目完成不等于其 CSP 扩展细项全部完成。旧版本计划、旧额度阈值和分支上的未交付代码均不作为当前依据。
 
