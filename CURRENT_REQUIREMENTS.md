@@ -113,3 +113,43 @@
 - stash／旧分支可能有未完成代码，不能算交付；本轮未应用或删除它们。
 
 当前下一轮顺序以本文件顶部记录为准；表中已交付项目保留当时的历史排序。新的额度限制仅适用于用户指定的那轮任务，不复制到长期产品计划。
+
+## 2026-09-24 图层、选区与基础工具对标调研（下一轮待排序）
+
+这是一份**候选需求**，不改变上面的交付状态或用户已经确定的 R11 → R17 → R20 → R18 顺序。本轮只核对生产代码、现行需求目录和 Procreate／CSP 官方手册；没有重新运行全套测试或 MovinkPad 实机操作。以下的「缺口」表示所述完整交互／语义尚未在生产路径中找到，或现有实现只覆盖其中一部分；不能把目录中未勾选的一整条直接解释为完全不存在。优先考虑少量高频、可撤销、画笔手感稳定的闭环，不以菜单数量追赶 CSP。
+
+### 已有底座，避免重复开发
+
+- 图层：层／组透明度、当前支持的混合模式、剪贴、参考／草稿标记、颜色**标签**、双列表、搜索、分组拖动、合并选中／可见／可见副本／平面化、组蒙版与联动／独立变换均已有实际入口。参考／草稿开关见 [InkloomApp.kt](app/src/main/java/app/inkloom/ui/InkloomApp.kt) 和 [InkloomViewModel.kt](app/src/main/java/app/inkloom/ui/InkloomViewModel.kt)；`LY-11` 未勾选不等于两者完全缺失。
+- 图层拖动：当前 [LayerPanelDrag.kt](app/src/main/java/app/inkloom/ui/LayerPanelDrag.kt) 已做组内／前后目标、折叠组悬停展开及边缘滚动；`GR-12` 是验收与视觉反馈核对项，不能再笼统列为「未实现」。
+- 选区：自由套索支持分段接触、点选折线与闭合；矩形、椭圆、画笔、魔棒、智能边界、加／减／交／反、羽化、扩缩、快速蒙版、色域选择、保存／载入／删除、透明 PNG 系统剪贴板都有代码路径。保存选区尚缺重命名及以加／减／交方式载入，见 [SavedSelectionsPanel.kt](app/src/main/java/app/inkloom/ui/SavedSelectionsPanel.kt)。
+- 变换和基础工具：自由／等比／扭曲／网格／操控、吸附／微移／三种插值、六向对齐与中心均分；ColorDrop、继续填充、四种填充子工具、容差／闭缝／区域缩放；多色标渐变、反转／重复／抖动；液化的多种模式及重建已存在。它们需要按具体差项扩展，不需要重做基础入口。
+
+### 候选工作包（编号供用户排序）
+
+| 候选 | 对标行为和 Inkloom 当前差别 | 下一轮可验收的范围 | 状态／目录映射 |
+|---|---|---|---|
+| **L-A 单层独显** | CSP 按住修饰键点眼睛可只显示一层，再次操作恢复之前每层的可见性；Inkloom 目前看到单层切换与批量切换，未找到可恢复的独显快照。 | 单层／组独显与一键恢复；中途新建、删除、重排层后的恢复规则明确；只改可见性且一次撤销。 | 功能缺口；`LY-05`、`L05`。 |
+| **L-B 画布点取图层** | Procreate 的 Layer Select 和 CSP 的 Select Layer 可从画布找到所属图层，重叠时列候选；Inkloom 主要依靠图层列表／对象选择，未找到独立的画布点取图层模式。 | 显式启动后悬停／点取高亮候选；重叠处列出可选层，确认后更新主图层，绝不把此手势误当画笔；锁定／隐藏／组的反馈明确。 | 功能与交互缺口；`L05`、`UI-05`。 |
+| **L-C 图层着色** | CSP 的 Layer Color 是非破坏性地把黑色／白色替换为主／副色；Inkloom 的 `paletteColor` 仅给列表边缘加颜色标签。 | 单独的图层着色开关、主／副替换色及重置；与透明度、蒙版、剪贴和导出合成一致；原像素不被修改。 | 功能缺口；`LY-13`，不等同已完成的 R03 颜色标签。 |
+| **L-D 面板与拖动实机闭环** | CSP 在图层行直接显示状态和属性，Procreate 划选多层并拖动；Inkloom 已有固定属性条、快捷命令、双列表、行多选及拖动目标。现阶段差距主要是窄窗、长列表、触笔遮挡、取消／滚动时的可理解性。 | 用 100 层含折叠组实机测插入／入组目标、悬停展开、边缘滚动、跨两列表、取消与一次撤销；另决定是否需要属性条／命令条显隐和置底，避免先增按钮。 | `DEVICE_PENDING`＋可选布局差项；`GR-12`、`LY-15`、`V02`。 |
+| **L-E 混合模式与蒙版细项** | Inkloom 当前提供 17 种实际可执行的图层混合模式；CSP 另有 Linear Burn、Glow Dodge、Vivid Light 等。现有蒙版已能编辑、预览、链接和应用，但未见 CSP 的「显示渐变／阈值」表达切换。 | 只按用户常用漫画效果选新增模式，每一种验证画布／缩略图／合并／导出一致；蒙版渐变开关和阈值需与软边选择、组蒙版、撤销保持一致。 | 可选功能差项；`L04`、`MK-10`。先有使用样张再扩模式。 |
+| **S-A 保存选区管理** | Procreate Save & Load 侧重快速复用；CSP 可将选区作为可绘制的选区图层。Inkloom 已能保存、载入、删除，但当前名称为自动生成，载入是替换。 | 先补重命名、缩略图、载入为替换／加／减／交、误删撤销与备份恢复；画笔可编辑且持久的「选区图层」另做独立决策，不以普通保存蒙版冒充。 | 部分实现；`SE-14`、`T03`。选区图层为新增候选。 |
+| **S-B 精准选取边界** | Procreate 可在同一手绘套索中点出直线与拖出曲线；Inkloom 已有分段套索。CSP 还提供更细的选区边界和目标色规则。 | 先做实机对照：小点位、角点、闭合、连续笔／手接触、撤销上一段、缩放后边界与结果一致；若确有场景缺口，再决定磁性套索等新模式。 | 以验收为主；`T01`、`RC-05`。勿重复开发折线。 |
+| **S-C 选区快捷条** | CSP 的 Selection Launcher 可移动、显隐和定制操作；Inkloom 选区面板已可拖动，但目前操作排列固定，窄屏时依赖横滑与「更多」。 | 允许隐藏及调整常用动作顺序，始终可访问清除／反选／填充／变换；拖动面板与点击／横滑不互抢，恢复默认和无障碍描述可用。 | 交互差项；`UI-14/15`、`T02`。不照搬 CSP 大量命令。 |
+| **X-A 变换基准与数值** | CSP 可拖参考点并输入 X／Y、尺寸和角度；Inkloom 当前弹窗可输入宽、高、角度，但缺明确的可拖旋转／缩放基准及 X／Y 数值定位。 | 可见、可拖的参考点；X／Y 和旋转／缩放围绕该点，重置规则明确；预览不反复重采样，确认／取消各为一次事务。 | 部分实现；`T05`。 |
+| **X-B 歪斜与对齐细项** | CSP 区分自由扭曲、歪斜、透视；Inkloom 当前有自由／等比／扭曲／网格／操控，没有独立歪斜。当前六向对齐与中心均分没有边缘均分、等间距及选区／辅助线基准。 | 歪斜柄与数值；边缘及等间距分布、选区／辅助线基准、合法对象数和清晰的吸附线；位图与蒙版像素回归。 | 功能缺口；`TF-05/06/19/21/22/24/25/26/29/30/31`。 |
+| **X-C 混合对象非仿射** | Inkloom 已保留像素＋图片＋文字的移动、缩放和旋转结构；对混合对象执行扭曲／网格／操控时会说明不支持，而非暗中栅格化。 | 只有用户确认该场景高频时扩展；必须界定图片对象、文字对象各自可保存的非仿射几何，并保持原类型、可编辑内容和一次撤销。 | 有意限制，不是回归；`R05`、`T07`。高级文字／真正向量层仍按 R16 暂缓。 |
+| **T-A 漫画线稿高级填充** | CSP 高级填充可分别设参照／排除目标、抗锯齿、目标颜色与扩张边角；Inkloom 已有参照源、容差、闭缝、区域缩放及四种填充手势。 | 以「线稿层参考、下层上色」为固定样张，补目标透明／特定色规则、AA 与扩张角形选择；边缘不漏白／不越线，预览＝提交，撤销一次。 | 部分实现；`ED-12`、`T10`。 |
+| **T-B 渐变工作流** | CSP 渐变工具可管理和复用渐变预设，渐变层可重编辑；Inkloom 工具已具多色标、六种形状、四种边缘模式、反转、抖动及角度吸附。 | 先考虑常用渐变预设的保存、命名、复制／导入及取消；**可编辑渐变层**属于用户此前暂缓的 R16，需重新确认后才排期。 | 工具流程差项；`T11`、`LM-02`（暂缓）。 |
+| **T-C 绘制／擦除／涂抹共用笔尖** | Procreate 三种工具可访问笔刷库并快速沿用当前笔刷；Inkloom 现在有独立橡皮／混色工具及部分工具专用笔刷，复用当前绘画笔尖的语义尚未闭合。 | 对支持的用户笔刷显示「用此笔尖擦除／涂抹」并记住各工具上次预设；同一轨迹核对笔尖形状、动态、边缘及不支持原因；不在这一项重做已认可的画笔引擎。 | 部分实现；`B03`、`UI-03`。 |
+| **T-D 液化参数与手感** | Procreate 除模式外提供力度、畸变、惯性及重建／重置；CSP 有模式与局部参数。Inkloom 的十种液化模式、力度／硬度与重建已有，未找到等价的畸变／惯性参数链。 | 先实测大／小笔径与快／慢笔触的位移、选区边界、取消和重建；再按有用性补参数，要求画面不跳帧、方向连续、结果可重复。 | 部分实现＋`DEVICE_PENDING`；`T09`、`V02`。 |
+
+### 排序时的判断边界
+
+1. **先选高频闭环**：漫画／插画常见的「从画布找线稿层 → 取层内容或保存选区 → 下层参考填色 → 调整／撤销」比增加一排低频模式更能改善体验。L-B、S-A、T-A 能围绕同一张样张验收。
+2. **先验后补**：L-D、S-B 和 T-D 的部分问题是触笔手势、遮挡与 120 Hz 响应，代码审阅不能断言实机好坏。记录同一手势录像、时间线和预期／实际结果后再定实现量。
+3. **保留已暂缓范围**：真正向量层及线条修正、专用渐变／网点层、完整文字排版仍归 R16；独立参考图／克隆工具仍归 R15。官方手册列出这些功能不等于本轮自动恢复开发。
+4. **不照搬视觉资产**：借用可验证的交互规则、取消和反馈；维持 Inkloom 深灰中性色与原创图标。工具、选区、图层的失败路径仍须明确告知原因。
+
+官方行为依据：[Procreate 图层组织](https://help.procreate.com/procreate/handbook/layers/layers-organize)、[图层选项](https://help.procreate.com/procreate/handbook/layers/layers-options)、[混合模式](https://help.procreate.com/procreate/handbook/layers/layers-blend)、[选区界面](https://help.procreate.com/procreate/handbook/selections/selections-interface)、[变换界面](https://help.procreate.com/procreate/handbook/transform/transform-interface-gestures)、[画／擦／涂抹](https://help.procreate.com/procreate/handbook/brushes/paint-smudge-erase)、[液化](https://help.procreate.com/procreate/handbook/adjustments/adjustments-liquify)；[CSP 图层面板](https://help.clip-studio.com/en-us/manual_en/180_layers/Using_layers.htm)、[图层基本操作](https://help.clip-studio.com/en-us/manual_en/180_layers/Basic_operations.htm)、[混合模式](https://help.clip-studio.com/en-us/manual_en/180_layers/Blending_modes.htm)、[蒙版](https://help.clip-studio.com/en-us/manual_en/180_layers/Layer_masks.htm)、[选区快捷条](https://help.clip-studio.com/en-us/manual_en/330_selection/Selection_Launcher.htm)、[选区图层](https://help.clip-studio.com/en-us/manual_en/330_selection/Selection_Layers.htm)、[变换类型](https://help.clip-studio.com/en-us/manual_en/360_transform/Types_of_transformations.htm)、[高级填充](https://help.clip-studio.com/en-us/manual_en/420_fill/Advanced_Fill.htm)、[渐变工具](https://help.clip-studio.com/en-us/manual_en/420_fill/Gradient_Tool.htm)。CSP 各版本／等级可用功能不同，后续实施前逐项核对目标版本。
