@@ -76,12 +76,18 @@ class DrawAndHoldWindowTest {
     @Test fun heldCurveKeepsItsCurvatureAndCanBeErasedAfterReopen() {
         tap("New Note"); tap("Create")
         val view = canvas()
+        // Synchronous UIAutomation injection can pause between points on a loaded emulator.
+        // Keep the production timer unchanged; allow the synthetic curve to finish first.
+        view.drawAndHoldDelayMillis = 1500L
         val time = roughStroke(view, curved = true)
         compose.waitUntil(4_000) { view.heldStrokeKind != null }
         assertEquals(app.inkloom.engine.v5.runtime.StrokeRegularizer.Kind.CURVE, view.heldStrokeKind)
         event(MotionEvent.ACTION_UP, pagePoint(view, .65f, .45f), time, MotionEvent.TOOL_TYPE_STYLUS)
         view.awaitV5StrokeWorkerIdleForTest(); compose.waitForIdle()
-        assertTrue(view.v5LastCommittedNormalizedPoints().minOf { it.second } < .38f)
+        val committedPoints = view.v5LastCommittedNormalizedPoints()
+        assertTrue("Expected a bowed curve, got ${committedPoints.size} points with y=" +
+            committedPoints.minOf { it.second } + ".." + committedPoints.maxOf { it.second },
+            committedPoints.minOf { it.second } < .38f)
         val committed = requireNotNull(view.activeRasterSnapshotForTest())
         val x = (committed.logicalWidth * .3f).toInt()
         val y = (committed.logicalHeight * .45f).toInt()
@@ -115,10 +121,11 @@ class DrawAndHoldWindowTest {
         event(MotionEvent.ACTION_DOWN, pagePoint(view, .3f, .45f), time, MotionEvent.TOOL_TYPE_STYLUS)
         repeat(30) { index ->
             val t = (index + 1) / 30f
-            val y = if (curved) .45f - .36f * t * (1f - t) else .45f + if (index == 29) 0f else kotlin.math.sin(index.toFloat()) * .002f
-            event(MotionEvent.ACTION_MOVE, pagePoint(view, .3f + .35f * t, y), time, MotionEvent.TOOL_TYPE_STYLUS)
+            val y = if (curved) .45f - .5f * t * (1f - t) else .45f + if (index == 29) 0f else kotlin.math.sin(index.toFloat()) * .002f
+            event(MotionEvent.ACTION_MOVE, pagePoint(view, .3f + .35f * t, y), time, MotionEvent.TOOL_TYPE_STYLUS, sync = false)
             SystemClock.sleep(8)
         }
+        instrumentation.waitForIdleSync()
         return time
     }
 
@@ -196,13 +203,13 @@ class DrawAndHoldWindowTest {
         event(MotionEvent.ACTION_UP, end, time, MotionEvent.TOOL_TYPE_STYLUS)
     }
 
-    private fun event(action: Int, point: Offset, down: Long, type: Int) {
+    private fun event(action: Int, point: Offset, down: Long, type: Int, sync: Boolean = true) {
         val motion = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, 1,
             arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = type }),
             arrayOf(MotionEvent.PointerCoords().apply { x = point.x; y = point.y; pressure = if (action == MotionEvent.ACTION_UP) 0f else .7f; size = .01f }),
             0, 0, 1f, 1f, 0, 0,
             if (type == MotionEvent.TOOL_TYPE_STYLUS) InputDevice.SOURCE_STYLUS else InputDevice.SOURCE_TOUCHSCREEN, 0)
-        try { assertTrue("Window rejected input", instrumentation.uiAutomation.injectInputEvent(motion, true)) }
+        try { assertTrue("Window rejected input", instrumentation.uiAutomation.injectInputEvent(motion, sync)) }
         finally { motion.recycle() }
     }
 
