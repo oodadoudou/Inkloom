@@ -213,7 +213,13 @@ class MixingColorBarWindowTest {
     }
 
     private fun closeColorPanel() {
-        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        // A long-press color menu may still own the first Back after Delete; close that
+        // transient menu before expecting the docked color panel itself to disappear.
+        repeat(3) {
+            if (findBounds("Color mixing board") == null) return
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            compose.waitForIdle()
+        }
         compose.waitUntil(5_000) { findBounds("Color mixing board") == null }
     }
 
