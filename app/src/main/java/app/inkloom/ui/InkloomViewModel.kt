@@ -341,8 +341,14 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         val source = store.get(sourceDocumentId) ?: return false
         val target = store.get(targetDocumentId) ?: return false
         val result = PageTransfer.applyMany(source, target, pageIds, copy) ?: return false
-        store.save(result.target)
-        if (!copy) store.save(result.source)
+        try {
+            store.save(result.target)
+            if (!copy) store.save(result.source)
+        } catch (_: Exception) {
+            runCatching { store.save(target) }
+            refresh()
+            return false
+        }
         refresh()
         mutableState.value = mutableState.value.copy(selectedDocumentId = targetDocumentId, selectedPageId = result.transferredPageId)
         notebookResumeStore.remember(targetDocumentId,result.transferredPageId)
