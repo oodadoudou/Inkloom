@@ -54,6 +54,8 @@ class BrushWindowReturnTest {
         tap("New Note")
         compose.onNodeWithText("Title").performTextReplacement(title)
         compose.waitForIdle()
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
         tap("Create")
         compose.waitUntil(10_000) {
             compose.onAllNodesWithContentDescription("Switch notebook").fetchSemanticsNodes().isNotEmpty()
