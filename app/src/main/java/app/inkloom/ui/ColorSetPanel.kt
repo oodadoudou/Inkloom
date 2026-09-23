@@ -7,7 +7,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -23,6 +25,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -37,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import app.inkloom.settings.ColorSetImport
+import kotlinx.coroutines.withTimeoutOrNull
 import app.inkloom.settings.ColorSetImportMode
 import app.inkloom.settings.ColorSetSwatch
 import app.inkloom.settings.ImagePaletteExtractor
@@ -58,7 +62,7 @@ private data class PendingColorSetImport(val mode: ColorSetImportMode, val targe
 
 /** Color-set identity and selection survive tab disposal; editing never sorts by color. */
 @Composable
-internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp, onPick: (Int) -> Unit) {
+internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp, onPick: (Int) -> Unit, onOpenQuickPicker: (Int) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val store = remember { ColorSetLibraryStore(context) }
@@ -80,7 +84,7 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
     var naming by remember { mutableStateOf<String?>(null) }
     var name by remember { mutableStateOf("") }
     var deletion by remember { mutableStateOf(false) }
-    var tileMenu by remember { mutableStateOf<String?>(null) }
+    var tileToEdit by remember { mutableStateOf<String?>(null) }
     var importBusy by remember { mutableStateOf(false) }
     var importSource by remember { mutableStateOf<String?>(null) }
     var pendingImport by remember { mutableStateOf<PendingColorSetImport?>(null) }
@@ -186,36 +190,51 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
                     .border(if (target == tile.id || set?.selectedSwatchId == tile.id) 2.dp else .5.dp, if (target == tile.id || set?.selectedSwatchId == tile.id) Ink else OutlineSoft)
                     .semantics { contentDescription = tr("Color tile ${index + 1}", "色块 ${index + 1}"); selected = set?.selectedSwatchId == tile.id }
                     .pointerInput(set?.id, set?.swatches, tile.id) {
-                        var moved = false
-                        detectDragGesturesAfterLongPress(
-                            onDragStart = { local -> moved = false; dragging = tile.id; target = tile.id; position = (bounds[tile.id]?.topLeft ?: Offset.Zero) + local },
-                            onDrag = { change, amount ->
-                                change.consume(); moved = true; position += amount
-                                target = bounds.entries.firstOrNull { (id, rect) -> gridState.layoutInfo.visibleItemsInfo.any { it.key == id } && rect.contains(position) }?.key
-                            },
-                            onDragEnd = {
-                                val id = target
-                                if (moved && set != null && id != null) {
-                                    val destination = set.swatches.indexOfFirst { it.id == id }
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                            val aborted = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                    if (change == null || !change.pressed || (change.position - down.position).getDistance() > viewConfiguration.touchSlop)
+                                        break
+                                }
+                                true
+                            }
+                            if (aborted == true) return@awaitEachGesture
+                            dragging = tile.id
+                            target = tile.id
+                            var moved = false
+                            var released = false
+                            try {
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (change.isConsumed || event.changes.any { it.id != down.id && it.pressed }) break
+                                    change.consume()
+                                    if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop / 2f) moved = true
+                                    position = (bounds[tile.id]?.topLeft ?: Offset.Zero) + change.position
+                                    target = bounds.entries.firstOrNull { (id, rect) -> gridState.layoutInfo.visibleItemsInfo.any { it.key == id } && rect.contains(position) }?.key
+                                    if (!change.pressed) { released = true; break }
+                                }
+                                if (released && moved && set != null) {
+                                    val destination = set.swatches.indexOfFirst { it.id == target }
                                     if (destination >= 0) edit { it.moveSwatch(set.id, tile.id, destination) }
-                                } else if (!moved) tileMenu = tile.id
-                                dragging = null; target = null
-                            },
-                            onDragCancel = { dragging = null; target = null },
-                        )
+                                } else if (released && !moved) {
+                                    if (set != null) edit { it.selectSwatch(set.id, tile.id) }
+                                    tileToEdit = tile.id
+                                }
+                            } finally { dragging = null; target = null }
+                        }
                     }
-                    .clickable { if (set != null) edit { it.selectSwatch(set.id, tile.id) }; onPick(tile.color) }) {
-                    ColorPaletteDropdownMenu(tileMenu == tile.id, { tileMenu = null }) {
-                        DropdownMenuItem(text = { Text(tr("Rename color", "重命名颜色")) }, onClick = { if (set != null) edit { it.selectSwatch(set.id, tile.id) }; tileMenu = null; startName("tile", tile.name) })
-                        DropdownMenuItem(text = { Text(tr("Replace with current", "替换为当前颜色")) }, onClick = { if (set != null) edit { it.replaceSwatch(set.id, tile.id, color) }; tileMenu = null })
-                        DropdownMenuItem(text = { Text(tr("Delete color", "删除颜色")) }, onClick = { if (set != null) edit { it.removeSwatch(set.id, tile.id) }; tileMenu = null })
-                    }
-                }
+                    .clickable { if (set != null) edit { it.selectSwatch(set.id, tile.id) }; onPick(tile.color) })
             }
         }
         HorizontalDivider(color = OutlineSoft, thickness = .5.dp)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(32.dp).padding(6.dp).background(Color(color)).border(.5.dp, OutlineSoft))
+            Box(Modifier.size(32.dp).padding(6.dp).background(Color(color)).border(.5.dp, OutlineSoft)
+                .semantics { contentDescription = tr("Edit current color", "编辑当前颜色") }
+                .combinedClickable(onClick = { onOpenQuickPicker(color) }, onLongClick = { onOpenQuickPicker(color) }))
             Text(set?.selectedSwatch?.name.orEmpty(), Modifier.weight(1f), maxLines = 1, color = MutedInk, fontSize = 11.sp)
             SetAction(Icons.Outlined.Add, tr("Save current color", "保存当前颜色")) {
                 edit { current ->
@@ -223,12 +242,22 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
                     ready.insertSwatch(requireNotNull(ready.activeSetId), color)
                 }
             }
+            SetAction(Icons.Outlined.Edit, tr("Rename selected color", "重命名所选颜色"), set?.selectedSwatch != null) {
+                set?.selectedSwatch?.let { startName("tile", it.name) }
+            }
             SetAction(Icons.Outlined.SwapHoriz, tr("Replace selected color", "替换所选颜色"), set?.selectedSwatch != null) { if (set?.selectedSwatchId != null) edit { it.replaceSwatch(set.id, set.selectedSwatchId, color) } }
             SetAction(Icons.Outlined.DeleteOutline, tr("Delete selected color", "删除所选颜色"), set?.selectedSwatch != null) { if (set?.selectedSwatchId != null) edit { it.removeSwatch(set.id, set.selectedSwatchId) } }
         }
         if (importBusy) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp), color = Ink, trackColor = OutlineSoft)
         error?.let { Text(it, color = Ink, fontSize = 11.sp) }
     }
+    tileToEdit?.let { tileId -> set?.swatches?.firstOrNull { it.id == tileId }?.let { tile ->
+        StandardColorPickerDialog(tile.color, language, onConfirm = { chosen ->
+            edit { it.replaceSwatch(set.id, tileId, chosen) }
+            onPick(chosen)
+            tileToEdit = null
+        }, onDismiss = { tileToEdit = null })
+    } }
     if (importSource != null) AlertDialog(
         onDismissRequest = { importSource = null },
         title = { Text(tr("Import into color set", "导入到色板")) },

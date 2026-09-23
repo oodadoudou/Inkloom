@@ -91,12 +91,13 @@ class MixingColorBarWindowTest {
         assertEquals("Unselected colors must remain byte-for-byte unchanged", withCustom.swatches.drop(1), replaced.swatches.drop(1))
         assertEquals(mainPaletteBefore, mainPalette())
 
-        // Long press the appended swatch rather than calling the model's delete operation.
-        longPress(colorLabel(customColor))
-        tap("Delete color")
+        // Select the appended swatch and remove it through the explicit palette action.
+        tap(colorLabel(customColor))
+        tap("Mixing palette menu")
+        tap("Delete selected color")
         val deleted = requireNotNull(mixingBar().activeSet)
         assertEquals(replaced.swatches.filterNot { it.id == custom.id }, deleted.swatches)
-        assertEquals(firstId, deleted.selectedSwatchId)
+        assertEquals(defaults.swatches.last().id, deleted.selectedSwatchId)
         assertEquals(mainPaletteBefore, mainPalette())
 
         closeColorPanel()
@@ -129,11 +130,13 @@ class MixingColorBarWindowTest {
         tap("Add mixing color")
         val customId = requireNotNull(mixingBar().activeSet).swatches.last().id
 
-        // Context replacement must edit the held tile without first picking its old color.
+        // The selected identity survives a wheel color change and can be replaced directly.
         val replacementColor = chooseWheelColor(.65f, .15f)
         tap("Mix")
         longPress(colorLabel(customColor))
-        tap("Replace with current")
+        tap("Cancel")
+        tap("Mixing palette menu")
+        tap("Replace selected color")
         val edited = requireNotNull(mixingBar().activeSet)
         assertEquals(customId, edited.swatches.last().id)
         assertEquals(replacementColor, edited.swatches.last().color)
@@ -224,7 +227,6 @@ class MixingColorBarWindowTest {
     }
 
     private fun longPress(label: String) {
-        val paletteLeft = bounds("Color mixing board").left
         val target = bounds(label)
         val point = Offset(target.exactCenterX(), target.exactCenterY())
         val down = SystemClock.uptimeMillis()
@@ -243,8 +245,7 @@ class MixingColorBarWindowTest {
             throw failure
         }
         compose.waitForIdle()
-        assertTrue("A nested color menu must remain beside its palette, not jump to the screen origin",
-            bounds("Replace with current").left >= paletteLeft - 16)
+        bounds("Choose color")
     }
 
     private fun tap(label: String) {

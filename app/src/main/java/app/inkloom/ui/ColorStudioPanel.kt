@@ -55,14 +55,17 @@ internal fun ColorStudioPanel(
     val context = LocalContext.current
     if (fixedTab == null) RelayoutPaletteOnWindowResize()
     val state = LocalColorStudioState.current
-    val contentHeight = availableHeight?.let { (it - 22.dp).coerceAtLeast(100.dp) } ?: (LocalConfiguration.current.screenHeightDp - 200).coerceIn(160, 420).dp
+    val tab = fixedTab ?: state.tab
+    val nearbyFooterHeight = if (tab == 3) 38.dp else 0.dp
+    val contentHeight = availableHeight?.let { (it - 22.dp - nearbyFooterHeight).coerceAtLeast(100.dp) }
+        ?: (LocalConfiguration.current.screenHeightDp - 200).coerceIn(160, 420).dp - nearbyFooterHeight
     val density = LocalDensity.current
     var visibleContentHeight by remember { mutableStateOf(contentHeight) }
     var draft by if (fixedTab != null) state.draftState(colorPair?.secondarySelected == true, color) else remember { mutableStateOf(ColorPickerDraft.fromColor(color)) }
+    var pickerStart by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(color) { draft = draft.withColor(color) }
     val currentColorCommit by rememberUpdatedState(onColorCommit)
     fun pick(value: Int) { draft = draft.withColor(value); currentColorCommit(value) }
-    val tab = fixedTab ?: state.tab
     fun tr(en: String, zh: String) = language.text(en, zh)
     Column(Modifier.fillMaxWidth()) {
         if (fixedTab != null) Row(Modifier.fillMaxWidth().height(22.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -84,18 +87,26 @@ internal fun ColorStudioPanel(
             key(tab) {
                 Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                     when (tab) {
-                        0 -> CspColorPanel(color, onColorPreview, ::pick, onResizeWidth = onResizeWidth, showHeader = false, initialDraft = draft, onDraftChange = { draft = it }, maximumHeight = visibleContentHeight, colorPair = colorPair, onSwapColors = onSwapColors, language = language)
-                        1 -> ColorSetPanel(color, language, visibleContentHeight, ::pick)
+                        0 -> CspColorPanel(color, onColorPreview, ::pick, onResizeWidth = onResizeWidth, showHeader = false, initialDraft = draft, onDraftChange = { draft = it }, maximumHeight = visibleContentHeight, colorPair = colorPair, onSwapColors = onSwapColors, language = language, onOpenQuickPicker = { pickerStart = it })
+                        1 -> ColorSetPanel(color, language, visibleContentHeight, ::pick, onOpenQuickPicker = { pickerStart = it })
                         2 -> {
                             val mixingView = remember(context, state) { ColorMixingView(context, state.mixing) }
-                            MixingPalette(color, language, ::pick, mixingView, state.mixingTool, state::selectTool, state.mixingRadius, state::setRadius)
+                            MixingPalette(color, language, ::pick, mixingView, state.mixingTool, state::selectTool, state.mixingRadius, state::setRadius, onOpenQuickPicker = { pickerStart = it })
                         }
-                        3 -> NearbyColorPalette(draft, language, ::pick)
+                        3 -> NearbyColorPalette(draft, language, ::pick, onOpenQuickPicker = { pickerStart = it })
                     }
                 }
             }
         }
+        if (tab == 3) Row(Modifier.fillMaxWidth().height(nearbyFooterHeight).padding(start = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(28.dp).background(Color(color)).border(.5.dp, OutlineSoft)
+                .semantics { contentDescription = tr("Edit current color", "编辑当前颜色") }
+                .combinedClickable(onClick = { pickerStart = color }, onLongClick = { pickerStart = color }))
+            Spacer(Modifier.width(8.dp))
+            Text(tr("Current color", "当前颜色"), color = MutedInk, fontSize = 11.sp)
+        }
     }
+    pickerStart?.let { start -> StandardColorPickerDialog(start, language, onConfirm = { pick(it); pickerStart = null }, onDismiss = { pickerStart = null }) }
 }
 
 /** Compose 1.8 fixes a Popup's window dimensions after measuring, but does not remeasure it
@@ -126,7 +137,7 @@ private fun RelayoutPaletteOnWindowResize() {
 
 /** Fixed reference prevents selecting a tile from shifting every following tile under the pen. */
 @Composable
-private fun NearbyColorPalette(draft: ColorPickerDraft, language: UiLanguage, onPick: (Int) -> Unit) {
+private fun NearbyColorPalette(draft: ColorPickerDraft, language: UiLanguage, onPick: (Int) -> Unit, onOpenQuickPicker: (Int) -> Unit) {
     var mode by remember { mutableIntStateOf(0) }
     fun tr(en: String, zh: String) = language.text(en, zh)
     Column {
@@ -140,15 +151,15 @@ private fun NearbyColorPalette(draft: ColorPickerDraft, language: UiLanguage, on
             }
         }
         when (mode) {
-            0 -> NearbyMatrix(draft, language, onPick)
-            1 -> HarmonyPalette(draft, language, onPick)
-            else -> IntermediateColorPalette(draft, language, onPick)
+            0 -> NearbyMatrix(draft, language, onPick, onOpenQuickPicker)
+            1 -> HarmonyPalette(draft, language, onPick, onOpenQuickPicker)
+            else -> IntermediateColorPalette(draft, language, onPick, onOpenQuickPicker)
         }
     }
 }
 
 @Composable
-private fun NearbyMatrix(draft: ColorPickerDraft, language: UiLanguage, onPick: (Int) -> Unit) {
+private fun NearbyMatrix(draft: ColorPickerDraft, language: UiLanguage, onPick: (Int) -> Unit, onOpenQuickPicker: (Int) -> Unit) {
     val color = draft.color
     var reference by remember { mutableStateOf(draft) }
     var saturationRange by remember { mutableFloatStateOf(.4f) }
@@ -173,7 +184,7 @@ private fun NearbyMatrix(draft: ColorPickerDraft, language: UiLanguage, onPick: 
                     Box(Modifier.weight(1f).fillMaxHeight().padding(.5.dp).background(Color(swatch))
                         .border(if (chosen) 2.dp else 0.dp, if (chosen) Ink else Color.Transparent)
                         .semantics { contentDescription = label; selected = chosen }
-                        .clickable { onPick(swatch) })
+                        .combinedClickable(onClick = { onPick(swatch) }, onLongClick = { onOpenQuickPicker(swatch) }))
                 }
             }
         }
@@ -183,7 +194,7 @@ private fun NearbyMatrix(draft: ColorPickerDraft, language: UiLanguage, onPick: 
 }
 
 @Composable
-private fun HarmonyPalette(draft: ColorPickerDraft, language: UiLanguage, onPick: (Int) -> Unit) {
+private fun HarmonyPalette(draft: ColorPickerDraft, language: UiLanguage, onPick: (Int) -> Unit, onOpenQuickPicker: (Int) -> Unit) {
     var mode by remember { mutableStateOf(ColorHarmony.COMPLEMENTARY) }
     var menu by remember { mutableStateOf(false) }
     fun tr(en: String, zh: String) = language.text(en, zh)
@@ -216,7 +227,8 @@ private fun HarmonyPalette(draft: ColorPickerDraft, language: UiLanguage, onPick
             colors.forEachIndexed { index, color ->
                 Box(
                     Modifier.weight(1f).fillMaxHeight().padding(1.dp).background(Color(color)).border(.5.dp, OutlineSoft)
-                        .semantics { contentDescription = tr("Harmony color ${index + 1}", "和谐色 ${index + 1}") }.clickable { onPick(color) },
+                        .semantics { contentDescription = tr("Harmony color ${index + 1}", "和谐色 ${index + 1}") }
+                        .combinedClickable(onClick = { onPick(color) }, onLongClick = { onOpenQuickPicker(color) }),
                 )
             }
         }
@@ -225,7 +237,7 @@ private fun HarmonyPalette(draft: ColorPickerDraft, language: UiLanguage, onPick
 }
 
 @Composable
-private fun IntermediateColorPalette(draft: ColorPickerDraft, language: UiLanguage, onPick: (Int) -> Unit) {
+private fun IntermediateColorPalette(draft: ColorPickerDraft, language: UiLanguage, onPick: (Int) -> Unit, onOpenQuickPicker: (Int) -> Unit) {
     fun defaults() = listOf(
         draft.color,
         ColorRelations.harmony(draft.hue, draft.saturation, draft.value, ColorHarmony.COMPLEMENTARY).last(),
@@ -233,6 +245,7 @@ private fun IntermediateColorPalette(draft: ColorPickerDraft, language: UiLangua
         0xfff2f2f2.toInt(),
     )
     var corners by remember { mutableStateOf(defaults()) }
+    var cornerToEdit by remember { mutableStateOf<Int?>(null) }
     fun tr(en: String, zh: String) = language.text(en, zh)
     Column {
         Row(Modifier.fillMaxWidth().height(34.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -244,7 +257,10 @@ private fun IntermediateColorPalette(draft: ColorPickerDraft, language: UiLangua
                 Box(
                     Modifier.weight(1f).fillMaxHeight().padding(1.dp).background(Color(value)).border(.5.dp, OutlineSoft)
                         .semantics { contentDescription = tr("Intermediate corner ${index + 1}", "中间色角点 ${index + 1}") }
-                        .clickable { corners = corners.toMutableList().also { it[index] = draft.color } },
+                        .combinedClickable(
+                            onClick = { corners = corners.toMutableList().also { it[index] = draft.color } },
+                            onLongClick = { cornerToEdit = index },
+                        ),
                 )
             }
         }
@@ -255,12 +271,15 @@ private fun IntermediateColorPalette(draft: ColorPickerDraft, language: UiLangua
                     Box(
                         Modifier.weight(1f).fillMaxHeight().padding(.5.dp).background(Color(mixed))
                             .semantics { contentDescription = tr("Intermediate color ${row + 1}, ${column + 1}", "中间色 ${row + 1}，${column + 1}") }
-                            .clickable { onPick(mixed) },
+                            .combinedClickable(onClick = { onPick(mixed) }, onLongClick = { onOpenQuickPicker(mixed) }),
                     )
                 }
             }
         }
     }
+    cornerToEdit?.let { index -> StandardColorPickerDialog(corners[index], language,
+        onConfirm = { chosen -> corners = corners.toMutableList().also { it[index] = chosen }; onPick(chosen); cornerToEdit = null },
+        onDismiss = { cornerToEdit = null }) }
 }
 
 internal fun nearbyColor(hsv: FloatArray, column: Int, row: Int, saturationRange: Float, valueRange: Float): Int =
@@ -281,6 +300,7 @@ private fun MixingPalette(
     color: Int, language: UiLanguage, onPick: (Int) -> Unit, view: ColorMixingView,
     tool: MixingBoard.Tool, onTool: (MixingBoard.Tool) -> Unit,
     radius: Float, onRadius: (Float) -> Unit,
+    onOpenQuickPicker: (Int) -> Unit,
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("inkloom_color_palette", Context.MODE_PRIVATE) }
@@ -294,7 +314,7 @@ private fun MixingPalette(
     val tones = listOf<Int?>(null, 0xffffffff.toInt(), 0xff000000.toInt(), 0xff808080.toInt(), 0xffeeeeea.toInt())
     val paletteStore = remember { MixingColorBarStore(context) }
     var library by remember { mutableStateOf(runCatching { paletteStore.load() }.getOrElse { storageError = true; ColorSetLibrary() }) }
-    var swatchMenu by remember { mutableStateOf<String?>(null) }
+    var editingSwatchId by remember { mutableStateOf<String?>(null) }
     var resetColors by remember { mutableStateOf(false) }
     fun tr(en: String, zh: String) = language.text(en, zh)
     Column {
@@ -318,16 +338,7 @@ private fun MixingPalette(
                     .combinedClickable(onClick = {
                         runCatching { paletteStore.update { it.selectSwatch(MixingColorBarStore.SET_ID, swatch.id) } }.onSuccess { library = it }.onFailure { storageError = true }
                         onPick(swatch.color)
-                    }, onLongClick = { swatchMenu = swatch.id })) {
-                    ColorPaletteDropdownMenu(swatchMenu == swatch.id, { swatchMenu = null }) {
-                        DropdownMenuItem(text = { Text(tr("Replace with current", "替换为当前颜色")) }, onClick = {
-                            runCatching { paletteStore.update { it.replaceSwatch(MixingColorBarStore.SET_ID, swatch.id, color) } }.onSuccess { library = it }.onFailure { storageError = true }; swatchMenu = null
-                        })
-                        DropdownMenuItem(text = { Text(tr("Delete color", "删除颜色")) }, onClick = {
-                            runCatching { paletteStore.update { it.removeSwatch(MixingColorBarStore.SET_ID, swatch.id) } }.onSuccess { library = it }.onFailure { storageError = true }; swatchMenu = null
-                        })
-                    }
-                    }
+                    }, onLongClick = { editingSwatchId = swatch.id }))
                 }
             }
             StudioIcon(Icons.Outlined.Add, tr("Add mixing color", "添加混色色块")) {
@@ -335,7 +346,9 @@ private fun MixingPalette(
             }
         }
         FlowRow(Modifier.fillMaxWidth(), maxItemsInEachRow = 5) {
-            Box(Modifier.size(32.dp).padding(7.dp).background(Color(color)).border(.5.dp, OutlineSoft))
+            Box(Modifier.size(32.dp).padding(7.dp).background(Color(color)).border(.5.dp, OutlineSoft)
+                .semantics { contentDescription = tr("Edit current color", "编辑当前颜色") }
+                .combinedClickable(onClick = { onOpenQuickPicker(color) }, onLongClick = { onOpenQuickPicker(color) }))
             StudioIcon(Icons.Outlined.DeleteOutline, tr("Clear mixing board", "清空混色画板")) { view.clear() }
             StudioIcon(Icons.Outlined.Undo, tr("Undo mixing", "撤销混色"), enabled = canUndo) { view.undo() }
             StudioIcon(Icons.Outlined.Redo, tr("Redo mixing", "重做混色"), enabled = canRedo) { view.redo() }
@@ -368,6 +381,16 @@ private fun MixingPalette(
                         if (id != null) runCatching { paletteStore.update { it.replaceSwatch(MixingColorBarStore.SET_ID, id, color) } }.onSuccess { library = it }.onFailure { storageError = true }
                         menu = false
                     })
+                    DropdownMenuItem(text = { Text(tr("Edit selected color…", "编辑所选颜色…")) }, enabled = library.activeSet?.selectedSwatchId != null,
+                        onClick = { editingSwatchId = library.activeSet?.selectedSwatchId; menu = false })
+                    DropdownMenuItem(text = { Text(tr("Delete selected color", "删除所选颜色")) }, enabled = library.activeSet?.selectedSwatchId != null,
+                        onClick = {
+                            library.activeSet?.selectedSwatchId?.let { selectedId ->
+                                runCatching { paletteStore.update { it.removeSwatch(MixingColorBarStore.SET_ID, selectedId) } }
+                                    .onSuccess { library = it }.onFailure { storageError = true }
+                            }
+                            menu = false
+                        })
                     DropdownMenuItem(text = { Text(tr("Reset color bar", "重置常用色条")) }, onClick = { menu = false; resetColors = true })
                     HorizontalDivider()
                     listOf(tr("Transparent", "透明"), tr("White", "白色"), tr("Black", "黑色"), tr("Gray", "灰色"), tr("Beige", "米色")).forEachIndexed { index, label ->
@@ -387,6 +410,14 @@ private fun MixingPalette(
             resetColors = false
         }) { Text(tr("Reset", "重置")) } },
         dismissButton = { TextButton(onClick = { resetColors = false }) { Text(tr("Cancel", "取消")) } })
+    editingSwatchId?.let { id -> library.activeSet?.swatches?.firstOrNull { it.id == id }?.let { swatch ->
+        StandardColorPickerDialog(swatch.color, language, onConfirm = { chosen ->
+            runCatching { paletteStore.update { it.replaceSwatch(MixingColorBarStore.SET_ID, id, chosen) } }
+                .onSuccess { library = it }.onFailure { storageError = true }
+            onPick(chosen)
+            editingSwatchId = null
+        }, onDismiss = { editingSwatchId = null })
+    } }
 }
 
 @Composable

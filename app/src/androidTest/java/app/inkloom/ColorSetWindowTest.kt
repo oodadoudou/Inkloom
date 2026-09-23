@@ -13,7 +13,11 @@ import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.settings.ColorSetLibrary
@@ -48,6 +52,43 @@ class ColorSetWindowTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    @Test fun paletteAndNearbyCurrentColorSquaresOpenPrecisePickerForTheActiveColor() {
+        val title = "Quick color ${SystemClock.uptimeMillis()}"
+        openNewNotebook(title)
+        val documentId = FileDocumentStore(context.filesDir).list().first { it.title == title }.id
+        val colors = DrawingColorStore(context)
+        val startingBackground = colors.load(documentId).background
+        tap("Colors")
+        tap("Palettes")
+        tap("Edit current color")
+        bounds("Choose color")
+        instrumentation.uiAutomation.executeShellCommand("screencap -p /data/local/tmp/inkloom-quick-color-picker.png").close()
+        compose.onNodeWithContentDescription("Hex color").performTextReplacement("#314159")
+        compose.onNodeWithText("Apply").performClick()
+        try { compose.waitUntil(5_000) { colors.load(documentId).foreground == 0xff314159.toInt() } }
+        catch (failure: Throwable) { throw AssertionError("picker wrote foreground=${colors.load(documentId).foreground.toUInt().toString(16)} background=${colors.load(documentId).background.toUInt().toString(16)}; ${visibleLabels()}", failure) }
+        assertEquals(startingBackground, colors.load(documentId).background)
+
+        tap("Wheel")
+        tap("Edit secondary color")
+        tap("Nearby")
+        compose.onNodeWithContentDescription("Edit current color").performTouchInput { longClick() }
+        bounds("Choose color")
+        compose.onNodeWithContentDescription("Hex color").performTextReplacement("#A04080")
+        compose.onNodeWithText("Apply").performClick()
+        compose.waitUntil(5_000) { colors.load(documentId).background == 0xffa04080.toInt() }
+        assertEquals(0xff314159.toInt(), colors.load(documentId).foreground)
+
+        compose.onNodeWithContentDescription("Nearby color 4, 4").performTouchInput { longClick() }
+        bounds("Choose color")
+        tap("Cancel")
+        assertEquals(0xffa04080.toInt(), colors.load(documentId).background)
+        tap("Mix")
+        tap("Edit current color")
+        bounds("Choose color")
+        tap("Cancel")
+    }
+
     @Test fun importingFileOrImageOffersAppendReplaceAndCancelBeforeOpeningPicker() {
         openNewNotebook("Palette import choice ${SystemClock.uptimeMillis()}")
         tap("Colors")
@@ -62,6 +103,21 @@ class ColorSetWindowTest {
         bounds("Append colors")
         bounds("Replace colors")
         tap("Cancel")
+    }
+
+    @Test fun heldSavedColorOpensPrecisePickerAndKeepsItsTileIdentity() {
+        val title = "Edit saved swatch ${SystemClock.uptimeMillis()}"
+        openNewNotebook(title)
+        tap("Colors")
+        tap("Palettes")
+        tap("Save current color")
+        val original = requireNotNull(library().activeSet).swatches.single()
+        compose.onNodeWithContentDescription("Color tile 1").performTouchInput { longClick() }
+        bounds("Choose color")
+        compose.onNodeWithContentDescription("Hex color").performTextReplacement("#537A91")
+        compose.onNodeWithText("Apply").performClick()
+        compose.waitUntil(5_000) { library().activeSet?.swatches?.singleOrNull()?.color == 0xff537a91.toInt() }
+        assertEquals(original.id, library().activeSet?.swatches?.single()?.id)
     }
 
     @Test fun namedSetsPreserveDuplicateTilesAndRealLongPressOrderAfterReopening() {

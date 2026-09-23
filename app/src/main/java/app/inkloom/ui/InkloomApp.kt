@@ -6170,14 +6170,18 @@ private fun CompactToolbarIconButton(onClick: () -> Unit, description: String, s
 @Composable
 private fun BrushColorPicker(color: Int, onColor: (Int) -> Unit, square: Boolean = false) {
     var open by remember { mutableStateOf(false) }
+    var quickPicker by remember { mutableStateOf(false) }
     var width by rememberSaveable { mutableFloatStateOf(360f) }
     Box {
         val shape = if (square) RoundedCornerShape(2.dp) else CircleShape
-        Box(Modifier.size(28.dp).clip(shape).background(Color(color)).border(1.dp, OutlineSoft, shape).clickable { open = true })
+        Box(Modifier.size(28.dp).clip(shape).background(Color(color)).border(1.dp, OutlineSoft, shape)
+            .combinedClickable(onClick = { open = true }, onLongClick = { quickPicker = true }))
         DropdownMenu(open, { open = false }, Modifier.width(width.dp).background(Paper).padding(6.dp)) {
             ColorStudioPanel(color, LocalUiLanguage.current, {}, onColor, { delta -> width = (width + delta).coerceIn(280f, 680f) })
         }
     }
+    if (quickPicker) StandardColorPickerDialog(color, LocalUiLanguage.current,
+        onConfirm = { onColor(it); quickPicker = false }, onDismiss = { quickPicker = false })
 }
 
 @Composable

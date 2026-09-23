@@ -78,6 +78,7 @@ internal fun CspColorPanel(
     colorPair: ColorPairControls? = null,
     onSwapColors: (() -> Unit)? = null,
     language: UiLanguage = UiLanguage.ENGLISH,
+    onOpenQuickPicker: (Int) -> Unit = {},
 ) {
     SideEffect { ColorPickerInteractionTrace.panelComposition() }
     fun tr(en: String, zh: String) = language.text(en, zh)
@@ -193,13 +194,14 @@ internal fun CspColorPanel(
                         val secondary = if (pair.secondarySelected) draft.color else pair.background
                         Box(Modifier.size(32.dp).background(Color(primary), RoundedCornerShape(2.dp))
                             .border(if (!pair.secondarySelected) 2.dp else 1.dp, if (!pair.secondarySelected) Ink else MutedInk, RoundedCornerShape(2.dp))
-                            .clickable { pair.select(false) }
+                            .combinedClickable(onClick = { pair.select(false) }, onLongClick = { pair.select(false); onOpenQuickPicker(pair.foreground) })
                             .semantics { contentDescription = tr("Edit primary color", "编辑主色") })
                         Box(Modifier.size(32.dp).background(Color(secondary), RoundedCornerShape(2.dp))
                             .border(if (pair.secondarySelected) 2.dp else 1.dp, if (pair.secondarySelected) Ink else MutedInk, RoundedCornerShape(2.dp))
-                            .clickable { pair.select(true) }
+                            .combinedClickable(onClick = { pair.select(true) }, onLongClick = { pair.select(true); onOpenQuickPicker(pair.background) })
                             .semantics { contentDescription = tr("Edit secondary color", "编辑副色") })
-                    } else Box(Modifier.size(32.dp).background(Color(draft.color)).border(1.dp, MutedInk))
+                    } else Box(Modifier.size(32.dp).background(Color(draft.color)).border(1.dp, MutedInk)
+                        .combinedClickable(onClick = { onOpenQuickPicker(draft.color) }, onLongClick = { onOpenQuickPicker(draft.color) }))
                 }
                 if (pair != null && onSwapColors != null) IconButton(onClick = onSwapColors, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Outlined.SwapHoriz, tr("Swap foreground and background colors", "交换前景色和背景色"), Modifier.size(17.dp), tint = Ink)
