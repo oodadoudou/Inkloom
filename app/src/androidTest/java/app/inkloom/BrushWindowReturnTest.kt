@@ -70,6 +70,11 @@ class BrushWindowReturnTest {
         compose.onNodeWithText("Distributed Systems").performScrollTo().performTouchInput { click() }
         compose.waitForIdle()
         compose.onNodeWithText("Distributed Systems").assertExists()
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync {
+            model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java]
+        }
+        compose.waitUntil(10_000) { model.currentDocument()?.title == "Distributed Systems" }
         awaitPageLabel("1/3")
         compose.onNodeWithContentDescription("Next page").performTouchInput { click() }
         compose.onNodeWithContentDescription("Next page").performTouchInput { click() }
