@@ -1,6 +1,6 @@
 # Inkloom 当前需求与待排优先级
 
-核对日期：2026-09-23。最新 Debug 版本为 **0.212.0**；本版开始 R11，补齐吸管取样源、颜色历史、数值 Alpha 与带标签图片的 sRGB 转换。JVM、相关 Android 15 测试与 lint 已通过；APK 签名、冷启动和 Google Drive Desktop 同步证据见 [0.212.0 交付记录](dist/Inkloom-0.212.0-efdbfb4a-debug.json)。R11 的 ICC／CMYK／软打样仍未完成，远端云下载及 MovinkPad 真机仍待核验。
+核对日期：2026-09-23。最新 Debug 版本为 **0.213.0**；本版补充 R17 页面可见像素尺寸 PNG 导出，以及 R20 批量文件夹移动、递归删除和任意层级侧栏访问。JVM、相关 Android 15 测试与 lint 已通过；APK 签名、冷启动和 Google Drive Desktop 同步证据见 [0.213.0 交付记录](dist/Inkloom-0.213.0-2d773a22-debug.json)。R11 的 ICC／CMYK／软打样以及 R17/R20 下表所列尾项仍未完成，远端云下载及 MovinkPad 真机仍待核验。
 
 **本文件是版本交付与宏观需求状态的入口。** 下表顺序不是开发顺序。逐项完成情况见 [REQUESTED_FEATURE_CATALOG.md](REQUESTED_FEATURE_CATALOG.md) 的可勾选目录；宏观项目完成不等于其 CSP 扩展细项全部完成。旧版本计划、旧额度阈值和分支上的未交付代码均不作为当前依据。
 
@@ -18,7 +18,7 @@
 
 笔迹模糊、缩放卡顿和切笔卡顿仍标为**部分修复、`DEVICE_PENDING`**：旧像素层放大已从最近邻改为过滤采样，缩放时重复失效请求已移除，切笔时不再同步重写整份笔刷库。仍须在 MovinkPad 上对同一笔记关开前后的笔迹、120 Hz 缩放帧时间和复杂笔刷首次切换耗时作对照，不能把模拟器回归当成实机性能结论。
 
-**本版 0.212.0 的验证边界**：JVM 919 项（0 失败、8 跳过）、相关 Android 15 取色／设置／图片配置／颜色窗口／PNG 元数据测试分别通过，lint 和 `git diff --check` 通过，v2 签名、安装及冷启动通过。本版未跑完全量 Android 套件；物理设备原门槛未放宽，120 Hz 仍为 `DEVICE_PENDING`。
+**本版 0.213.0 的验证边界**：JVM 923 项（0 失败、8 跳过）、相关 Android 15 原尺寸 PNG 与批量文件夹实际点击测试通过，lint 和 `git diff --check` 通过，v2 签名、安装及冷启动通过。本版未跑完全量 Android 套件；物理设备原门槛未放宽，120 Hz 仍为 `DEVICE_PENDING`。
 
 ## 当前开发优先级
 
@@ -100,7 +100,7 @@
 | 混合变换／网格 | [MixedSelectionDraft.kt](app/src/main/java/app/inkloom/ui/MixedSelectionDraft.kt)、[SelectionTransformGeometry.kt](app/src/main/java/app/inkloom/engine/v5/tools/SelectionTransformGeometry.kt)、[SelectionTransformTest.kt](app/src/androidTest/java/app/inkloom/SelectionTransformTest.kt)、[SelectionMeshRasterTest.kt](app/src/androidTest/java/app/inkloom/SelectionMeshRasterTest.kt) |
 | 图片模板 | [ImagePaperTemplateTest.kt](app/src/androidTest/java/app/inkloom/ImagePaperTemplateTest.kt)、[PageTemplateStore.kt](app/src/main/java/app/inkloom/document/PageTemplateStore.kt) |
 | 导出限制 | [DocumentAssetService.kt](app/src/main/java/app/inkloom/document/DocumentAssetService.kt) |
-| 最新交付 | [0.212.0 交付证据](dist/Inkloom-0.212.0-efdbfb4a-debug.json)：919 项 JVM（0 失败、8 跳过）、相关 Android 15 测试、lint、签名、安装、冷启动、SHA-256 与 Drive Desktop 本地副本校验通过；全量套件未完成。 |
+| 最新交付 | [0.213.0 交付证据](dist/Inkloom-0.213.0-2d773a22-debug.json)：923 项 JVM（0 失败、8 跳过）、R17/R20 相关 Android 15 测试、lint、签名、安装、冷启动、SHA-256 与 Drive Desktop 本地副本校验通过；全量套件未完成。 |
 
 代码路径核对与既有测试报告支持此状态；本轮未逐一复测细项索引的全部条目。没有足够证据的高级子项保留“待核对”，不硬判完成。
 
