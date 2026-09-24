@@ -8,6 +8,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SparseDisplacementFieldTest {
+    @Test fun distortionIsDeterministicBoundedAndDoesNotAffectReconstruct() {
+        fun field(distortion: Float) = SparseDisplacementField(512, 512).also {
+            it.appendSegment(180f, 256f, 240f, 256f, 80f, .8f, .4f, LiquifyMode.PUSH, distortion)
+        }
+        val smooth = field(0f)
+        val first = field(.8f)
+        val second = field(.8f)
+        assertEquals(first.displacementAt(230f, 256f), second.displacementAt(230f, 256f))
+        assertTrue(first.displacementAt(230f, 256f) != smooth.displacementAt(230f, 256f))
+        assertEquals(0f, first.displacementAt(500f, 500f).first, 0f)
+        repeat(6) {
+            first.appendSegment(230f, 256f, 230f, 256f, 80f, .45f, .3f, LiquifyMode.RECONSTRUCT, .8f)
+        }
+        assertTrue(hypot(first.displacementAt(230f, 256f).first, first.displacementAt(230f, 256f).second) <
+            hypot(second.displacementAt(230f, 256f).first, second.displacementAt(230f, 256f).second))
+    }
+
     @Test fun contactCopyRetainsSparseWarpWithoutMutatingCommittedField() {
         val field = SparseDisplacementField(8192, 8192)
         field.appendSegment(180f, 256f, 240f, 256f, 80f, 1f, .3f, LiquifyMode.PUSH)

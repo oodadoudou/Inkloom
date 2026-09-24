@@ -39,6 +39,9 @@ data class AppSettings(
     val gradientAngleSnapDegrees: Float = 45f,
     val gradientStops: List<GradientColorStop> = listOf(GradientColorStop(0f, 0xFF111111L), GradientColorStop(1f, 0xFFFFFFFFL)),
     val gradientPresets: GradientPresetLibrary = GradientPresetLibrary(),
+    val liquifyStrengthScale: Float = 1f,
+    val liquifyDistortion: Float = 0f,
+    val liquifyMomentum: Float = 0f,
     val showPageRail: Boolean = false,
     val showBrushPanel: Boolean = false,
     val showLayerPanel: Boolean = false,
@@ -244,6 +247,9 @@ class AppSettingsStore(context: Context) {
             gradientPresets = preferences.getString("gradientPresets", null)?.let { encoded ->
                 GradientPresetLibraryCodec.decode(encoded.encodeToByteArray()).getOrDefault(GradientPresetLibrary())
             } ?: GradientPresetLibrary(),
+            liquifyStrengthScale = preferences.getFloat("liquifyStrengthScale", 1f).takeIf(Float::isFinite)?.coerceIn(0f, 2f) ?: 1f,
+            liquifyDistortion = preferences.getFloat("liquifyDistortion", 0f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f,
+            liquifyMomentum = preferences.getFloat("liquifyMomentum", 0f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f,
             showPageRail = preferences.getBoolean("showPageRail", false),
             showBrushPanel = preferences.getBoolean("showBrushPanel", false),
             showLayerPanel = preferences.getBoolean("showLayerPanel", false),
@@ -426,6 +432,9 @@ class AppSettingsStore(context: Context) {
             .putFloat("gradientAngleSnapDegrees", persisted.gradientAngleSnapDegrees.takeIf(Float::isFinite)?.coerceIn(1f, 90f) ?: 45f)
             .putString("gradientStops", GradientStopCodec.encode(persisted.gradientStops))
             .putString("gradientPresets", GradientPresetLibraryCodec.encode(persisted.gradientPresets).toString(Charsets.UTF_8))
+            .putFloat("liquifyStrengthScale", persisted.liquifyStrengthScale.coerceIn(0f, 2f))
+            .putFloat("liquifyDistortion", persisted.liquifyDistortion.coerceIn(0f, 1f))
+            .putFloat("liquifyMomentum", persisted.liquifyMomentum.coerceIn(0f, 1f))
             .putBoolean("showPageRail", persisted.showPageRail)
             .putBoolean("showBrushPanel", persisted.showBrushPanel)
             .putBoolean("showLayerPanel", persisted.showLayerPanel)

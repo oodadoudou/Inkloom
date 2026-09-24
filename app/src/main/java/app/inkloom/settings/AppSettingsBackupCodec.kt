@@ -79,6 +79,7 @@ object AppSettingsBackupCodec {
         put("gradientKind", gradientKind.name); put("gradientEdgeMode", gradientEdgeMode.name); put("gradientReverse", gradientReverse); put("gradientDither", gradientDither)
         put("gradientEllipseRatio", gradientEllipseRatio); put("gradientAngleSnapEnabled", gradientAngleSnapEnabled); put("gradientAngleSnapDegrees", gradientAngleSnapDegrees); put("gradientStops", app.inkloom.document.GradientStopCodec.encode(gradientStops))
         put("gradientPresets", json.parseToJsonElement(GradientPresetLibraryCodec.encode(gradientPresets).toString(Charsets.UTF_8)))
+        put("liquifyStrengthScale", liquifyStrengthScale); put("liquifyDistortion", liquifyDistortion); put("liquifyMomentum", liquifyMomentum)
         put("pagePanelDock", pagePanelDock.name); put("brushPanelDock", brushPanelDock.name); put("layerPanelDock", layerPanelDock.name)
         put("pagePanelMode", pagePanelMode.name); put("brushPanelMode", brushPanelMode.name); put("layerPanelMode", layerPanelMode.name)
         put("pagePanelLocked", pagePanelLocked); put("brushPanelLocked", brushPanelLocked); put("layerPanelLocked", layerPanelLocked)
@@ -126,6 +127,9 @@ object AppSettingsBackupCodec {
             gradientKind = enum("gradientKind", defaults.gradientKind), gradientEdgeMode = enum("gradientEdgeMode", defaults.gradientEdgeMode), gradientReverse = boolean("gradientReverse", defaults.gradientReverse), gradientDither = boolean("gradientDither", defaults.gradientDither),
             gradientEllipseRatio = float("gradientEllipseRatio", defaults.gradientEllipseRatio).coerceIn(.1f, 1f), gradientAngleSnapEnabled = boolean("gradientAngleSnapEnabled", defaults.gradientAngleSnapEnabled), gradientAngleSnapDegrees = float("gradientAngleSnapDegrees", defaults.gradientAngleSnapDegrees).coerceIn(1f, 90f), gradientStops = app.inkloom.document.GradientStopCodec.decode(text("gradientStops")),
             gradientPresets = this["gradientPresets"]?.let { GradientPresetLibraryCodec.decode(it.toString().encodeToByteArray()).getOrThrow() } ?: GradientPresetLibrary(),
+            liquifyStrengthScale = float("liquifyStrengthScale", defaults.liquifyStrengthScale).coerceIn(0f, 2f),
+            liquifyDistortion = float("liquifyDistortion", defaults.liquifyDistortion).coerceIn(0f, 1f),
+            liquifyMomentum = float("liquifyMomentum", defaults.liquifyMomentum).coerceIn(0f, 1f),
             language = enum("language", defaults.language), fingerDrawing = boolean("fingerDrawing", defaults.fingerDrawing),
             showPageRail = boolean("showPageRail", defaults.showPageRail), showBrushPanel = boolean("showBrushPanel", defaults.showBrushPanel),
             showLayerPanel = boolean("showLayerPanel", defaults.showLayerPanel), showToolbar = boolean("showToolbar", defaults.showToolbar),

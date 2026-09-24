@@ -413,6 +413,8 @@ class InkCanvasView(context: Context) : View(context) {
     private var liquifyReconstructionSelection: Pair<String, Long>? = null
     private var liquifyLastX = 0f
     private var liquifyLastY = 0f
+    private var liquifyLastDeltaX = 0f
+    private var liquifyLastDeltaY = 0f
     private var liquifyChanged = false
     private var liquifyDirtyBounds: Rect? = null
     private var liquifyPressure = 1f
@@ -878,8 +880,12 @@ class InkCanvasView(context: Context) : View(context) {
     var draftLayerIds: Set<String> = emptySet()
     var liquifyMode: LiquifyMode = LiquifyMode.PUSH
     var liquifyStrength: Float = .55f
-        set(value) { field = value.coerceIn(.01f, 1f) }
+        set(value) { field = value.coerceIn(0f, 1f) }
     var liquifyHardness: Float = .5f
+        set(value) { field = value.coerceIn(0f, 1f) }
+    var liquifyDistortion: Float = 0f
+        set(value) { field = value.coerceIn(0f, 1f) }
+    var liquifyMomentum: Float = 0f
         set(value) { field = value.coerceIn(0f, 1f) }
     var correctLineMode: CorrectLineMode = CorrectLineMode.SMOOTH
     var correctLineAmount: Float = .55f
@@ -4826,6 +4832,8 @@ class InkCanvasView(context: Context) : View(context) {
         rasterTileLiquifySession = RasterTileLiquifySession(surface, selectionMask, reconstruction)
         liquifyLastX = x.coerceIn(0f, 1f)
         liquifyLastY = y.coerceIn(0f, 1f)
+        liquifyLastDeltaX = 0f
+        liquifyLastDeltaY = 0f
         liquifyDownX = liquifyLastX
         liquifyDownY = liquifyLastY
         liquifyPressure = pressure.coerceIn(0f, 1f)
@@ -4885,6 +4893,7 @@ class InkCanvasView(context: Context) : View(context) {
                 liquifyStrength * pressure.coerceIn(0f, 1f),
                 liquifyHardness,
                 liquifyMode,
+                liquifyDistortion,
             )
             if (dirty != null) {
                 liquifyChanged = true
@@ -4894,6 +4903,12 @@ class InkCanvasView(context: Context) : View(context) {
                     PixelRect(dirty.left, dirty.top, dirty.right, dirty.bottom),
                     InvalidationReason.ACTIVE_DELTA,
                 )
+            }
+            val deltaX = nextX - liquifyLastX
+            val deltaY = nextY - liquifyLastY
+            if (kotlin.math.hypot(deltaX, deltaY) > .00001f) {
+                liquifyLastDeltaX = deltaX
+                liquifyLastDeltaY = deltaY
             }
             liquifyLastX = nextX
             liquifyLastY = nextY
@@ -4910,6 +4925,16 @@ class InkCanvasView(context: Context) : View(context) {
         liquifyFrameScheduled = false
         hasPendingLiquify = false
         pendingLiquify.clear()
+        if (liquifyMomentum > 0f && liquifyMovedBeyondSlop && liquifyMode in setOf(
+                LiquifyMode.PUSH, LiquifyMode.PUSH_LEFT, LiquifyMode.PUSH_RIGHT, LiquifyMode.EDGE)) {
+            val maximumTail = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH * .5f).coerceAtMost(.12f)
+            val distance = kotlin.math.hypot(liquifyLastDeltaX, liquifyLastDeltaY)
+            if (distance > .00001f) {
+                val factor = minOf(liquifyMomentum * .75f, maximumTail / distance)
+                extendLiquify(liquifyLastX + liquifyLastDeltaX * factor,
+                    liquifyLastY + liquifyLastDeltaY * factor, liquifyPressure * .7f)
+            }
+        }
         val tileSession = rasterTileLiquifySession
         var committed = false
         if (tileSession != null) {

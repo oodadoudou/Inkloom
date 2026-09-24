@@ -53,6 +53,7 @@ internal class SparseDisplacementField(
         strength: Float,
         hardness: Float,
         mode: LiquifyMode,
+        distortion: Float = 0f,
     ): PixelRect? {
         if (radius <= .25f || strength <= 0f) return null
         val dx = currentX - previousX
@@ -79,6 +80,7 @@ internal class SparseDisplacementField(
                 strength.coerceIn(0f, 1f),
                 hardness.coerceIn(0f, 1f),
                 mode,
+                distortion.coerceIn(0f, 1f),
             )
             if (changed != null) dirty = dirty?.union(changed) ?: changed
             stamps++
@@ -133,6 +135,7 @@ internal class SparseDisplacementField(
         strength: Float,
         hardness: Float,
         mode: LiquifyMode,
+        distortion: Float,
     ): PixelRect? {
         // A source node can already have moved into the brush from outside its original radius.
         // Search one bounded displacement halo so subsequent stamps operate in deformed space.
@@ -208,6 +211,13 @@ internal class SparseDisplacementField(
                     nextX = oldX * retain
                     nextY = oldY * retain
                 }
+            }
+            if (distortion > 0f && mode != LiquifyMode.RECONSTRUCT) {
+                // Smooth document-anchored perturbation; no random values per MOVE or per frame.
+                // The effect is bounded by radius and follows the same selection/undo pipeline.
+                val amount = distortion * radius * .025f * falloff
+                nextX += sin(sourceX * .071f + sourceY * .047f) * amount
+                nextY += sin(sourceX * -.039f + sourceY * .083f) * amount
             }
             if (kotlin.math.abs(nextX - oldX) < EPSILON &&
                 kotlin.math.abs(nextY - oldY) < EPSILON

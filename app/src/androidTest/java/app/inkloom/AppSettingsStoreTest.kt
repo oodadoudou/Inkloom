@@ -41,6 +41,22 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AppSettingsStoreTest {
+    @Test fun liquifyForceDistortionAndMomentumSurviveReload() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            AppSettingsStore(context).save(AppSettings(liquifyStrengthScale = 1.4f,
+                liquifyDistortion = .45f, liquifyMomentum = .7f))
+            val restored = AppSettingsStore(context).load()
+            assertEquals(1.4f, restored.liquifyStrengthScale)
+            assertEquals(.45f, restored.liquifyDistortion)
+            assertEquals(.7f, restored.liquifyMomentum)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
     @Test fun namedGradientPresetsSurviveReloadWithTransparentStops() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)

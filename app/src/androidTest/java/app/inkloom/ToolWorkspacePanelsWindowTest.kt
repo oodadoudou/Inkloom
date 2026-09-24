@@ -21,6 +21,17 @@ import org.junit.rules.TestRule
 import org.junit.runners.model.Statement
 
 class ToolWorkspacePanelsWindowTest {
+    @Test fun liquifyToolPropertyShowsRealForceDistortionAndMomentumControls() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithText("Tool property").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Liquify").performClick()
+        compose.onNodeWithText("Force").assertExists()
+        compose.onNodeWithText("Distortion").assertExists()
+        compose.onNodeWithText("Momentum").assertExists()
+    }
+
     private val compose = createAndroidComposeRule<MainActivity>()
     private val clean = TestRule { base, _ -> object : Statement() {
         override fun evaluate() {

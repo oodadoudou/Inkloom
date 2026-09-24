@@ -19,6 +19,22 @@ import org.junit.runner.RunWith
 /** Professional tool integration over V5 raster state only. */
 @RunWith(AndroidJUnit4::class)
 class InkCanvasProfessionalToolsTest {
+    @Test fun momentumAddsBoundedPenUpTravelAndKeepsOneUndoStep() {
+        fun result(momentum: Float): IntArray {
+            val (view, surface) = rasterLiquifyCanvas { liquifyMomentum = momentum }
+            val bounds = PixelRect(0, 0, surface.logicalWidth, surface.logicalHeight)
+            val before = surface.snapshot().copyPremultipliedPixels(bounds)
+            send(view, MotionEvent.ACTION_DOWN, 500f, 500f, 0L)
+            send(view, MotionEvent.ACTION_MOVE, 650f, 500f, 10L)
+            send(view, MotionEvent.ACTION_UP, 650f, 500f, 20L)
+            val after = surface.snapshot().copyPremultipliedPixels(bounds)
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { view.undo() }
+            assertEquals(before.toList(), surface.snapshot().copyPremultipliedPixels(bounds).toList())
+            return after
+        }
+        assertFalse(result(0f).contentEquals(result(1f)))
+    }
+
     @Test fun distinctPenContactsReconstructAndCancelPreservesEarlierEdits() {
         val (view, surface) = rasterLiquifyCanvas()
         val bounds = PixelRect(0, 0, surface.logicalWidth, surface.logicalHeight)

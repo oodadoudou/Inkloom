@@ -13,6 +13,15 @@ import app.inkloom.document.GradientEdgeMode
 import app.inkloom.document.GradientKind
 
 class AppSettingsBackupCodecTest {
+    @Test fun `liquify parameters survive backup`() {
+        val settings = AppSettings(liquifyStrengthScale = 1.4f,
+            liquifyDistortion = .45f, liquifyMomentum = .7f)
+        val restored = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(settings)).getOrThrow().settings
+        assertEquals(settings.liquifyStrengthScale, restored.liquifyStrengthScale)
+        assertEquals(settings.liquifyDistortion, restored.liquifyDistortion)
+        assertEquals(settings.liquifyMomentum, restored.liquifyMomentum)
+    }
+
     @Test fun `backup retains independent fill target color`() {
         val original = AppSettings(fillTargetMode = FillTargetMode.SPECIFIED_COLOR, fillTargetColor = 0xFFCA7733.toInt(),
             fillExpansionShape = FillExpansionShape.RECTANGLE, fillAntiAlias = false)

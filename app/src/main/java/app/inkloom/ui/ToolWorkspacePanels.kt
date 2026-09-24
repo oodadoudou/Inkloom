@@ -175,7 +175,14 @@ internal fun WorkspaceToolPropertiesPanel(
                 EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY -> {
                     WorkspacePropertySlider(language.text("Size", "大小"), "${brushSize.toInt()} px",
                         brushSize.coerceIn(1f, 500f), 1f..500f, onBrushSize)
-                    WorkspacePropertySlider(language.text("Opacity", "不透明度"), "${(brushOpacity * 100).toInt()}%",
+                    if (tool == EditorTool.LIQUIFY) {
+                        WorkspacePropertySlider(language.text("Force", "力度"), "${(settings.liquifyStrengthScale * 100).toInt()}%",
+                            settings.liquifyStrengthScale, 0f..2f, { onSettings(settings.copy(liquifyStrengthScale = it)) })
+                        WorkspacePropertySlider(language.text("Distortion", "畸变"), "${(settings.liquifyDistortion * 100).toInt()}%",
+                            settings.liquifyDistortion, 0f..1f, { onSettings(settings.copy(liquifyDistortion = it)) })
+                        WorkspacePropertySlider(language.text("Momentum", "惯性"), "${(settings.liquifyMomentum * 100).toInt()}%",
+                            settings.liquifyMomentum, 0f..1f, { onSettings(settings.copy(liquifyMomentum = it)) })
+                    } else WorkspacePropertySlider(language.text("Opacity", "不透明度"), "${(brushOpacity * 100).toInt()}%",
                         brushOpacity.coerceIn(0f, 1f), 0f..1f, onBrushOpacity)
                 }
                 EditorTool.SELECT -> {

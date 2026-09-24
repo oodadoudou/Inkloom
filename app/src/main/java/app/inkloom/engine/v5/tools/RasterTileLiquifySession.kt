@@ -85,6 +85,7 @@ class RasterTileLiquifySession private constructor(
         strength: Float,
         hardness: Float,
         mode: LiquifyMode,
+        distortion: Float = 0f,
     ): Rect? {
         check(!completed) { "Raster tile liquify session is complete" }
         if (radiusPixels <= .25f) return null
@@ -100,6 +101,7 @@ class RasterTileLiquifySession private constructor(
             safeStrength,
             hardness,
             mode,
+            distortion,
         ) ?: return null
         val destination = changedField
             .expand(FIELD_RENDER_PAD)
