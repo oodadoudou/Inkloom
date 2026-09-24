@@ -28,6 +28,7 @@ data class AppSettings(
     val fillTargetMode: FillTargetMode = FillTargetMode.TOUCHED_COLOR,
     val fillTargetColor: Int = android.graphics.Color.WHITE,
     val fillExpansionShape: FillExpansionShape = FillExpansionShape.ROUND,
+    val fillAntiAlias: Boolean = true,
     val fillSubTool: FillSubTool = FillSubTool.BUCKET,
     val gradientKind: GradientKind = GradientKind.LINEAR,
     val gradientEdgeMode: GradientEdgeMode = GradientEdgeMode.CLAMP,
@@ -229,6 +230,7 @@ class AppSettingsStore(context: Context) {
             fillTargetMode = enumValue(preferences.getString("fillTargetMode", null), FillTargetMode.TOUCHED_COLOR),
             fillTargetColor = preferences.getInt("fillTargetColor", android.graphics.Color.WHITE),
             fillExpansionShape = enumValue(preferences.getString("fillExpansionShape", null), FillExpansionShape.ROUND),
+            fillAntiAlias = preferences.getBoolean("fillAntiAlias", true),
             fillSubTool = enumValue(preferences.getString("fillSubTool", null), FillSubTool.BUCKET),
             gradientKind = enumValue(preferences.getString("gradientKind", null), GradientKind.LINEAR),
             gradientEdgeMode = enumValue(preferences.getString("gradientEdgeMode", null), GradientEdgeMode.CLAMP),
@@ -409,6 +411,7 @@ class AppSettingsStore(context: Context) {
             .putString("fillTargetMode", persisted.fillTargetMode.name)
             .putInt("fillTargetColor", persisted.fillTargetColor)
             .putString("fillExpansionShape", persisted.fillExpansionShape.name)
+            .putBoolean("fillAntiAlias", persisted.fillAntiAlias)
             .putString("fillSubTool", persisted.fillSubTool.name)
             .putString("gradientKind", persisted.gradientKind.name)
             .putString("gradientEdgeMode", persisted.gradientEdgeMode.name)

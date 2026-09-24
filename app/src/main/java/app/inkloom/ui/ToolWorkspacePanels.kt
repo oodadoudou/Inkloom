@@ -210,6 +210,9 @@ internal fun WorkspaceToolPropertiesPanel(
                         settings.fillCloseGapPixels, 0f..64f, { onSettings(settings.copy(fillCloseGapPixels = it)) })
                     WorkspacePropertySlider(language.text("Area scaling", "区域缩放"), "${settings.fillAreaScalingPixels.toInt()} px",
                         settings.fillAreaScalingPixels, -64f..64f, { onSettings(settings.copy(fillAreaScalingPixels = it)) })
+                    WorkspacePropertySwitch(language.text("Anti-aliasing", "抗锯齿"), settings.fillAntiAlias) {
+                        onSettings(settings.copy(fillAntiAlias = it))
+                    }
                     if (settings.fillAreaScalingPixels != 0f) {
                         Text(language.text("Scaling corners", "扩张边角"), color = Ink, fontSize = 11.sp)
                         app.inkloom.settings.FillExpansionShape.entries.forEach { shape -> WorkspaceSubtoolRow(

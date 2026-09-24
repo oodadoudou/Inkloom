@@ -1132,7 +1132,8 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeFloodFill(
     jint area_scaling_value,
     jboolean has_target_color,
     jint target_color,
-    jint expansion_shape) {
+    jint expansion_shape,
+    jboolean anti_alias) {
     LockedBitmap source(env, source_bitmap);
     LockedBitmap destination(env, destination_bitmap);
     const std::array<int, 4> empty_bounds{-1, -1, -1, -1};
@@ -1152,20 +1153,19 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeFloodFill(
         static_cast<int>(color & 0xff), static_cast<int>((color >> 24) & 0xff),
     } : touched_channels;
     const int tolerance = std::clamp(static_cast<int>(tolerance_value), 0, 255);
-    auto matches_target = [&](const std::uint8_t* pixel) {
-        if (std::abs(static_cast<int>(pixel[3]) - target_channels[3]) > tolerance) return false;
+    auto target_difference = [&](const std::uint8_t* pixel) {
+        const int alpha_difference = std::abs(static_cast<int>(pixel[3]) - target_channels[3]);
         // Fully transparent pixels have no meaningful RGB. Their premultiplied bytes may vary
         // between bitmap producers, but alpha still defines a stable transparent target.
-        if (target_channels[3] == 0) return true;
+        if (target_channels[3] == 0) return alpha_difference;
         const bool both_opaque = pixel[3] == 255 && target_channels[3] == 255;
         const int red = both_opaque ? pixel[0] : unpremultiplied_channel(pixel, 0);
         const int green = both_opaque ? pixel[1] : unpremultiplied_channel(pixel, 1);
         const int blue = both_opaque ? pixel[2] : unpremultiplied_channel(pixel, 2);
-        return std::abs(red - target_channels[0]) <= tolerance &&
-            std::abs(green - target_channels[1]) <= tolerance &&
-            std::abs(blue - target_channels[2]) <= tolerance;
+        return std::max({alpha_difference, std::abs(red - target_channels[0]),
+            std::abs(green - target_channels[1]), std::abs(blue - target_channels[2])});
     };
-    if (!matches_target(seed)) return bounds_array(env, empty_bounds);
+    if (target_difference(seed) > tolerance) return bounds_array(env, empty_bounds);
     thread_local std::vector<std::uint8_t> fillable;
     thread_local std::vector<std::uint8_t> covered;
     thread_local std::vector<std::uint8_t> scratch_mask;
@@ -1176,7 +1176,7 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeFloodFill(
         const auto* row = source.pixels + static_cast<std::size_t>(y) * source.info.stride;
         for (int x = 0; x < width; ++x) {
             const auto* pixel = row + x * 4;
-            fillable[static_cast<std::size_t>(y) * width + x] = matches_target(pixel);
+            fillable[static_cast<std::size_t>(y) * width + x] = target_difference(pixel) <= tolerance;
         }
     }
     const int close_gap = std::clamp(static_cast<int>(close_gap_value), 0, 64);
@@ -1232,12 +1232,34 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeFloodFill(
     int min_y = height;
     int max_x = -1;
     int max_y = -1;
+    auto selected_at = [&](int x, int y) {
+        const std::size_t index = static_cast<std::size_t>(y) * width + x;
+        return scaling == 0 ? fillable[index] == 3 : covered[index] != 0;
+    };
     for (int y = 0; y < height; ++y) {
         auto* row = destination.pixels + static_cast<std::size_t>(y) * destination.info.stride;
+        const auto* source_row = source.pixels + static_cast<std::size_t>(y) * source.info.stride;
         for (int x = 0; x < width; ++x) {
-            const std::size_t index = static_cast<std::size_t>(y) * width + x;
-            const bool selected = scaling == 0 ? fillable[index] == 3 : covered[index] != 0;
-            const std::uint8_t value = selected ? 255 : 0;
+            const bool selected = selected_at(x, y);
+            std::uint8_t value = selected ? 255 : 0;
+            if (!selected && anti_alias) {
+                const int difference = target_difference(source_row + x * 4);
+                if (difference > tolerance && difference < 255) {
+                    bool transitional_edge = false;
+                    for (int dy = -1; dy <= 1 && !transitional_edge; ++dy) for (int dx = -1; dx <= 1; ++dx) {
+                        if (dx == 0 && dy == 0) continue;
+                        const int inside_x = x + dx, inside_y = y + dy;
+                        const int outside_x = x - dx, outside_y = y - dy;
+                        if (inside_x < 0 || inside_x >= width || inside_y < 0 || inside_y >= height ||
+                            outside_x < 0 || outside_x >= width || outside_y < 0 || outside_y >= height ||
+                            !selected_at(inside_x, inside_y)) continue;
+                        const auto* outside = source.pixels + static_cast<std::size_t>(outside_y) * source.info.stride + outside_x * 4;
+                        if (target_difference(outside) >= difference + 32) { transitional_edge = true; break; }
+                    }
+                    if (transitional_edge)
+                        value = static_cast<std::uint8_t>((255 * (255 - difference)) / (255 - tolerance));
+                }
+            }
             row[x * 4] = value;
             row[x * 4 + 1] = value;
             row[x * 4 + 2] = value;

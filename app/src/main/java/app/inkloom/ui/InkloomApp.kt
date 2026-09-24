@@ -3652,12 +3652,14 @@ private fun EditorScreen(
                     targetMode = settings.fillTargetMode,
                     targetColor = settings.fillTargetColor,
                     expansionShape = settings.fillExpansionShape,
+                    antiAlias = settings.fillAntiAlias,
                     onSensitivity = { onSettingsChange(settings.copy(fillSensitivity = it)) },
                     onCloseGap = { onSettingsChange(settings.copy(fillCloseGapPixels = it)) },
                     onAreaScaling = { onSettingsChange(settings.copy(fillAreaScalingPixels = it)) },
                     onTargetMode = { onSettingsChange(settings.copy(fillTargetMode = it)) },
                     onTargetColor = { onSettingsChange(settings.copy(fillTargetColor = it)) },
                     onExpansionShape = { onSettingsChange(settings.copy(fillExpansionShape = it)) },
+                    onAntiAlias = { onSettingsChange(settings.copy(fillAntiAlias = it)) },
                     onSubTool = { onSettingsChange(settings.copy(fillSubTool = it)) },
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
                 )
@@ -5057,6 +5059,7 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.fillTargetMode = settings.fillTargetMode
                 view.fillTargetColor = settings.fillTargetColor
                 view.fillExpansionShape = settings.fillExpansionShape
+                view.fillAntiAlias = settings.fillAntiAlias
                 view.symmetryMode = symmetryMode
                 view.symmetryGuide = symmetryGuide
                 view.onSymmetryGuideChanged = onSymmetryGuideChange
@@ -5157,6 +5160,7 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.fillTargetMode = settings.fillTargetMode
                 view.fillTargetColor = settings.fillTargetColor
                 view.fillExpansionShape = settings.fillExpansionShape
+                view.fillAntiAlias = settings.fillAntiAlias
                 view.symmetryMode = symmetryMode
                 view.symmetryGuide = symmetryGuide
                 view.onSymmetryGuideChanged = onSymmetryGuideChange
@@ -5345,6 +5349,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     fillTargetMode = settings.fillTargetMode
     fillTargetColor = settings.fillTargetColor
     fillExpansionShape = settings.fillExpansionShape
+    fillAntiAlias = settings.fillAntiAlias
     correctLineMode = settings.correctLineMode
     correctLineAmount = settings.correctLineAmount
     baseWidth = brushSize
@@ -9289,12 +9294,14 @@ private fun FillOptionsLauncher(
     targetMode: app.inkloom.settings.FillTargetMode,
     targetColor: Int,
     expansionShape: app.inkloom.settings.FillExpansionShape,
+    antiAlias: Boolean,
     onSensitivity: (Float) -> Unit,
     onCloseGap: (Float) -> Unit,
     onAreaScaling: (Float) -> Unit,
     onTargetMode: (app.inkloom.settings.FillTargetMode) -> Unit,
     onTargetColor: (Int) -> Unit,
     onExpansionShape: (app.inkloom.settings.FillExpansionShape) -> Unit,
+    onAntiAlias: (Boolean) -> Unit,
     onSubTool: (FillSubTool) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -9344,6 +9351,10 @@ private fun FillOptionsLauncher(
                         BrushParameterSlider(closeGapPixels, onCloseGap, valueRange = 0f..64f)
                         Text("${tr("Area scaling", "区域缩放")} ${areaScalingPixels.toInt()} px", fontSize = 11.sp)
                         BrushParameterSlider(areaScalingPixels, onAreaScaling, valueRange = -64f..64f)
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(tr("Anti-aliasing", "抗锯齿"), Modifier.weight(1f), fontSize = 11.sp)
+                            Switch(antiAlias, onAntiAlias)
+                        }
                         Text(tr("Scaling corners", "扩张边角"), fontSize = 11.sp)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             app.inkloom.settings.FillExpansionShape.entries.forEach { shape ->

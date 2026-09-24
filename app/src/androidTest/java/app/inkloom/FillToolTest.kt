@@ -173,6 +173,45 @@ class FillToolTest {
         assertEquals("Paper is excluded from transparent-target sampling", 1, commits)
     }
 
+    @Test fun antiAliasedReferenceLineProducesPartialFillMaskWithoutCrossingOpaqueInk() {
+        val color = PixelTileSurface(200, 200)
+        val lineArt = PixelTileSurface(200, 200).also { surface ->
+            surface.beginWrite("antialiased line-art boundary").use { transaction ->
+                for (y in 0 until 200) {
+                    transaction.setPixel(100, y, Color.rgb(128, 128, 128))
+                    transaction.setPixel(101, y, Color.BLACK)
+                }
+                transaction.commit().close()
+            }
+        }
+        var edgeAlpha = -1
+        var inkAlpha = -1
+        val view = canvas {
+            tool = EditorTool.FILL
+            fingerDrawingEnabled = true
+            pagePaperColor = Color.WHITE
+            pageModelWidth = 200f
+            pageModelHeight = 200f
+            activeLayerId = "color"
+            referenceTarget = ReferenceTarget.REFERENCE_LAYERS
+            referenceLayerIds = setOf("line-art")
+            layerOrder = listOf("color", "line-art")
+            setRasterLayerSurfaces(mapOf("color" to color, "line-art" to lineArt))
+            onSparseFillCommitted = { mask, _, _, _ ->
+                edgeAlpha = mask.alphaAt(100, 100)
+                inkAlpha = mask.alphaAt(101, 100)
+            }
+        }
+        send(view, 0L, MotionEvent.ACTION_DOWN, 20f, 100f)
+        send(view, 50L, MotionEvent.ACTION_UP, 20f, 100f)
+        assertTrue("Antialiased reference line receives partial edge coverage (was $edgeAlpha)", edgeAlpha in 1..254)
+        assertEquals("Opaque contour must still block the fill", 0, inkAlpha)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.fillAntiAlias = false }
+        send(view, 100L, MotionEvent.ACTION_DOWN, 20f, 100f)
+        send(view, 150L, MotionEvent.ACTION_UP, 20f, 100f)
+        assertEquals("Disabling antialiasing restores a hard boundary", 0, edgeAlpha)
+    }
+
     @Test fun fillSelectionCommitsTheSelectionMaskInsteadOfFloodingAroundInk() {
         var committed = false
         val view = canvas {

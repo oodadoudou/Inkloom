@@ -947,6 +947,7 @@ class InkCanvasView(context: Context) : View(context) {
     var fillTargetMode: app.inkloom.settings.FillTargetMode = app.inkloom.settings.FillTargetMode.TOUCHED_COLOR
     var fillTargetColor: Int = Color.WHITE
     var fillExpansionShape: app.inkloom.settings.FillExpansionShape = app.inkloom.settings.FillExpansionShape.ROUND
+    var fillAntiAlias: Boolean = true
     var symmetryMode: SymmetryMode = SymmetryMode.NONE
         set(value) { if (field == value) return; field = value; if (value == SymmetryMode.NONE) symmetryGuideGesture = null; invalidate() }
     var symmetryGuide: SymmetryGuideState = SymmetryGuideState()
@@ -2977,6 +2978,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (fillPreviewWidth <= 0f || fillPreviewHeight <= 0f) return
         fillPreviewPaint.colorFilter = PorterDuffColorFilter(inkColor, PorterDuff.Mode.SRC_IN)
         fillPreviewPaint.alpha = (inkOpacity * 255f).toInt().coerceIn(0, 255)
+        fillPreviewPaint.isFilterBitmap = fillAntiAlias
         backgroundDestination.set(
             (fillPreviewLeft * width).toInt(),
             (fillPreviewTop * height).toInt(),
@@ -4453,6 +4455,7 @@ class InkCanvasView(context: Context) : View(context) {
                 app.inkloom.settings.FillTargetMode.SPECIFIED_COLOR -> fillTargetColor
             },
             expansionShape = fillExpansionShape,
+            antiAlias = fillAntiAlias,
         )
         fillPreviewMask?.recycle()
         fillPreviewMask = if (result.isEmpty) null else SelectionMaskCompositor.clipRegion(
@@ -4514,6 +4517,7 @@ class InkCanvasView(context: Context) : View(context) {
                     fillPreviewWidth,
                     fillPreviewHeight,
                     edgeUnderpaintPixels = if (fillAreaScalingPixels == 0f) 2 else 0,
+                    filterBitmap = fillAntiAlias,
                 )
             }
         } finally {
@@ -4596,6 +4600,7 @@ class InkCanvasView(context: Context) : View(context) {
         normalizedWidth: Float,
         normalizedHeight: Float,
         edgeUnderpaintPixels: Int = 0,
+        filterBitmap: Boolean = true,
     ): Boolean {
         val callback = onSparseFillCommitted ?: return false
         val selectionSize = selectionMaskForRasterTools()?.let { it.logicalWidth to it.logicalHeight }
@@ -4608,7 +4613,7 @@ class InkCanvasView(context: Context) : View(context) {
         val right = kotlin.math.ceil((normalizedLeft + normalizedWidth).coerceIn(0f, 1f) * logicalWidth).toInt().coerceIn(left + 1, logicalWidth)
         val bottom = kotlin.math.ceil((normalizedTop + normalizedHeight).coerceIn(0f, 1f) * logicalHeight).toInt().coerceIn(top + 1, logicalHeight)
         val scaled = if (source.width == right - left && source.height == bottom - top) source else
-            Bitmap.createScaledBitmap(source, right - left, bottom - top, true)
+            Bitmap.createScaledBitmap(source, right - left, bottom - top, filterBitmap)
         return try {
             val snapshot = SparseAlphaMask.fromBitmapRegion(scaled, left, top, logicalWidth, logicalHeight)
                 ?.surface?.snapshot() ?: return false

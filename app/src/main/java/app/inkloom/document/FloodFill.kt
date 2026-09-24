@@ -22,6 +22,7 @@ object FloodFill {
         areaScalingPixels: Int = 0,
         targetColor: Int? = null,
         expansionShape: FillExpansionShape = FillExpansionShape.ROUND,
+        antiAlias: Boolean = true,
     ): Result {
         if (source.isRecycled || startX !in 0 until source.width || startY !in 0 until source.height) {
             return empty()
@@ -40,6 +41,7 @@ object FloodFill {
                 FillExpansionShape.ROUND -> 0
                 FillExpansionShape.RECTANGLE -> 1
             },
+            antiAlias = antiAlias,
         )
         if (bounds == null || bounds.isEmpty) {
             return empty()

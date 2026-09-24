@@ -47,11 +47,13 @@ class AppSettingsStoreTest {
                 fillTargetMode = FillTargetMode.SPECIFIED_COLOR,
                 fillTargetColor = 0xFFCA7733.toInt(),
                 fillExpansionShape = FillExpansionShape.RECTANGLE,
+                fillAntiAlias = false,
             ))
             val restored = AppSettingsStore(context).load()
             assertEquals(FillTargetMode.SPECIFIED_COLOR, restored.fillTargetMode)
             assertEquals(0xFFCA7733.toInt(), restored.fillTargetColor)
             assertEquals(FillExpansionShape.RECTANGLE, restored.fillExpansionShape)
+            assertFalse(restored.fillAntiAlias)
         } finally {
             preferences.edit().clear().commit()
         }

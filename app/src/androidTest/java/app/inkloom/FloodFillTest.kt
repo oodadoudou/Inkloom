@@ -83,6 +83,27 @@ class FloodFillTest {
         }
     }
 
+    @Test fun antiAliasingOnlySoftensTheTransitionNextToTheFilledRegion() {
+        val source = Bitmap.createBitmap(12, 8, Bitmap.Config.ARGB_8888)
+        for (y in 0 until 8) for (x in 0 until 12) source.setPixel(x, y, when {
+            x < 4 -> Color.WHITE
+            x == 4 -> Color.rgb(128, 128, 128)
+            else -> Color.BLACK
+        })
+        val soft = FloodFill.fill(source, 1, 4, 0, antiAlias = true)
+        val hard = FloodFill.fill(source, 1, 4, 0, antiAlias = false)
+        try {
+            assertEquals(5, soft.width)
+            assertEquals(4, hard.width)
+            assertTrue(Color.alpha(soft.mask.getPixel(4, 4)) in 120..135)
+            assertEquals(255, Color.alpha(soft.mask.getPixel(3, 4)))
+        } finally {
+            soft.mask.recycle()
+            hard.mask.recycle()
+            source.recycle()
+        }
+    }
+
     @Test fun seedInsideAndOutsideAClosedBoundaryFillOppositeConnectedRegions() {
         val source = solid(Color.WHITE, 30, 30)
         for (x in 8..21) { source.setPixel(x, 8, Color.BLACK); source.setPixel(x, 21, Color.BLACK) }
