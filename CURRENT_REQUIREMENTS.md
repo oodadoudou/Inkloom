@@ -1,6 +1,6 @@
 # Inkloom 当前需求与待排优先级
 
-核对日期：2026-09-23。最新 Debug 版本为 **0.213.0**；本版补充 R17 页面可见像素尺寸 PNG 导出，以及 R20 批量文件夹移动、递归删除和任意层级侧栏访问。JVM、相关 Android 15 测试与 lint 已通过；APK 签名、冷启动和 Google Drive Desktop 同步证据见 [0.213.0 交付记录](dist/Inkloom-0.213.0-2d773a22-debug.json)。R11 的 ICC／CMYK／软打样以及 R17/R20 下表所列尾项仍未完成，远端云下载及 MovinkPad 真机仍待核验。
+核对日期：2026-09-24。最新 Debug 版本为 **0.214.0**；本版补充漫画线稿高级填充的目标颜色模式、圆形／矩形扩张与边缘抗锯齿。924 项 JVM 测试、相关 Android 15 测试与 lint 已通过；APK 签名、冷启动和 Google Drive Desktop 本地副本校验证据见 [0.214.0 交付记录](dist/Inkloom-0.214.0-bf002555-debug.json)。全量 Android 套件未完成，远端云下载及 MovinkPad 真机仍待核验。
 
 **本文件是版本交付与宏观需求状态的入口。** 下表顺序不是开发顺序。逐项完成情况见 [REQUESTED_FEATURE_CATALOG.md](REQUESTED_FEATURE_CATALOG.md) 的可勾选目录；宏观项目完成不等于其 CSP 扩展细项全部完成。旧版本计划、旧额度阈值和分支上的未交付代码均不作为当前依据。
 
@@ -100,7 +100,7 @@
 | 混合变换／网格 | [MixedSelectionDraft.kt](app/src/main/java/app/inkloom/ui/MixedSelectionDraft.kt)、[SelectionTransformGeometry.kt](app/src/main/java/app/inkloom/engine/v5/tools/SelectionTransformGeometry.kt)、[SelectionTransformTest.kt](app/src/androidTest/java/app/inkloom/SelectionTransformTest.kt)、[SelectionMeshRasterTest.kt](app/src/androidTest/java/app/inkloom/SelectionMeshRasterTest.kt) |
 | 图片模板 | [ImagePaperTemplateTest.kt](app/src/androidTest/java/app/inkloom/ImagePaperTemplateTest.kt)、[PageTemplateStore.kt](app/src/main/java/app/inkloom/document/PageTemplateStore.kt) |
 | 导出限制 | [DocumentAssetService.kt](app/src/main/java/app/inkloom/document/DocumentAssetService.kt) |
-| 最新交付 | [0.213.0 交付证据](dist/Inkloom-0.213.0-2d773a22-debug.json)：923 项 JVM（0 失败、8 跳过）、R17/R20 相关 Android 15 测试、lint、签名、安装、冷启动、SHA-256 与 Drive Desktop 本地副本校验通过；全量套件未完成。 |
+| 最新交付 | [0.214.0 交付证据](dist/Inkloom-0.214.0-bf002555-debug.json)：924 项 JVM（0 失败、8 跳过）、填充主路径及 79 项相邻 Android 15 回归、lint、签名、安装、冷启动、SHA-256 与 Drive Desktop 本地副本校验通过；全量套件未完成。 |
 
 代码路径核对与既有测试报告支持此状态；本轮未逐一复测细项索引的全部条目。没有足够证据的高级子项保留“待核对”，不硬判完成。
 
@@ -129,7 +129,7 @@
 
 | 候选 | 对标行为和 Inkloom 当前差别 | 下一轮可验收的范围 | 状态／目录映射 |
 |---|---|---|---|
-| **T-A 漫画线稿高级填充** | CSP 高级填充可分别设参照／排除目标、抗锯齿、目标颜色与扩张边角；Inkloom 已有参照源、容差、闭缝、区域缩放及四种填充手势。 | 以「线稿层参考、下层上色」为固定样张，补目标透明／特定色规则、AA 与扩张角形选择；边缘不漏白／不越线，预览＝提交，撤销一次。 | 部分实现；`ED-12`、`T10`。 |
+| **T-A 漫画线稿高级填充** | CSP 高级填充可分别设参照／排除目标、抗锯齿、目标颜色与扩张边角；Inkloom 已有参照源、容差、闭缝、区域缩放及四种填充手势。 | 以「线稿层参考、下层上色」为固定样张，补目标透明／特定色规则、AA 与扩张角形选择；边缘不漏白／不越线，预览＝提交，撤销一次。 | 本轮 T-A.1–3 已开发并通过模拟器回归；复杂真实线稿与 MovinkPad 仍为 `DEVICE_PENDING`。不宣称 CSP 全选项等价。 |
 
 | **T-B 渐变工作流** | CSP 渐变工具可管理和复用渐变预设，渐变层可重编辑；Inkloom 工具已具多色标、六种形状、四种边缘模式、反转、抖动及角度吸附。 | 先考虑常用渐变预设的保存、命名、复制／导入及取消；**可编辑渐变层**属于用户此前暂缓的 R16，需重新确认后才排期。 | 工具流程差项；`T11`、`LM-02`（暂缓）。 |
 | **T-C 绘制／擦除／涂抹共用笔尖** | Procreate 三种工具可访问笔刷库并快速沿用当前笔刷；Inkloom 现在有独立橡皮／混色工具及部分工具专用笔刷，复用当前绘画笔尖的语义尚未闭合。 | 对支持的用户笔刷显示「用此笔尖擦除／涂抹」并记住各工具上次预设；同一轨迹核对笔尖形状、动态、边缘及不支持原因；不在这一项重做已认可的画笔引擎。 | 部分实现；`B03`、`UI-03`。 |
