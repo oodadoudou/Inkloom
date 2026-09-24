@@ -16,9 +16,28 @@ import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v5.surface.PixelTileTransactionRecord
 import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
 import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
+import app.inkloom.engine.v5.material.BrushTipMask
+import app.inkloom.brushpresetv5.SpacingMode
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.hypot
+import kotlin.math.cos
+import kotlin.math.sin
+
+/** A single authored footprint. The mask is immutable and resolved before the pen goes down. */
+data class RasterBlendTip(
+    val mask: BrushTipMask,
+    val aspect: Float = 1f,
+    val rotationDegrees: Float = 0f,
+    val spacingMode: SpacingMode = SpacingMode.RELATIVE,
+    val spacing: Float = .12f,
+) {
+    init {
+        require(aspect.isFinite() && aspect > 0f && aspect <= 1f)
+        require(rotationDegrees.isFinite())
+        require(spacing.isFinite() && spacing > 0f)
+    }
+}
 
 enum class RasterBlendMode { SMEAR, MIX }
 
@@ -28,16 +47,19 @@ class RasterTileBlendSession private constructor(
     private val selection: RasterSelectionMask,
     private val preserveDestinationAlpha: Boolean,
     private val mode: RasterBlendMode,
+    private val tip: RasterBlendTip?,
 ) : AutoCloseable {
     constructor(
         surface: PixelTileSurface,
         preserveDestinationAlpha: Boolean = false,
         mode: RasterBlendMode = RasterBlendMode.SMEAR,
+        tip: RasterBlendTip? = null,
     ) : this(
         surface,
         RasterSelectionMask(null, surface.logicalWidth, surface.logicalHeight),
         preserveDestinationAlpha,
         mode,
+        tip,
     )
 
     internal constructor(
@@ -45,11 +67,13 @@ class RasterTileBlendSession private constructor(
         selectionMask: MaskTileSurfaceSnapshot?,
         preserveDestinationAlpha: Boolean = false,
         mode: RasterBlendMode = RasterBlendMode.SMEAR,
+        tip: RasterBlendTip? = null,
     ) : this(
         surface,
         RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
         preserveDestinationAlpha,
         mode,
+        tip,
     )
 
     private val edits = RasterTileEditSession(surface, "raster blend")
@@ -62,6 +86,7 @@ class RasterTileBlendSession private constructor(
     private val reservoirBitmap = Bitmap.createBitmap(reservoir.columns, reservoir.rows, Bitmap.Config.ARGB_8888)
     private var pickupPixels = IntArray(0)
     private var pickupDistance = Float.POSITIVE_INFINITY
+    private var tipCoveragePixels = IntArray(0)
     private val sourcePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val coveragePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
     private val maskPaint = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN) }
@@ -208,7 +233,10 @@ class RasterTileBlendSession private constructor(
             val localCenterY = currentY - destination.top
             val hardRadius = radius * hardness.coerceIn(0f, 1f)
             val featherRadius = (radius - hardRadius).coerceAtLeast(0f)
-            if (mode == RasterBlendMode.MIX) {
+            if (tip != null) {
+                renderTipCoverage(destination.width, destination.height, localPreviousX, localPreviousY,
+                    localCenterX, localCenterY, radius, tip)
+            } else if (mode == RasterBlendMode.MIX) {
                 // Compact smooth coverage has no clipped Gaussian tail at ROI edges.
                 // It also avoids transporting quantized transparent edges repeatedly.
                 mixingMatrix.setScale(radius, radius)
@@ -243,6 +271,51 @@ class RasterTileBlendSession private constructor(
             }
         } ?: return null
         return Rect(changed.left, changed.top, changed.right, changed.bottom)
+    }
+
+    /** Maximum-alpha union keeps the tip's authored pores visible where consecutive dabs overlap. */
+    private fun renderTipCoverage(
+        width: Int, height: Int, fromX: Float, fromY: Float, toX: Float, toY: Float,
+        radius: Float, tip: RasterBlendTip,
+    ) {
+        val required = width * height
+        if (tipCoveragePixels.size < required) tipCoveragePixels = IntArray(required)
+        java.util.Arrays.fill(tipCoveragePixels, 0, required, 0)
+        val diameter = radius * 2f
+        val spacing = when (tip.spacingMode) {
+            SpacingMode.RELATIVE -> diameter * tip.spacing
+            SpacingMode.FIXED -> tip.spacing
+        }.coerceIn(.5f, maxOf(.5f, radius * .5f))
+        val count = ceil(hypot(toX - fromX, toY - fromY) / spacing).toInt().coerceIn(1, 256)
+        val radians = Math.toRadians(tip.rotationDegrees.toDouble())
+        val cosine = cos(radians).toFloat()
+        val sine = sin(radians).toFloat()
+        val radiusX = (radius * tip.aspect).coerceAtLeast(.125f)
+        val radiusY = radius
+        val extentX = kotlin.math.abs(cosine) * radiusX + kotlin.math.abs(sine) * radiusY + 1f
+        val extentY = kotlin.math.abs(sine) * radiusX + kotlin.math.abs(cosine) * radiusY + 1f
+        val level = tip.mask.levelForOutput(radiusX * 2f, radiusY * 2f)
+        for (step in 0..count) {
+            val t = step.toFloat() / count
+            val centerX = fromX + (toX - fromX) * t
+            val centerY = fromY + (toY - fromY) * t
+            val left = floor(centerX - extentX).toInt().coerceIn(0, width)
+            val right = ceil(centerX + extentX).toInt().coerceIn(0, width)
+            val top = floor(centerY - extentY).toInt().coerceIn(0, height)
+            val bottom = ceil(centerY + extentY).toInt().coerceIn(0, height)
+            for (y in top until bottom) for (x in left until right) {
+                val dx = x + .5f - centerX
+                val dy = y + .5f - centerY
+                val localX = dx * cosine + dy * sine
+                val localY = -dx * sine + dy * cosine
+                if (kotlin.math.abs(localX) > radiusX + 1f || kotlin.math.abs(localY) > radiusY + 1f) continue
+                val alpha = (tip.mask.coverageAtPixel(localX, localY, radiusX, radiusY,
+                    cosine, sine, level) * 255f + .5f).toInt().coerceIn(0, 255)
+                val index = y * width + x
+                if (alpha > (tipCoveragePixels[index] ushr 24)) tipCoveragePixels[index] = (alpha shl 24) or 0x00ffffff
+            }
+        }
+        requireNotNull(coverageBitmap).setPixels(tipCoveragePixels, 0, width, 0, 0, width, height)
     }
 
     private fun pickupReservoir(
@@ -321,6 +394,7 @@ class RasterTileBlendSession private constructor(
         coverageBitmap?.recycle()
         reservoirBitmap.recycle()
         pickupPixels = IntArray(0)
+        tipCoveragePixels = IntArray(0)
         blurFilters.clear()
     }
 

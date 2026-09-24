@@ -14,6 +14,16 @@ import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v5.presentation.InvalidationReason
 import app.inkloom.engine.v5.material.PressureResponse
+import app.inkloom.brushpresetv5.BrushPresetV5
+import app.inkloom.brushpresetv5.PresetIdentity
+import app.inkloom.brushpresetv5.BrushFamily
+import app.inkloom.brushpresetv5.TipSettings
+import app.inkloom.brushpresetv5.DepositionSettings
+import app.inkloom.brushpresetv5.DynamicsSettings
+import app.inkloom.brushpresetv5.PressureMappings
+import app.inkloom.brushpresetv5.TiltMappings
+import app.inkloom.brushpresetv5.TipTextureSettings
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertArrayEquals
@@ -23,6 +33,56 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class SmudgeToolTest {
+    @Test fun importedTipMaskLoadsBeforeContactAndUnavailableAssetRejectsExactlyOnce() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val file = File(context.cacheDir, "smudge-authored-tip.png")
+        Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888).also { shape ->
+            for (y in 8 until 24) for (x in 4 until 28) shape.setPixel(x, y, Color.WHITE)
+            file.outputStream().use { shape.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            shape.recycle()
+        }
+        val seed = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888).apply {
+            for (y in 50 until 150) for (x in 20 until 100) setPixel(x, y, Color.RED)
+        }
+        val surface = PixelTileBitmapAdapter.import(seed)
+        seed.recycle()
+        val preset = BrushPresetV5(
+            identity = PresetIdentity("smudge-tip", "Smudge tip", family = BrushFamily.INK,
+                renderBrushId = "system-pen"), renderSeed = 31,
+            tip = TipSettings(aspect = .75f), deposition = DepositionSettings(),
+            dynamics = DynamicsSettings(PressureMappings(), TiltMappings()),
+            tipTexture = TipTextureSettings(procedural = false, assetPath = file.path,
+                assetPaths = listOf(file.path)),
+        )
+        val reasons = mutableListOf<String>()
+        var commits = 0
+        val view = canvas {
+            tool = EditorTool.SMUDGE; fingerDrawingEnabled = true
+            activeLayerId = "paint"; baseWidth = 200f
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+            onPaintCapabilityRejected = { reasons += it }
+            onRasterLayerCommitted = { commits++ }
+            setBorrowedSmudgeTip(preset)
+        }
+        try {
+            send(view, 0, MotionEvent.ACTION_DOWN, 70f, 100f)
+            send(view, 8, MotionEvent.ACTION_MOVE, 135f, 100f)
+            send(view, 16, MotionEvent.ACTION_UP, 135f, 100f)
+            assertEquals("Borrowed tip should commit; reasons=$reasons", 1, commits)
+            assertTrue(reasons.isEmpty())
+            assertTrue(Color.alpha(surface.pixelAt(125, 100)) > 0)
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                view.setBorrowedSmudgeTip(preset.copy(tipTexture = preset.tipTexture?.copy(
+                    assetPath = file.path + ".missing", assetPaths = listOf(file.path + ".missing"))))
+            }
+            send(view, 24, MotionEvent.ACTION_DOWN, 70f, 100f)
+            send(view, 32, MotionEvent.ACTION_UP, 70f, 100f)
+            assertEquals(1, commits)
+            assertEquals(listOf("UNSUPPORTED_WITH_EXPLICIT_REASON: BLEND_TIP_ASSET_UNAVAILABLE"), reasons)
+        } finally {
+            file.delete()
+        }
+    }
     private fun canvas(block: InkCanvasView.() -> Unit): InkCanvasView {
         lateinit var result: InkCanvasView
         InstrumentationRegistry.getInstrumentation().runOnMainSync {

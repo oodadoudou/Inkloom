@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.engine.v5.tools.RasterTileBlendSession
+import app.inkloom.engine.v5.tools.RasterBlendTip
+import app.inkloom.engine.v5.material.BrushTipMask
 import app.inkloom.engine.v5.tools.RasterTileEditSession
 import app.inkloom.engine.v5.tools.RasterRoiPlan
 import app.inkloom.engine.v5.tools.RasterSampleGeneration
@@ -19,6 +21,31 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterBlendSessionTest {
+    @Test fun borrowedTipShapeControlsSmudgeFootprintAndUndoRestoresPigment() {
+        fun blend(tip: RasterBlendTip): Pair<Int, Int> {
+            val seed = Bitmap.createBitmap(112, 88, Bitmap.Config.ARGB_8888)
+            for (y in 16 until 72) for (x in 8 until 36) seed.setPixel(x, y, Color.RED)
+            val surface = PixelTileBitmapAdapter.import(seed)
+            seed.recycle()
+            val session = RasterTileBlendSession(surface, tip = tip)
+            session.blend(28f, 44f, 70f, 44f, 18f, 1f, 1f)
+            val upper = session.previewSnapshot().pixelAt(68, 58)
+            val center = session.previewSnapshot().pixelAt(68, 44)
+            val record = session.commit()
+            surface.apply(record, HistoryDirection.UNDO)
+            assertEquals(Color.TRANSPARENT, surface.pixelAt(68, 44))
+            record.close()
+            session.close()
+            return upper to center
+        }
+        val round = blend(RasterBlendTip(BrushTipMask.solidCircle(96)))
+        val flattened = blend(RasterBlendTip(BrushTipMask.solidCircle(96), aspect = .2f,
+            rotationDegrees = 90f))
+        assertTrue("Both tips carry sampled pigment", Color.alpha(round.second) > 0 &&
+            Color.alpha(flattened.second) > 0)
+        assertTrue("Rotated narrow tip must not become a circular capsule",
+            Color.alpha(round.first) > Color.alpha(flattened.first))
+    }
     @Test fun surfaceOnlyBlendOnEightKUsesLocalTransactionStorage() {
         val surface = PixelTileSurface(8192, 8192)
         surface.beginWrite("seed local pigment").use { seed ->

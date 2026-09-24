@@ -162,12 +162,12 @@ T-B 渐变预设交互约定（2026-09-24）：参考 [CSP 渐变工具](https:/
 T-C 笔尖复用交互约定（2026-09-24）：参考 [Procreate 画／擦／涂抹](https://help.procreate.com/procreate/handbook/brushes/paint-smudge-erase) 的长按工具沿用当前画笔，以及 [CSP 橡皮与透明色](https://help.clip-studio.com/en-us/manual_en/240_brushes/Eraser_tools.htm) 的相同笔尖擦除行为。仅用户显式长按橡皮时将当前画笔临时转为擦除输出；不修改原笔刷、颜色或普通橡皮预设。无法忠实执行的笔尖应立即说明原因，不能静默回落为圆形橡皮。混色沿用还需独立验证取样、形状和动态。
 
 - [x] T-C.1 长按橡皮沿用当前绘画笔尖；独立记住该橡皮选择，原画笔输出保持不变；不支持的笔尖给出原因。JVM 语义与 Android 像素回归通过，真机为 `DEVICE_PENDING`。
-- [ ] T-C.2 混色工具沿用支持的绘画笔尖，并逐类验证形状、压力、边缘和不支持原因。现已接通圆形无纹理笔尖的独立记忆、硬度与宽度压感；非圆形、颗粒、湿画和复杂动态会显式拒绝。纹理笔尖的同形状涂抹及真机触感仍未完成，暂不勾选整项。
+- [x] T-C.2 混色工具沿用可忠实执行的单一绘画笔尖：素材／程序化形状、固定旋转与宽高比、间距和宽度压感进入同一混色遮罩；跨笔尖重叠取最大覆盖，避免纹理孔洞被重复涂满。颗粒、湿画、双笔尖、散布及复杂动态明确拒绝，素材不可读取时在接触前给出一次原因。JVM 语义、Android 形状／压感／素材加载／撤销测试通过；MovinkPad 手感仍为 `DEVICE_PENDING`。
 
 T-D 液化交互约定（2026-09-24）：参照 [Procreate Liquify](https://help.procreate.com/procreate/handbook/adjustments/adjustments-liquify) 的力度、畸变、惯性与重建，以及 [CSP Liquify](https://help.clip-studio.com/en-us/manual_en/360_transform/Liquify_tool.htm) 的模式／力度／硬度。每支液化预设原有力度和硬度保留，工作区力度作为倍率；畸变使用文档坐标中的确定性有界扰动，惯性只在推拉类移动模式抬笔后追加一个有界尾段。二者默认为零，旧笔触结果不变。选区剪裁、取消和一次撤销沿用现有栅格事务。
 
 - [x] T-D.1 力度、畸变和惯性滑条及设置／备份重启；默认畸变／惯性为零，参数更改真实进入栅格路径。JVM、Android 15 与 lint 回归通过。
-- [ ] T-D.2 快慢／大小笔径、选区、重建、取消和一次撤销的结果与性能回归；重建／撤销及惯性 Android 回归已通过，完整帧时预算与 MovinkPad 手感仍需 `DEVICE_PENDING`。
+- [ ] T-D.2 快慢／大小笔径、选区、重建、取消和一次撤销的结果与性能回归；重建／撤销／选区／惯性 Android 回归及 Android 15 局部帧 p95 门槛已通过。快慢和极端笔径的 MovinkPad 连续手感仍为 `DEVICE_PENDING`，不能用模拟器帧耗时代替实机验收。
 
 ### 排序时的判断边界
 

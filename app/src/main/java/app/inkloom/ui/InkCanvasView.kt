@@ -106,6 +106,7 @@ import app.inkloom.engine.v5.tools.RasterLayerPatch
 import app.inkloom.engine.v5.tools.RasterSelectionMask
 import app.inkloom.engine.v5.tools.RasterSelectionTransformSession
 import app.inkloom.engine.v5.tools.RasterTileBlendSession
+import app.inkloom.engine.v5.tools.RasterBlendTip
 import app.inkloom.engine.v5.tools.RasterTileEditSession
 import app.inkloom.engine.v5.tools.RasterTileLiquifySession
 import app.inkloom.engine.v5.tools.SelectionAffineTransform
@@ -807,6 +808,43 @@ class InkCanvasView(context: Context) : View(context) {
     var smudgeHardness: Float = .5f
     var smudgeWidthPressure: PressureResponse = PressureResponse.CONSTANT
     var smudgeStrength: Float = 1f
+    private var borrowedSmudgePreset: app.inkloom.brushpresetv5.BrushPresetV5? = null
+    private var borrowedSmudgeTip: RasterBlendTip? = null
+    private var smudgeTipFailure: String? = null
+
+    /** Resolve an authored tip before contact so pen-down never decodes an imported image. */
+    fun setBorrowedSmudgeTip(preset: app.inkloom.brushpresetv5.BrushPresetV5?) {
+        if (borrowedSmudgePreset == preset) return
+        borrowedSmudgePreset = preset
+        borrowedSmudgeTip = null
+        smudgeTipFailure = null
+        if (preset == null) return
+        val texture = preset.tipTexture
+        val assets = texture?.assetPaths?.takeIf { it.isNotEmpty() }
+            ?: texture?.assetPath?.let { listOf(it) }.orEmpty()
+        val mask = if (assets.isNotEmpty()) {
+            assets.singleOrNull()?.let { path ->
+                v5BrushTipMasks.resolve(BrushTipMaskRequest(path, preset.tip.hardness.coerceIn(0f, 1f),
+                    alphaThresholdEnabled = texture?.alphaThreshold != null,
+                    alphaThreshold = texture?.alphaThreshold ?: 0f))
+            }
+        } else if (texture?.procedural != false) {
+            when (texture?.proceduralKind ?: ProceduralTipKind.ROUND) {
+                ProceduralTipKind.ROUND -> BrushTipMask.solidCircle(96, preset.tip.hardness.coerceIn(0f, 1f))
+                ProceduralTipKind.GRAPHITE -> BrushTipMask.graphite(96, preset.renderSeed,
+                    texture?.toothStrength?.coerceIn(0f, 1f) ?: .8f, preset.tip.hardness.coerceIn(0f, 1f))
+                ProceduralTipKind.BRISTLE -> BrushTipMask.bristle(96, preset.renderSeed,
+                    preset.tip.hardness.coerceIn(0f, 1f))
+            }
+        } else null
+        if (mask == null) {
+            smudgeTipFailure = "UNSUPPORTED_WITH_EXPLICIT_REASON: BLEND_TIP_ASSET_UNAVAILABLE"
+            return
+        }
+        val spacing = preset.spacing ?: app.inkloom.brushpresetv5.SpacingSettings()
+        borrowedSmudgeTip = RasterBlendTip(mask, preset.tip.aspect, preset.tip.rotationDegrees,
+            spacing.mode, spacing.value)
+    }
     var eraserWidth: Float = 24f
         set(value) {
             field = value
@@ -2678,7 +2716,7 @@ class InkCanvasView(context: Context) : View(context) {
                 if (activeTool == EditorTool.SMUDGE) {
                     parent?.requestDisallowInterceptTouchEvent(true)
                     if (!beginSmudgeGesture(normalizedX, normalizedY)) {
-                        onPaintCapabilityRejected("Blend requires a writable Paint Engine V5 raster layer")
+                        onPaintCapabilityRejected(smudgeTipFailure ?: "Blend requires a writable Paint Engine V5 raster layer")
                         activeTool = null
                         parent?.requestDisallowInterceptTouchEvent(false)
                     }
@@ -4680,6 +4718,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun beginSmudgeGesture(normalizedX: Float, normalizedY: Float): Boolean {
+        if (smudgeTipFailure != null) return false
         removeCallbacks(smudgeFrame)
         smudgeFrameScheduled = false
         hasPendingSmudge = false
@@ -4694,6 +4733,7 @@ class InkCanvasView(context: Context) : View(context) {
             surface,
             selectionMaskForRasterTools(),
             preserveDestinationAlpha = activeLayerId in alphaLockedLayers,
+            tip = borrowedSmudgeTip,
         )
         smudgeLastX = normalizedX.coerceIn(0f, 1f)
         smudgeLastY = normalizedY.coerceIn(0f, 1f)

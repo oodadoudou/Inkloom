@@ -29,10 +29,15 @@ class BrushToolTipReuseTest {
         assertTrue(BrushToolTipReuse.forEraser(BrushPresetV5Codec.encode(wet)).isFailure)
     }
 
-    @Test fun `smudge accepts only a tip whose footprint this engine can preserve`() {
+    @Test fun `smudge keeps single authored tip shape and rejects unsupported dynamics`() {
         val round = paint.copy(tip = paint.tip.copy(aspect = 1f), deposition = DepositionSettings())
         assertEquals(round, BrushToolTipReuse.forSmudge(BrushPresetV5Codec.encode(round)).getOrThrow())
-        assertTrue(BrushToolTipReuse.forSmudge(BrushPresetV5Codec.encode(paint)).exceptionOrNull()
-            ?.message?.contains("round untextured") == true)
+        assertEquals(paint, BrushToolTipReuse.forSmudge(BrushPresetV5Codec.encode(paint)).getOrThrow())
+        val textured = paint.copy(tipTexture = TipTextureSettings(procedural = false,
+            assetPath = "/tmp/tip.png", assetPaths = listOf("/tmp/tip.png")))
+        assertEquals(textured, BrushToolTipReuse.forSmudge(BrushPresetV5Codec.encode(textured)).getOrThrow())
+        val scattered = textured.copy(stamp = StampSettings(lateralPathJitter = .5f))
+        assertTrue(BrushToolTipReuse.forSmudge(BrushPresetV5Codec.encode(scattered)).exceptionOrNull()
+            ?.message?.contains("unsupported dynamics") == true)
     }
 }

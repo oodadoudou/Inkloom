@@ -5496,6 +5496,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     brushColorMix = activeBrush?.colorMix ?: 0f
     val borrowedSmudge = if (selectedTool == EditorTool.SMUDGE && borrowPaintTipForSmudge)
         BrushToolTipReuse.forSmudge(activeBrush?.v5PresetJson).getOrNull() else null
+    setBorrowedSmudgeTip(borrowedSmudge)
     smudgeHardness = borrowedSmudge?.tip?.hardness ?: activeBrush?.hardness ?: .5f
     smudgeWidthPressure = borrowedSmudge?.dynamics?.pressure?.let { pressure ->
         app.inkloom.engine.v5.material.PressureResponse(pressure.widthEnabled, pressure.widthMinimum,
