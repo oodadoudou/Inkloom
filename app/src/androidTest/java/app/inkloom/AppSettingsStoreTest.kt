@@ -28,6 +28,9 @@ import app.inkloom.settings.ReferenceTarget
 import app.inkloom.settings.LibraryLayout
 import app.inkloom.settings.FillTargetMode
 import app.inkloom.settings.FillExpansionShape
+import app.inkloom.settings.GradientPresetLibrary
+import app.inkloom.document.GradientDefinition
+import app.inkloom.document.GradientColorStop
 import app.inkloom.document.CorrectLineMode
 import app.inkloom.model.EditorTool
 import org.junit.Assert.assertEquals
@@ -38,6 +41,21 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AppSettingsStoreTest {
+    @Test fun namedGradientPresetsSurviveReloadWithTransparentStops() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            val library = GradientPresetLibrary().add("Transparent ink",
+                GradientDefinition(stops = listOf(GradientColorStop(0f, 0x00000000),
+                    GradientColorStop(1f, 0xFF112233L))), "ink")
+            AppSettingsStore(context).save(AppSettings(gradientPresets = library))
+            assertEquals(library, AppSettingsStore(context).load().gradientPresets)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
     @Test fun fillTargetAndItsIndependentColorSurviveReload() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)

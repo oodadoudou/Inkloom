@@ -38,6 +38,7 @@ data class AppSettings(
     val gradientAngleSnapEnabled: Boolean = false,
     val gradientAngleSnapDegrees: Float = 45f,
     val gradientStops: List<GradientColorStop> = listOf(GradientColorStop(0f, 0xFF111111L), GradientColorStop(1f, 0xFFFFFFFFL)),
+    val gradientPresets: GradientPresetLibrary = GradientPresetLibrary(),
     val showPageRail: Boolean = false,
     val showBrushPanel: Boolean = false,
     val showLayerPanel: Boolean = false,
@@ -240,6 +241,9 @@ class AppSettingsStore(context: Context) {
             gradientAngleSnapEnabled = preferences.getBoolean("gradientAngleSnapEnabled", false),
             gradientAngleSnapDegrees = preferences.getFloat("gradientAngleSnapDegrees", 45f).takeIf(Float::isFinite)?.coerceIn(1f, 90f) ?: 45f,
             gradientStops = GradientStopCodec.decode(preferences.getString("gradientStops", null)),
+            gradientPresets = preferences.getString("gradientPresets", null)?.let { encoded ->
+                GradientPresetLibraryCodec.decode(encoded.encodeToByteArray()).getOrDefault(GradientPresetLibrary())
+            } ?: GradientPresetLibrary(),
             showPageRail = preferences.getBoolean("showPageRail", false),
             showBrushPanel = preferences.getBoolean("showBrushPanel", false),
             showLayerPanel = preferences.getBoolean("showLayerPanel", false),
@@ -421,6 +425,7 @@ class AppSettingsStore(context: Context) {
             .putBoolean("gradientAngleSnapEnabled", persisted.gradientAngleSnapEnabled)
             .putFloat("gradientAngleSnapDegrees", persisted.gradientAngleSnapDegrees.takeIf(Float::isFinite)?.coerceIn(1f, 90f) ?: 45f)
             .putString("gradientStops", GradientStopCodec.encode(persisted.gradientStops))
+            .putString("gradientPresets", GradientPresetLibraryCodec.encode(persisted.gradientPresets).toString(Charsets.UTF_8))
             .putBoolean("showPageRail", persisted.showPageRail)
             .putBoolean("showBrushPanel", persisted.showBrushPanel)
             .putBoolean("showLayerPanel", persisted.showLayerPanel)

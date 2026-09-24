@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
@@ -142,6 +143,7 @@ import app.inkloom.engine.v5.tools.RasterLayerPatch
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsBackupCodec
 import app.inkloom.settings.AppSettingsStore
+import app.inkloom.settings.GradientPresetLibraryCodec
 import app.inkloom.settings.LayerRowDensity
 import app.inkloom.settings.AxisShortcutBinding
 import app.inkloom.settings.BuiltInWorkspace
@@ -1802,6 +1804,32 @@ private fun EditorScreen(
     if (document == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }; return }
     val context = LocalContext.current
     val editorHostView = LocalView.current
+    val gradientImportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching {
+            val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
+                val output = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(8192)
+                while (output.size() <= GradientPresetLibraryCodec.MAX_BYTES) {
+                    val count = input.read(buffer, 0, minOf(buffer.size, GradientPresetLibraryCodec.MAX_BYTES + 1 - output.size()))
+                    if (count < 0) break
+                    require(count > 0) { "Gradient source stopped before the file ended" }
+                    output.write(buffer, 0, count)
+                }
+                output.toByteArray()
+            } ?: error("Unable to open gradient presets")
+            val imported = GradientPresetLibraryCodec.decode(bytes).getOrThrow()
+            onSettingsChange(settings.copy(gradientPresets = settings.gradientPresets.append(imported)))
+            Toast.makeText(context, settings.language.text("Gradients imported", "渐变预设已导入"), Toast.LENGTH_SHORT).show()
+        }.onFailure { Toast.makeText(context, it.message ?: "Gradient import failed", Toast.LENGTH_LONG).show() }
+    }
+    val gradientExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(GradientPresetLibraryCodec.MIME_TYPE)) { uri ->
+        if (uri != null) runCatching {
+            context.contentResolver.openOutputStream(uri, "wt")?.use { output ->
+                output.write(GradientPresetLibraryCodec.encode(settings.gradientPresets))
+            } ?: error("Unable to save gradient presets")
+            Toast.makeText(context, settings.language.text("Gradients exported", "渐变预设已导出"), Toast.LENGTH_SHORT).show()
+        }.onFailure { Toast.makeText(context, it.message ?: "Gradient export failed", Toast.LENGTH_LONG).show() }
+    }
     val brushMasterSettingsStore = remember { BrushMasterSettingsStore(context) }
     val brushUsageStore = remember { BrushUsageStore(context) }
     var brushUsage by remember { mutableStateOf(brushUsageStore.load()) }
@@ -3525,7 +3553,7 @@ private fun EditorScreen(
                     changeCurrentBrushSize(raw)
                 }, onOpacity = { raw ->
                     changeCurrentBrushOpacity(raw)
-                }, onColor = ::changeBrushColor, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, ::changeBrushColor, onSettingsChange) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f).onGloballyPositioned {
+                }, onColor = ::changeBrushColor, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, ::changeBrushColor, onSettingsChange, { gradientImportPicker.launch(arrayOf("application/json", GradientPresetLibraryCodec.MIME_TYPE, "*/*")) }, { gradientExportPicker.launch("Inkloom-gradients.json") }) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f).onGloballyPositioned {
                     val width = it.size.width / editorDensity.density
                     val height = it.size.height / editorDensity.density
                     if (kotlin.math.abs(measuredToolbarWidth - width) > .5f) measuredToolbarWidth = width
@@ -5812,11 +5840,68 @@ private fun EraserPresetPicker(selected: EraserPreset, onSelect: (EraserPreset) 
 }
 
 @Composable
-private fun GradientToolControls(settings: AppSettings, brushColor: Int, onBrushColor: (Int) -> Unit, onSettingsChange: (AppSettings) -> Unit) {
+private fun GradientToolControls(settings: AppSettings, brushColor: Int, onBrushColor: (Int) -> Unit, onSettingsChange: (AppSettings) -> Unit, onImport: () -> Unit, onExport: () -> Unit) {
     val stops = GradientColors.normalize(settings.gradientStops).mapIndexed { index, stop ->
         if (index == 0) stop.copy(colorArgb = brushColor.toUInt().toLong()) else stop
     }
     fun updateStops(changed: List<GradientColorStop>) = onSettingsChange(settings.copy(gradientStops = GradientColors.normalize(changed)))
+    fun currentDefinition() = GradientDefinition(settings.gradientKind, settings.gradientEdgeMode,
+        settings.gradientReverse, settings.gradientDither, settings.gradientEllipseRatio, stops)
+    var selectedPresetId by remember { mutableStateOf<String?>(null) }
+    var presetMenuOpen by remember { mutableStateOf(false) }
+    var nameAction by remember { mutableStateOf<String?>(null) }
+    var enteredName by remember { mutableStateOf("") }
+    val selectedPreset = settings.gradientPresets.presets.firstOrNull { it.id == selectedPresetId }
+    val context = LocalContext.current
+    fun editLibrary(change: () -> app.inkloom.settings.GradientPresetLibrary) {
+        runCatching { change() }.onSuccess { onSettingsChange(settings.copy(gradientPresets = it)) }
+            .onFailure { Toast.makeText(context, it.message ?: "Gradient preset operation failed", Toast.LENGTH_LONG).show() }
+    }
+    if (nameAction != null) AlertDialog(
+        onDismissRequest = { nameAction = null },
+        title = { Text(when (nameAction) { "rename" -> tr("Rename gradient", "重命名渐变"); "duplicate" -> tr("Duplicate gradient", "复制渐变"); else -> tr("Save gradient", "保存渐变") }) },
+        text = { OutlinedTextField(enteredName, { enteredName = it.take(64) }, Modifier.testTag("gradient-preset-name"), singleLine = true, label = { Text(tr("Name", "名称")) }) },
+        confirmButton = { TextButton(onClick = {
+            when (nameAction) {
+                "rename" -> selectedPreset?.let { preset -> editLibrary { settings.gradientPresets.rename(preset.id, enteredName) } }
+                "duplicate" -> selectedPreset?.let { preset -> editLibrary { settings.gradientPresets.duplicate(preset.id, enteredName) } }
+                else -> editLibrary { settings.gradientPresets.add(enteredName, currentDefinition()) }
+            }
+            nameAction = null
+        }, modifier = Modifier.testTag("gradient-preset-confirm"), enabled = enteredName.trim().isNotEmpty()) { Text(tr("Save", "保存")) } },
+        dismissButton = { TextButton(onClick = { nameAction = null }) { Text(tr("Cancel", "取消")) } },
+    )
+    Text(tr("Presets", "预设"), color = MutedInk, fontSize = 11.sp)
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f)) {
+            OutlinedButton(onClick = { presetMenuOpen = true }, modifier = Modifier.fillMaxWidth().testTag("gradient-preset-choose")) {
+                Text(selectedPreset?.name ?: tr("Choose gradient", "选择渐变"), maxLines = 1)
+            }
+            DropdownMenu(expanded = presetMenuOpen, onDismissRequest = { presetMenuOpen = false }) {
+                settings.gradientPresets.presets.forEach { preset ->
+                    DropdownMenuItem(text = { Text(preset.name) }, onClick = {
+                        presetMenuOpen = false; selectedPresetId = preset.id
+                        val definition = preset.definition
+                        onBrushColor(definition.stops.first().colorArgb.toInt())
+                        onSettingsChange(settings.copy(gradientKind = definition.kind,
+                            gradientEdgeMode = definition.edgeMode, gradientReverse = definition.reverse,
+                            gradientDither = definition.dither, gradientEllipseRatio = definition.ellipseRatio,
+                            gradientStops = definition.stops))
+                    })
+                }
+            }
+        }
+        TextButton(onClick = { enteredName = ""; nameAction = "save" }, modifier = Modifier.testTag("gradient-preset-save")) { Text(tr("Save", "保存")) }
+    }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        TextButton(onClick = { selectedPreset?.let { preset -> editLibrary { settings.gradientPresets.replace(preset.id, currentDefinition()) } } }, enabled = selectedPreset != null) { Text(tr("Update", "更新"), fontSize = 11.sp) }
+        TextButton(onClick = { enteredName = selectedPreset?.name.orEmpty(); nameAction = "rename" }, enabled = selectedPreset != null) { Text(tr("Rename", "改名"), fontSize = 11.sp) }
+        TextButton(onClick = { enteredName = selectedPreset?.name?.let { "$it copy" }.orEmpty(); nameAction = "duplicate" }, enabled = selectedPreset != null) { Text(tr("Copy", "复制"), fontSize = 11.sp) }
+        TextButton(onClick = { selectedPreset?.let { preset -> editLibrary { settings.gradientPresets.remove(preset.id) }; selectedPresetId = null } }, enabled = selectedPreset != null) { Text(tr("Delete", "删除"), fontSize = 11.sp) }
+        TextButton(onClick = onImport) { Text(tr("Import", "导入"), fontSize = 11.sp) }
+        TextButton(onClick = onExport, enabled = settings.gradientPresets.presets.isNotEmpty()) { Text(tr("Export", "导出"), fontSize = 11.sp) }
+    }
+    HorizontalDivider()
 
     Text(tr("Shape", "形状"), color = MutedInk, fontSize = 11.sp)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

@@ -27,6 +27,7 @@ enum class GradientEdgeMode { CLAMP, REPEAT, MIRROR, TRANSPARENT }
 @Serializable
 data class GradientColorStop(val position: Float, val colorArgb: Long)
 
+@Serializable
 data class GradientDefinition(
     val kind: GradientKind = GradientKind.LINEAR,
     val edgeMode: GradientEdgeMode = GradientEdgeMode.CLAMP,

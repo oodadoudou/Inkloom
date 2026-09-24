@@ -154,6 +154,11 @@ T-A 实施交互约定（2026-09-24）：参照 [CSP 高级填充](https://help.
 
 T-A.3 边界约定：按 [CSP 高级填充](https://help.clip-studio.com/en-us/manual_en/420_fill/Advanced_Fill.htm) 的「在抗锯齿线旁填充后保持平滑线条」行为，仅给与已填区域相邻、且向边界外侧继续增大色差的过渡像素赋予部分覆盖；相邻近似色块和实体边界不跨越，开关关闭时输出硬边。预览与提交使用同一遮罩和相同的缩放过滤规则，不能为平滑边缘牺牲封闭区域判定或显著拖慢阈值拖动。
 
+T-B 渐变预设交互约定（2026-09-24）：参考 [CSP 渐变工具](https://help.clip-studio.com/en-us/manual_en/420_fill/Gradient_Tool.htm) 的「当前渐变条」与「已保存渐变列表」分离、载入／替换／复制，以及 [Photoshop 自定义预设](https://helpx.adobe.com/photoshop/desktop/create-manage-layers/color-adjustment-fill-layers/create-custom-presets.html) 的命名、导入与导出。Inkloom 当前颜色节点的修改不自动覆盖已保存项；显式更新才替换，导入追加且保留已有项。取消系统文件选择不改设置，损坏／超限文件不改已有项并给出原因。现有画布渐变提交、取消、选区剪裁和导出路径不因预设管理改变。
+
+- [x] T-B.1 命名保存、载入、更新、改名、复制与删除；保存的多色标及透明度不随当前渐变条编辑而改变。JVM 模型与 Android 面板操作回归通过。
+- [x] T-B.2 独立预设文件导入／导出；坏文件整批拒绝、取消不修改、备份与设置重启保持一致。使用 SAF 文件选择；JVM 编解码／备份与 Android 设置重启回归通过，真机文件提供器仍为 `DEVICE_PENDING`。
+
 ### 排序时的判断边界
 
 1. **先选高频闭环**：漫画／插画常见的「从画布找线稿层 → 取层内容或保存选区 → 下层参考填色 → 调整／撤销」比增加一排低频模式更能改善体验。L-B、S-A、T-A 能围绕同一张样张验收。

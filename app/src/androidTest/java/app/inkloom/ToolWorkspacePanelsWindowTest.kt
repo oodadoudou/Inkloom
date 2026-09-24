@@ -46,6 +46,24 @@ class ToolWorkspacePanelsWindowTest {
         assertEquals(SelectionShape.MAGIC_WAND, AppSettingsStore(compose.activity).load().selectionShape)
     }
 
+    @Test fun gradientPresetSavedFromToolControlsSurvivesReopeningThePanel() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        compose.onNodeWithContentDescription("Gradient").performClick()
+        compose.onNodeWithContentDescription("Gradient controls").performClick()
+        compose.onNodeWithTag("gradient-preset-save").performClick()
+        compose.onNodeWithTag("gradient-preset-name").performTextInput("Comic shade")
+        compose.onNodeWithTag("gradient-preset-confirm").performClick()
+        compose.waitForIdle()
+        assertEquals("Comic shade", AppSettingsStore(compose.activity).load().gradientPresets.presets.single().name)
+        compose.onNodeWithContentDescription("Gradient controls").performClick()
+        compose.onNodeWithContentDescription("Gradient controls").performClick()
+        compose.onNodeWithTag("gradient-preset-choose").performClick()
+        compose.onNodeWithText("Comic shade").performClick()
+        compose.waitForIdle()
+        assertEquals(1, AppSettingsStore(compose.activity).load().gradientPresets.presets.size)
+    }
+
     @Test fun toolbarReactivatesBrushTabBeforeClosingItAndLeavesSiblingOpen() {
         compose.onNodeWithText("New Note").performClick()
         compose.onNodeWithText("Create").performClick()
