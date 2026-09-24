@@ -346,6 +346,7 @@ internal object NativeRasterOps {
         closeGapPixels: Int,
         areaScalingPixels: Int,
         targetColor: Int?,
+        expansionShape: Int,
     ): Rect? = nativeFloodFill(
         source,
         destination,
@@ -356,6 +357,7 @@ internal object NativeRasterOps {
         areaScalingPixels,
         targetColor != null,
         targetColor ?: 0,
+        expansionShape,
     ).toRectOrNull()
 
     private external fun nativeCompositePigment(
@@ -406,6 +408,7 @@ internal object NativeRasterOps {
         areaScalingPixels: Int,
         hasTargetColor: Boolean,
         targetColor: Int,
+        expansionShape: Int,
     ): IntArray
     private external fun nativeCompositePremultipliedTile(
         destination: IntArray,

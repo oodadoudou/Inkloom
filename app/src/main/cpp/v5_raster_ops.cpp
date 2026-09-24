@@ -167,6 +167,98 @@ bool morph_mask(const std::vector<std::uint8_t>& source, int width, int height, 
     return std::any_of(output.begin(), output.end(), [](std::uint8_t value) { return value != 0; });
 }
 
+// Exact squared Euclidean distance transform (linear in pixel count). Area scaling is recomputed
+// while the user drags fill tolerance, so a radius-by-radius disk convolution is too expensive.
+void round_distance_transform(const std::vector<std::uint8_t>& target, int width, int height,
+                              std::vector<int>& output) {
+    const int infinity = width * width + height * height + 1;
+    const int maximum = std::max(width, height);
+    std::vector<int> input(maximum), transformed(maximum), sites(maximum);
+    std::vector<double> breaks(maximum + 1);
+    std::vector<int> vertical(static_cast<std::size_t>(width) * height);
+    auto transform = [&](int length) {
+        int last = -1;
+        for (int q = 0; q < length; ++q) {
+            if (input[q] >= infinity) continue;
+            double crossing = 0.0;
+            while (last >= 0) {
+                const int p = sites[last];
+                crossing = (static_cast<double>(input[q]) + q * q - input[p] - p * p) / (2.0 * (q - p));
+                if (crossing > breaks[last]) break;
+                --last;
+            }
+            ++last;
+            sites[last] = q;
+            breaks[last] = last == 0 ? -std::numeric_limits<double>::infinity() : crossing;
+            breaks[last + 1] = std::numeric_limits<double>::infinity();
+        }
+        if (last < 0) {
+            std::fill(transformed.begin(), transformed.begin() + length, infinity);
+            return;
+        }
+        int active = 0;
+        for (int q = 0; q < length; ++q) {
+            while (breaks[active + 1] < q) ++active;
+            const int delta = q - sites[active];
+            transformed[q] = delta * delta + input[sites[active]];
+        }
+    };
+    for (int x = 0; x < width; ++x) {
+        for (int y = 0; y < height; ++y) input[y] = target[static_cast<std::size_t>(y) * width + x] ? 0 : infinity;
+        transform(height);
+        for (int y = 0; y < height; ++y) vertical[static_cast<std::size_t>(y) * width + x] = transformed[y];
+    }
+    output.resize(static_cast<std::size_t>(width) * height);
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) input[x] = vertical[static_cast<std::size_t>(y) * width + x];
+        transform(width);
+        for (int x = 0; x < width; ++x) output[static_cast<std::size_t>(y) * width + x] = transformed[x];
+    }
+}
+
+void rectangle_distance_transform(const std::vector<std::uint8_t>& target, int width, int height,
+                                  std::vector<int>& output) {
+    const int infinity = width + height + 1;
+    output.resize(static_cast<std::size_t>(width) * height);
+    for (std::size_t index = 0; index < output.size(); ++index) output[index] = target[index] ? 0 : infinity;
+    for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
+        const int index = y * width + x;
+        if (x > 0) output[index] = std::min(output[index], output[index - 1] + 1);
+        if (y > 0) {
+            for (int dx = -1; dx <= 1; ++dx) if (x + dx >= 0 && x + dx < width)
+                output[index] = std::min(output[index], output[index - width + dx] + 1);
+        }
+    }
+    for (int y = height - 1; y >= 0; --y) for (int x = width - 1; x >= 0; --x) {
+        const int index = y * width + x;
+        if (x + 1 < width) output[index] = std::min(output[index], output[index + 1] + 1);
+        if (y + 1 < height) {
+            for (int dx = -1; dx <= 1; ++dx) if (x + dx >= 0 && x + dx < width)
+                output[index] = std::min(output[index], output[index + width + dx] + 1);
+        }
+    }
+}
+
+void scaled_fill_mask(const std::vector<std::uint8_t>& source, int width, int height,
+                      int scaling, int shape, std::vector<std::uint8_t>& output,
+                      std::vector<int>& distance) {
+    const bool dilate = scaling > 0;
+    const int radius = std::abs(scaling);
+    const int limit = shape == 1 ? radius : radius * radius;
+    std::vector<std::uint8_t> targets(source.size());
+    for (std::size_t index = 0; index < source.size(); ++index)
+        targets[index] = dilate ? source[index] : source[index] == 0;
+    if (shape == 1) rectangle_distance_transform(targets, width, height, distance);
+    else round_distance_transform(targets, width, height, distance);
+    output.resize(source.size());
+    for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
+        const int index = y * width + x;
+        const int edge_distance = std::min({x + 1, y + 1, width - x, height - y});
+        output[index] = dilate ? distance[index] <= limit :
+            source[index] && distance[index] > limit && edge_distance > radius;
+    }
+}
+
 void write_white_mask(LockedBitmap& destination, const std::vector<std::uint8_t>& mask) {
     const int width = static_cast<int>(destination.info.width);
     const int height = static_cast<int>(destination.info.height);
@@ -1039,7 +1131,8 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeFloodFill(
     jint close_gap_value,
     jint area_scaling_value,
     jboolean has_target_color,
-    jint target_color) {
+    jint target_color,
+    jint expansion_shape) {
     LockedBitmap source(env, source_bitmap);
     LockedBitmap destination(env, destination_bitmap);
     const std::array<int, 4> empty_bounds{-1, -1, -1, -1};
@@ -1132,7 +1225,7 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeFloodFill(
     if (scaling != 0) {
         covered.resize(count);
         for (std::size_t index = 0; index < count; ++index) covered[index] = fillable[index] == 3;
-        morph_mask(covered, width, height, std::abs(scaling), scaling > 0, scratch_mask, distance);
+        scaled_fill_mask(covered, width, height, scaling, expansion_shape, scratch_mask, distance);
         covered.swap(scratch_mask);
     }
     int min_x = width;

@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.FloodFill
+import app.inkloom.settings.FillExpansionShape
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -63,6 +64,23 @@ class FloodFillTest {
         assertEquals(10, normal.width)
         assertTrue(expanded.width > normal.width)
         assertTrue(shrunk.width < normal.width)
+    }
+
+    @Test fun areaScalingRoundAndRectangleHaveDistinctCornerCoverage() {
+        val source = solid(Color.BLACK, 21, 21).apply { setPixel(10, 10, Color.WHITE) }
+        val round = FloodFill.fill(source, 10, 10, 0, areaScalingPixels = 2, expansionShape = FillExpansionShape.ROUND)
+        val rectangle = FloodFill.fill(source, 10, 10, 0, areaScalingPixels = 2, expansionShape = FillExpansionShape.RECTANGLE)
+        try {
+            assertEquals(5, round.width)
+            assertEquals(5, rectangle.width)
+            assertEquals("A circle of radius two excludes the diagonal corner", 0, Color.alpha(round.mask.getPixel(0, 0)))
+            assertEquals("A rectangle of radius two includes the diagonal corner", 255, Color.alpha(rectangle.mask.getPixel(0, 0)))
+            assertEquals(255, Color.alpha(round.mask.getPixel(2, 0)))
+        } finally {
+            round.mask.recycle()
+            rectangle.mask.recycle()
+            source.recycle()
+        }
     }
 
     @Test fun seedInsideAndOutsideAClosedBoundaryFillOppositeConnectedRegions() {
@@ -146,6 +164,24 @@ class FloodFillTest {
         val p95Ms = sorted[(sorted.lastIndex * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
         android.util.Log.i("InkloomPerf", "native_flood_fill_p95_ms=$p95Ms worst_ms=${sorted.last() / 1_000_000f}")
         assertTrue("Native fill threshold P95 was ${p95Ms}ms", p95Ms < 33.3f)
+        source.recycle()
+    }
+
+    @Test fun roundedExpansionKeepsPreviewWorkBounded() {
+        val source = solid(Color.WHITE, 512, 512)
+        for (x in 40 until 472) { source.setPixel(x, 40, Color.BLACK); source.setPixel(x, 471, Color.BLACK) }
+        for (y in 40 until 472) { source.setPixel(40, y, Color.BLACK); source.setPixel(471, y, Color.BLACK) }
+        repeat(3) { FloodFill.fill(source, 256, 256, tolerance = 0, areaScalingPixels = 4).mask.recycle() }
+        val elapsed = ArrayList<Long>(16)
+        repeat(16) {
+            val start = android.os.SystemClock.elapsedRealtimeNanos()
+            FloodFill.fill(source, 256, 256, tolerance = 0, areaScalingPixels = 4).mask.recycle()
+            elapsed += android.os.SystemClock.elapsedRealtimeNanos() - start
+        }
+        val sorted = elapsed.sorted()
+        val p95Ms = sorted[sorted.lastIndex * 95 / 100] / 1_000_000f
+        android.util.Log.i("InkloomPerf", "rounded_fill_expansion_p95_ms=$p95Ms")
+        assertTrue("Rounded expansion preview P95 was ${p95Ms}ms", p95Ms < 66.7f)
         source.recycle()
     }
 }

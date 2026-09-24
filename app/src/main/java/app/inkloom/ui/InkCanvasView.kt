@@ -946,6 +946,7 @@ class InkCanvasView(context: Context) : View(context) {
         set(value) { field = value.coerceIn(-64f, 64f) }
     var fillTargetMode: app.inkloom.settings.FillTargetMode = app.inkloom.settings.FillTargetMode.TOUCHED_COLOR
     var fillTargetColor: Int = Color.WHITE
+    var fillExpansionShape: app.inkloom.settings.FillExpansionShape = app.inkloom.settings.FillExpansionShape.ROUND
     var symmetryMode: SymmetryMode = SymmetryMode.NONE
         set(value) { if (field == value) return; field = value; if (value == SymmetryMode.NONE) symmetryGuideGesture = null; invalidate() }
     var symmetryGuide: SymmetryGuideState = SymmetryGuideState()
@@ -4451,6 +4452,7 @@ class InkCanvasView(context: Context) : View(context) {
                 app.inkloom.settings.FillTargetMode.TRANSPARENT_ONLY -> Color.TRANSPARENT
                 app.inkloom.settings.FillTargetMode.SPECIFIED_COLOR -> fillTargetColor
             },
+            expansionShape = fillExpansionShape,
         )
         fillPreviewMask?.recycle()
         fillPreviewMask = if (result.isEmpty) null else SelectionMaskCompositor.clipRegion(

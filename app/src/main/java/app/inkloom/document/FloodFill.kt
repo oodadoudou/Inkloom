@@ -2,6 +2,7 @@ package app.inkloom.document
 
 import android.graphics.Bitmap
 import app.inkloom.engine.v5.tools.NativeRasterOps
+import app.inkloom.settings.FillExpansionShape
 
 /** Native scanline flood fill used by the paint-bucket, ColorDrop and automatic-selection tools.
  * [tolerance] is the maximum per-channel difference (0..255) from the touched source pixel. */
@@ -20,6 +21,7 @@ object FloodFill {
         closeGapPixels: Int = 0,
         areaScalingPixels: Int = 0,
         targetColor: Int? = null,
+        expansionShape: FillExpansionShape = FillExpansionShape.ROUND,
     ): Result {
         if (source.isRecycled || startX !in 0 until source.width || startY !in 0 until source.height) {
             return empty()
@@ -34,6 +36,10 @@ object FloodFill {
             closeGapPixels = closeGapPixels.coerceIn(0, MAX_EFFECT_RADIUS),
             areaScalingPixels = areaScalingPixels.coerceIn(-MAX_EFFECT_RADIUS, MAX_EFFECT_RADIUS),
             targetColor = targetColor,
+            expansionShape = when (expansionShape) {
+                FillExpansionShape.ROUND -> 0
+                FillExpansionShape.RECTANGLE -> 1
+            },
         )
         if (bounds == null || bounds.isEmpty) {
             return empty()

@@ -27,6 +27,7 @@ data class AppSettings(
     val fillAreaScalingPixels: Float = 0f,
     val fillTargetMode: FillTargetMode = FillTargetMode.TOUCHED_COLOR,
     val fillTargetColor: Int = android.graphics.Color.WHITE,
+    val fillExpansionShape: FillExpansionShape = FillExpansionShape.ROUND,
     val fillSubTool: FillSubTool = FillSubTool.BUCKET,
     val gradientKind: GradientKind = GradientKind.LINEAR,
     val gradientEdgeMode: GradientEdgeMode = GradientEdgeMode.CLAMP,
@@ -183,6 +184,7 @@ enum class SelectionMode { REPLACE, ADD, SUBTRACT, INTERSECT }
 enum class SelectionFilter { ALL, ACTIVE_LAYER, CURRENT_BRUSH, CURRENT_COLOR }
 enum class ReferenceTarget { ALL_VISIBLE, ACTIVE_LAYER, REFERENCE_LAYERS }
 enum class FillTargetMode { TOUCHED_COLOR, TRANSPARENT_ONLY, SPECIFIED_COLOR }
+enum class FillExpansionShape { ROUND, RECTANGLE }
 
 class AppSettingsStore(context: Context) {
     private companion object {
@@ -226,6 +228,7 @@ class AppSettingsStore(context: Context) {
             fillAreaScalingPixels = preferences.getFloat("fillAreaScalingPixels", 0f).coerceIn(-64f, 64f),
             fillTargetMode = enumValue(preferences.getString("fillTargetMode", null), FillTargetMode.TOUCHED_COLOR),
             fillTargetColor = preferences.getInt("fillTargetColor", android.graphics.Color.WHITE),
+            fillExpansionShape = enumValue(preferences.getString("fillExpansionShape", null), FillExpansionShape.ROUND),
             fillSubTool = enumValue(preferences.getString("fillSubTool", null), FillSubTool.BUCKET),
             gradientKind = enumValue(preferences.getString("gradientKind", null), GradientKind.LINEAR),
             gradientEdgeMode = enumValue(preferences.getString("gradientEdgeMode", null), GradientEdgeMode.CLAMP),
@@ -405,6 +408,7 @@ class AppSettingsStore(context: Context) {
             .putFloat("fillAreaScalingPixels", persisted.fillAreaScalingPixels.coerceIn(-64f, 64f))
             .putString("fillTargetMode", persisted.fillTargetMode.name)
             .putInt("fillTargetColor", persisted.fillTargetColor)
+            .putString("fillExpansionShape", persisted.fillExpansionShape.name)
             .putString("fillSubTool", persisted.fillSubTool.name)
             .putString("gradientKind", persisted.gradientKind.name)
             .putString("gradientEdgeMode", persisted.gradientEdgeMode.name)

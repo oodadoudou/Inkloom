@@ -210,6 +210,13 @@ internal fun WorkspaceToolPropertiesPanel(
                         settings.fillCloseGapPixels, 0f..64f, { onSettings(settings.copy(fillCloseGapPixels = it)) })
                     WorkspacePropertySlider(language.text("Area scaling", "区域缩放"), "${settings.fillAreaScalingPixels.toInt()} px",
                         settings.fillAreaScalingPixels, -64f..64f, { onSettings(settings.copy(fillAreaScalingPixels = it)) })
+                    if (settings.fillAreaScalingPixels != 0f) {
+                        Text(language.text("Scaling corners", "扩张边角"), color = Ink, fontSize = 11.sp)
+                        app.inkloom.settings.FillExpansionShape.entries.forEach { shape -> WorkspaceSubtoolRow(
+                            if (shape == app.inkloom.settings.FillExpansionShape.ROUND) language.text("Round", "圆形") else language.text("Rectangle", "矩形"),
+                            shape == settings.fillExpansionShape,
+                        ) { onSettings(settings.copy(fillExpansionShape = shape)) } }
+                    }
                 }
                 EditorTool.GRADIENT -> {
                     Text(language.text("Edge process", "边缘处理"), color = Ink, fontSize = 11.sp)

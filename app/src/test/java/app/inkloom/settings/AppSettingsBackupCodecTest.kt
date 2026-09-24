@@ -14,10 +14,12 @@ import app.inkloom.document.GradientKind
 
 class AppSettingsBackupCodecTest {
     @Test fun `backup retains independent fill target color`() {
-        val original = AppSettings(fillTargetMode = FillTargetMode.SPECIFIED_COLOR, fillTargetColor = 0xFFCA7733.toInt())
+        val original = AppSettings(fillTargetMode = FillTargetMode.SPECIFIED_COLOR, fillTargetColor = 0xFFCA7733.toInt(),
+            fillExpansionShape = FillExpansionShape.RECTANGLE)
         val restored = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(original)).getOrThrow().settings
         assertEquals(original.fillTargetMode, restored.fillTargetMode)
         assertEquals(original.fillTargetColor, restored.fillTargetColor)
+        assertEquals(original.fillExpansionShape, restored.fillExpansionShape)
     }
 
     @Test fun `backup preserves dock extents tabs lock named layouts and tool rail`() {

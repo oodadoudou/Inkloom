@@ -27,6 +27,7 @@ import app.inkloom.settings.WorkspaceOrientation
 import app.inkloom.settings.ReferenceTarget
 import app.inkloom.settings.LibraryLayout
 import app.inkloom.settings.FillTargetMode
+import app.inkloom.settings.FillExpansionShape
 import app.inkloom.document.CorrectLineMode
 import app.inkloom.model.EditorTool
 import org.junit.Assert.assertEquals
@@ -45,10 +46,12 @@ class AppSettingsStoreTest {
             AppSettingsStore(context).save(AppSettings(
                 fillTargetMode = FillTargetMode.SPECIFIED_COLOR,
                 fillTargetColor = 0xFFCA7733.toInt(),
+                fillExpansionShape = FillExpansionShape.RECTANGLE,
             ))
             val restored = AppSettingsStore(context).load()
             assertEquals(FillTargetMode.SPECIFIED_COLOR, restored.fillTargetMode)
             assertEquals(0xFFCA7733.toInt(), restored.fillTargetColor)
+            assertEquals(FillExpansionShape.RECTANGLE, restored.fillExpansionShape)
         } finally {
             preferences.edit().clear().commit()
         }
