@@ -291,6 +291,37 @@ class InkCanvasBrushSwitchTest {
     }
 
     @Test
+    fun explicitlyBorrowedPaintTipRemovesPixelsAndKeepsPaintBrushReusable() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val surface = PixelTileSurface(1200, 1200).also {
+            it.beginWrite("borrowed tip target").run {
+                for (x in 220..980) for (y in 580..620) setPixel(x, y, Color.BLACK)
+                commit().close()
+            }
+        }
+        val view = InkCanvasView(instrumentation.targetContext).apply {
+            layout(0, 0, 1200, 1200)
+            setRasterLayerSurfaces(mapOf(app.inkloom.document.LayerIds.INK to surface))
+        }
+        val paint = brush("borrowed-paint", "Ink pen").v5()
+
+        instrumentation.runOnMainSync {
+            view.applyBrushConfiguration(EditorTool.ERASER, AppSettings(), paint, 80f, 1f,
+                Color.RED, EraserPreset.NORMAL_FREE, borrowPaintTipForEraser = true)
+            drawStroke(view, 1L, 600f)
+        }
+        settlePublishedStroke(view)
+        assertEquals(0, Color.alpha(surface.pixelAt(600, 600)))
+        instrumentation.runOnMainSync {
+            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), paint, 80f, 1f,
+                Color.RED, EraserPreset.NORMAL_FREE)
+            drawStroke(view, 20L, 700f)
+        }
+        settlePublishedStroke(view)
+        assertTrue(Color.alpha(surface.pixelAt(600, 700)) > 0)
+    }
+
+    @Test
     fun palmDownBeforeStylusStartsAtThePenAndNeverCreatesTopLeftArtifacts() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val surface = PixelTileSurface(1200, 1200)

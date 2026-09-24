@@ -111,6 +111,7 @@ import app.inkloom.brushpresetv5.OwnedBrushPreset
 import app.inkloom.brushpresetv5.BrushPresetV5Import
 import app.inkloom.brushpresetv5.BrushPresetV5
 import app.inkloom.brushpresetv5.BrushPresetV5Codec
+import app.inkloom.brushpresetv5.BrushToolTipReuse
 import app.inkloom.brushpresetv5.BrushFamily
 import app.inkloom.brushpresetv5.BrushOutput
 import app.inkloom.brushpresetv5.DepositionSettings
@@ -1859,7 +1860,9 @@ private fun EditorScreen(
     val persistedBrush = availableBrushes.firstOrNull {
         it.id == settings.persistentBrushPresetId && !it.hidden
     }
-    val persistedTool = persistedBrush?.let(BrushRoleClassifier::editorTool) ?: settings.persistentDrawingTool
+    val persistedTool = if (settings.persistentDrawingTool == EditorTool.ERASER &&
+        brushUsage.eraserUsesPaintTip && persistedBrush?.id == brushUsage.lastEraserBrushId
+    ) EditorTool.ERASER else persistedBrush?.let(BrushRoleClassifier::editorTool) ?: settings.persistentDrawingTool
     var tool by remember(document.id) { mutableStateOf(persistedTool) }
     var selectedBrushId by remember(document.id) { mutableStateOf(persistedBrush?.id) }
     var activeBrush by remember(document.id) { mutableStateOf(persistedBrush) }
@@ -2147,7 +2150,8 @@ private fun EditorScreen(
     fun syncCanvasInput(prepareAssets: Boolean = false) {
         canvasView?.let { view ->
             view.activeLayerId = activeLayerId
-            view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, colorPreview.foreground ?: brushColor, settings.eraserPreset, colorPreview.secondary ?: backgroundColor)
+            view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, colorPreview.foreground ?: brushColor, settings.eraserPreset, colorPreview.secondary ?: backgroundColor,
+                borrowPaintTipForEraser = tool == EditorTool.ERASER && brushUsage.eraserUsesPaintTip && activeBrush?.id == brushUsage.lastEraserBrushId)
             if (prepareAssets) view.prepareBrushAssetsNow()
             view.requestFocus()
         }
@@ -2535,11 +2539,33 @@ private fun EditorScreen(
             ProcreateTopButton(InkloomIcons.Eraser, tr("Eraser", "橡皮"), selected = tool == EditorTool.ERASER, onClick = {
                 exitCanvasNavigation()
                 val eraser = activeBrush?.takeIf(BrushRoleClassifier::isEraser)
-                    ?: availableBrushes.firstOrNull { it.id == brushUsage.lastEraserBrushId && !it.hidden && BrushRoleClassifier.isEraser(it) }
+                    ?: availableBrushes.firstOrNull { it.id == brushUsage.lastEraserBrushId && !it.hidden &&
+                        (BrushRoleClassifier.isEraser(it) ||
+                            (brushUsage.eraserUsesPaintTip && BrushToolTipReuse.forEraser(it.v5PresetJson).isSuccess)) }
                     ?: brushes.filter(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
                     ?: systemBrushCatalog().first { BrushRoleClassifier.isEraser(it) }
-                selectWorkspaceBrush(eraser)
+                if (brushUsage.eraserUsesPaintTip && !BrushRoleClassifier.isEraser(eraser) &&
+                    BrushToolTipReuse.forEraser(eraser.v5PresetJson).isSuccess) {
+                    activeBrush = eraser; selectedBrushId = eraser.id; tool = EditorTool.ERASER
+                    brushSize = savedBrushSize(eraser, eraser.defaultSize, EditorTool.ERASER)
+                    brushOpacity = savedBrushOpacity(eraser, eraser.defaultOpacity, EditorTool.ERASER)
+                    syncCanvasInput(prepareAssets = true)
+                } else selectWorkspaceBrush(eraser)
                 if (EditorPanel.BRUSHES !in panelState.layout.open) setBrushPanelOpen(true)
+            }, onLongClick = {
+                val paint = activeBrush?.takeIf { BrushRoleClassifier.editorTool(it) == EditorTool.PEN }
+                    ?: availableBrushes.firstOrNull { it.id == brushUsage.lastPaintBrushId && !it.hidden }
+                val result = BrushToolTipReuse.forEraser(paint?.v5PresetJson)
+                result.onSuccess {
+                    val chosen = requireNotNull(paint)
+                    activeBrush = chosen; selectedBrushId = chosen.id; tool = EditorTool.ERASER
+                    brushSize = savedBrushSize(chosen, chosen.defaultSize, EditorTool.ERASER)
+                    brushOpacity = savedBrushOpacity(chosen, chosen.defaultOpacity, EditorTool.ERASER)
+                    changeBrushUsage(brushUsage.borrowPaintTipForEraser(chosen.id))
+                    onSettingsChange(settings.copy(persistentDrawingTool = EditorTool.ERASER,
+                        persistentBrushPresetId = chosen.id))
+                    syncCanvasInput(prepareAssets = true)
+                }.onFailure { Toast.makeText(context, it.message ?: "Tip cannot be used for erasing", Toast.LENGTH_LONG).show() }
             })
             ProcreateTopButton(Icons.Outlined.Layers, tr("Layers", "图层"), selected = layersOpen, onClick = {
                 setLayersPanelOpen(!panelState.isActive(EditorPanel.LAYERS))
@@ -2942,6 +2968,7 @@ private fun EditorScreen(
                         continueFilling = false
                     },
                     activeBrush = activeBrush,
+                    borrowPaintTipForEraser = tool == EditorTool.ERASER && brushUsage.eraserUsesPaintTip && activeBrush?.id == brushUsage.lastEraserBrushId,
                     brushSize = brushSize,
                     brushOpacity = brushOpacity,
                     brushColor = brushColor,
@@ -3001,6 +3028,9 @@ private fun EditorScreen(
                         fun enterEraser() {
                             rememberDrawingSelection()
                             val eraser = activeBrush?.takeIf(BrushRoleClassifier::isEraser)
+                                ?: availableBrushes.firstOrNull { it.id == brushUsage.lastEraserBrushId && !it.hidden &&
+                                    (BrushRoleClassifier.isEraser(it) ||
+                                        (brushUsage.eraserUsesPaintTip && BrushToolTipReuse.forEraser(it.v5PresetJson).isSuccess)) }
                                 ?: brushes.filter(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
                             activeBrush = eraser
                             selectedBrushId = eraser?.id
@@ -3487,6 +3517,9 @@ private fun EditorScreen(
                         EditorTool.HIGHLIGHTER -> { activeBrush = null; selectedBrushId = null; brushOpacity = savedBrushOpacity(null, settings.highlighterOpacity, EditorTool.HIGHLIGHTER); brushSize = savedBrushSize(null, settings.highlighterSize, EditorTool.HIGHLIGHTER) }
                         EditorTool.ERASER -> {
                             val remembered = activeBrush?.takeIf(BrushRoleClassifier::isEraser)
+                                ?: availableBrushes.firstOrNull { it.id == brushUsage.lastEraserBrushId && !it.hidden &&
+                                    (BrushRoleClassifier.isEraser(it) ||
+                                        (brushUsage.eraserUsesPaintTip && BrushToolTipReuse.forEraser(it.v5PresetJson).isSuccess)) }
                                 ?: brushes.filter(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
                             activeBrush = remembered
                             selectedBrushId = remembered?.id
@@ -4677,7 +4710,7 @@ private inline fun <reified T : Enum<T>> enumOrDefault(name: String, fallback: T
     enumValues<T>().firstOrNull { it.name == name } ?: fallback
 
 @Composable
-private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerFilter: (String, String, RasterLayerFilterEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, onBeginQuickShapeEdit: () -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onBackKey: () -> Boolean, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, transformLayerIds: Set<String>, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onSymmetryGuideChange: (SymmetryGuideState) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
+private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerFilter: (String, String, RasterLayerFilterEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, onBeginQuickShapeEdit: () -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onBackKey: () -> Boolean, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, borrowPaintTipForEraser: Boolean, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, transformLayerIds: Set<String>, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onSymmetryGuideChange: (SymmetryGuideState) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val rasterRenderWidth = remember(renderedPage.width, renderedPage.height) {
         CanvasRasterResolution.forDimensions(renderedPage.width, renderedPage.height)
@@ -5167,7 +5200,8 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.onGradientCommitted = { sx, sy, ex, ey, definition, mask -> commitGradient(view.activeLayerId, sx, sy, ex, ey, definition, mask) }
                 installFillCommit(view)
                 installRasterCommit(view)
-                view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, colorPreview.foreground ?: brushColor, eraserPreset, colorPreview.secondary ?: secondaryBrushColor)
+                view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, colorPreview.foreground ?: brushColor, eraserPreset, colorPreview.secondary ?: secondaryBrushColor,
+                    borrowPaintTipForEraser = borrowPaintTipForEraser)
                 view.onViewportScale = onZoom
                 view.onViewportPinch = onPinch
                 view.onViewportPan = onPan
@@ -5282,11 +5316,13 @@ internal fun InkCanvasView.applyBrushConfiguration(
     brushColor: Int,
     eraserPreset: EraserPreset,
     secondaryBrushColor: Int = AndroidColor.WHITE,
+    borrowPaintTipForEraser: Boolean = false,
 ) {
     // A delayed Compose frame or hardware-button transition must never carry a normal paint
     // descriptor into eraser mode. Imported erasers remain full brush presets; other brushes are
     // discarded at this boundary and the selected system eraser preset is used instead.
-    val activeBrush = if (selectedTool == EditorTool.ERASER) selectedBrush?.takeIf(BrushRoleClassifier::isEraser) else selectedBrush
+    val activeBrush = if (selectedTool == EditorTool.ERASER && !borrowPaintTipForEraser)
+        selectedBrush?.takeIf(BrushRoleClassifier::isEraser) else selectedBrush
     val paintTool = selectedTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)
     feedbackLanguage = settings.language
     val defaultPreset = if (paintTool && activeBrush == null) BrushPresetV5(
@@ -5332,6 +5368,9 @@ internal fun InkCanvasView.applyBrushConfiguration(
         ) else null
     val compiledProgram = when {
         !paintTool || activeBrush?.toolBinding?.isSupported == false -> null
+        activeBrush != null && selectedTool == EditorTool.ERASER && borrowPaintTipForEraser ->
+            BrushToolTipReuse.forEraser(activeBrush.v5PresetJson).getOrNull()
+                ?.let(compiledBrushProgramV5Cache::resolvePreset)
         activeBrush != null -> compiledBrushProgramV5Cache.resolveEncoded(activeBrush.v5PresetJson)
         else -> compiledBrushProgramV5Cache.resolvePreset(requireNotNull(defaultPreset))
     }
@@ -5382,7 +5421,8 @@ internal fun InkCanvasView.applyBrushConfiguration(
     correctLineAmount = settings.correctLineAmount
     baseWidth = brushSize
     brushSizeSyncViewScale = activeBrush?.sizeSyncViewScale ?: false
-    val importedEraser = activeBrush?.takeIf { selectedTool == EditorTool.ERASER && BrushRoleClassifier.isEraser(it) }
+    val importedEraser = activeBrush?.takeIf { selectedTool == EditorTool.ERASER &&
+        (BrushRoleClassifier.isEraser(it) || borrowPaintTipForEraser) }
     eraserWidth = if (importedEraser != null) brushSize else settings.eraserSize
     eraserHardness = importedEraser?.hardness ?: eraserPreset.hardness
     eraserOpacity = importedEraser?.let { brushOpacity * it.flow }?.coerceIn(.01f, 1f) ?: eraserPreset.opacity

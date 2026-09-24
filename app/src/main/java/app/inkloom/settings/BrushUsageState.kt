@@ -14,6 +14,7 @@ data class BrushUsageState(
     val categoryPins: Map<String, List<String>> = emptyMap(),
     val lastPaintBrushId: String? = null,
     val lastEraserBrushId: String? = null,
+    val eraserUsesPaintTip: Boolean = false,
     val scrollPositions: Map<String, BrushLibraryScrollPosition> = emptyMap(),
     val categoryScroll: BrushLibraryScrollPosition = BrushLibraryScrollPosition(),
 ) {
@@ -38,8 +39,15 @@ data class BrushUsageState(
             recentIds = if (id in pinnedIds) recentIds else (listOf(id) + recentIds).distinct().take(RECENT_COUNT),
             lastPaintBrushId = if (eraser == false) id else lastPaintBrushId,
             lastEraserBrushId = if (eraser == true) id else lastEraserBrushId,
+            eraserUsesPaintTip = if (eraser == true) false else eraserUsesPaintTip,
         )
     }
+
+    fun borrowPaintTipForEraser(id: String): BrushUsageState = copy(
+        lastEraserBrushId = id,
+        eraserUsesPaintTip = true,
+        recentIds = (listOf(id) + recentIds).distinct().take(RECENT_COUNT),
+    )
 
     fun pin(id: String): BrushUsageState = if (id.isBlank()) this else
         copy(pinnedIds = (listOf(id) + pinnedIds).distinct(), recentIds = recentIds - id)

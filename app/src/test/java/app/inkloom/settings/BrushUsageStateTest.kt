@@ -6,6 +6,18 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class BrushUsageStateTest {
+    @Test fun `borrowing a paint tip remembers an independent eraser choice`() {
+        val state = BrushUsageState().used("ink", eraser = false)
+            .borrowPaintTipForEraser("ink")
+        val restored = Json.decodeFromString<BrushUsageState>(Json.encodeToString(state))
+        assertEquals("ink", restored.lastPaintBrushId)
+        assertEquals("ink", restored.lastEraserBrushId)
+        assertTrue(restored.eraserUsesPaintTip)
+        val ordinaryEraser = restored.used("soft eraser", eraser = true)
+        assertEquals("soft eraser", ordinaryEraser.lastEraserBrushId)
+        assertFalse(ordinaryEraser.eraserUsesPaintTip)
+    }
+
     @Test fun currentListPinsAreIndependentUnlimitedAndRestoreSourceOrder() {
         val ids = (0..1023).map { "brush-$it" }
         var state = BrushUsageState()
