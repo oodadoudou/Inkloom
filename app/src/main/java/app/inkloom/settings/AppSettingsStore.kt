@@ -25,6 +25,8 @@ data class AppSettings(
     val fillSensitivity: Float = .25f,
     val fillCloseGapPixels: Float = 0f,
     val fillAreaScalingPixels: Float = 0f,
+    val fillTargetMode: FillTargetMode = FillTargetMode.TOUCHED_COLOR,
+    val fillTargetColor: Int = android.graphics.Color.WHITE,
     val fillSubTool: FillSubTool = FillSubTool.BUCKET,
     val gradientKind: GradientKind = GradientKind.LINEAR,
     val gradientEdgeMode: GradientEdgeMode = GradientEdgeMode.CLAMP,
@@ -180,6 +182,7 @@ enum class SelectionShape { FREEFORM, RECTANGLE, ELLIPSE, BRUSH, SMART_BORDER, M
 enum class SelectionMode { REPLACE, ADD, SUBTRACT, INTERSECT }
 enum class SelectionFilter { ALL, ACTIVE_LAYER, CURRENT_BRUSH, CURRENT_COLOR }
 enum class ReferenceTarget { ALL_VISIBLE, ACTIVE_LAYER, REFERENCE_LAYERS }
+enum class FillTargetMode { TOUCHED_COLOR, TRANSPARENT_ONLY, SPECIFIED_COLOR }
 
 class AppSettingsStore(context: Context) {
     private companion object {
@@ -221,6 +224,8 @@ class AppSettingsStore(context: Context) {
             fillSensitivity = preferences.getFloat("fillSensitivity", .25f),
             fillCloseGapPixels = preferences.getFloat("fillCloseGapPixels", 0f).coerceIn(0f, 64f),
             fillAreaScalingPixels = preferences.getFloat("fillAreaScalingPixels", 0f).coerceIn(-64f, 64f),
+            fillTargetMode = enumValue(preferences.getString("fillTargetMode", null), FillTargetMode.TOUCHED_COLOR),
+            fillTargetColor = preferences.getInt("fillTargetColor", android.graphics.Color.WHITE),
             fillSubTool = enumValue(preferences.getString("fillSubTool", null), FillSubTool.BUCKET),
             gradientKind = enumValue(preferences.getString("gradientKind", null), GradientKind.LINEAR),
             gradientEdgeMode = enumValue(preferences.getString("gradientEdgeMode", null), GradientEdgeMode.CLAMP),
@@ -398,6 +403,8 @@ class AppSettingsStore(context: Context) {
             .putFloat("fillSensitivity", persisted.fillSensitivity)
             .putFloat("fillCloseGapPixels", persisted.fillCloseGapPixels.coerceIn(0f, 64f))
             .putFloat("fillAreaScalingPixels", persisted.fillAreaScalingPixels.coerceIn(-64f, 64f))
+            .putString("fillTargetMode", persisted.fillTargetMode.name)
+            .putInt("fillTargetColor", persisted.fillTargetColor)
             .putString("fillSubTool", persisted.fillSubTool.name)
             .putString("gradientKind", persisted.gradientKind.name)
             .putString("gradientEdgeMode", persisted.gradientEdgeMode.name)

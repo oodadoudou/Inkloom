@@ -187,6 +187,23 @@ internal fun WorkspaceToolPropertiesPanel(
                         settings.selectionThreshold, 0f..1f, { onSettings(settings.copy(selectionThreshold = it)) })
                 }
                 EditorTool.FILL -> {
+                    Text(language.text("Fill target", "填充目标"), color = Ink, fontSize = 11.sp)
+                    app.inkloom.settings.FillTargetMode.entries.forEach { option -> WorkspaceSubtoolRow(when (option) {
+                        app.inkloom.settings.FillTargetMode.TOUCHED_COLOR -> language.text("Touched color", "触点颜色")
+                        app.inkloom.settings.FillTargetMode.TRANSPARENT_ONLY -> language.text("Transparent area", "透明区域")
+                        app.inkloom.settings.FillTargetMode.SPECIFIED_COLOR -> language.text("Specified color", "指定颜色")
+                    }, option == settings.fillTargetMode) { onSettings(settings.copy(fillTargetMode = option)) } }
+                    if (settings.fillTargetMode == app.inkloom.settings.FillTargetMode.SPECIFIED_COLOR) {
+                        var showTargetPicker by remember { mutableStateOf(false) }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(language.text("Target color", "目标颜色"), Modifier.weight(1f), color = Ink, fontSize = 11.sp)
+                            Surface(Modifier.size(26.dp).clickable { showTargetPicker = true }, color = Color(settings.fillTargetColor),
+                                shape = RoundedCornerShape(3.dp), border = CardDefaults.outlinedCardBorder()) {}
+                        }
+                        if (showTargetPicker) StandardColorPickerDialog(settings.fillTargetColor, language,
+                            onConfirm = { onSettings(settings.copy(fillTargetColor = it)); showTargetPicker = false },
+                            onDismiss = { showTargetPicker = false })
+                    }
                     WorkspacePropertySlider(language.text("Tolerance", "容差"), "${(settings.fillSensitivity * 100).toInt()}%",
                         settings.fillSensitivity, 0f..1f, { onSettings(settings.copy(fillSensitivity = it)) })
                     WorkspacePropertySlider(language.text("Close gap", "闭合间隙"), "${settings.fillCloseGapPixels.toInt()} px",

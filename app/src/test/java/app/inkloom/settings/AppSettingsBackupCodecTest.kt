@@ -13,6 +13,13 @@ import app.inkloom.document.GradientEdgeMode
 import app.inkloom.document.GradientKind
 
 class AppSettingsBackupCodecTest {
+    @Test fun `backup retains independent fill target color`() {
+        val original = AppSettings(fillTargetMode = FillTargetMode.SPECIFIED_COLOR, fillTargetColor = 0xFFCA7733.toInt())
+        val restored = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(original)).getOrThrow().settings
+        assertEquals(original.fillTargetMode, restored.fillTargetMode)
+        assertEquals(original.fillTargetColor, restored.fillTargetColor)
+    }
+
     @Test fun `backup preserves dock extents tabs lock named layouts and tool rail`() {
         val start = EditorPanelLayout(open = setOf(EditorPanel.PAGES, EditorPanel.LAYERS))
         val dock = EditorPanelLayouts.move(start, "layers", null, PanelDropTarget("canvas", PanelEdge.LEFT), start.floating[2].rect)

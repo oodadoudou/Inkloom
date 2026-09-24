@@ -148,6 +148,29 @@ class FillToolTest {
         send(view, 50L, MotionEvent.ACTION_UP, 100f, 100f)
 
         assertTrue("V5 reference line art should keep the fill inside its boundary", committedWidth in 80f..120f)
+        committedWidth = 0f
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.fillTargetMode = app.inkloom.settings.FillTargetMode.TRANSPARENT_ONLY
+        }
+        send(view, 100L, MotionEvent.ACTION_DOWN, 100f, 100f)
+        send(view, 150L, MotionEvent.ACTION_UP, 100f, 100f)
+        assertTrue("Transparent target with the same reference line art stays inside the boundary", committedWidth in 80f..120f)
+    }
+
+    @Test fun transparentFillIgnoresOpaquePaper() {
+        var commits = 0
+        val view = canvas {
+            tool = EditorTool.FILL
+            fingerDrawingEnabled = true
+            pagePaperColor = Color.WHITE
+            fillTargetMode = app.inkloom.settings.FillTargetMode.TRANSPARENT_ONLY
+            onSparseFillCommitted = { mask, _, _, _ ->
+                if (!mask.isEmpty) commits++
+            }
+        }
+        send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
+        send(view, 50L, MotionEvent.ACTION_UP, 100f, 100f)
+        assertEquals("Paper is excluded from transparent-target sampling", 1, commits)
     }
 
     @Test fun fillSelectionCommitsTheSelectionMaskInsteadOfFloodingAroundInk() {

@@ -26,6 +26,7 @@ import app.inkloom.settings.WorkspacePanelKind
 import app.inkloom.settings.WorkspaceOrientation
 import app.inkloom.settings.ReferenceTarget
 import app.inkloom.settings.LibraryLayout
+import app.inkloom.settings.FillTargetMode
 import app.inkloom.document.CorrectLineMode
 import app.inkloom.model.EditorTool
 import org.junit.Assert.assertEquals
@@ -36,6 +37,23 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AppSettingsStoreTest {
+    @Test fun fillTargetAndItsIndependentColorSurviveReload() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            AppSettingsStore(context).save(AppSettings(
+                fillTargetMode = FillTargetMode.SPECIFIED_COLOR,
+                fillTargetColor = 0xFFCA7733.toInt(),
+            ))
+            val restored = AppSettingsStore(context).load()
+            assertEquals(FillTargetMode.SPECIFIED_COLOR, restored.fillTargetMode)
+            assertEquals(0xFFCA7733.toInt(), restored.fillTargetColor)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
     @Test fun eyedropperSourceAndPaperSettingSurviveReloadWithoutChangingFillSource() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)

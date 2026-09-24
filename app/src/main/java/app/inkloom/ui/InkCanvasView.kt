@@ -944,6 +944,8 @@ class InkCanvasView(context: Context) : View(context) {
         set(value) { field = value.coerceIn(0f, 64f) }
     var fillAreaScalingPixels: Float = 0f
         set(value) { field = value.coerceIn(-64f, 64f) }
+    var fillTargetMode: app.inkloom.settings.FillTargetMode = app.inkloom.settings.FillTargetMode.TOUCHED_COLOR
+    var fillTargetColor: Int = Color.WHITE
     var symmetryMode: SymmetryMode = SymmetryMode.NONE
         set(value) { if (field == value) return; field = value; if (value == SymmetryMode.NONE) symmetryGuideGesture = null; invalidate() }
     var symmetryGuide: SymmetryGuideState = SymmetryGuideState()
@@ -4396,7 +4398,11 @@ class InkCanvasView(context: Context) : View(context) {
         val sampleScale = minOf(1f, FILL_MAX_SAMPLE_DIMENSION / maxOf(safeWidth, safeHeight).toFloat())
         val sampleWidth = (safeWidth * sampleScale).toInt().coerceAtLeast(1)
         val sampleHeight = (safeHeight * sampleScale).toInt().coerceAtLeast(1)
-        val source = renderDocumentPageBitmap(sampleWidth, sampleHeight)
+        val source = renderDocumentPageBitmap(
+            sampleWidth,
+            sampleHeight,
+            includePaper = fillTargetMode != app.inkloom.settings.FillTargetMode.TRANSPARENT_ONLY,
+        )
         fillSourceBitmap = source
         fillSeedX = (normalizedX.coerceIn(0f, 1f) * sampleWidth).toInt().coerceIn(0, sampleWidth - 1)
         fillSeedY = (normalizedY.coerceIn(0f, 1f) * sampleHeight).toInt().coerceIn(0, sampleHeight - 1)
@@ -4440,6 +4446,11 @@ class InkCanvasView(context: Context) : View(context) {
             tolerance,
             closeGapPixels = (fillCloseGapPixels * modelToSample).toInt(),
             areaScalingPixels = (fillAreaScalingPixels * modelToSample).toInt(),
+            targetColor = when (fillTargetMode) {
+                app.inkloom.settings.FillTargetMode.TOUCHED_COLOR -> null
+                app.inkloom.settings.FillTargetMode.TRANSPARENT_ONLY -> Color.TRANSPARENT
+                app.inkloom.settings.FillTargetMode.SPECIFIED_COLOR -> fillTargetColor
+            },
         )
         fillPreviewMask?.recycle()
         fillPreviewMask = if (result.isEmpty) null else SelectionMaskCompositor.clipRegion(
@@ -4461,7 +4472,7 @@ class InkCanvasView(context: Context) : View(context) {
         fillPreviewComputedAt = now
     }
 
-    private fun renderDocumentPageBitmap(pageWidth: Int, pageHeight: Int): Bitmap {
+    private fun renderDocumentPageBitmap(pageWidth: Int, pageHeight: Int, includePaper: Boolean = true): Bitmap {
         val bitmap = Bitmap.createBitmap(pageWidth, pageHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.scale(pageWidth / width.coerceAtLeast(1).toFloat(), pageHeight / height.coerceAtLeast(1).toFloat())
@@ -4474,7 +4485,7 @@ class InkCanvasView(context: Context) : View(context) {
             ReferenceTarget.ACTIVE_LAYER -> setOf(activeLayerId).intersect(visibleNonDraft)
             ReferenceTarget.REFERENCE_LAYERS -> referenceLayerIds.intersect(visibleNonDraft).ifEmpty { setOf(activeLayerId).intersect(visibleNonDraft) }
         }
-        drawPageContent(canvas, includeInteractionOverlays = false, referencedLayerIds = referenced)
+        drawPageContent(canvas, includeInteractionOverlays = false, referencedLayerIds = referenced, includePageBackground = includePaper)
         return bitmap
     }
 

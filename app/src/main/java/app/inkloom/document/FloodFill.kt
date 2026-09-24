@@ -19,6 +19,7 @@ object FloodFill {
         tolerance: Int,
         closeGapPixels: Int = 0,
         areaScalingPixels: Int = 0,
+        targetColor: Int? = null,
     ): Result {
         if (source.isRecycled || startX !in 0 until source.width || startY !in 0 until source.height) {
             return empty()
@@ -32,6 +33,7 @@ object FloodFill {
             tolerance = tolerance.coerceIn(0, 255),
             closeGapPixels = closeGapPixels.coerceIn(0, MAX_EFFECT_RADIUS),
             areaScalingPixels = areaScalingPixels.coerceIn(-MAX_EFFECT_RADIUS, MAX_EFFECT_RADIUS),
+            targetColor = targetColor,
         )
         if (bounds == null || bounds.isEmpty) {
             return empty()

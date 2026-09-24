@@ -3649,9 +3649,13 @@ private fun EditorScreen(
                     sensitivity = settings.fillSensitivity,
                     closeGapPixels = settings.fillCloseGapPixels,
                     areaScalingPixels = settings.fillAreaScalingPixels,
+                    targetMode = settings.fillTargetMode,
+                    targetColor = settings.fillTargetColor,
                     onSensitivity = { onSettingsChange(settings.copy(fillSensitivity = it)) },
                     onCloseGap = { onSettingsChange(settings.copy(fillCloseGapPixels = it)) },
                     onAreaScaling = { onSettingsChange(settings.copy(fillAreaScalingPixels = it)) },
+                    onTargetMode = { onSettingsChange(settings.copy(fillTargetMode = it)) },
+                    onTargetColor = { onSettingsChange(settings.copy(fillTargetColor = it)) },
                     onSubTool = { onSettingsChange(settings.copy(fillSubTool = it)) },
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
                 )
@@ -5048,6 +5052,8 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.fillSubTool = settings.fillSubTool
                 view.fillCloseGapPixels = settings.fillCloseGapPixels
                 view.fillAreaScalingPixels = settings.fillAreaScalingPixels
+                view.fillTargetMode = settings.fillTargetMode
+                view.fillTargetColor = settings.fillTargetColor
                 view.symmetryMode = symmetryMode
                 view.symmetryGuide = symmetryGuide
                 view.onSymmetryGuideChanged = onSymmetryGuideChange
@@ -5145,6 +5151,8 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 view.fillSubTool = settings.fillSubTool
                 view.fillCloseGapPixels = settings.fillCloseGapPixels
                 view.fillAreaScalingPixels = settings.fillAreaScalingPixels
+                view.fillTargetMode = settings.fillTargetMode
+                view.fillTargetColor = settings.fillTargetColor
                 view.symmetryMode = symmetryMode
                 view.symmetryGuide = symmetryGuide
                 view.onSymmetryGuideChanged = onSymmetryGuideChange
@@ -5330,6 +5338,8 @@ internal fun InkCanvasView.applyBrushConfiguration(
     fillSubTool = settings.fillSubTool
     fillCloseGapPixels = settings.fillCloseGapPixels
     fillAreaScalingPixels = settings.fillAreaScalingPixels
+    fillTargetMode = settings.fillTargetMode
+    fillTargetColor = settings.fillTargetColor
     correctLineMode = settings.correctLineMode
     correctLineAmount = settings.correctLineAmount
     baseWidth = brushSize
@@ -9271,9 +9281,13 @@ private fun FillOptionsLauncher(
     sensitivity: Float,
     closeGapPixels: Float,
     areaScalingPixels: Float,
+    targetMode: app.inkloom.settings.FillTargetMode,
+    targetColor: Int,
     onSensitivity: (Float) -> Unit,
     onCloseGap: (Float) -> Unit,
     onAreaScaling: (Float) -> Unit,
+    onTargetMode: (app.inkloom.settings.FillTargetMode) -> Unit,
+    onTargetColor: (Int) -> Unit,
     onSubTool: (FillSubTool) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -9296,6 +9310,24 @@ private fun FillOptionsLauncher(
                             Row(Modifier.fillMaxWidth().height(34.dp).clickable { onSubTool(option) }, verticalAlignment = Alignment.CenterVertically) {
                                 RadioButton(subTool == option, { onSubTool(option) })
                                 Text(when (option) { FillSubTool.BUCKET -> tr("Refer and fill", "参照并填充"); FillSubTool.ENCLOSE_AND_FILL -> tr("Enclose and fill", "包围并填充"); FillSubTool.LASSO_FILL -> tr("Lasso fill", "套索填充"); FillSubTool.LEFTOVER_PEN -> tr("Leftover pen", "漏涂笔") }, fontSize = 11.sp)
+                            }
+                        }
+                        HorizontalDivider()
+                        Text(tr("Fill target", "填充目标"), fontSize = 11.sp)
+                        app.inkloom.settings.FillTargetMode.entries.forEach { option ->
+                            Row(Modifier.fillMaxWidth().height(34.dp).clickable { onTargetMode(option) }, verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(targetMode == option, { onTargetMode(option) })
+                                Text(when (option) {
+                                    app.inkloom.settings.FillTargetMode.TOUCHED_COLOR -> tr("Touched color", "触点颜色")
+                                    app.inkloom.settings.FillTargetMode.TRANSPARENT_ONLY -> tr("Transparent area", "透明区域")
+                                    app.inkloom.settings.FillTargetMode.SPECIFIED_COLOR -> tr("Specified color", "指定颜色")
+                                }, fontSize = 11.sp)
+                            }
+                        }
+                        if (targetMode == app.inkloom.settings.FillTargetMode.SPECIFIED_COLOR) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(tr("Target color", "目标颜色"), Modifier.weight(1f), fontSize = 11.sp)
+                                BrushColorPicker(targetColor, onTargetColor, square = true)
                             }
                         }
                         HorizontalDivider()

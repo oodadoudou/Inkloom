@@ -1037,7 +1037,9 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeFloodFill(
     jint start_y,
     jint tolerance_value,
     jint close_gap_value,
-    jint area_scaling_value) {
+    jint area_scaling_value,
+    jboolean has_target_color,
+    jint target_color) {
     LockedBitmap source(env, source_bitmap);
     LockedBitmap destination(env, destination_bitmap);
     const std::array<int, 4> empty_bounds{-1, -1, -1, -1};
@@ -1047,11 +1049,30 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeFloodFill(
     if (start_x < 0 || start_x >= width || start_y < 0 || start_y >= height) return bounds_array(env, empty_bounds);
     const std::size_t count = static_cast<std::size_t>(width) * height;
     const auto* seed = source.pixels + static_cast<std::size_t>(start_y) * source.info.stride + start_x * 4;
-    const std::array<int, 4> seed_channels{
+    const std::array<int, 4> touched_channels{
         unpremultiplied_channel(seed, 0), unpremultiplied_channel(seed, 1),
         unpremultiplied_channel(seed, 2), seed[3],
     };
+    const auto color = static_cast<std::uint32_t>(target_color);
+    const std::array<int, 4> target_channels = has_target_color ? std::array<int, 4>{
+        static_cast<int>((color >> 16) & 0xff), static_cast<int>((color >> 8) & 0xff),
+        static_cast<int>(color & 0xff), static_cast<int>((color >> 24) & 0xff),
+    } : touched_channels;
     const int tolerance = std::clamp(static_cast<int>(tolerance_value), 0, 255);
+    auto matches_target = [&](const std::uint8_t* pixel) {
+        if (std::abs(static_cast<int>(pixel[3]) - target_channels[3]) > tolerance) return false;
+        // Fully transparent pixels have no meaningful RGB. Their premultiplied bytes may vary
+        // between bitmap producers, but alpha still defines a stable transparent target.
+        if (target_channels[3] == 0) return true;
+        const bool both_opaque = pixel[3] == 255 && target_channels[3] == 255;
+        const int red = both_opaque ? pixel[0] : unpremultiplied_channel(pixel, 0);
+        const int green = both_opaque ? pixel[1] : unpremultiplied_channel(pixel, 1);
+        const int blue = both_opaque ? pixel[2] : unpremultiplied_channel(pixel, 2);
+        return std::abs(red - target_channels[0]) <= tolerance &&
+            std::abs(green - target_channels[1]) <= tolerance &&
+            std::abs(blue - target_channels[2]) <= tolerance;
+    };
+    if (!matches_target(seed)) return bounds_array(env, empty_bounds);
     thread_local std::vector<std::uint8_t> fillable;
     thread_local std::vector<std::uint8_t> covered;
     thread_local std::vector<std::uint8_t> scratch_mask;
@@ -1062,15 +1083,7 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeFloodFill(
         const auto* row = source.pixels + static_cast<std::size_t>(y) * source.info.stride;
         for (int x = 0; x < width; ++x) {
             const auto* pixel = row + x * 4;
-            const bool both_opaque = pixel[3] == 255 && seed_channels[3] == 255;
-            const int red = both_opaque ? pixel[0] : unpremultiplied_channel(pixel, 0);
-            const int green = both_opaque ? pixel[1] : unpremultiplied_channel(pixel, 1);
-            const int blue = both_opaque ? pixel[2] : unpremultiplied_channel(pixel, 2);
-            fillable[static_cast<std::size_t>(y) * width + x] =
-                std::abs(red - seed_channels[0]) <= tolerance &&
-                std::abs(green - seed_channels[1]) <= tolerance &&
-                std::abs(blue - seed_channels[2]) <= tolerance &&
-                std::abs(static_cast<int>(pixel[3]) - seed_channels[3]) <= tolerance;
+            fillable[static_cast<std::size_t>(y) * width + x] = matches_target(pixel);
         }
     }
     const int close_gap = std::clamp(static_cast<int>(close_gap_value), 0, 64);

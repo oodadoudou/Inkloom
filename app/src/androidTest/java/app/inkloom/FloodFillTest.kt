@@ -95,6 +95,41 @@ class FloodFillTest {
         }
     }
 
+    @Test fun transparentTargetRejectsOpaqueSeedAndFillsOnlyConnectedClearRegion() {
+        val source = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
+        for (coordinate in 4..11) {
+            source.setPixel(coordinate, 4, Color.BLACK)
+            source.setPixel(coordinate, 11, Color.BLACK)
+            source.setPixel(4, coordinate, Color.BLACK)
+            source.setPixel(11, coordinate, Color.BLACK)
+        }
+        val inside = FloodFill.fill(source, 8, 8, 0, targetColor = Color.TRANSPARENT)
+        val line = FloodFill.fill(source, 4, 8, 0, targetColor = Color.TRANSPARENT)
+        try {
+            assertEquals(6, inside.width)
+            assertTrue(line.isEmpty)
+        } finally {
+            inside.mask.recycle()
+            line.mask.recycle()
+            source.recycle()
+        }
+    }
+
+    @Test fun specifiedTargetRequiresMatchingSeedAndNeverFloodsAdjacentColor() {
+        val source = Bitmap.createBitmap(20, 8, Bitmap.Config.ARGB_8888)
+        for (y in 0 until 8) for (x in 0 until 20) source.setPixel(x, y, if (x < 10) Color.RED else Color.BLUE)
+        val match = FloodFill.fill(source, 3, 4, 0, targetColor = Color.RED)
+        val mismatch = FloodFill.fill(source, 15, 4, 0, targetColor = Color.RED)
+        try {
+            assertEquals(10, match.width)
+            assertTrue(mismatch.isEmpty)
+        } finally {
+            match.mask.recycle()
+            mismatch.mask.recycle()
+            source.recycle()
+        }
+    }
+
     @Test fun repeatedViewportFillThresholdUpdatesStayInteractive() {
         val source = solid(Color.WHITE, 800, 600)
         for (y in 80 until 520) source.setPixel(400, y, Color.BLACK)
