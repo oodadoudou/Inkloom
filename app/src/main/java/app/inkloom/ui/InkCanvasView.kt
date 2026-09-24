@@ -404,7 +404,7 @@ class InkCanvasView(context: Context) : View(context) {
             hasPendingSmudge = false
             while (pendingSmudge.isNotEmpty()) {
                 val point = pendingSmudge.removeFirst()
-                extendSmudge(point.x, point.y)
+                extendSmudge(point.x, point.y, point.pressure)
             }
         }
     }
@@ -803,6 +803,8 @@ class InkCanvasView(context: Context) : View(context) {
     var brushAntiAliasMode: Int = CspAntiAlias.MEDIUM
     var brushColorMix: Float = 0f
     var smudgeHardness: Float = .5f
+    var smudgeWidthPressure: PressureResponse = PressureResponse.CONSTANT
+    var smudgeStrength: Float = 1f
     var eraserWidth: Float = 24f
         set(value) {
             field = value
@@ -4654,7 +4656,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun appendRasterToolEvent(event: MotionEvent, pointer: Int, terminal: Boolean) {
         fun append(x: Float, y: Float, pressure: Float) {
-            if (activeTool == EditorTool.SMUDGE) scheduleSmudge(x, y)
+            if (activeTool == EditorTool.SMUDGE) scheduleSmudge(x, y, pressure)
             else scheduleLiquify(x, y, pressure)
         }
         for (index in 0 until event.historySize) {
@@ -4694,9 +4696,9 @@ class InkCanvasView(context: Context) : View(context) {
         return true
     }
 
-    private fun scheduleSmudge(x: Float, y: Float) {
+    private fun scheduleSmudge(x: Float, y: Float, pressure: Float) {
         if (pendingSmudge.size >= 64) flushSmudgeFrame()
-        pendingSmudge.addLast(stabilizeRasterToolPoint(x, y, 1f))
+        pendingSmudge.addLast(stabilizeRasterToolPoint(x, y, pressure.coerceIn(0f, 1f)))
         hasPendingSmudge = true
         if (!smudgeFrameScheduled) {
             smudgeFrameScheduled = true
@@ -4710,7 +4712,7 @@ class InkCanvasView(context: Context) : View(context) {
         smudgeFrame.run()
     }
 
-    private fun extendSmudge(normalizedX: Float, normalizedY: Float) {
+    private fun extendSmudge(normalizedX: Float, normalizedY: Float, pressure: Float = 1f) {
         val x = normalizedX.coerceIn(0f, 1f)
         val y = normalizedY.coerceIn(0f, 1f)
         val tileSession = rasterTileBlendSession
@@ -4718,14 +4720,15 @@ class InkCanvasView(context: Context) : View(context) {
         if (surface != null && tileSession != null) {
             val rasterWidth = surface.logicalWidth
             val rasterHeight = surface.logicalHeight
-            val radius = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH * rasterWidth).coerceAtLeast(.125f)
+            val radius = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH * rasterWidth *
+                smudgeWidthPressure.evaluate(pressure)).coerceAtLeast(.125f)
             val dirty = tileSession.blend(
                 smudgeLastX * rasterWidth,
                 smudgeLastY * rasterHeight,
                 x * rasterWidth,
                 y * rasterHeight,
                 radius,
-                (.3f + brushColorMix.coerceIn(0f, 1f) * .7f),
+                ((.3f + brushColorMix.coerceIn(0f, 1f) * .7f) * smudgeStrength).coerceIn(0f, 1f),
                 smudgeHardness,
             )
             if (dirty != null) {

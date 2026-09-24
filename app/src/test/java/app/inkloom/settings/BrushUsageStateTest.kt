@@ -18,6 +18,14 @@ class BrushUsageStateTest {
         assertFalse(ordinaryEraser.eraserUsesPaintTip)
     }
 
+    @Test fun `borrowed smudge tip survives reload and a normal blend selection replaces it`() {
+        val state = BrushUsageState().used("ink", eraser = false).borrowPaintTipForSmudge("ink")
+        val restored = Json.decodeFromString<BrushUsageState>(Json.encodeToString(state))
+        assertEquals("ink", restored.lastSmudgeBrushId)
+        assertTrue(restored.smudgeUsesPaintTip)
+        assertFalse(restored.useSmudgeBrush("factory-blend").smudgeUsesPaintTip)
+    }
+
     @Test fun currentListPinsAreIndependentUnlimitedAndRestoreSourceOrder() {
         val ids = (0..1023).map { "brush-$it" }
         var state = BrushUsageState()

@@ -28,4 +28,11 @@ class BrushToolTipReuseTest {
             wetMix = WetMixSettings())
         assertTrue(BrushToolTipReuse.forEraser(BrushPresetV5Codec.encode(wet)).isFailure)
     }
+
+    @Test fun `smudge accepts only a tip whose footprint this engine can preserve`() {
+        val round = paint.copy(tip = paint.tip.copy(aspect = 1f), deposition = DepositionSettings())
+        assertEquals(round, BrushToolTipReuse.forSmudge(BrushPresetV5Codec.encode(round)).getOrThrow())
+        assertTrue(BrushToolTipReuse.forSmudge(BrushPresetV5Codec.encode(paint)).exceptionOrNull()
+            ?.message?.contains("round untextured") == true)
+    }
 }

@@ -13,6 +13,7 @@ import app.inkloom.ui.InkCanvasView
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v5.presentation.InvalidationReason
+import app.inkloom.engine.v5.material.PressureResponse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertArrayEquals
@@ -30,9 +31,9 @@ class SmudgeToolTest {
         return result
     }
 
-    private fun event(time: Long, action: Int, x: Float, y: Float, stylus: Boolean = false): MotionEvent {
+    private fun event(time: Long, action: Int, x: Float, y: Float, stylus: Boolean = false, pressure: Float = 1f): MotionEvent {
         val props = MotionEvent.PointerProperties().apply { id = 0; toolType = if (stylus) MotionEvent.TOOL_TYPE_STYLUS else MotionEvent.TOOL_TYPE_FINGER }
-        val coords = MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = 1f; size = .1f; touchMajor = 8f }
+        val coords = MotionEvent.PointerCoords().apply { this.x = x; this.y = y; this.pressure = pressure; size = .1f; touchMajor = 8f }
         return MotionEvent.obtain(0L, time, action, 1, arrayOf(props), arrayOf(coords), 0, 0, 1f, 1f, 0, 0,
             if (stylus) InputDevice.SOURCE_STYLUS else InputDevice.SOURCE_TOUCHSCREEN, 0)
     }
@@ -40,6 +41,33 @@ class SmudgeToolTest {
     private fun send(view: InkCanvasView, time: Long, action: Int, x: Float, y: Float) {
         val e = event(time, action, x, y)
         try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(e) } } finally { e.recycle() }
+    }
+
+    @Test fun borrowedRoundTipWidthPressureChangesTheSmudgeFootprint() {
+        fun raster(pressure: Float): IntArray {
+            val seed = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888).apply {
+                for (y in 25 until 175) for (x in 20 until 110) setPixel(x, y, Color.RED)
+            }
+            val surface = PixelTileBitmapAdapter.import(seed)
+            seed.recycle()
+            val view = canvas {
+                tool = EditorTool.SMUDGE; activeLayerId = "paint"; baseWidth = 120f
+                smudgeWidthPressure = PressureResponse(true, .15f)
+                setRasterLayerSurfaces(mapOf("paint" to surface))
+            }
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                listOf(Triple(MotionEvent.ACTION_DOWN, 80f, 90f),
+                    Triple(MotionEvent.ACTION_MOVE, 125f, 90f),
+                    Triple(MotionEvent.ACTION_UP, 150f, 90f)).forEachIndexed { index, (action, x, y) ->
+                    event(index * 8L, action, x, y, stylus = true, pressure = pressure).also {
+                        try { view.onTouchEvent(it) } finally { it.recycle() }
+                    }
+                }
+                view.flushRealtimeToolFrame()
+            }
+            return surface.snapshot().copyPremultipliedPixels(app.inkloom.engine.v5.surface.PixelRect(0, 0, 200, 200))
+        }
+        assertFalse(raster(.2f).contentEquals(raster(1f)))
     }
 
     @Test fun rasterToolsPreserveEveryHistoricalPointAcrossFrameSchedules() {
