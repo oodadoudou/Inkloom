@@ -852,7 +852,9 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
 
     private fun update(id: String, transform: (InkDocument) -> InkDocument) { store.get(id)?.let(transform)?.let(store::save); refreshSelection() }
     private fun updatePage(documentId: String, pageId: String, transform: (InkPage) -> InkPage) = update(documentId) { document ->
-        document.copy(pages = document.pages.map { if (it.id == pageId) transform(it) else it }, updatedAt = System.currentTimeMillis())
+        document.copy(pages = document.pages.map { page ->
+            if (page.id == pageId) app.inkloom.document.LayerSoloStructure.reconcile(page, transform(page)) else page
+        }, updatedAt = System.currentTimeMillis())
     }
     private fun refresh(recovered: Int = mutableState.value.recoveredOperations) { mutableState.value = mutableState.value.copy(documents = store.list(), folders = loadFolders(), recoveredOperations = recovered) }
     private fun refreshSelection() {

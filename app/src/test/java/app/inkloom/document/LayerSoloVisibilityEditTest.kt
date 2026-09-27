@@ -37,4 +37,40 @@ class LayerSoloVisibilityEditTest {
         assertEquals(mapOf("folder" to true, "shown" to true, "hidden" to false, "other" to true),
             result.layers.associate { it.id to it.visible })
     }
+
+    @Test fun newLayersOutsideSoloStayHiddenAndRestoreTheirOriginalVisibility() {
+        val page = InkPage(layers = listOf(InkLayer(id = "a", name = "A"), InkLayer(id = "b", name = "B")))
+        val solo = requireNotNull(LayerSoloVisibilityEdit.create(page, "a")).apply(page)!!
+        val added = LayerSoloStructure.reconcile(solo,
+            solo.copy(layers = solo.layers + InkLayer(id = "new", name = "New")))
+        assertFalse(added.layers.first { it.id == "new" }.visible)
+        assertEquals(true, added.soloVisibilityBefore["new"])
+        val restored = requireNotNull(LayerSoloVisibilityEdit.create(added, "a")).apply(added)!!
+        assertTrue(restored.layers.first { it.id == "new" }.visible)
+    }
+
+    @Test fun deletingSoloTargetRestoresSurvivorsAndClearsSoloState() {
+        val page = InkPage(layers = listOf(
+            InkLayer(id = "a", name = "A"), InkLayer(id = "b", name = "B", visible = false),
+            InkLayer(id = "c", name = "C")))
+        val solo = requireNotNull(LayerSoloVisibilityEdit.create(page, "a")).apply(page)!!
+        val removed = LayerSoloStructure.reconcile(solo,
+            solo.copy(layers = solo.layers.filterNot { it.id == "a" }))
+        assertNull(removed.soloLayerId)
+        assertTrue(removed.soloVisibilityBefore.isEmpty())
+        assertEquals(mapOf("b" to false, "c" to true), removed.layers.associate { it.id to it.visible })
+    }
+
+    @Test fun movingLayerIntoSoloFolderUsesOriginalVisibility() {
+        val folder = InkLayer(id = "folder", name = "Folder", role = LayerRole.FOLDER)
+        val child = InkLayer(id = "child", name = "Child")
+        val page = InkPage(layers = listOf(folder, child))
+        val solo = requireNotNull(LayerSoloVisibilityEdit.create(page, "folder")).apply(page)!!
+        val moved = LayerSoloStructure.reconcile(solo, solo.copy(layers = solo.layers.map {
+            if (it.id == "child") it.copy(parentId = "folder") else it
+        }))
+        assertTrue(moved.layers.first { it.id == "child" }.visible)
+        val restored = requireNotNull(LayerSoloVisibilityEdit.create(moved, "folder")).apply(moved)!!
+        assertTrue(restored.layers.first { it.id == "child" }.visible)
+    }
 }

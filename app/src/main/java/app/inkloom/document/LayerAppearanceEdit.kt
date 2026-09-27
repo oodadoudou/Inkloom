@@ -7,6 +7,45 @@ sealed interface LayerAppearanceEdit {
     fun apply(page: InkPage, undo: Boolean = false): InkPage?
 }
 
+/** Keep an active solo view coherent when a separate edit changes the layer tree. */
+object LayerSoloStructure {
+    fun reconcile(before: InkPage, after: InkPage): InkPage {
+        val soloId = before.soloLayerId ?: return after
+        if (after.soloLayerId != soloId || after.soloVisibilityBefore != before.soloVisibilityBefore) return after
+        val beforeNodes = before.layers.associateBy(InkLayer::id)
+        if (before.layers.map { it.id to it.parentId } == after.layers.map { it.id to it.parentId }) return after
+        val remainingIds = after.layers.mapTo(hashSetOf(), InkLayer::id)
+        if (soloId !in remainingIds) {
+            return after.copy(
+                layers = after.layers.map { layer ->
+                    layer.copy(visible = before.soloVisibilityBefore[layer.id] ?: layer.visible)
+                },
+                soloLayerId = null,
+                soloVisibilityBefore = emptyMap(),
+            )
+        }
+        val original = after.layers.associate { layer ->
+            layer.id to (before.soloVisibilityBefore[layer.id] ?: beforeNodes[layer.id]?.visible ?: layer.visible)
+        }
+        val solo = after.layers.first { it.id == soloId }
+        val visibleIds = buildSet {
+            add(soloId)
+            LayerHierarchy.ancestors(after.layers, solo).forEach { add(it.id) }
+            if (solo.role == LayerRole.FOLDER) after.layers.filter { layer ->
+                LayerHierarchy.ancestors(after.layers, layer).any { it.id == soloId }
+            }.forEach { add(it.id) }
+            after.layers.filter { it.role == LayerRole.BACKGROUND }.forEach { add(it.id) }
+        }
+        val forced = (LayerHierarchy.ancestors(after.layers, solo).map { it.id } + soloId).toSet()
+        return after.copy(
+            layers = after.layers.map { layer ->
+                layer.copy(visible = layer.id in visibleIds && (layer.id in forced || original[layer.id] != false))
+            },
+            soloVisibilityBefore = original,
+        )
+    }
+}
+
 /** Solo is a reversible visibility transaction, including the original hidden layers. */
 data class LayerSoloVisibilityEdit(
     override val layerId: String,
