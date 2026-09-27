@@ -6,6 +6,7 @@ import app.inkloom.engine.v5.surface.PixelTileKey
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
 import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
+import app.inkloom.document.LayerColorReplacement
 import java.util.UUID
 
 data class PixelLayerProjectionInput(
@@ -22,6 +23,7 @@ data class PixelLayerProjectionInput(
     val activeDeltaBlend: PixelActiveDeltaBlend = PixelActiveDeltaBlend.SOURCE_OVER,
     /** Synthetic Through backdrops are visible, but are outside the child clipping scope. */
     val isClippingBase: Boolean = true,
+    val colorReplacement: LayerColorReplacement? = null,
 )
 
 enum class PixelActiveDeltaBlend { SOURCE_OVER, DESTINATION_OUT, SOURCE_ATOP }
@@ -613,13 +615,22 @@ class PixelLayerProjectionCache(
         val requiresCoverage: Boolean get() = zeroCoverage || input.mask != null || clippingBase != null
 
         fun isNativeBatchCompatible(): Boolean = input.activeDelta == null &&
+            input.colorReplacement == null &&
             input.blendMode.ordinal <= PixelBlendMode.EXCLUSION.ordinal
 
         fun <T> readRgba8Tile(key: PixelTileKey, block: (IntArray) -> T): T? =
-            readResolvedRgba8Tile(input, key, block)
+            readResolvedRgba8Tile(input, key) { source ->
+                val replacement = input.colorReplacement
+                if (replacement == null) block(source)
+                else block(IntArray(source.size) { PixelLayerColor.replaceRgba8(source[it], replacement) })
+            }
 
         fun <T> readF16Tile(key: PixelTileKey, block: (LongArray) -> T): T? =
-            input.pixels.readF16Tile(key, block)
+            input.pixels.readF16Tile(key) { source ->
+                val replacement = input.colorReplacement
+                if (replacement == null) block(source)
+                else block(LongArray(source.size) { PixelLayerColor.replaceF16(source[it], replacement) })
+            }
 
         fun dependency(key: PixelTileKey): LayerDependency? {
             val sourceGeneration = input.pixels.generationAt(key)
@@ -636,6 +647,7 @@ class PixelLayerProjectionCache(
                 visible = input.visible,
                 opacityBits = opacity.toRawBits(),
                 blendMode = input.blendMode,
+                colorReplacement = input.colorReplacement,
                 maskSurfaceId = input.mask?.surfaceId,
                 maskGeneration = maskDependency(input.mask, key),
                 maskDefaultAlpha = input.mask?.defaultAlpha,
@@ -675,6 +687,7 @@ class PixelLayerProjectionCache(
         val visible: Boolean,
         val opacityBits: Int,
         val blendMode: PixelBlendMode,
+        val colorReplacement: LayerColorReplacement?,
         val maskSurfaceId: String?,
         val maskGeneration: Long?,
         val maskDefaultAlpha: Int?,
@@ -704,6 +717,7 @@ class PixelLayerProjectionCache(
         val visible: Boolean,
         val opacityBits: Int,
         val blendMode: PixelBlendMode,
+        val colorReplacement: LayerColorReplacement?,
         val maskSurfaceId: String?,
         val maskRevision: Long?,
         val maskDefaultAlpha: Int?,
@@ -720,6 +734,7 @@ class PixelLayerProjectionCache(
                 visible = input.visible,
                 opacityBits = input.opacity.toRawBits(),
                 blendMode = input.blendMode,
+                colorReplacement = input.colorReplacement,
                 maskSurfaceId = input.mask?.surfaceId,
                 maskRevision = input.mask?.revision,
                 maskDefaultAlpha = input.mask?.defaultAlpha,

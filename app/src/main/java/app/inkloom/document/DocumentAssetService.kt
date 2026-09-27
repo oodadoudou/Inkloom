@@ -909,12 +909,13 @@ class DocumentAssetService(private val context: Context) {
             val layerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 alpha = (layer.opacity.coerceIn(0f, 1f) * 255f).toInt().coerceIn(0, 255)
                 blendMode = layer.blendMode.toBlendMode()
+                colorFilter = layer.colorReplacement?.toColorFilter()
             }
             // A transparent layer would hide a destination-dependent brush mode from the page.
             // Bypass it only for those brushes on an otherwise direct layer; ordinary brushes keep
             // the established export surface so their antialiasing remains pixel-identical live.
             val hasLayerEffect = layer.opacity < .999f || layer.blendMode != LayerBlendMode.NORMAL ||
-                layer.mask?.enabled == true || layer.clippedToBelow
+                layer.mask?.enabled == true || layer.clippedToBelow || layer.colorReplacement != null
             val requiresLayerIsolation = applyLayerEffects && hasLayerEffect
             val layerCheckpoint = if (requiresLayerIsolation) canvas.saveLayer(null, layerPaint) else canvas.save()
             fun contentAllowed(id: String, contentIds: Set<String>?): Boolean =
@@ -1203,6 +1204,7 @@ class DocumentAssetService(private val context: Context) {
             val content = if (composed != null) PixelLayerProjectionInput(layer.id, composed)
                 else raw ?: PixelLayerProjectionInput(layer.id, projection.emptySnapshot)
             layer.id to content.copy(opacity = layer.opacity, blendMode = layer.blendMode.toPixelBlendMode(),
+                colorReplacement = layer.colorReplacement,
                 mask = layer.mask?.takeIf(LayerMask::enabled)?.surface?.let { loadMaskTileSurface(it).snapshot() },
                 clipToBaseBelow = layer.clippedToBelow)
         } } finally { contentCache?.endFrame() }

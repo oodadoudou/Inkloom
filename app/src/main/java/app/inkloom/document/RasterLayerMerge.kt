@@ -168,6 +168,7 @@ object RasterLayerMerge {
             parentId = resultParent,
             collapsed = false,
             passThrough = false,
+            colorReplacement = null,
         )
         return PlanningResult(Plan(
             request = request,

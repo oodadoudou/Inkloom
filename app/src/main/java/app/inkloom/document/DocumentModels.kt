@@ -143,6 +143,13 @@ enum class LayerBlendMode {
 @Serializable
 enum class LayerPaletteColor { NONE, GRAY, RED, ORANGE, YELLOW, GREEN, BLUE, VIOLET }
 
+/** CSP-style display replacement: black maps to dark, white maps to light; source pixels remain intact. */
+@Serializable
+data class LayerColorReplacement(
+    val darkArgb: Long = 0xff000000L,
+    val lightArgb: Long = 0xffffffffL,
+)
+
 /**
  * Durable reference to one immutable sparse pixel-surface generation.
  *
@@ -203,6 +210,7 @@ data class InkLayer(
     /** Folder-only: child blending participates in the parent backdrop. */
     val passThrough: Boolean = false,
     val paletteColor: LayerPaletteColor = LayerPaletteColor.NONE,
+    val colorReplacement: LayerColorReplacement? = null,
     /** Non-destructive color operation applied to the composited siblings below this layer. */
     val adjustment: LayerAdjustment? = null,
 )

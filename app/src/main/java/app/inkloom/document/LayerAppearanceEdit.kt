@@ -112,3 +112,21 @@ data class LayerPaletteColorEdit(
         })
     }
 }
+
+data class LayerColorReplacementEdit(
+    override val layerId: String,
+    val before: LayerColorReplacement?,
+    val after: LayerColorReplacement?,
+) : LayerAppearanceEdit {
+    override val isNoOp: Boolean get() = before == after
+
+    override fun apply(page: InkPage, undo: Boolean): InkPage? {
+        val expected = if (undo) after else before
+        val replacement = if (undo) before else after
+        val layer = page.layers.firstOrNull { it.id == layerId && it.role != LayerRole.BACKGROUND } ?: return null
+        if (layer.colorReplacement != expected) return null
+        return page.copy(layers = page.layers.map {
+            if (it.id == layerId) it.copy(colorReplacement = replacement) else it
+        })
+    }
+}

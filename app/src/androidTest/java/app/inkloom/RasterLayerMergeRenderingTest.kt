@@ -10,6 +10,26 @@ import org.junit.Test
 
 class RasterLayerMergeRenderingTest {
     private val assets = DocumentAssetService(ApplicationProvider.getApplicationContext())
+    @Test fun layerColorReplacementIsBakedOnceWhenMerged() {
+        val bitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.BLACK)
+        }
+        val source = try { assets.importRasterTileSurface(bitmap) } finally { bitmap.recycle() }
+        val references = mutableListOf(source)
+        try {
+            val lower = InkLayer(id = "lower", name = "Lower")
+            val tinted = InkLayer(id = "tinted", name = "Tinted", rasterTileSurface = source,
+                colorReplacement = LayerColorReplacement(0xffff0000L, 0xff0000ffL))
+            val page = InkPage(width = 64f, height = 64f, layers = listOf(lower, tinted))
+            val plan = requireNotNull(RasterLayerMerge.plan(page,
+                RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_DOWN, tinted.id)).plan)
+            val mergedRef = assets.saveRasterTileSurface(assets.renderLayerMergeSurface(plan))
+            references += mergedRef
+            val merged = RasterLayerMerge.edit(page, plan, mergedRef).apply(page, false)
+            assertNull(merged.layers.single().colorReplacement)
+            compare(page, merged)
+        } finally { references.forEach(assets::releaseRasterTileReservation) }
+    }
     @Test fun translucentMaskedPixelsKeepTheSameCompositeAndUndoRestoresSources() = verify(objects = false, turns = 0, cropped = false)
     @Test fun retainedObjectsAndPixelsAreBakedOnlyOnce() = verify(objects = true, turns = 0, cropped = false)
     @Test fun rotatedCroppedPageKeepsContentOutsideTheCrop() = verify(objects = false, turns = 1, cropped = true)

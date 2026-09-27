@@ -3883,6 +3883,7 @@ private fun EditorScreen(
                 onSettingsChange = onSettingsChange,
                 activeLayerId = activeLayerId,
                 brushColor = brushColor,
+                secondaryBrushColor = backgroundColor,
                 onClose = { layersOpen = false; onPanelVisibilityChange(EditorPanel.LAYERS, false) },
                 onColor = ::changeBrushColor,
                 onSelect = ::selectLayerTarget,
@@ -3901,6 +3902,7 @@ private fun EditorScreen(
                 onBlendMode = appearanceEditor::setBlendMode,
                 onThrough = appearanceEditor::setThrough,
                 onPaletteColor = appearanceEditor::setPaletteColor,
+                onLayerColor = appearanceEditor::setColorReplacement,
                 onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                 onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
@@ -5301,6 +5303,9 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
                 val view = host.canvasView
                 view.bindDocumentSelectionState(documentSelectionState)
                 view.tool = tool
+                view.layerPickMode = layerPickMode
+                view.onLayerPickCandidates = onLayerPickCandidates
+                view.onLayerPickPreview = onLayerPickPreview
                 view.forceNavigation = forceNavigation
                 view.rotateNavigation = rotateNavigation
                 view.externalViewportGestures = false
@@ -5317,6 +5322,9 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
                 view.selectionTransformLayerIds = transformLayerIds
                 view.layerOpacities = layerOpacities
                 view.layerBlendModes = layerBlendModes
+                view.layerColorReplacements = page.layers.mapNotNull { layer ->
+                    layer.colorReplacement?.let { layer.id to it }
+                }.toMap()
                 view.alphaLockedLayers = page.layers.filter { it.alphaLock }.mapTo(mutableSetOf()) { it.id }
                 view.alphaLockBaseContentIds = page.layers.filter { it.alphaLock }.associate { it.id to it.alphaLockBaseContentIds.toSet() }
                 view.clippedLayers = page.layers.filter { it.clippedToBelow }.mapTo(mutableSetOf()) { it.id }
@@ -7068,6 +7076,7 @@ private fun LayerPanel(
     onSettingsChange: (AppSettings) -> Unit,
     activeLayerId: String,
     brushColor: Int,
+    secondaryBrushColor: Int,
     onClose: () -> Unit,
     onColor: (Int) -> Unit,
     onSelect: (String) -> Unit,
@@ -7085,6 +7094,7 @@ private fun LayerPanel(
     onBlendMode: (String, LayerBlendMode) -> Unit,
     onThrough: (String) -> Unit,
     onPaletteColor: (String, LayerPaletteColor) -> Unit,
+    onLayerColor: (String, app.inkloom.document.LayerColorReplacement?) -> Unit,
     onToggleAlphaLock: (String) -> Unit,
     onToggleClippedToBelow: (String) -> Unit,
     onToggleReference: (String) -> Unit,
@@ -7111,6 +7121,8 @@ private fun LayerPanel(
             settings = settings,
             onSettingsChange = onSettingsChange,
             activeLayerId = activeLayerId,
+            brushColor = brushColor,
+            secondaryBrushColor = secondaryBrushColor,
             onClose = onClose,
             onSelect = onSelect,
             onSelectContents = onSelectContents,
@@ -7127,6 +7139,7 @@ private fun LayerPanel(
             onBlendMode = onBlendMode,
             onThrough = onThrough,
             onPaletteColor = onPaletteColor,
+            onLayerColor = onLayerColor,
             onToggleAlphaLock = onToggleAlphaLock,
             onToggleClippedToBelow = onToggleClippedToBelow,
             onToggleReference = onToggleReference,
@@ -7169,6 +7182,8 @@ private fun PaintingLayerPanel(
     settings: AppSettings,
     onSettingsChange: (AppSettings) -> Unit,
     activeLayerId: String,
+    brushColor: Int,
+    secondaryBrushColor: Int,
     onClose: () -> Unit,
     onSelect: (String) -> Unit,
     onSelectContents: (String) -> Unit,
@@ -7185,6 +7200,7 @@ private fun PaintingLayerPanel(
     onBlendMode: (String, LayerBlendMode) -> Unit,
     onThrough: (String) -> Unit,
     onPaletteColor: (String, LayerPaletteColor) -> Unit,
+    onLayerColor: (String, app.inkloom.document.LayerColorReplacement?) -> Unit,
     onToggleAlphaLock: (String) -> Unit,
     onToggleClippedToBelow: (String) -> Unit,
     onToggleReference: (String) -> Unit,
@@ -7206,6 +7222,9 @@ private fun PaintingLayerPanel(
     modifier: Modifier,
 ) {
     var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
+    var colorLayer by remember { mutableStateOf<InkLayer?>(null) }
+    var colorDark by remember { mutableIntStateOf(brushColor) }
+    var colorLight by remember { mutableIntStateOf(secondaryBrushColor) }
     var renameValue by remember { mutableStateOf("") }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var mergeMenuOpen by remember { mutableStateOf(false) }
@@ -7492,6 +7511,15 @@ private fun PaintingLayerPanel(
                                 if (layer.isPaintSurfaceLayer()) DropdownMenuItem(text = { Text(tr("Select contents", "选取内容")) }, onClick = { menu = false; onSelectContents(layer.id) })
                                 if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Mask", "蒙版")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; maskMenu = true })
                                 DropdownMenuItem(text = { Text(tr("Palette color", "图层颜色标签")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; paletteColorMenu = true })
+                                if (layer.isPaintSurfaceLayer()) DropdownMenuItem(
+                                    text = { Text(tr("Layer color replacement", "图层着色")) },
+                                    onClick = {
+                                        menu = false
+                                        colorDark = layer.colorReplacement?.darkArgb?.toInt() ?: brushColor
+                                        colorLight = layer.colorReplacement?.lightArgb?.toInt() ?: secondaryBrushColor
+                                        colorLayer = layer
+                                    },
+                                )
                                 DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
                                 if (layer.role == LayerRole.FOLDER) DropdownMenuItem(text = { Text(if (layer.collapsed) tr("Expand folder", "展开文件夹") else tr("Collapse folder", "折叠文件夹")) }, onClick = { menu = false; onToggleFolderCollapsed(layer.id) })
                                 if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Group layer", "编组图层")) }, onClick = { menu = false; onGroupSelected(layer.id, setOf(layer.id)) })
@@ -7543,6 +7571,32 @@ private fun PaintingLayerPanel(
         text = { OutlinedTextField(renameValue, { renameValue = it }, label = { Text(tr("Layer name", "图层名称")) }, singleLine = true) },
         confirmButton = { TextButton(onClick = { onRename(layer.id, renameValue); renameLayer = null }) { Text(tr("Save", "保存")) } },
         dismissButton = { TextButton(onClick = { renameLayer = null }) { Text(tr("Cancel", "取消")) } },
+    ) }
+    colorLayer?.let { layer -> AlertDialog(
+        onDismissRequest = { colorLayer = null },
+        title = { Text(tr("Layer color replacement", "图层着色")) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(tr("Black and white tones map to these colors. Source pixels stay editable.",
+                "黑白明度映射到下面两色，原始像素保持可编辑。"), fontSize = 12.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(tr("Dark / primary", "暗部／主色"), Modifier.weight(1f))
+                BrushColorPicker(colorDark, { colorDark = it or 0xff000000.toInt() }, square = true)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(tr("Light / secondary", "亮部／副色"), Modifier.weight(1f))
+                BrushColorPicker(colorLight, { colorLight = it or 0xff000000.toInt() }, square = true)
+            }
+        } },
+        confirmButton = { TextButton(onClick = {
+            onLayerColor(layer.id, app.inkloom.document.LayerColorReplacement(colorDark.toUInt().toLong(), colorLight.toUInt().toLong()))
+            colorLayer = null
+        }) { Text(tr("Apply", "应用")) } },
+        dismissButton = { Row {
+            if (layer.colorReplacement != null) TextButton(onClick = { onLayerColor(layer.id, null); colorLayer = null }) {
+                Text(tr("Reset", "重置"))
+            }
+            TextButton(onClick = { colorLayer = null }) { Text(tr("Cancel", "取消")) }
+        } },
     ) }
 }
 

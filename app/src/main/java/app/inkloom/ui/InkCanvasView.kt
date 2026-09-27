@@ -152,6 +152,8 @@ import app.inkloom.document.GradientShaderFactory
 import app.inkloom.document.LassoGeometry
 import app.inkloom.document.SelectionMaskCompositor
 import app.inkloom.document.LayerBlendMode
+import app.inkloom.document.LayerColorReplacement
+import app.inkloom.document.toColorFilter
 import app.inkloom.document.LayerMask
 import app.inkloom.document.toBlendMode
 import app.inkloom.document.toPixelBlendMode
@@ -780,6 +782,8 @@ class InkCanvasView(context: Context) : View(context) {
                 invalidate()
             }
         }
+    var layerColorReplacements: Map<String, LayerColorReplacement> = emptyMap()
+        set(value) { if (field != value) { field = value; invalidateLayerComposition() } }
     var alphaLockedLayers: Set<String> = emptySet()
         set(value) { if (field != value) { field = value; invalidate() } }
     var alphaLockBaseContentIds: Map<String, Set<String>> = emptyMap()
@@ -1949,11 +1953,12 @@ class InkCanvasView(context: Context) : View(context) {
             val opacity = (layerOpacities[layerId] ?: 1f).coerceIn(0f, 1f)
             if (opacity <= 0f) return
             val layerBlendMode = layerBlendModes[layerId] ?: LayerBlendMode.NORMAL
+            val colorReplacement = layerColorReplacements[layerId]
             val clipped = layerId in clippedLayers
             val lowerLayerId = lowerNode?.layer?.id
             if (!clipped || lowerLayerId != null) {
                 val hasEnabledMask = layerMasks[layerId]?.enabled == true && layerMaskSurfaces[layerId] != null
-                if (opacity >= .999f && layerBlendMode == LayerBlendMode.NORMAL && !clipped && !hasEnabledMask) {
+                if (opacity >= .999f && layerBlendMode == LayerBlendMode.NORMAL && !clipped && !hasEnabledMask && colorReplacement == null) {
                     // Normal CSP-style paint layers are the dominant live path. Allocating a
                     // full-canvas saveLayer here made every front-buffer packet pay an offscreen
                     // composition cost even though direct drawing is pixel-identical.
@@ -1963,6 +1968,7 @@ class InkCanvasView(context: Context) : View(context) {
                 val checkpoint = canvas.saveLayer(compositionBounds, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     alpha = (opacity * 255f).toInt().coerceIn(0, 255)
                     this.blendMode = layerBlendMode.toBlendMode()
+                    colorFilter = colorReplacement?.toColorFilter()
                 })
                 drawV5RawLayerContent(canvas, layerId, includeElements)
                 layerMasks[layerId]?.takeIf { it.enabled }?.let {
@@ -2052,6 +2058,7 @@ class InkCanvasView(context: Context) : View(context) {
         val directSourceOverStack = !hasAdjustments && boundDocumentLayers?.none { it.role == app.inkloom.document.LayerRole.FOLDER } != false && orderedIds.all { layerId ->
             (layerOpacities[layerId] ?: 1f) >= .999f &&
                 (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL) == LayerBlendMode.NORMAL &&
+                layerColorReplacements[layerId] == null &&
                 layerMasks[layerId]?.enabled != true && layerId !in clippedLayers
         }
         if (directSourceOverStack) {
@@ -2120,6 +2127,7 @@ class InkCanvasView(context: Context) : View(context) {
                 else raw ?: PixelLayerProjectionInput(layerId, cache.emptySnapshot)
             content.copy(opacity = layerOpacities[layerId] ?: 1f,
                 blendMode = (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL).toPixelBlendMode(),
+                colorReplacement = layerColorReplacements[layerId],
                 mask = layerMasks[layerId]?.takeIf(LayerMask::enabled)?.let { layerMaskSurfaces[layerId] },
                 clipToBaseBelow = layerId in clippedLayers)
         } } finally { contentCache?.endFrame() }

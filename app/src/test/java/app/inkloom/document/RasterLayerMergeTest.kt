@@ -17,6 +17,17 @@ class RasterLayerMergeTest {
         assertEquals(1600, plan.plan?.renderWidth)
     }
 
+    @Test fun colorReplacementIsBakedOnceAndUndoRestoresTheSourceProperty() {
+        val tinted = upper.copy(colorReplacement = LayerColorReplacement(0xffff0000L, 0xff0000ffL))
+        val original = page.copy(layers = defaultInkLayers() + lower + tinted)
+        val plan = requireNotNull(mergeDown(original, tinted.id).plan)
+        assertNull(plan.resultPrototype.colorReplacement)
+        val edit = RasterLayerMerge.edit(original, plan, reference)
+        val merged = edit.apply(original, false)
+        assertNull(merged.layers.last().colorReplacement)
+        assertEquals(original, edit.apply(merged, true))
+    }
+
     @Test fun mergeAndUndoRestoreBothLayerSettingsAndObjectsExactly() {
         val original = page.copy(
             layers = page.layers.map {
