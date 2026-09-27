@@ -15,6 +15,8 @@ import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performClick
@@ -244,14 +246,21 @@ class NotebookCreationWindowTest {
 
     @Test fun libraryBatchSelectionMovesTwoNotebooksToTrashAndRestoresThem() {
         val documents = FileDocumentStore(compose.activity.filesDir)
-        val selected = documents.list().filter { it.trashedAt == null }.take(2)
+        val titles = (1..2).map { "Batch notebook $it ${SystemClock.uptimeMillis()}" }
+        titles.forEach { title ->
+            tap("New Note")
+            compose.onNodeWithText("Title").performTextReplacement(title)
+            tap("Create")
+            tap("Gallery")
+        }
+        val selected = documents.list().filter { it.title in titles }
         assertEquals(2, selected.size)
-        compose.onNodeWithText("Select").performClick()
+        compose.onAllNodesWithText("Select").onLast().performClick()
         selected.forEach { compose.onNodeWithText(it.title).performClick() }
         compose.onNodeWithContentDescription("Trash selected notebooks").performClick()
         compose.waitUntil(5_000) { selected.all { documents.get(it.id)?.trashedAt != null } }
         compose.onNodeWithText("Trash").performClick()
-        compose.onNodeWithText("Select").performClick()
+        compose.onAllNodesWithText("Select").onLast().performClick()
         selected.forEach { compose.onNodeWithText(it.title).performClick() }
         compose.onNodeWithContentDescription("Restore selected notebooks").performClick()
         compose.waitUntil(5_000) { selected.all { documents.get(it.id)?.trashedAt == null } }
