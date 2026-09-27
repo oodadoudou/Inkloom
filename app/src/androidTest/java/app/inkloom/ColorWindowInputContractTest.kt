@@ -340,7 +340,11 @@ class ColorWindowInputContractTest {
         val colorPreferences = context.getSharedPreferences("inkloom_drawing_colors", Context.MODE_PRIVATE)
         val persistedBeforeDrag = colorPreferences.all.toMap()
         var colorWrites = 0
-        val colorListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> colorWrites++ }
+        // The committed color pair and recent-color history occupy separate keys. Count only
+        // pair writes: recording history at UP is intentional and is not a second color commit.
+        val colorListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key?.startsWith("history:") != true) colorWrites++
+        }
         colorPreferences.registerOnSharedPreferenceChangeListener(colorListener)
         val sampleMethods = InstrumentationRegistry.getArguments().getString("colorMethodTrace") == "true"
         val allocatedBefore = android.os.Debug.getRuntimeStat("art.gc.bytes-allocated")?.toLongOrNull()
