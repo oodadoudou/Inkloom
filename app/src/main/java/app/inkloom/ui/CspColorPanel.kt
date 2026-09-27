@@ -53,6 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.edit
 import app.inkloom.color.ColorTriangle
 import app.inkloom.engine.v5.diagnostics.ColorPickerInteractionTrace
@@ -238,7 +239,9 @@ internal fun CspColorPanel(
             preview(original.color)
             editStart = null
         }
-        AlertDialog(onDismissRequest = ::cancel, title = { Text(tr("Color values", "颜色数值")) }, text = {
+        AlertDialog(onDismissRequest = ::cancel, modifier = Modifier.imePadding(),
+            properties = DialogProperties(decorFitsSystemWindows = false),
+            title = { Text(tr("Color values", "颜色数值")) }, text = {
             Column(Modifier.width(320.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (rgbValues) {
                     listOf("R" to 16, "G" to 8, "B" to 0).forEach { (label, shift) ->

@@ -59,7 +59,8 @@ internal fun ColorStudioPanel(
     val state = LocalColorStudioState.current
     val tab = fixedTab ?: state.tab
     val nearbyFooterHeight = if (tab == 3) 38.dp else 0.dp
-    val historyHeight = if (colorHistory.isEmpty()) 0.dp else 32.dp
+    // Reserve this row before the first color commit so the wheel never shrinks mid-session.
+    val historyHeight = 32.dp
     val contentHeight = availableHeight?.let { (it - 22.dp - nearbyFooterHeight - historyHeight).coerceAtLeast(100.dp) }
         ?: (LocalConfiguration.current.screenHeightDp - 200).coerceIn(160, 420).dp - nearbyFooterHeight - historyHeight
     val density = LocalDensity.current
@@ -94,14 +95,15 @@ internal fun ColorStudioPanel(
                         1 -> ColorSetPanel(color, language, visibleContentHeight, ::pick, onOpenQuickPicker = { pickerStart = it })
                         2 -> {
                             val mixingView = remember(context, state) { ColorMixingView(context, state.mixing) }
-                            MixingPalette(color, language, ::pick, mixingView, state.mixingTool, state::selectTool, state.mixingRadius, state::setRadius, onOpenQuickPicker = { pickerStart = it })
+                            MixingPalette(color, language, ::pick, mixingView, state.mixingTool, state::selectTool,
+                                state.mixingRadius, state::setRadius, contentHeight, onOpenQuickPicker = { pickerStart = it })
                         }
                         3 -> NearbyColorPalette(draft, language, ::pick, onOpenQuickPicker = { pickerStart = it })
                     }
                 }
             }
         }
-        if (colorHistory.isNotEmpty()) Row(Modifier.fillMaxWidth().height(historyHeight).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(historyHeight).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(tr("History", "历史"), color = MutedInk, fontSize = 10.sp)
             Spacer(Modifier.width(5.dp))
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -318,6 +320,7 @@ private fun MixingPalette(
     color: Int, language: UiLanguage, onPick: (Int) -> Unit, view: ColorMixingView,
     tool: MixingBoard.Tool, onTool: (MixingBoard.Tool) -> Unit,
     radius: Float, onRadius: (Float) -> Unit,
+    availableHeight: androidx.compose.ui.unit.Dp,
     onOpenQuickPicker: (Int) -> Unit,
 ) {
     val context = LocalContext.current
@@ -336,16 +339,21 @@ private fun MixingPalette(
     var resetColors by remember { mutableStateOf(false) }
     fun tr(en: String, zh: String) = language.text(en, zh)
     Column {
-        AndroidView(factory = { view },
-            modifier = Modifier.fillMaxWidth().aspectRatio(1.5f).clipToBounds().border(.5.dp, OutlineSoft)
-                .semantics { contentDescription = tr("Color mixing board", "混色画板") },
-            update = {
-                it.ink = color; it.tool = tool; it.brushRadius = radius; it.onPick = onPick
-                it.backgroundTone = tones[background]
-                it.contentDescription = tr("Color mixing board", "混色画板")
-                it.onHistory = { undo, redo -> canUndo = undo; canRedo = redo }
-                it.onStorageError = { storageError = true }
-            })
+        // Reserve both command rows and the swatch row before sizing the board. Otherwise a
+        // short dock clips the eyedropper and other commands below its scroll viewport.
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val boardHeight = (maxWidth / 1.5f).coerceAtMost((availableHeight - 96.dp).coerceAtLeast(96.dp))
+            AndroidView(factory = { view },
+                modifier = Modifier.fillMaxWidth().height(boardHeight).clipToBounds().border(.5.dp, OutlineSoft)
+                    .semantics { contentDescription = tr("Color mixing board", "混色画板") },
+                update = {
+                    it.ink = color; it.tool = tool; it.brushRadius = radius; it.onPick = onPick
+                    it.backgroundTone = tones[background]
+                    it.contentDescription = tr("Color mixing board", "混色画板")
+                    it.onHistory = { undo, redo -> canUndo = undo; canRedo = redo }
+                    it.onStorageError = { storageError = true }
+                })
+        }
         if (showColors) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 library.activeSet?.swatches.orEmpty().forEach { swatch ->
