@@ -1,12 +1,18 @@
 # Inkloom 当前需求与待排优先级
 
-核对日期：2026-09-27。最新交付为 **0.216.0 Debug**，源码与 APK 哈希见 [交付证据](dist/Inkloom-0.216.0-fd20ef0d-debug.json)。JVM 951 项（0 失败、8 跳过）、Android 15 全量 754 项（0 失败）、lint、v2 签名、安装及冷启动通过；Drive Desktop 本地副本 SHA-256 已校验。MovinkPad 实机和 Drive 云端下载仍未核验。
+核对日期：2026-09-27。最新交付为 **0.217.0 Debug**，源码与 APK 哈希见 [交付证据](dist/Inkloom-0.217.0-1c8b3f65-debug.json)。JVM 953 项（0 失败、8 跳过）、Android 15 全量 756 项（0 失败）、lint、v2 签名、安装及冷启动通过；Drive Desktop 本地副本 SHA-256 已校验。MovinkPad 实机和 Drive 云端下载仍未核验。
 
 **本文件是版本交付与宏观需求状态的入口。** 下表顺序不是开发顺序。逐项完成情况见 [REQUESTED_FEATURE_CATALOG.md](REQUESTED_FEATURE_CATALOG.md) 的可勾选目录；宏观项目完成不等于其 CSP 扩展细项全部完成。旧版本计划、旧额度阈值和分支上的未交付代码均不作为当前依据。
 
 状态规则：**未实现**＝没有发现完整生产入口与执行链；**部分实现**＝有真实能力但下述合同未闭合；**待验收**＝不能因缺少实机结果说成没开发。文件或枚举存在不等于功能可用，自动测试全绿也不等于 CSP 全功能已完成。
 
-## 2026-09-27 本轮开发状态
+## 2026-09-27 组合面板拖动修复（0.217.0）
+
+参照 [Photoshop 面板组](https://helpx.adobe.com/photoshop/desktop/get-started/learn-the-basics/manipulate-panel-groups.html) 与 [CSP 调色板](https://help.clip-studio.com/en-us/manual_en/690_interface/Palettes.htm)：从组合内任一面板标题的组抓手移动整组；只有每个标签旁的独立抓手可移动／拆出该标签。单标签面板不再整片标题都能误拆，标签文字横滑仍用于浏览。组拖动与单标签拖动分别需要超过 16／22 dp 才提交，短滑、取消和第二指恢复原布局；停靠的上下组合与浮窗组合均保留完整子树及隐藏标签。
+
+操作级测试覆盖浮窗、停靠组、隐藏成员和短滑阈值；Android 15 实际手势测试覆盖整组移动、单窗拆离、标签横滑、取消、缩放和停靠拖离。JVM 953 项、Android 15 全量 756 项、lint、安装冷启动及本地 Drive Desktop 哈希验证均通过。MovinkPad 上的手指／触笔误触率、窄窗抓手和 120 Hz 拖动延迟仍为 `DEVICE_PENDING`。
+
+## 2026-09-27 图层与选区开发状态（0.216.0）
 
 本轮按“基础工具 → 图层 → 选区与变换”的顺序继续。图层新增长按眼睛独显／恢复，保存先前隐藏状态；树结构发生变化时，新增层在独显外保持隐藏，删掉独显目标会恢复其余层，移入独显组会重新计算可见性。画布点取所属图层、原像素不变的图层着色、蒙版灰阶渐变／阈值表达也已接入画布、缩略图、合并、导出与撤销路径。选区保存项现可重命名、预览缩略图，并以替换／加／减／交方式载入；选区快捷条支持自定义。变换新增可拖基准点、X／Y 数值、歪斜、边缘／间距均分，以及自动解析的参考基准。对应功能都有定向 JVM 或 Android 15 回归，逐叶核对见 [需求检查清单](REQUESTED_FEATURE_CATALOG.md)。
 
@@ -110,7 +116,7 @@
 | 混合变换／网格 | [MixedSelectionDraft.kt](app/src/main/java/app/inkloom/ui/MixedSelectionDraft.kt)、[SelectionTransformGeometry.kt](app/src/main/java/app/inkloom/engine/v5/tools/SelectionTransformGeometry.kt)、[SelectionTransformTest.kt](app/src/androidTest/java/app/inkloom/SelectionTransformTest.kt)、[SelectionMeshRasterTest.kt](app/src/androidTest/java/app/inkloom/SelectionMeshRasterTest.kt) |
 | 图片模板 | [ImagePaperTemplateTest.kt](app/src/androidTest/java/app/inkloom/ImagePaperTemplateTest.kt)、[PageTemplateStore.kt](app/src/main/java/app/inkloom/document/PageTemplateStore.kt) |
 | 导出限制 | [DocumentAssetService.kt](app/src/main/java/app/inkloom/document/DocumentAssetService.kt) |
-| 最新交付 | [0.216.0 交付证据](dist/Inkloom-0.216.0-fd20ef0d-debug.json)：951 项 JVM（0 失败、8 跳过）、Android 15 全量 754 项（0 失败）、lint、签名、安装、冷启动、SHA-256 与 Drive Desktop 本地副本校验通过。 |
+| 最新交付 | [0.217.0 交付证据](dist/Inkloom-0.217.0-1c8b3f65-debug.json)：953 项 JVM（0 失败、8 跳过）、Android 15 全量 756 项（0 失败）、lint、签名、安装、冷启动、SHA-256 与 Drive Desktop 本地副本校验通过。 |
 
 代码路径核对与既有测试报告支持此状态；本轮未逐一复测细项索引的全部条目。没有足够证据的高级子项保留“待核对”，不硬判完成。
 

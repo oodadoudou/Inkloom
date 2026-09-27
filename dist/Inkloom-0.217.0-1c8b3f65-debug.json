@@ -1,0 +1,20 @@
+{
+  "version": "0.217.0",
+  "versionCode": 217,
+  "variant": "debug",
+  "commit": "1c8b3f65bb309f7df81a19adf758aaf547e33d91",
+  "sha256": "60c0354ca1848425ce3b1d0822d47de7407a9af74d8365117d09a11a577123a2",
+  "bytes": 101944461,
+  "generatedUtc": "2026-09-27T16:50:50.971633+00:00",
+  "verification": {
+    "JVM": "PASS :app:testDebugUnitTest, 953 tests, 0 failures, 8 skipped",
+    "Android15Full": "PASS :app:connectedDebugAndroidTest, 756 tests, 0 failures, 0 skipped",
+    "lint": "PASS :app:lintDebug",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS Android 15 install and cold start, 1307 ms",
+    "DriveDesktop": "PASS local sync-folder copy SHA-256 verified; remote cloud download not verified"
+  },
+  "deviceStatus": "DEVICE_PENDING",
+  "evidenceRoot": "app/build/test-results and app/build/outputs/androidTest-results/connected/debug"
+}
