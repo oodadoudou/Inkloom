@@ -8,9 +8,9 @@ import android.view.MotionEvent
 import app.inkloom.engine.v5.tools.*
 import kotlin.math.*
 
-internal enum class SelectionAlignmentReference { CANVAS, ACTIVE_LAYER, SELECTION, GUIDES }
+internal enum class SelectionAlignmentReference { CANVAS, ACTIVE_LAYER, SELECTION, GUIDES, AUTO }
 
-internal data class SelectionTransformUiState(val pose: SelectionTransformPose, val mode: SelectionTransformMode, val snapping: Boolean = false, val magnetics: Boolean = false, val snapDistance: Float = 12f, val mixed: Boolean = false, val layerCount: Int = 1, val alignmentReference: SelectionAlignmentReference = SelectionAlignmentReference.CANVAS, val pivotX: Float = pose.centerX, val pivotY: Float = pose.centerY, val pivotEditing: Boolean = false)
+internal data class SelectionTransformUiState(val pose: SelectionTransformPose, val mode: SelectionTransformMode, val snapping: Boolean = false, val magnetics: Boolean = false, val snapDistance: Float = 12f, val mixed: Boolean = false, val layerCount: Int = 1, val alignmentReference: SelectionAlignmentReference = SelectionAlignmentReference.CANVAS, val pivotX: Float = pose.centerX, val pivotY: Float = pose.centerY, val pivotEditing: Boolean = false, val resolvedAlignmentReference: SelectionAlignmentReference = alignmentReference)
 
 /** Geometry owns the draft; its callback always samples the original raster and selection. */
 internal class SelectionCanvasTransform(

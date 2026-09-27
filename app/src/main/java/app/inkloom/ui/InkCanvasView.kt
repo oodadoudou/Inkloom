@@ -465,7 +465,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var selectionCanvasTransform: SelectionCanvasTransform? = null
     internal var onSelectionTransformChanged: (SelectionTransformUiState?) -> Unit = {}
     internal val selectionTransformUiState: SelectionTransformUiState?
-        get() = selectionCanvasTransform?.let { SelectionTransformUiState(it.pose, it.mode, it.snapping, it.magnetics, it.snapDistance, mixedSelectionDrafts.isNotEmpty(), rasterSelectionTransformSessions.size.coerceAtLeast(1), alignmentReference, it.pivotX, it.pivotY, it.pivotEditing) }
+        get() = selectionCanvasTransform?.let { SelectionTransformUiState(it.pose, it.mode, it.snapping, it.magnetics, it.snapDistance, mixedSelectionDrafts.isNotEmpty(), rasterSelectionTransformSessions.size.coerceAtLeast(1), alignmentReference, it.pivotX, it.pivotY, it.pivotEditing, resolvedAlignmentReference()) }
 
     private var selectionTransformCenterX = 0f
     private var selectionTransformCenterY = 0f
@@ -7027,6 +7027,15 @@ class InkCanvasView(context: Context) : View(context) {
         onSelectionTransformChanged(selectionTransformUiState)
     }
 
+    private fun resolvedAlignmentReference(): SelectionAlignmentReference = when (alignmentReference) {
+        SelectionAlignmentReference.AUTO -> when {
+            rasterSelectionTransformSessions.size >= 2 -> SelectionAlignmentReference.ACTIVE_LAYER
+            canvasGuideState.alignmentGuidesEnabled -> SelectionAlignmentReference.GUIDES
+            else -> SelectionAlignmentReference.CANVAS
+        }
+        else -> alignmentReference
+    }
+
     internal fun distributeSelectionLayers(horizontal: Boolean, equalGap: Boolean = false) =
         distributeSelectionLayers(horizontal, if (equalGap)
             app.inkloom.engine.v5.tools.SelectionDistributionMode.EQUAL_GAP
@@ -7063,7 +7072,8 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     internal fun alignSelectionToCanvas(alignment: app.inkloom.engine.v5.tools.SelectionAlignment) {
-        if (alignmentReference == SelectionAlignmentReference.ACTIVE_LAYER && rasterSelectionTransformSessions.size >= 2) {
+        val referenceMode = resolvedAlignmentReference()
+        if (referenceMode == SelectionAlignmentReference.ACTIVE_LAYER && rasterSelectionTransformSessions.size >= 2) {
             val reference = selectionTransformLayerBounds(activeLayerId) ?: return
             rasterSelectionTransformSessions.keys.filter { it != activeLayerId }.forEach { layerId ->
                 val bounds = selectionTransformLayerBounds(layerId) ?: return@forEach
@@ -7085,7 +7095,7 @@ class InkCanvasView(context: Context) : View(context) {
             selectionCanvasTransform?.let { updateRasterSelectionTransform(it.pose.rasterMappingFrom(it.original)) }
         } else {
             val draft = selectionCanvasTransform ?: return
-            when (alignmentReference) {
+            when (referenceMode) {
                 SelectionAlignmentReference.CANVAS, SelectionAlignmentReference.ACTIVE_LAYER ->
                     draft.alignToBounds(alignment, 0f, 0f,
                         (rasterTileSurfaceFor(activeLayerId)?.logicalWidth ?: width).toFloat(),
@@ -7114,6 +7124,7 @@ class InkCanvasView(context: Context) : View(context) {
                     val guideY = canvasGuideState.horizontalGuideY * (surface?.logicalHeight ?: height)
                     draft.alignToBounds(alignment, guideX, guideY, guideX, guideY)
                 }
+                SelectionAlignmentReference.AUTO -> error("Auto alignment must resolve before use")
             }
         }
         onSelectionTransformChanged(selectionTransformUiState)

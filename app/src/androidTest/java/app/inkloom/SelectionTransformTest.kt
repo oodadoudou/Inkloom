@@ -250,6 +250,36 @@ class SelectionTransformTest {
         assertEquals(Color.BLUE, second.pixelAt(34, 20))
     }
 
+    @Test fun automaticAlignmentReportsAndUsesTheActiveLayerForMultilayerSelection() {
+        fun layer(x: Int, color: Int) = PixelTileSurface(64, 64, 64).also { surface ->
+            surface.beginWrite("auto alignment fixture").use { write ->
+                write.setPixel(x, 20, color); write.commit().close()
+            }
+        }
+        val first = layer(10, Color.RED)
+        val second = layer(34, Color.BLUE)
+        val mask = MaskTileSurface(64, 64, 64).also { surface ->
+            surface.beginWrite("selection").use { write ->
+                write.composeAlpha(PixelRect(0, 0, 64, 64), ByteArray(64 * 64) { -1 }, mode = MaskComposeMode.REPLACE)
+                write.commit().close()
+            }
+        }
+        canvas {
+            pageModelWidth = 64f; pageModelHeight = 64f; activeLayerId = "first"
+            selectionTransformLayerIds = setOf("first", "second")
+            setRasterLayerSurfaces(linkedMapOf("first" to first, "second" to second))
+            bindDocumentSelectionState(DocumentSelectionRuntime(64).stateFor("align-auto", "page", 64, 64))
+            replaceSelectionFromMask(mask.snapshot())
+            assertTrue(enterFreeTransform())
+            setSelectionAlignmentReference(app.inkloom.ui.SelectionAlignmentReference.AUTO)
+            assertEquals(app.inkloom.ui.SelectionAlignmentReference.ACTIVE_LAYER,
+                selectionTransformUiState?.resolvedAlignmentReference)
+            alignSelectionToCanvas(app.inkloom.engine.v5.tools.SelectionAlignment.LEFT)
+            assertTrue(finishSelectionTransform(true))
+        }
+        assertEquals(PixelRect(10, 20, 11, 21), app.inkloom.engine.v5.tools.selectionContentBounds(second.snapshot()))
+    }
+
     @Test fun selectedLayersDistributeBetweenOuterLayerCenters() {
         fun layer(x: Int, color: Int) = PixelTileSurface(64, 64, 64).also { surface ->
             surface.beginWrite("distribution fixture").use { write -> write.setPixel(x, 20, color); write.commit().close() }

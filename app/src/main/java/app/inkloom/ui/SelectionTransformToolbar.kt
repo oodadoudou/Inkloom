@@ -96,6 +96,16 @@ internal fun SelectionTransformToolbar(
                 var alignOpen by remember { mutableStateOf(false) }
                 TextButton(onClick = { alignOpen = true }) { Text(t("Align", "对齐")) }
                 DropdownMenu(alignOpen, { alignOpen = false }) {
+                    val automaticTarget = when (state.resolvedAlignmentReference) {
+                        SelectionAlignmentReference.ACTIVE_LAYER -> t("active layer", "当前图层")
+                        SelectionAlignmentReference.GUIDES -> t("guides", "辅助线")
+                        else -> t("canvas", "画布")
+                    }
+                    DropdownMenuItem(
+                        text = { Text("${t("Auto", "自动")} · $automaticTarget") },
+                        leadingIcon = { RadioButton(state.alignmentReference == SelectionAlignmentReference.AUTO, null) },
+                        onClick = { onReference(SelectionAlignmentReference.AUTO) },
+                    )
                     DropdownMenuItem(
                         text = { Text(t("Canvas reference", "参考画布")) },
                         leadingIcon = { RadioButton(state.alignmentReference == SelectionAlignmentReference.CANVAS, null) },
