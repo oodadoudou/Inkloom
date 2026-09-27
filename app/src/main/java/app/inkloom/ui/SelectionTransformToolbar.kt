@@ -38,11 +38,13 @@ internal fun SelectionTransformToolbar(
     onInterpolation: (app.inkloom.engine.v5.tools.SelectionInterpolation) -> Unit,
     onDimensions: (Float, Float, Float, Float, Float) -> Unit,
     onResetPivot: () -> Unit,
+    onPivotEditing: (Boolean) -> Unit,
+    onSkewBy: (Float, Float) -> Unit,
     onMeshDensity: (Int, Int) -> Unit,
     onClearPuppetPins: () -> Unit,
-    onReference: (Boolean) -> Unit,
+    onReference: (SelectionAlignmentReference) -> Unit,
     onAlign: (SelectionAlignment) -> Unit,
-    onDistribute: (Boolean) -> Unit,
+    onDistribute: (Boolean, Boolean) -> Unit,
     onFlip: (Boolean) -> Unit,
     onReset: () -> Unit,
     onSnapping: (Boolean, Boolean, Float) -> Unit,
@@ -52,6 +54,7 @@ internal fun SelectionTransformToolbar(
 ) {
     fun t(en: String, zh: String) = language.text(en, zh)
     var dimensionsOpen by remember { mutableStateOf(false) }
+    var skewOpen by remember { mutableStateOf(false) }
     Surface(modifier.widthIn(max = 640.dp), shape = RoundedCornerShape(14.dp), color = app.inkloom.ui.theme.Paper, shadowElevation = 3.dp) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
@@ -85,21 +88,30 @@ internal fun SelectionTransformToolbar(
             if (state.mode == SelectionTransformMode.PUPPET) TextButton(onClick = onClearPuppetPins) {
                 Text(t("Clear pins", "清除控制点"))
             }
+            if (state.mode == SelectionTransformMode.SKEW) TextButton(onClick = { skewOpen = true }) {
+                Text(t("Skew by pixels", "数值歪斜"))
+            }
             Box {
                 var alignOpen by remember { mutableStateOf(false) }
                 TextButton(onClick = { alignOpen = true }) { Text(t("Align", "对齐")) }
                 DropdownMenu(alignOpen, { alignOpen = false }) {
                     DropdownMenuItem(
                         text = { Text(t("Canvas reference", "参考画布")) },
-                        leadingIcon = { RadioButton(!state.activeLayerReference, null) },
-                        onClick = { onReference(false) },
+                        leadingIcon = { RadioButton(state.alignmentReference == SelectionAlignmentReference.CANVAS, null) },
+                        onClick = { onReference(SelectionAlignmentReference.CANVAS) },
                     )
                     DropdownMenuItem(
                         text = { Text(t("Active layer reference", "参考当前图层")) },
-                        leadingIcon = { RadioButton(state.activeLayerReference, null) },
+                        leadingIcon = { RadioButton(state.alignmentReference == SelectionAlignmentReference.ACTIVE_LAYER, null) },
                         enabled = state.layerCount >= 2,
-                        onClick = { onReference(true) },
+                        onClick = { onReference(SelectionAlignmentReference.ACTIVE_LAYER) },
                     )
+                    DropdownMenuItem(text = { Text(t("Selection reference", "参考选区")) },
+                        leadingIcon = { RadioButton(state.alignmentReference == SelectionAlignmentReference.SELECTION, null) },
+                        onClick = { onReference(SelectionAlignmentReference.SELECTION) })
+                    DropdownMenuItem(text = { Text(t("Alignment guides reference", "参考辅助线")) },
+                        leadingIcon = { RadioButton(state.alignmentReference == SelectionAlignmentReference.GUIDES, null) },
+                        onClick = { onReference(SelectionAlignmentReference.GUIDES) })
                     HorizontalDivider()
                     SelectionAlignment.entries.forEach { alignment ->
                         DropdownMenuItem(text = { Text(when (alignment) {
@@ -113,9 +125,13 @@ internal fun SelectionTransformToolbar(
                     }
                     HorizontalDivider()
                     DropdownMenuItem(text = { Text(t("Distribute horizontally", "水平均分")) }, enabled = state.layerCount >= 3,
-                        onClick = { onDistribute(true); alignOpen = false })
+                        onClick = { onDistribute(true, false); alignOpen = false })
                     DropdownMenuItem(text = { Text(t("Distribute vertically", "垂直均分")) }, enabled = state.layerCount >= 3,
-                        onClick = { onDistribute(false); alignOpen = false })
+                        onClick = { onDistribute(false, false); alignOpen = false })
+                    DropdownMenuItem(text = { Text(t("Equal horizontal gaps", "水平等间距")) }, enabled = state.layerCount >= 3,
+                        onClick = { onDistribute(true, true); alignOpen = false })
+                    DropdownMenuItem(text = { Text(t("Equal vertical gaps", "垂直等间距")) }, enabled = state.layerCount >= 3,
+                        onClick = { onDistribute(false, true); alignOpen = false })
                 }
             }
             Box {
@@ -148,11 +164,29 @@ internal fun SelectionTransformToolbar(
             TextButton(onClick = { dimensionsOpen = true }, modifier = Modifier.semantics { contentDescription = t("Transform dimensions", "变换尺寸") }) {
                 Text(t("Dimensions", "尺寸"), fontSize = 12.sp)
             }
+            TextButton(onClick = { onPivotEditing(!state.pivotEditing) },
+                colors = ButtonDefaults.textButtonColors(containerColor = if (state.pivotEditing) app.inkloom.ui.theme.SageContainer else Color.Transparent)) {
+                Text(t("Move pivot", "移动基准点"), fontSize = 12.sp)
+            }
             IconButton(onClick = { onFlip(true) }) { Icon(Icons.Outlined.Flip, t("Flip horizontal", "水平翻转"), Modifier.size(20.dp)) }
             IconButton(onClick = { onFlip(false) }) { Icon(Icons.Outlined.Flip, t("Flip vertical", "垂直翻转"), Modifier.size(20.dp).then(Modifier.graphicsLayer { rotationZ = 90f })) }
             IconButton(onClick = onReset) { Icon(Icons.Outlined.RestartAlt, t("Reset transform", "重置变换"), Modifier.size(20.dp)) }
             }
         }
+    }
+    if (skewOpen) {
+        var horizontal by remember { mutableStateOf("0") }
+        var vertical by remember { mutableStateOf("0") }
+        val dx = horizontal.toFloatOrNull(); val dy = vertical.toFloatOrNull()
+        val valid = dx?.isFinite() == true && dy?.isFinite() == true &&
+            dx in -65536f..65536f && dy in -65536f..65536f
+        AlertDialog(onDismissRequest = { skewOpen = false }, title = { Text(t("Skew by pixels", "数值歪斜")) },
+            text = { Column { OutlinedTextField(horizontal, { horizontal = it },
+                label = { Text(t("Horizontal (px)", "水平（像素）")) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                OutlinedTextField(vertical, { vertical = it },
+                    label = { Text(t("Vertical (px)", "垂直（像素）")) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)) } },
+            confirmButton = { TextButton(enabled = valid, onClick = { onSkewBy(dx!!, dy!!); skewOpen = false }) { Text(t("Apply", "应用")) } },
+            dismissButton = { TextButton(onClick = { skewOpen = false }) { Text(t("Cancel", "取消")) } })
     }
     if (dimensionsOpen) {
         fun number(value: Float) = String.format(Locale.ROOT, "%.2f", value)
@@ -176,7 +210,7 @@ internal fun SelectionTransformToolbar(
                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(t("Transform dimensions", "变换尺寸"), style = MaterialTheme.typography.titleLarge)
                         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(t("Drag the crosshair on the canvas to move the reference point.", "拖动画布上的十字准星可移动变换基准点。"), fontSize = 11.sp)
+                            Text(t("Enable Move pivot, then drag the crosshair on the canvas.", "开启「移动基准点」后，拖动画布上的十字准星。"), fontSize = 11.sp)
                             OutlinedTextField(x, { x = it }, label = { Text(t("Position X (px)", "位置 X（像素）")) },
                                 singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                             OutlinedTextField(y, { y = it }, label = { Text(t("Position Y (px)", "位置 Y（像素）")) },

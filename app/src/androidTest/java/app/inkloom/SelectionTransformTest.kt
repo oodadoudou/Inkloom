@@ -240,7 +240,7 @@ class SelectionTransformTest {
             bindDocumentSelectionState(DocumentSelectionRuntime(64).stateFor("align", "page", 64, 64))
             replaceSelectionFromMask(mask.snapshot())
             assertTrue(enterFreeTransform())
-            setSelectionAlignmentReference(true)
+            setSelectionAlignmentReference(app.inkloom.ui.SelectionAlignmentReference.ACTIVE_LAYER)
             alignSelectionToCanvas(app.inkloom.engine.v5.tools.SelectionAlignment.LEFT)
             assertTrue(finishSelectionTransform(true))
         }

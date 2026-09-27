@@ -8,7 +8,9 @@ import android.view.MotionEvent
 import app.inkloom.engine.v5.tools.*
 import kotlin.math.*
 
-internal data class SelectionTransformUiState(val pose: SelectionTransformPose, val mode: SelectionTransformMode, val snapping: Boolean = false, val magnetics: Boolean = false, val snapDistance: Float = 12f, val mixed: Boolean = false, val layerCount: Int = 1, val activeLayerReference: Boolean = false, val pivotX: Float = pose.centerX, val pivotY: Float = pose.centerY)
+internal enum class SelectionAlignmentReference { CANVAS, ACTIVE_LAYER, SELECTION, GUIDES }
+
+internal data class SelectionTransformUiState(val pose: SelectionTransformPose, val mode: SelectionTransformMode, val snapping: Boolean = false, val magnetics: Boolean = false, val snapDistance: Float = 12f, val mixed: Boolean = false, val layerCount: Int = 1, val alignmentReference: SelectionAlignmentReference = SelectionAlignmentReference.CANVAS, val pivotX: Float = pose.centerX, val pivotY: Float = pose.centerY, val pivotEditing: Boolean = false)
 
 /** Geometry owns the draft; its callback always samples the original raster and selection. */
 internal class SelectionCanvasTransform(
@@ -23,6 +25,7 @@ internal class SelectionCanvasTransform(
     var pose = original
         private set
     var mode = SelectionTransformMode.FREEFORM
+    var pivotEditing = false
     var snapping = false
     var magnetics = false
     var snapDistance = 12f
@@ -72,11 +75,49 @@ internal class SelectionCanvasTransform(
         return next.withPose(next.copy(centerX = anchorX + rotated.first, centerY = anchorY + rotated.second))
     }
     fun setMeshDensity(columns: Int, rows: Int) = replace(pose.withMeshDensity(columns, rows))
+    fun skewBy(horizontalPixels: Float, verticalPixels: Float): Boolean {
+        if (!horizontalPixels.isFinite() || !verticalPixels.isFinite()) return false
+        val horizontal = pose.skew(SelectionTransformNode.TOP, horizontalPixels, 0f) ?: return false
+        val next = horizontal.skew(SelectionTransformNode.LEFT, 0f, verticalPixels) ?: return false
+        replace(next)
+        return true
+    }
     fun clearPuppetPins() { puppetPins.clear(); reset() }
     fun alignToCanvas(alignment: SelectionAlignment) {
         val next = pose.aligned(alignment, rasterWidth.toFloat(), rasterHeight.toFloat())
         pivotX += next.centerX - pose.centerX; pivotY += next.centerY - pose.centerY
         replace(next)
+    }
+    fun alignToBounds(alignment: SelectionAlignment, referenceLeft: Float, referenceTop: Float,
+                      referenceRight: Float, referenceBottom: Float) {
+        val corners = pose.sourceCorners()
+        val left = corners.minOf { it.first }; val right = corners.maxOf { it.first }
+        val top = corners.minOf { it.second }; val bottom = corners.maxOf { it.second }
+        val dx = when (alignment) {
+            SelectionAlignment.LEFT -> referenceLeft - left
+            SelectionAlignment.HORIZONTAL_CENTER -> (referenceLeft + referenceRight - left - right) / 2f
+            SelectionAlignment.RIGHT -> referenceRight - right
+            else -> 0f
+        }
+        val dy = when (alignment) {
+            SelectionAlignment.TOP -> referenceTop - top
+            SelectionAlignment.VERTICAL_CENTER -> (referenceTop + referenceBottom - top - bottom) / 2f
+            SelectionAlignment.BOTTOM -> referenceBottom - bottom
+            else -> 0f
+        }
+        nudge(dx, dy)
+        guideX = when (alignment) {
+            SelectionAlignment.LEFT -> referenceLeft
+            SelectionAlignment.HORIZONTAL_CENTER -> (referenceLeft + referenceRight) / 2f
+            SelectionAlignment.RIGHT -> referenceRight
+            else -> null
+        }
+        guideY = when (alignment) {
+            SelectionAlignment.TOP -> referenceTop
+            SelectionAlignment.VERTICAL_CENTER -> (referenceTop + referenceBottom) / 2f
+            SelectionAlignment.BOTTOM -> referenceBottom
+            else -> null
+        }
     }
     fun nudge(dx: Float, dy: Float) {
         pivotX += dx; pivotY += dy
@@ -100,7 +141,7 @@ internal class SelectionCanvasTransform(
                 startPivotX = pivotX; startPivotY = pivotY
                 val radius = min(24f * density / zoom.coerceAtLeast(.1f),
                     min(pose.width * w / rasterWidth, pose.height * h / rasterHeight) * .3f).coerceAtLeast(6f * density / zoom.coerceAtLeast(.1f))
-                pivotDragging = hypot(pivotX * w / rasterWidth - x, pivotY * h / rasterHeight - y) <= radius
+                pivotDragging = pivotEditing && hypot(pivotX * w / rasterWidth - x, pivotY * h / rasterHeight - y) <= radius
                 meshNode = if (mode == SelectionTransformMode.WARP || mode == SelectionTransformMode.PUPPET) pose.lattice().indices.minByOrNull {
                     val p=pose.lattice()[it]; hypot(p.first*w/rasterWidth-x,p.second*h/rasterHeight-y)
                 } ?: -1 else -1

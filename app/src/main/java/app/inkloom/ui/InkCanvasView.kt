@@ -462,7 +462,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var selectionCanvasTransform: SelectionCanvasTransform? = null
     internal var onSelectionTransformChanged: (SelectionTransformUiState?) -> Unit = {}
     internal val selectionTransformUiState: SelectionTransformUiState?
-        get() = selectionCanvasTransform?.let { SelectionTransformUiState(it.pose, it.mode, it.snapping, it.magnetics, it.snapDistance, mixedSelectionDrafts.isNotEmpty(), rasterSelectionTransformSessions.size.coerceAtLeast(1), alignmentReferenceActiveLayer, it.pivotX, it.pivotY) }
+        get() = selectionCanvasTransform?.let { SelectionTransformUiState(it.pose, it.mode, it.snapping, it.magnetics, it.snapDistance, mixedSelectionDrafts.isNotEmpty(), rasterSelectionTransformSessions.size.coerceAtLeast(1), alignmentReference, it.pivotX, it.pivotY, it.pivotEditing) }
 
     private var selectionTransformCenterX = 0f
     private var selectionTransformCenterY = 0f
@@ -479,7 +479,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var rasterSelectionTransformHeight = 0
     var selectionTransformLayerIds: Set<String> = emptySet()
     private val selectionLayerOffsets = linkedMapOf<String, Pair<Float, Float>>()
-    private var alignmentReferenceActiveLayer = false
+    private var alignmentReference = SelectionAlignmentReference.CANVAS
     private val selectionAntPattern = Bitmap.createBitmap(
         16,
         16,
@@ -6963,6 +6963,17 @@ class InkCanvasView(context: Context) : View(context) {
 
     internal fun resetSelectionTransformPivot() { selectionCanvasTransform?.resetPivot() }
 
+    internal fun setSelectionPivotEditing(enabled: Boolean) {
+        selectionCanvasTransform?.pivotEditing = enabled
+        onSelectionTransformChanged(selectionTransformUiState)
+    }
+
+    internal fun skewSelectionBy(horizontalPixels: Float, verticalPixels: Float) {
+        if (selectionCanvasTransform?.skewBy(horizontalPixels, verticalPixels) != true)
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                "歪斜数值无效或变形会交叉" else "Invalid skew or crossing corners")
+    }
+
     internal fun setSelectionMeshDensity(columns: Int, rows: Int) {
         if (mixedSelectionDrafts.isNotEmpty()) return
         selectionCanvasTransform?.setMeshDensity(columns, rows)
@@ -6998,12 +7009,13 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    internal fun setSelectionAlignmentReference(activeLayer: Boolean) {
-        alignmentReferenceActiveLayer = activeLayer && rasterSelectionTransformSessions.size >= 2
+    internal fun setSelectionAlignmentReference(reference: SelectionAlignmentReference) {
+        alignmentReference = if (reference == SelectionAlignmentReference.ACTIVE_LAYER && rasterSelectionTransformSessions.size < 2)
+            SelectionAlignmentReference.CANVAS else reference
         onSelectionTransformChanged(selectionTransformUiState)
     }
 
-    internal fun distributeSelectionLayers(horizontal: Boolean) {
+    internal fun distributeSelectionLayers(horizontal: Boolean, equalGap: Boolean = false) {
         val ordered = rasterSelectionTransformSessions.keys.mapNotNull { layerId ->
             selectionTransformLayerBounds(layerId)?.let { layerId to it }
         }.sortedBy { (_, bounds) -> if (horizontal) bounds.left else bounds.top }
@@ -7012,15 +7024,11 @@ class InkCanvasView(context: Context) : View(context) {
                 "均分至少需要三个含选中内容的图层" else "Distribute requires selected content on at least three layers")
             return
         }
-        val first = ordered.first().second
-        val last = ordered.last().second
-        val firstCenter = if (horizontal) (first.left + first.right) / 2f else (first.top + first.bottom) / 2f
-        val lastCenter = if (horizontal) (last.left + last.right) / 2f else (last.top + last.bottom) / 2f
-        val step = (lastCenter - firstCenter) / (ordered.size - 1)
-        ordered.forEachIndexed { index, (layerId, bounds) ->
+        val offsets = app.inkloom.engine.v5.tools.SelectionDistributionGeometry.offsets(
+            ordered.map { it.second }, horizontal, equalGap)
+        ordered.forEachIndexed { index, (layerId, _) ->
             if (index == 0 || index == ordered.lastIndex) return@forEachIndexed
-            val center = if (horizontal) (bounds.left + bounds.right) / 2f else (bounds.top + bounds.bottom) / 2f
-            val delta = firstCenter + step * index - center
+            val delta = offsets[index]
             val old = selectionLayerOffsets[layerId] ?: (0f to 0f)
             selectionLayerOffsets[layerId] = if (horizontal) old.first + delta to old.second else old.first to old.second + delta
         }
@@ -7029,9 +7037,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     internal fun alignSelectionToCanvas(alignment: app.inkloom.engine.v5.tools.SelectionAlignment) {
-        if (!alignmentReferenceActiveLayer || rasterSelectionTransformSessions.size < 2) {
-            selectionCanvasTransform?.alignToCanvas(alignment)
-        } else {
+        if (alignmentReference == SelectionAlignmentReference.ACTIVE_LAYER && rasterSelectionTransformSessions.size >= 2) {
             val reference = selectionTransformLayerBounds(activeLayerId) ?: return
             rasterSelectionTransformSessions.keys.filter { it != activeLayerId }.forEach { layerId ->
                 val bounds = selectionTransformLayerBounds(layerId) ?: return@forEach
@@ -7051,6 +7057,38 @@ class InkCanvasView(context: Context) : View(context) {
                 selectionLayerOffsets[layerId] = old.first + dx to old.second + dy
             }
             selectionCanvasTransform?.let { updateRasterSelectionTransform(it.pose.rasterMappingFrom(it.original)) }
+        } else {
+            val draft = selectionCanvasTransform ?: return
+            when (alignmentReference) {
+                SelectionAlignmentReference.CANVAS, SelectionAlignmentReference.ACTIVE_LAYER ->
+                    draft.alignToBounds(alignment, 0f, 0f,
+                        (rasterTileSurfaceFor(activeLayerId)?.logicalWidth ?: width).toFloat(),
+                        (rasterTileSurfaceFor(activeLayerId)?.logicalHeight ?: height).toFloat())
+                SelectionAlignmentReference.SELECTION -> {
+                    val mask = rasterSelectionTransformOriginalMask ?: selectionMaskForRasterTools()
+                    val surface = rasterTileSurfaceFor(activeLayerId)
+                    val bounds = if (mask != null && surface != null)
+                        RasterSelectionContent.selectionBoundsInPixels(mask, surface.logicalWidth, surface.logicalHeight) else null
+                    if (bounds == null) {
+                        onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                            "当前没有可用的选区边界" else "No selection bounds are available")
+                        return
+                    }
+                    draft.alignToBounds(alignment, bounds.left.toFloat(), bounds.top.toFloat(),
+                        bounds.right.toFloat(), bounds.bottom.toFloat())
+                }
+                SelectionAlignmentReference.GUIDES -> {
+                    if (!canvasGuideState.alignmentGuidesEnabled) {
+                        onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                            "请先开启对齐辅助线" else "Enable alignment guides first")
+                        return
+                    }
+                    val surface = rasterTileSurfaceFor(activeLayerId)
+                    val guideX = canvasGuideState.verticalGuideX * (surface?.logicalWidth ?: width)
+                    val guideY = canvasGuideState.horizontalGuideY * (surface?.logicalHeight ?: height)
+                    draft.alignToBounds(alignment, guideX, guideY, guideX, guideY)
+                }
+            }
         }
         onSelectionTransformChanged(selectionTransformUiState)
         invalidate()
