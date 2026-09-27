@@ -1,10 +1,18 @@
 # Inkloom 当前需求与待排优先级
 
-核对日期：2026-09-24。最新 Debug 版本 **0.215.0**：在 0.214.0 漫画线稿填充之上，补齐命名渐变预设及文件交换、绘画笔尖的擦除／混色借用，并增加液化畸变和惯性参数。JVM、基础工具定向 Android 15、素材笔刷样本、局部帧门槛和 lint 已通过；APK 签名、安装、冷启动和 Google Drive Desktop 本地副本校验已完成，证据见 [0.215.0 交付记录](dist/Inkloom-0.215.0-0a9902d5-debug.json)。全量 Android 套件在颜色窗口用例出现重复超时，不能标记通过；MovinkPad 实机和远端云下载仍未核验。
+核对日期：2026-09-27。上一版 Debug 为 **0.215.0**；本轮新改动的最终 APK 与测试结果以 `dist/` 内新版本交付证据为准。上一版全量 Android 套件在颜色窗口用例出现重复超时，不能由定向测试代替；MovinkPad 实机和 Drive 云端下载仍未核验。
 
 **本文件是版本交付与宏观需求状态的入口。** 下表顺序不是开发顺序。逐项完成情况见 [REQUESTED_FEATURE_CATALOG.md](REQUESTED_FEATURE_CATALOG.md) 的可勾选目录；宏观项目完成不等于其 CSP 扩展细项全部完成。旧版本计划、旧额度阈值和分支上的未交付代码均不作为当前依据。
 
 状态规则：**未实现**＝没有发现完整生产入口与执行链；**部分实现**＝有真实能力但下述合同未闭合；**待验收**＝不能因缺少实机结果说成没开发。文件或枚举存在不等于功能可用，自动测试全绿也不等于 CSP 全功能已完成。
+
+## 2026-09-27 本轮开发状态
+
+本轮按“基础工具 → 图层 → 选区与变换”的顺序继续。图层新增长按眼睛独显／恢复，保存先前隐藏状态；树结构发生变化时，新增层在独显外保持隐藏，删掉独显目标会恢复其余层，移入独显组会重新计算可见性。画布点取所属图层、原像素不变的图层着色、蒙版灰阶渐变／阈值表达也已接入画布、缩略图、合并、导出与撤销路径。选区保存项现可重命名、预览缩略图，并以替换／加／减／交方式载入；选区快捷条支持自定义。变换新增可拖基准点、X／Y 数值、歪斜、边缘／间距均分，以及自动解析的参考基准。对应功能都有定向 JVM 或 Android 15 回归，逐叶核对见 [需求检查清单](REQUESTED_FEATURE_CATALOG.md)。
+
+本轮交互依据：[CSP 图层可见性与独显](https://help.clip-studio.com/en-us/manual_en/180_layers/Using_layers.htm) 与 [Procreate 图层独显](https://help.procreate.com/procreate/handbook/5.3/layers/layers-interface)；[CSP 对齐与分布](https://help.clip-studio.com/en-us/manual_en/360_transform/Align_and_Distribute.htm) 与 [Photoshop 图层均分](https://helpx.adobe.com/uk/photoshop/desktop/create-manage-layers/create-layer-compositions/distribute-layers-groups-evenly.html)。Inkloom 保留原有深灰工作区与自身图标，不复制素材。
+
+仍未闭合：混合对象的非仿射网格／操控变形尚不能同时保留像素、图片和可编辑文字结构，当前明确拒绝该组合；CSP 额外的混合模式未逐一实现。液化在 MovinkPad 上的快慢笔触、极端笔径与性能，以及图层和选区长按／拖动触感仍为 `DEVICE_PENDING`。克隆工具、独立参考图和导航器按用户指示后移。下面 2026-09-24 的缺口表是当时的调研快照，已完成的条目以本节和逐叶清单为准。
 
 ## 2026-09-23 实测反馈
 
