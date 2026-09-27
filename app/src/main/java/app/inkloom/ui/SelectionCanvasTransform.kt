@@ -8,7 +8,7 @@ import android.view.MotionEvent
 import app.inkloom.engine.v5.tools.*
 import kotlin.math.*
 
-internal data class SelectionTransformUiState(val pose: SelectionTransformPose, val mode: SelectionTransformMode, val snapping: Boolean = false, val magnetics: Boolean = false, val snapDistance: Float = 12f, val mixed: Boolean = false, val layerCount: Int = 1, val activeLayerReference: Boolean = false)
+internal data class SelectionTransformUiState(val pose: SelectionTransformPose, val mode: SelectionTransformMode, val snapping: Boolean = false, val magnetics: Boolean = false, val snapDistance: Float = 12f, val mixed: Boolean = false, val layerCount: Int = 1, val activeLayerReference: Boolean = false, val pivotX: Float = pose.centerX, val pivotY: Float = pose.centerY)
 
 /** Geometry owns the draft; its callback always samples the original raster and selection. */
 internal class SelectionCanvasTransform(
@@ -18,6 +18,7 @@ internal class SelectionCanvasTransform(
     private val density: Float,
     private val changed: (SelectionTransformPose) -> Unit,
     private val rejected: () -> Unit = {},
+    private val pivotChanged: () -> Unit = {},
 ) {
     var pose = original
         private set
@@ -26,6 +27,13 @@ internal class SelectionCanvasTransform(
     var magnetics = false
     var snapDistance = 12f
     var contentTargets: List<Pair<Float,Float>> = emptyList()
+    var pivotX = original.centerX
+        private set
+    var pivotY = original.centerY
+        private set
+    private var startPivotX = pivotX
+    private var startPivotY = pivotY
+    private var pivotDragging = false
     private var guideX: Float? = null
     private var guideY: Float? = null
     private var meshNode = -1
@@ -43,13 +51,37 @@ internal class SelectionCanvasTransform(
         pose = next
         changed(next)
     }
-    fun reset() = replace(original)
+    fun reset() { pivotX = original.centerX; pivotY = original.centerY; replace(original); pivotChanged() }
+    fun resetPivot() { pivotX = pose.centerX; pivotY = pose.centerY; pivotChanged() }
+    fun setGeometry(x: Float, y: Float, width: Float, height: Float, angle: Float) {
+        if (!listOf(x, y, width, height, angle).all(Float::isFinite) || width < 1f || height < 1f) return
+        val anchored = anchoredPose(pose, pose.copy(width = width, height = height, angle = angle.mod(360f)), pivotX, pivotY)
+        val moved = anchored.withPose(anchored.copy(centerX = anchored.centerX + x - pivotX,
+            centerY = anchored.centerY + y - pivotY))
+        pivotX = x; pivotY = y
+        replace(moved)
+        pivotChanged()
+    }
+    private fun anchoredPose(start: SelectionTransformPose, next: SelectionTransformPose,
+                             anchorX: Float, anchorY: Float): SelectionTransformPose {
+        val local = SelectionTransformPose.rotate(start.centerX - anchorX, start.centerY - anchorY, -start.angle)
+        val rotated = SelectionTransformPose.rotate(local.first * next.width / start.width,
+            local.second * next.height / start.height, next.angle)
+        return next.withPose(next.copy(centerX = anchorX + rotated.first, centerY = anchorY + rotated.second))
+    }
     fun setMeshDensity(columns: Int, rows: Int) = replace(pose.withMeshDensity(columns, rows))
     fun clearPuppetPins() { puppetPins.clear(); reset() }
-    fun alignToCanvas(alignment: SelectionAlignment) = replace(pose.aligned(alignment, rasterWidth.toFloat(), rasterHeight.toFloat()))
-    fun nudge(dx: Float, dy: Float) = replace(pose.withPose(pose.copy(centerX=pose.centerX+dx, centerY=pose.centerY+dy)))
+    fun alignToCanvas(alignment: SelectionAlignment) {
+        val next = pose.aligned(alignment, rasterWidth.toFloat(), rasterHeight.toFloat())
+        pivotX += next.centerX - pose.centerX; pivotY += next.centerY - pose.centerY
+        replace(next)
+    }
+    fun nudge(dx: Float, dy: Float) {
+        pivotX += dx; pivotY += dy
+        replace(pose.withPose(pose.copy(centerX=pose.centerX+dx, centerY=pose.centerY+dy)))
+    }
     fun cancelGesture() {
-        if (dragging) { dragging = false; replace(start) }
+        if (dragging) { dragging = false; pivotX = startPivotX; pivotY = startPivotY; replace(start); pivotChanged() }
     }
 
     fun touch(event: MotionEvent, x: Float, y: Float, w: Int, h: Int, zoom: Float): Boolean {
@@ -63,8 +95,10 @@ internal class SelectionCanvasTransform(
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 start = pose; startX = px; startY = py; dragging = true
+                startPivotX = pivotX; startPivotY = pivotY
                 val radius = min(24f * density / zoom.coerceAtLeast(.1f),
                     min(pose.width * w / rasterWidth, pose.height * h / rasterHeight) * .3f).coerceAtLeast(6f * density / zoom.coerceAtLeast(.1f))
+                pivotDragging = hypot(pivotX * w / rasterWidth - x, pivotY * h / rasterHeight - y) <= radius
                 meshNode = if (mode == SelectionTransformMode.WARP || mode == SelectionTransformMode.PUPPET) pose.lattice().indices.minByOrNull {
                     val p=pose.lattice()[it]; hypot(p.first*w/rasterWidth-x,p.second*h/rasterHeight-y)
                 } ?: -1 else -1
@@ -75,6 +109,12 @@ internal class SelectionCanvasTransform(
             MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> if (dragging) {
                 val dx=px-startX; val dy=py-startY
                 guideX=null; guideY=null
+                if (pivotDragging) {
+                    pivotX = startPivotX + dx; pivotY = startPivotY + dy
+                    pivotChanged()
+                    if (event.actionMasked == MotionEvent.ACTION_UP) { dragging = false; pivotDragging = false }
+                    return true
+                }
                 val tap=event.actionMasked==MotionEvent.ACTION_UP && hypot(dx*w/rasterWidth,dy*h/rasterHeight)*zoom < 3*density
                 val outside=startX < start.centerX-start.width/2 || startX > start.centerX+start.width/2 || startY < start.centerY-start.height/2 || startY > start.centerY+start.height/2
                 if(tap && outside && mode != SelectionTransformMode.WARP && mode != SelectionTransformMode.PUPPET && node==SelectionTransformNode.MOVE) {
@@ -84,8 +124,9 @@ internal class SelectionCanvasTransform(
                     replace(start.warp(meshNode,dx,dy))
                 } else if (mode == SelectionTransformMode.PUPPET && meshNode >= 0) {
                     replace(start.puppetWarp(meshNode, dx, dy, puppetPins - meshNode))
-                } else if (mode == SelectionTransformMode.DISTORT) {
-                    val next = start.distort(node, px-startX, py-startY)
+                } else if (mode == SelectionTransformMode.DISTORT || mode == SelectionTransformMode.SKEW) {
+                    val next = if (mode == SelectionTransformMode.DISTORT) start.distort(node, px-startX, py-startY)
+                        else start.skew(node, px-startX, py-startY)
                     if (next != null) replace(next) else if (event.actionMasked == MotionEvent.ACTION_UP) rejected()
                 } else {
                     var tx=px; var ty=py
@@ -93,7 +134,14 @@ internal class SelectionCanvasTransform(
                         val angle=round(atan2(dy,dx)/(PI/12)).toFloat()*(PI/12).toFloat()
                         val length=dx*cos(angle)+dy*sin(angle); tx=startX+length*cos(angle); ty=startY+length*sin(angle)
                     }
-                    var next=start.drag(node,startX,startY,tx,ty,mode)
+                    var next = if (node == SelectionTransformNode.ROTATE) {
+                        val delta = atan2(ty - startPivotY, tx - startPivotX) -
+                            atan2(startY - startPivotY, startX - startPivotX)
+                        anchoredPose(start, start.copy(angle = (start.angle + Math.toDegrees(delta.toDouble()).toFloat()).mod(360f)), startPivotX, startPivotY)
+                    } else start.drag(node,startX,startY,tx,ty,mode)
+                    if (node != SelectionTransformNode.MOVE && node != SelectionTransformNode.ROTATE) {
+                        next = anchoredPose(start, next, startPivotX, startPivotY)
+                    }
                     if(snapping && node==SelectionTransformNode.MOVE) {
                         val q=next.mesh ?: next.sourceCorners()
                         fun snap(values: List<Float>, targets: List<Float>, threshold: Float): Pair<Float,Float>? =
@@ -104,6 +152,11 @@ internal class SelectionCanvasTransform(
                         next=next.withPose(next.copy(centerX=next.centerX+(sx?.first ?: 0f),centerY=next.centerY+(sy?.first ?: 0f)))
                     }
                     replace(next)
+                    if (node == SelectionTransformNode.MOVE) {
+                        pivotX = startPivotX + next.centerX - start.centerX
+                        pivotY = startPivotY + next.centerY - start.centerY
+                        pivotChanged()
+                    }
                 }
                 if (event.actionMasked == MotionEvent.ACTION_UP) dragging = false
             }
@@ -112,8 +165,8 @@ internal class SelectionCanvasTransform(
         return true
     }
 
-    private fun handles(w: Int, h: Int, zoom: Float) = SelectionTransformNode.entries.filter { it != SelectionTransformNode.MOVE && (mode != SelectionTransformMode.DISTORT || it != SelectionTransformNode.ROTATE) }.map { node ->
-        val point = if (mode == SelectionTransformMode.DISTORT) {
+    private fun handles(w: Int, h: Int, zoom: Float) = SelectionTransformNode.entries.filter { it != SelectionTransformNode.MOVE && (mode !in setOf(SelectionTransformMode.DISTORT, SelectionTransformMode.SKEW) || it != SelectionTransformNode.ROTATE) }.map { node ->
+        val point = if (mode == SelectionTransformMode.DISTORT || mode == SelectionTransformMode.SKEW) {
             val q = pose.sourceCorners()
             val index = SelectionTransformNode.entries.indexOf(node)
             if (index % 2 == 0) q[index/2] else {
@@ -161,7 +214,7 @@ internal class SelectionCanvasTransform(
         path.close()
         paint.style = Paint.Style.STROKE; paint.strokeWidth = 1.5f * scale; paint.color = Color.rgb(57, 103, 85)
         canvas.drawPath(path, paint)
-        if (mode != SelectionTransformMode.DISTORT) {
+        if (mode != SelectionTransformMode.DISTORT && mode != SelectionTransformMode.SKEW) {
             val top = points[1].second; val rotate = points.last().second
             canvas.drawLine(top.first, top.second, rotate.first, rotate.second, paint)
         }
@@ -171,5 +224,10 @@ internal class SelectionCanvasTransform(
             paint.style = Paint.Style.STROKE; paint.color = Color.rgb(57, 103, 85)
             canvas.drawCircle(point.first, point.second, 6f * scale, paint)
         }
+        val px = pivotX * w / rasterWidth; val py = pivotY * h / rasterHeight
+        paint.color = Color.rgb(238, 170, 30); paint.style = Paint.Style.STROKE; paint.strokeWidth = 2f * scale
+        canvas.drawCircle(px, py, 8f * scale, paint)
+        canvas.drawLine(px - 12f * scale, py, px + 12f * scale, py, paint)
+        canvas.drawLine(px, py - 12f * scale, px, py + 12f * scale, paint)
     }
 }

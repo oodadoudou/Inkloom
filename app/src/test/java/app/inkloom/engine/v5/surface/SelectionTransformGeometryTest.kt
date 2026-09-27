@@ -5,6 +5,21 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SelectionTransformGeometryTest {
+    @Test fun skewKeepsParallelogramAndDoesNotBecomeFreeDistortion() {
+        val start = SelectionTransformPose(50f, 50f, 40f, 20f)
+        val skewed = requireNotNull(start.skew(SelectionTransformNode.TOP, 10f, 0f))
+        val q = skewed.sourceCorners()
+        assertEquals(40f, q[0].second, 0f)
+        assertEquals(40f, q[1].second, 0f)
+        assertEquals(60f, q[2].second, 0f)
+        assertEquals(60f, q[3].second, 0f)
+        assertEquals(10f, q[0].first - 30f, 0f)
+        assertEquals(10f, q[1].first - 70f, 0f)
+        assertEquals(30f, q[3].first, 0f)
+        val inverse = skewed.rasterMappingFrom(start)
+        assertNotNull(inverse)
+    }
+
     @Test fun everyResizeNodeKeepsOppositeAnchorAcrossRotationsAndModes() {
         for (angle in listOf(0f, 33f, 90f, 217f)) for (mode in listOf(SelectionTransformMode.FREEFORM, SelectionTransformMode.UNIFORM)) {
             val start = SelectionTransformPose(500f, 300f, 180f, 95f, angle)

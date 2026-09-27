@@ -36,7 +36,8 @@ internal fun SelectionTransformToolbar(
     onMode: (SelectionTransformMode) -> Unit,
     interpolation: app.inkloom.engine.v5.tools.SelectionInterpolation,
     onInterpolation: (app.inkloom.engine.v5.tools.SelectionInterpolation) -> Unit,
-    onDimensions: (Float, Float, Float) -> Unit,
+    onDimensions: (Float, Float, Float, Float, Float) -> Unit,
+    onResetPivot: () -> Unit,
     onMeshDensity: (Int, Int) -> Unit,
     onClearPuppetPins: () -> Unit,
     onReference: (Boolean) -> Unit,
@@ -57,13 +58,13 @@ internal fun SelectionTransformToolbar(
                 SelectionTransformMode.entries.forEach { mode ->
                     TextButton(onClick = { onMode(mode) }, modifier = Modifier.widthIn(min = 72.dp).height(48.dp),
                         colors = ButtonDefaults.textButtonColors(containerColor = if (state.mode == mode) app.inkloom.ui.theme.SageContainer else Color.Transparent, contentColor = if (state.mode == mode) app.inkloom.ui.theme.Ink else app.inkloom.ui.theme.MutedInk)) {
-                        Text(when (mode) { SelectionTransformMode.FREEFORM -> t("Freeform", "自由变换"); SelectionTransformMode.UNIFORM -> t("Uniform", "等比变换"); SelectionTransformMode.DISTORT -> t("Distort", "扭曲"); SelectionTransformMode.WARP -> t("Warp", "网格变形"); SelectionTransformMode.PUPPET -> t("Puppet", "操控变形") }, fontSize = 12.sp)
+                        Text(when (mode) { SelectionTransformMode.FREEFORM -> t("Freeform", "自由变换"); SelectionTransformMode.UNIFORM -> t("Uniform", "等比变换"); SelectionTransformMode.DISTORT -> t("Distort", "扭曲"); SelectionTransformMode.SKEW -> t("Skew", "歪斜"); SelectionTransformMode.WARP -> t("Warp", "网格变形"); SelectionTransformMode.PUPPET -> t("Puppet", "操控变形") }, fontSize = 12.sp)
                     }
                 }
                 IconButton(onClick = { onFinish(false) }) { Icon(Icons.Outlined.Close, t("Cancel transform", "取消变换")) }
                 IconButton(onClick = { onFinish(true) }) { Icon(Icons.Outlined.Check, t("Apply transform", "应用变换")) }
             }
-            if(state.mixed) Text(t("Text, images and other objects remain editable. Distort and mesh are available for pixel-only selections.", "文字、图片和其他对象会保持可编辑；扭曲和网格仅用于纯像素选区。"),fontSize=11.sp,color=app.inkloom.ui.theme.MutedInk)
+            if(state.mixed) Text(t("Text and images remain editable. Skew, distort and mesh require pixel-only selections.", "文字和图片保持可编辑；歪斜、扭曲和网格仅用于纯像素选区。"),fontSize=11.sp,color=app.inkloom.ui.theme.MutedInk)
             HorizontalDivider(Modifier.widthIn(max = 620.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
             if (state.mode == SelectionTransformMode.WARP || state.mode == SelectionTransformMode.PUPPET) Box {
@@ -155,14 +156,19 @@ internal fun SelectionTransformToolbar(
     }
     if (dimensionsOpen) {
         fun number(value: Float) = String.format(Locale.ROOT, "%.2f", value)
+        var x by remember { mutableStateOf(number(state.pivotX)) }
+        var y by remember { mutableStateOf(number(state.pivotY)) }
         var width by remember { mutableStateOf(number(state.pose.width)) }
         var height by remember { mutableStateOf(number(state.pose.height)) }
         var angle by remember { mutableStateOf(number(state.pose.angle)) }
         val ratio = remember { state.pose.width / state.pose.height }
         var linked by remember { mutableStateOf(state.mode == SelectionTransformMode.UNIFORM) }
+        val px = x.toFloatOrNull(); val py = y.toFloatOrNull()
         val w = width.toFloatOrNull(); val h = height.toFloatOrNull(); val a = angle.toFloatOrNull()
-        val valid = w != null && h != null && a != null && w.isFinite() && h.isFinite() && a.isFinite() && w in 1f..65536f && h in 1f..65536f
-        val submit = { if (valid) { onDimensions(w!!, h!!, a!!); dimensionsOpen = false } }
+        val valid = px != null && py != null && w != null && h != null && a != null &&
+            listOf(px, py, w, h, a).all(Float::isFinite) && px in -65536f..65536f && py in -65536f..65536f &&
+            w in 1f..65536f && h in 1f..65536f
+        val submit = { if (valid) { onDimensions(px!!, py!!, w!!, h!!, a!!); dimensionsOpen = false } }
         Dialog(onDismissRequest = { dimensionsOpen = false },
             properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
             Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp), contentAlignment = Alignment.Center) {
@@ -170,6 +176,14 @@ internal fun SelectionTransformToolbar(
                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(t("Transform dimensions", "变换尺寸"), style = MaterialTheme.typography.titleLarge)
                         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(t("Drag the crosshair on the canvas to move the reference point.", "拖动画布上的十字准星可移动变换基准点。"), fontSize = 11.sp)
+                            OutlinedTextField(x, { x = it }, label = { Text(t("Reference X (px)", "基准点 X（像素）")) },
+                                singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                            OutlinedTextField(y, { y = it }, label = { Text(t("Reference Y (px)", "基准点 Y（像素）")) },
+                                singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                            TextButton(onClick = { onResetPivot(); x = number(state.pose.centerX); y = number(state.pose.centerY) }) {
+                                Text(t("Reset reference point to center", "基准点回到中心"))
+                            }
                             OutlinedTextField(width, { value -> width = value; if (linked) value.toFloatOrNull()?.takeIf(Float::isFinite)?.let { height = number(it / ratio) } },
                                 label = { Text(t("Width (px)", "宽度（像素）")) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                             OutlinedTextField(height, { value -> height = value; if (linked) value.toFloatOrNull()?.takeIf(Float::isFinite)?.let { width = number(it * ratio) } },

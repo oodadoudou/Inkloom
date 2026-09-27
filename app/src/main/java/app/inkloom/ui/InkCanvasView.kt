@@ -462,7 +462,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var selectionCanvasTransform: SelectionCanvasTransform? = null
     internal var onSelectionTransformChanged: (SelectionTransformUiState?) -> Unit = {}
     internal val selectionTransformUiState: SelectionTransformUiState?
-        get() = selectionCanvasTransform?.let { SelectionTransformUiState(it.pose, it.mode, it.snapping, it.magnetics, it.snapDistance, mixedSelectionDrafts.isNotEmpty(), rasterSelectionTransformSessions.size.coerceAtLeast(1), alignmentReferenceActiveLayer) }
+        get() = selectionCanvasTransform?.let { SelectionTransformUiState(it.pose, it.mode, it.snapping, it.magnetics, it.snapDistance, mixedSelectionDrafts.isNotEmpty(), rasterSelectionTransformSessions.size.coerceAtLeast(1), alignmentReferenceActiveLayer, it.pivotX, it.pivotY) }
 
     private var selectionTransformCenterX = 0f
     private var selectionTransformCenterY = 0f
@@ -6847,7 +6847,8 @@ class InkCanvasView(context: Context) : View(context) {
                 onPaintCapabilityRejected("Unable to transform this selection: ${it.message.orEmpty()}")
             }
             onSelectionTransformChanged(selectionTransformUiState)
-        }, rejected = { onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "请勿交叉或重合变换角点" else "Keep the four transform corners convex and apart") })
+        }, rejected = { onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "请勿交叉或重合变换角点" else "Keep the four transform corners convex and apart") },
+            pivotChanged = { onSelectionTransformChanged(selectionTransformUiState); invalidate() })
         selectionCanvasTransform?.contentTargets = layerOrder.filter { it != activeLayerId }.flatMap { layerId ->
             var bounds: RectF? = null
             fun include(rect: RectF) { bounds?.union(rect) ?: run { bounds=rect } }
@@ -6875,12 +6876,13 @@ class InkCanvasView(context: Context) : View(context) {
     internal fun setSelectionTransformMode(mode: app.inkloom.engine.v5.tools.SelectionTransformMode) {
         if (mixedSelectionDrafts.isNotEmpty() && mode in setOf(
                 app.inkloom.engine.v5.tools.SelectionTransformMode.DISTORT,
+                app.inkloom.engine.v5.tools.SelectionTransformMode.SKEW,
                 app.inkloom.engine.v5.tools.SelectionTransformMode.WARP,
                 app.inkloom.engine.v5.tools.SelectionTransformMode.PUPPET,
             )) {
             onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
-                "文字和图片保持可编辑时支持自由、等比、旋转和翻转；网格与扭曲仅作用于像素选区"
-            else "Editable text and images support free, uniform, rotate and flip transforms; mesh and distort apply to pixel-only selections")
+                "文字和图片保持可编辑时支持自由、等比、旋转和翻转；歪斜、网格与扭曲仅作用于像素选区"
+            else "Editable text and images support free, uniform, rotate and flip transforms; skew, mesh and distort apply to pixel-only selections")
             return
         }
         selectionCanvasTransform?.mode = mode
@@ -6891,8 +6893,14 @@ class InkCanvasView(context: Context) : View(context) {
     internal fun setSelectionTransformDimensions(width: Float, height: Float, angle: Float) {
         if (!listOf(width, height, angle).all(Float::isFinite) || width < 1f || height < 1f) return
         val draft = selectionCanvasTransform ?: return
-        draft.replace(draft.pose.withPose(draft.pose.copy(width = width, height = height, angle = angle.mod(360f))))
+        draft.setGeometry(draft.pivotX, draft.pivotY, width, height, angle)
     }
+
+    internal fun setSelectionTransformGeometry(x: Float, y: Float, width: Float, height: Float, angle: Float) {
+        selectionCanvasTransform?.setGeometry(x, y, width, height, angle)
+    }
+
+    internal fun resetSelectionTransformPivot() { selectionCanvasTransform?.resetPivot() }
 
     internal fun setSelectionMeshDensity(columns: Int, rows: Int) {
         if (mixedSelectionDrafts.isNotEmpty()) return

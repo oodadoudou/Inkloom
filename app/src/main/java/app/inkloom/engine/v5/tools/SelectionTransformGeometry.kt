@@ -2,7 +2,7 @@ package app.inkloom.engine.v5.tools
 
 import kotlin.math.*
 
-enum class SelectionTransformMode { FREEFORM, UNIFORM, DISTORT, WARP, PUPPET }
+enum class SelectionTransformMode { FREEFORM, UNIFORM, DISTORT, SKEW, WARP, PUPPET }
 
 enum class SelectionAlignment { LEFT, HORIZONTAL_CENTER, RIGHT, TOP, VERTICAL_CENTER, BOTTOM }
 
@@ -161,9 +161,29 @@ data class SelectionTransformPose(
         return SelectionTransformPose((left+right)/2, (top+bottom)/2, right-left, bottom-top, corners=next)
     }
 
+    /** A constrained parallelogram shear, separate from arbitrary four-corner distortion. */
+    fun skew(node: SelectionTransformNode, dx: Float, dy: Float): SelectionTransformPose? {
+        if (node == SelectionTransformNode.MOVE || node == SelectionTransformNode.ROTATE) return this
+        val top = node in setOf(SelectionTransformNode.TOP_LEFT, SelectionTransformNode.TOP, SelectionTransformNode.TOP_RIGHT)
+        val bottom = node in setOf(SelectionTransformNode.BOTTOM_LEFT, SelectionTransformNode.BOTTOM, SelectionTransformNode.BOTTOM_RIGHT)
+        val left = node in setOf(SelectionTransformNode.TOP_LEFT, SelectionTransformNode.LEFT, SelectionTransformNode.BOTTOM_LEFT)
+        val right = node in setOf(SelectionTransformNode.TOP_RIGHT, SelectionTransformNode.RIGHT, SelectionTransformNode.BOTTOM_RIGHT)
+        val next = sourceCorners().mapIndexed { index, point ->
+            (point.first + if ((top && index in 0..1) || (bottom && index in 2..3)) dx else 0f) to
+                (point.second + if ((left && index in setOf(0, 3)) || (right && index in setOf(1, 2))) dy else 0f)
+        }
+        if (!SelectionProjectiveMapping.validCorners(next)) return null
+        val l = next.minOf { it.first }; val r = next.maxOf { it.first }
+        val t = next.minOf { it.second }; val b = next.maxOf { it.second }
+        return copy(centerX = (l + r) / 2f, centerY = (t + b) / 2f,
+            width = (r - l).coerceAtLeast(1f), height = (b - t).coerceAtLeast(1f),
+            angle = 0f, corners = next, mesh = null)
+    }
+
     fun drag(node: SelectionTransformNode, startX: Float, startY: Float, x: Float, y: Float,
              mode: SelectionTransformMode): SelectionTransformPose {
         if (mode == SelectionTransformMode.DISTORT) return distort(node, x-startX, y-startY) ?: this
+        if (mode == SelectionTransformMode.SKEW && node != SelectionTransformNode.MOVE) return skew(node, x-startX, y-startY) ?: this
         if (node == SelectionTransformNode.MOVE) return withPose(copy(centerX = centerX + x - startX, centerY = centerY + y - startY))
         if (node == SelectionTransformNode.ROTATE) {
             val delta = atan2(y - centerY, x - centerX) - atan2(startY - centerY, startX - centerX)
