@@ -242,7 +242,7 @@ class LayerTargetWindowTest {
     }
 
     private fun tapVisibility(name: String) {
-        val node = compose.onNode(hasContentDescription("Toggle layer visibility") and
+        val node = compose.onNode(hasContentDescription("Toggle visibility; long press to solo") and
             hasAnyAncestor(hasContentDescription("Select layer $name")), useUnmergedTree = true).fetchSemanticsNode()
         tapAt(node.boundsInWindow.center + node.positionOnScreen - node.positionInWindow)
         compose.waitForIdle()
