@@ -18,6 +18,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.settings.ColorSetLibrary
@@ -439,6 +440,9 @@ class ColorSetWindowTest {
     }
 
     private fun tap(label: String) {
+        if (label in setOf("Wheel", "Palettes", "Mix", "Nearby")) {
+            compose.onNodeWithContentDescription("Drag ${label.lowercase()} panel").performScrollTo()
+        }
         val rectangle = bounds(label)
         tapAt(Offset(rectangle.exactCenterX(), rectangle.exactCenterY()))
         compose.waitForIdle()

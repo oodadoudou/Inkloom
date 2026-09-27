@@ -14,6 +14,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.ui.InkCanvasView
@@ -675,6 +676,7 @@ class ColorWindowInputContractTest {
     }
 
     private fun tap(node: String) {
+        if (node == "Nearby") compose.onNodeWithContentDescription("Drag nearby panel").performScrollTo()
         tapAt(center(node))
         compose.waitForIdle()
     }
