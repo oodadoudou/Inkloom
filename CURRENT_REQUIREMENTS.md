@@ -1,6 +1,6 @@
 # Inkloom 当前需求与待排优先级
 
-核对日期：2026-09-27。最新交付为 **0.217.0 Debug**，源码与 APK 哈希见 [交付证据](dist/Inkloom-0.217.0-1c8b3f65-debug.json)。JVM 953 项（0 失败、8 跳过）、Android 15 全量 756 项（0 失败）、lint、v2 签名、安装及冷启动通过；Drive Desktop 本地副本 SHA-256 已校验。MovinkPad 实机和 Drive 云端下载仍未核验。
+核对日期：2026-09-27。最新交付为 **0.218.0 Debug**，源码与 APK 哈希见 [交付证据](dist/Inkloom-0.218.0-44ca8100-debug.json)。JVM 955 项（0 失败、8 跳过）、Android 15 全量 758 项（0 失败）、lint、v2 签名、安装及冷启动通过；Drive Desktop 本地副本 SHA-256 已校验。MovinkPad 实机和 Drive 云端下载仍未核验。
 
 **本文件是版本交付与宏观需求状态的入口。** 下表顺序不是开发顺序。逐项完成情况见 [REQUESTED_FEATURE_CATALOG.md](REQUESTED_FEATURE_CATALOG.md) 的可勾选目录；宏观项目完成不等于其 CSP 扩展细项全部完成。旧版本计划、旧额度阈值和分支上的未交付代码均不作为当前依据。
 
