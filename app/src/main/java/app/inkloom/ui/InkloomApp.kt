@@ -2151,6 +2151,9 @@ private fun EditorScreen(
         })
     }
     var layersOpen by remember { mutableStateOf(settings.showLayerPanel) }
+    var layerPickMode by remember(selectedPage.id) { mutableStateOf(false) }
+    var layerPickCandidates by remember(selectedPage.id) { mutableStateOf<List<String>>(emptyList()) }
+    var layerPickPreviewId by remember(selectedPage.id) { mutableStateOf<String?>(null) }
     LaunchedEffect(settings.showLayerPanel) { layersOpen = settings.showLayerPanel }
     LaunchedEffect(layersOpen) { panelState.show(EditorPanel.LAYERS, layersOpen) }
     fun syncCanvasInput(prepareAssets: Boolean = false) {
@@ -2921,6 +2924,17 @@ private fun EditorScreen(
                     onSelectionTransferLayerChosen = { activeLayerId = it; canvasView?.activeLayerId = it },
                     modifier = Modifier.sizeIn(maxWidth = toolbarAreaWidth * .88f, maxHeight = toolbarAreaHeight * .88f).aspectRatio(PageCropTransform.visibleWidth(selectedPage) / PageCropTransform.visibleHeight(selectedPage).coerceAtLeast(1f)),
                     tool = tool,
+                    layerPickMode = layerPickMode,
+                    onLayerPickCandidates = { candidates ->
+                        layerPickMode = false
+                        layerPickPreviewId = null
+                        when (candidates.size) {
+                            0 -> Toast.makeText(context, settings.language.text("No visible layer at this point", "此处没有可见图层"), Toast.LENGTH_SHORT).show()
+                            1 -> selectLayerTarget(candidates.first())
+                            else -> layerPickCandidates = candidates
+                        }
+                    },
+                    onLayerPickPreview = { layerPickPreviewId = it },
                     onView = { view ->
                         canvasView = view
                         view.onSelectionTransformChanged = { selectionTransformState = it }
@@ -3707,6 +3721,30 @@ private fun EditorScreen(
                     },
                     onDismiss = { savedSelectionsOpen = false },
                 )
+                if (layerPickMode) Surface(
+                    Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
+                    shape = RoundedCornerShape(12.dp), color = Paper, shadowElevation = 3.dp,
+                ) {
+                    val hovered = selectedPage.layers.firstOrNull { it.id == layerPickPreviewId }
+                    Text(
+                        hovered?.let { tr("Pick layer: ", "点取图层：") + it.name }
+                            ?: tr("Tap visible artwork to choose its layer", "点击可见画面选择所属图层"),
+                        Modifier.padding(horizontal = 14.dp, vertical = 8.dp), color = Ink,
+                    )
+                }
+                if (layerPickCandidates.isNotEmpty()) AlertDialog(
+                    onDismissRequest = { layerPickCandidates = emptyList() },
+                    title = { Text(tr("Choose layer", "选择图层")) },
+                    text = { Column { layerPickCandidates.forEach { id ->
+                        selectedPage.layers.firstOrNull { it.id == id }?.let { layer ->
+                            TextButton(onClick = { selectLayerTarget(id); layerPickCandidates = emptyList() }) {
+                                Text(layer.name + if (LayerHierarchy.effectiveLocked(selectedPage.layers, layer))
+                                    tr(" · locked", " · 已锁定") else "")
+                            }
+                        }
+                    } } },
+                    confirmButton = { TextButton(onClick = { layerPickCandidates = emptyList() }) { Text(tr("Cancel", "取消")) } },
+                )
                 if (tool == EditorTool.SELECT && imageCanvasTransform == null && selectionTransformState == null) SelectionStudioPanel(
                     shape = settings.selectionShape, mode = settings.selectionMode, hasSelection = selectionActive,
                     launcherVisible = settings.selectionLauncherVisible,
@@ -3854,6 +3892,8 @@ private fun EditorScreen(
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onSolo = appearanceEditor::toggleSolo,
+                layerPickMode = layerPickMode,
+                onLayerPickMode = { layerPickMode = it; layerPickCandidates = emptyList(); layerPickPreviewId = null },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
                 onOpacity = appearanceEditor::handle,
                 onBlendMode = appearanceEditor::setBlendMode,
@@ -4806,7 +4846,7 @@ private inline fun <reified T : Enum<T>> enumOrDefault(name: String, fallback: T
     enumValues<T>().firstOrNull { it.name == name } ?: fallback
 
 @Composable
-private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerFilter: (String, String, RasterLayerFilterEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, onBeginQuickShapeEdit: () -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onBackKey: () -> Boolean, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, borrowPaintTipForEraser: Boolean, borrowPaintTipForSmudge: Boolean, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, transformLayerIds: Set<String>, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onSymmetryGuideChange: (SymmetryGuideState) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
+private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<String>) -> Unit, onLayerPickPreview: (String?) -> Unit, onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerFilter: (String, String, RasterLayerFilterEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, onBeginQuickShapeEdit: () -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onBackKey: () -> Boolean, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, borrowPaintTipForEraser: Boolean, borrowPaintTipForSmudge: Boolean, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, transformLayerIds: Set<String>, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onSymmetryGuideChange: (SymmetryGuideState) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val rasterRenderWidth = remember(renderedPage.width, renderedPage.height) {
         CanvasRasterResolution.forDimensions(renderedPage.width, renderedPage.height)
@@ -5179,6 +5219,9 @@ private fun PaperCanvas(onApplyLayerInsertion: (String, String, app.inkloom.docu
                 val view = host.canvasView
                 view.bindDocumentSelectionState(documentSelectionState)
                 view.tool = tool
+                view.layerPickMode = layerPickMode
+                view.onLayerPickCandidates = onLayerPickCandidates
+                view.onLayerPickPreview = onLayerPickPreview
                 view.forceNavigation = forceNavigation
                 view.rotateNavigation = rotateNavigation
                 view.externalViewportGestures = false
@@ -7034,6 +7077,7 @@ private fun LayerPanel(
     onRename: (String, String) -> Unit,
     onVisibility: (String) -> Unit,
     onSolo: (String) -> Unit,
+    layerPickMode: Boolean, onLayerPickMode: (Boolean) -> Unit,
     onLock: (String) -> Unit,
     onOpacity: (String, LayerOpacityAction) -> Unit,
     onBlendMode: (String, LayerBlendMode) -> Unit,
@@ -7075,6 +7119,7 @@ private fun LayerPanel(
             onRename = onRename,
             onVisibility = onVisibility,
             onSolo = onSolo,
+            layerPickMode = layerPickMode, onLayerPickMode = onLayerPickMode,
             onLock = onLock,
             onOpacity = onOpacity,
             onBlendMode = onBlendMode,
@@ -7132,6 +7177,7 @@ private fun PaintingLayerPanel(
     onRename: (String, String) -> Unit,
     onVisibility: (String) -> Unit,
     onSolo: (String) -> Unit,
+    layerPickMode: Boolean, onLayerPickMode: (Boolean) -> Unit,
     onLock: (String) -> Unit,
     onOpacity: (String, LayerOpacityAction) -> Unit,
     onBlendMode: (String, LayerBlendMode) -> Unit,
@@ -7222,6 +7268,9 @@ private fun PaintingLayerPanel(
                             )
                         }
                     }
+                }
+                IconButton(onClick = { onLayerPickMode(!layerPickMode) }, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Outlined.TouchApp, tr("Pick layer from canvas", "从画布点取图层"), tint = if (layerPickMode) Ink else MutedInk)
                 }
                 IconButton(onClick = { searchOpen = !searchOpen; if (!searchOpen) layerSearch = "" }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Search, tr("Search layers", "搜索图层"), tint = Ink) }
                 Box {

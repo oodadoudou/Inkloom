@@ -726,6 +726,45 @@ class InkCanvasView(context: Context) : View(context) {
             }
             field = value
         }
+    var layerPickMode: Boolean = false
+        set(value) {
+            field = value
+            if (!value && layerPickPreviewId != null) {
+                layerPickPreviewId = null
+                onLayerPickPreview(null)
+            }
+        }
+    var onLayerPickCandidates: (List<String>) -> Unit = {}
+    var onLayerPickPreview: (String?) -> Unit = {}
+    private var layerPickContact = false
+    private var layerPickPreviewId: String? = null
+
+    internal fun layerCandidatesAt(normalizedX: Float, normalizedY: Float): List<String> {
+        if (normalizedX !in 0f..1f || normalizedY !in 0f..1f) return emptyList()
+        return layerOrder.asReversed().filter { layerId ->
+            if ((layerOpacities[layerId] ?: 1f) <= 0f) return@filter false
+            val mask = layerMasks[layerId]
+            if (mask?.enabled == true) {
+                val surface = layerMaskSurfaces[layerId]
+                if (surface != null && surface.alphaAt(
+                        (normalizedX * surface.logicalWidth).toInt().coerceIn(0, surface.logicalWidth - 1),
+                        (normalizedY * surface.logicalHeight).toInt().coerceIn(0, surface.logicalHeight - 1),
+                    ) == 0) return@filter false
+            }
+            val raster = rasterLayerTileSurfaces[layerId]
+            val rasterHit = raster != null && (raster.pixelAt(
+                (normalizedX * raster.logicalWidth).toInt().coerceIn(0, raster.logicalWidth - 1),
+                (normalizedY * raster.logicalHeight).toInt().coerceIn(0, raster.logicalHeight - 1),
+            ) ushr 24) > 0
+            val elements = layerElementBitmaps[layerId]
+            fun bitmapHit(bitmap: Bitmap?): Boolean = bitmap != null && !bitmap.isRecycled &&
+                (bitmap.getPixel(
+                    (normalizedX * bitmap.width).toInt().coerceIn(0, bitmap.width - 1),
+                    (normalizedY * bitmap.height).toInt().coerceIn(0, bitmap.height - 1),
+                ) ushr 24) > 0
+            rasterHit || bitmapHit(elements?.base) || bitmapHit(elements?.additions)
+        }
+    }
     var layerOpacities: Map<String, Float> = emptyMap()
         set(value) {
             val normalized = value.mapValues { (_, opacity) -> opacity.coerceIn(0f, 1f) }
@@ -1593,6 +1632,12 @@ class InkCanvasView(context: Context) : View(context) {
     override fun onHoverEvent(event: MotionEvent): Boolean {
         val pointerIndex = event.stylusPointerIndex()
         if (pointerIndex < 0) return super.onHoverEvent(event)
+        if (layerPickMode) {
+            val next = if (event.actionMasked == MotionEvent.ACTION_HOVER_EXIT) null
+                else layerCandidatesAt(event.getX(pointerIndex) / width.coerceAtLeast(1), event.getY(pointerIndex) / height.coerceAtLeast(1)).firstOrNull()
+            if (next != layerPickPreviewId) { layerPickPreviewId = next; onLayerPickPreview(next) }
+            return true
+        }
         val toolType = event.getToolType(pointerIndex)
         val stylus = toolType == MotionEvent.TOOL_TYPE_STYLUS || toolType == MotionEvent.TOOL_TYPE_ERASER
         if (stylus) dispatchOrDeferStylusButtonTransitions(updateStylusButtonState(event.buttonState))
@@ -2306,6 +2351,22 @@ class InkCanvasView(context: Context) : View(context) {
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (selectionLayerTransferPending) return true
+        if (layerPickMode && event.pointerCount == 1) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { layerPickContact = true; return true }
+                MotionEvent.ACTION_UP -> if (layerPickContact) {
+                    layerPickContact = false
+                    onLayerPickCandidates(layerCandidatesAt(event.x / width.coerceAtLeast(1), event.y / height.coerceAtLeast(1)))
+                    return true
+                }
+                MotionEvent.ACTION_CANCEL -> { layerPickContact = false; return true }
+                MotionEvent.ACTION_MOVE -> if (layerPickContact) return true
+            }
+        }
+        if (layerPickMode && event.pointerCount > 1) {
+            layerPickContact = false
+            return false
+        }
         if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE)) return false
         val pointerIndex = event.stylusPointerIndex(activeStylusPointerId).takeIf { it >= 0 }
             ?: event.actionIndex.coerceIn(0, event.pointerCount - 1)
