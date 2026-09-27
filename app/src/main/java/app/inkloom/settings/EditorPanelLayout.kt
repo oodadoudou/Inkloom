@@ -56,6 +56,24 @@ data class PanelSlot(val node: PanelNode, val rect: PanelRect, val rootId: Strin
 
 /** Small immutable layout transactions: a panel has one owner, preview never edits the document. */
 object EditorPanelLayouts {
+    const val groupGripWidth = 30f
+
+    /** A title grip owns the complete window or the highest docked group without canvas. */
+    fun groupSourceId(layout: EditorPanelLayout, tabId: String): String? {
+        layout.floating.firstOrNull { find(it.node, tabId) != null }?.let { return it.node.id }
+        fun dockGroup(node: PanelNode): String? {
+            if (find(node, tabId) == null) return null
+            if (!containsCanvas(node)) return node.id
+            return (node as? PanelNode.Split)?.let { dockGroup(it.first) ?: dockGroup(it.second) }
+        }
+        return dockGroup(layout.dock)
+    }
+
+    fun intentionalDrag(panel: EditorPanel?, dx: Float, dy: Float): Boolean {
+        val minimum = if (panel == null) 16f else 22f
+        return dx * dx + dy * dy >= minimum * minimum
+    }
+
     fun compactThreshold(panel: EditorPanel): Float = when (panel) {
         EditorPanel.PAGES -> 144f
         // 56 dp categories + 24 dp splitter + a useful 112 dp brush preview.
@@ -74,7 +92,7 @@ object EditorPanelLayouts {
         else -> 60f
     }
     fun tabInsertionIndex(tabs: PanelNode.Tabs, pointerX: Float, panelX: Float, panelWidth: Float): Int {
-        var cursor = panelX + 22f
+        var cursor = panelX + groupGripWidth
         tabs.panels.forEachIndexed { index, panel ->
             val width = if (tabs.panels.size == 1) (panelWidth - 60f).coerceAtLeast(55f) else tabWidth(panel)
             if (pointerX < cursor + width / 2f) return index
@@ -83,7 +101,7 @@ object EditorPanelLayouts {
         return tabs.panels.size
     }
     fun tabInsertionX(tabs: PanelNode.Tabs, index: Int, panelX: Float, panelWidth: Float): Float =
-        panelX + 22f + tabs.panels.take(index.coerceIn(0, tabs.panels.size)).sumOf {
+        panelX + groupGripWidth + tabs.panels.take(index.coerceIn(0, tabs.panels.size)).sumOf {
             (if (tabs.panels.size == 1) (panelWidth - 60f).coerceAtLeast(55f) else tabWidth(it)).toDouble()
         }.toFloat()
 

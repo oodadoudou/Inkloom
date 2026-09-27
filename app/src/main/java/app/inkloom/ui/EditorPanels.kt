@@ -241,9 +241,9 @@ internal fun EditorPanels(
         fun begin(slot: PanelSlot, panel: EditorPanel?) {
             if (state.layout.locked) return
             dragFocus.requestFocus()
-            // A leaf inside a split floating root can be detached on its own. Only
-            // the root title moves the complete floating combination.
-            val sourceId=if(panel==null && slot.floating && slot.rootId==slot.node.id) slot.rootId else slot.node.id
+            // Every title grip belongs to its complete group; only an explicit
+            // per-tab grip may detach one leaf from that group.
+            val sourceId=if (panel == null) EditorPanelLayouts.groupSourceId(state.layout,slot.node.id) ?: return else slot.node.id
             val rect=currentSlots.firstOrNull { it.node.id==sourceId }?.rect ?: slot.rect
             drag=PanelDrag(gestureOrigin[0] ?: state.layout,sourceId,panel,rect,gestureDown[0].x/density,gestureDown[0].y/density)
             if (panel != null) state.layout = EditorPanelLayouts.select(state.layout, panel)
@@ -276,6 +276,7 @@ internal fun EditorPanels(
         }
         fun finish() {
             val d=drag ?: return
+            if (!EditorPanelLayouts.intentionalDrag(d.panel,d.dx,d.dy)) { cancel(); return }
             val rect=d.start.moved(d.dx,d.dy).bounded(w,h)
             state.commit(EditorPanelLayouts.move(d.original,d.sourceId,d.panel,d.target,rect))
             drag=null; releaseInput()
@@ -299,8 +300,9 @@ internal fun EditorPanels(
                 try {
                     while(true) {
                         val event=awaitPointerEvent(PointerEventPass.Final)
-                        if (event.changes.count { it.pressed } > 1 && resize != null) {
-                            cancelResize(); break
+                        if (event.changes.count { it.pressed } > 1 && (resize != null || drag != null)) {
+                            if (resize != null) cancelResize() else cancel()
+                            break
                         }
                         val change=event.changes.firstOrNull { it.id==down.id } ?: break
                         if(resize==null && drag==null && perimeterCandidate!=null && change.pressed) {
@@ -357,10 +359,13 @@ internal fun EditorPanels(
                         awaitEachGesture { awaitFirstDown(requireUnconsumed=false,pass=PointerEventPass.Initial);state.raise(slot.rootId,tabs.id) }
                     }) {
                     Row(Modifier.fillMaxWidth().height(32.dp).background(Paper),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.DragIndicator,language.text("Move panel group","移动面板组合"),
-                            Modifier.size(22.dp).pointerInput(tabs.id,slot.rootId) {
-                                detectDragGestures(onDragStart={ begin(currentSlot,null) },onDragEnd={ finish() },onDragCancel={ cancel() }) { change,delta->change.consume() }
-                            }, tint=MutedInk)
+                        Box(Modifier.width(EditorPanelLayouts.groupGripWidth.dp).fillMaxHeight()
+                            .semantics { contentDescription=language.text("Move panel group","移动面板组合") }
+                            .pointerInput(tabs.id,slot.rootId) {
+                                detectDragGestures(onDragStart={ begin(currentSlot,null) },onDragEnd={ finish() },onDragCancel={ cancel() }) { change,_ -> change.consume() }
+                            },contentAlignment=androidx.compose.ui.Alignment.Center) {
+                            Icon(Icons.Outlined.DragIndicator,null,Modifier.size(17.dp),tint=MutedInk)
+                        }
                         Row(Modifier.weight(1f).horizontalScroll(tabScroll)) {
                             tabs.panels.forEachIndexed { index,panel ->
                                 Box(Modifier
@@ -368,19 +373,17 @@ internal fun EditorPanels(
                                     .fillMaxHeight().graphicsLayer { alpha=if(individual && panel==d?.panel) 0f else 1f }.background(if(panel==active) SageContainer else Color.Transparent)
                                     .semantics { contentDescription=language.text("Drag ${title(panel).lowercase()} panel","拖动${title(panel)}面板") }
                                     .clickable { state.commit(EditorPanelLayouts.select(state.layout,panel)) }
-                                    .then(if(tabs.panels.size == 1) Modifier.pointerInput(tabs.id,panel) {
-                                        detectDragGestures(onDragStart={ begin(currentSlot,panel) },onDragEnd={ finish() },onDragCancel={ cancel() }) { change,_ -> change.consume() }
-                                    } else Modifier)
                                     .padding(horizontal=if(tabs.panels.size > 1) 2.dp else 7.dp), contentAlignment=androidx.compose.ui.Alignment.CenterStart) {
                                     Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                        if(tabs.panels.size > 1 && !layout.locked) Icon(Icons.Outlined.DragIndicator,
+                                        if(!layout.locked) Icon(Icons.Outlined.DragIndicator,
                                             language.text("Move ${title(panel).lowercase()} tab","移动${title(panel)}标签"),
                                             Modifier.size(18.dp).pointerInput(tabs.id,panel) {
                                                 // Only this explicit grip may detach a tab. The label area remains
                                                 // owned by horizontalScroll even during a long swipe.
                                                 detectDragGestures(onDragStart={ begin(currentSlot,panel) },onDragEnd={ finish() },onDragCancel={ cancel() }) { change,_ -> change.consume() }
                                             },tint=MutedInk)
-                                        Text(title(panel),fontSize=11.sp,lineHeight=14.sp,color=Ink,maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                        Text(title(panel),fontSize=11.sp,lineHeight=14.sp,color=Ink,maxLines=1,
+                                            overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                     }
                                 }
                             }

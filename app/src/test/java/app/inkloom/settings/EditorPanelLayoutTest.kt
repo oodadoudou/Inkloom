@@ -58,11 +58,47 @@ class EditorPanelLayoutTest {
         val tabs = PanelNode.Tabs("tools", listOf(EditorPanel.BRUSHES, EditorPanel.SUBTOOLS, EditorPanel.PROPERTIES))
         val secondStart = EditorPanelLayouts.tabInsertionX(tabs, 1, 100f, 330f)
         val thirdStart = EditorPanelLayouts.tabInsertionX(tabs, 2, 100f, 330f)
-        assertEquals(188f, secondStart)
-        assertEquals(266f, thirdStart)
+        assertEquals(196f, secondStart)
+        assertEquals(274f, thirdStart)
         assertEquals(1, EditorPanelLayouts.tabInsertionIndex(tabs, secondStart + 20f, 100f, 330f))
         assertEquals(2, EditorPanelLayouts.tabInsertionIndex(tabs, thirdStart + 20f, 100f, 330f))
         assertEquals(3, EditorPanelLayouts.tabInsertionIndex(tabs, 360f, 100f, 330f))
+    }
+
+    @Test fun titleGripChoosesCompleteFloatingOrDockedGroupButTabGripKeepsItsLeaf() {
+        val floatingStack = EditorPanelLayouts.move(initial, "layers", null,
+            PanelDropTarget("brushes", PanelEdge.BOTTOM), rect)
+        val floatingRoot = floatingStack.floating.first { EditorPanel.LAYERS in EditorPanelLayouts.members(it.node) }
+        assertEquals(floatingRoot.node.id, EditorPanelLayouts.groupSourceId(floatingStack, "layers"))
+        assertEquals(floatingRoot.node.id, EditorPanelLayouts.groupSourceId(floatingStack, "brushes"))
+        val hiddenChild = floatingStack.copy(open = floatingStack.open - EditorPanel.LAYERS - EditorPanel.PROPERTIES)
+        assertEquals(floatingRoot.node.id, EditorPanelLayouts.groupSourceId(hiddenChild, "brushes"))
+        assertEquals("brushes", EditorPanelLayouts.slots(hiddenChild, 1000f, 800f)
+            .first { it.floating && it.rootId == floatingRoot.node.id }.node.id)
+        val movedStack = EditorPanelLayouts.move(floatingStack, floatingRoot.node.id, null, null, rect.moved(40f, 50f))
+        assertEquals(rect.moved(40f, 50f), movedStack.floating.last().rect)
+        assertEquals(EditorPanelLayouts.members(floatingRoot.node), EditorPanelLayouts.members(movedStack.floating.last().node))
+        valid(movedStack)
+
+        val docked = EditorPanelLayouts.move(initial, "layers", null,
+            PanelDropTarget("canvas", PanelEdge.RIGHT), rect)
+        val dockedStack = EditorPanelLayouts.move(docked, "pages", null,
+            PanelDropTarget("layers", PanelEdge.BOTTOM), rect)
+        val dockedGroupId = EditorPanelLayouts.groupSourceId(dockedStack, "layers")
+        assertNotNull(dockedGroupId)
+        assertEquals(dockedGroupId, EditorPanelLayouts.groupSourceId(dockedStack, "pages"))
+        assertEquals(setOf(EditorPanel.LAYERS, EditorPanel.PROPERTIES, EditorPanel.PAGES),
+            EditorPanelLayouts.members(EditorPanelLayouts.node(dockedStack, dockedGroupId!!)!!).toSet())
+        assertFalse(EditorPanelLayouts.containsCanvas(EditorPanelLayouts.node(dockedStack, dockedGroupId)!!))
+        assertEquals("colors", EditorPanelLayouts.groupSourceId(dockedStack, "colors"))
+        assertNull(EditorPanelLayouts.groupSourceId(dockedStack, "missing"))
+    }
+
+    @Test fun slightGestureDoesNotCommitAGroupOrIndividualTabMove() {
+        assertFalse(EditorPanelLayouts.intentionalDrag(null, 15f, 0f))
+        assertTrue(EditorPanelLayouts.intentionalDrag(null, 16f, 0f))
+        assertFalse(EditorPanelLayouts.intentionalDrag(EditorPanel.LAYERS, 20f, 8f))
+        assertTrue(EditorPanelLayouts.intentionalDrag(EditorPanel.LAYERS, 22f, 0f))
     }
 
     @Test fun panelContentCollapsesBeforeItCanBlockAUserResize() {

@@ -84,11 +84,93 @@ class EditorPanelsWindowTest {
         assertEquals(EditorPanel.entries.size,all.size);assertEquals(EditorPanel.entries.size,all.toSet().size)
         compose.runOnUiThread { state.commit(state.layout) }
         assertEquals(state.layout,EditorPanelState(compose.activity,AppSettings()).layout)
-        val brush = point("Drag brushes panel")
-        drag(brush, Offset(5f, brush.y + 100f))
-        assertTrue(EditorPanel.BRUSHES in EditorPanelLayouts.members(state.layout.dock))
+        val detachedBrushId = state.layout.floating.last().node.id
+        val brush = point(hasContentDescription("Move panel group") and
+            hasAnyAncestor(hasTestTag("editor-panel-$detachedBrushId")))
+        drag(brush, Offset(5f, brush.y + 100f), holdMillis = 0)
+        assertTrue("Brush group should dock from $brush; layout=${state.layout}",
+            EditorPanel.BRUSHES in EditorPanelLayouts.members(state.layout.dock))
         compose.onAllNodesWithText("Body BRUSHES").assertCountEquals(1)
         instrumentation.uiAutomation.executeShellCommand("screencap -p /data/local/tmp/editor-panels-window.png").close()
+    }
+
+    @Test fun stackedWindowTitleMovesTheWholeGroupAndOnlyAnExplicitTabGripDetaches() {
+        lateinit var state: EditorPanelState
+        var start = EditorPanelLayout(open = EditorPanel.entries.toSet())
+        start = start.copy(floating = start.floating.map { root -> root.copy(rect = when (root.node.id) {
+            "brushes" -> PanelRect(240f, 100f, 310f, 420f)
+            "layers" -> PanelRect(600f, 100f, 280f, 340f)
+            "colors" -> PanelRect(620f, 470f, 270f, 280f)
+            else -> PanelRect(16f, 80f, 180f, 350f)
+        }) })
+        start = EditorPanelLayouts.move(start, "layers", null,
+            PanelDropTarget("brushes", PanelEdge.BOTTOM), PanelRect(600f, 100f, 280f, 340f))
+        compose.runOnUiThread {
+            state = EditorPanelState(compose.activity, AppSettings()); state.layout = start
+            compose.activity.setContent { MaterialTheme { ResizeHost(state) } }
+        }
+        compose.waitForIdle()
+        val density = compose.activity.resources.displayMetrics.density
+        val rootBefore = state.layout.floating.first { EditorPanel.LAYERS in EditorPanelLayouts.members(it.node) }
+        val members = EditorPanelLayouts.members(rootBefore.node)
+        val groupGrip = point(hasContentDescription("Move panel group") and
+            hasAnyAncestor(hasTestTag("editor-panel-layers")))
+        drag(groupGrip, groupGrip + Offset(68f * density, 48f * density), holdMillis = 0)
+        val movedRoot = state.layout.floating.first { EditorPanel.LAYERS in EditorPanelLayouts.members(it.node) }
+        assertEquals(members, EditorPanelLayouts.members(movedRoot.node))
+        assertEquals(rootBefore.rect.x + 68f, movedRoot.rect.x, 3f)
+        assertEquals(rootBefore.rect.y + 48f, movedRoot.rect.y, 3f)
+        assertEquals(rootBefore.node.id, movedRoot.node.id)
+
+        val beforeSlip = state.layout
+        val tabGrip = point("Move layers tab")
+        drag(tabGrip, tabGrip + Offset(12f * density, 0f), holdMillis = 0)
+        assertEquals("A short accidental tab gesture must not alter the saved layout", beforeSlip, state.layout)
+
+        val label = point("Drag layers panel") + Offset(9f * density, 0f)
+        drag(label, label + Offset(56f * density, 0f), holdMillis = 0)
+        assertEquals("A tab label swipe must not detach its panel", beforeSlip, state.layout)
+
+        val deliberate = point("Move layers tab")
+        drag(deliberate, deliberate + Offset(150f * density, 145f * density), holdMillis = 0)
+        val detached = state.layout.floating.last()
+        assertEquals(listOf(EditorPanel.LAYERS), EditorPanelLayouts.members(detached.node))
+        assertEquals(members.toSet() - EditorPanel.LAYERS,
+            EditorPanelLayouts.members(state.layout.floating.first { EditorPanel.BRUSHES in EditorPanelLayouts.members(it.node) }.node).toSet())
+        val all = EditorPanelLayouts.members(state.layout.dock) + state.layout.floating.flatMap { EditorPanelLayouts.members(it.node) }
+        assertEquals(EditorPanel.entries.size, all.size)
+        assertEquals(EditorPanel.entries.toSet(), all.toSet())
+    }
+
+    @Test fun dockedStackTitleUndocksTheWholeGroupAndCancelPreservesItsTree() {
+        lateinit var state: EditorPanelState
+        var start = EditorPanelLayout(open = EditorPanel.entries.toSet())
+        start = EditorPanelLayouts.move(start, "layers", null,
+            PanelDropTarget("canvas", PanelEdge.RIGHT), PanelRect(0f, 0f, 280f, 450f))
+        start = EditorPanelLayouts.move(start, "pages", null,
+            PanelDropTarget("layers", PanelEdge.BOTTOM), PanelRect(0f, 0f, 180f, 350f))
+        start = start.copy(floating = start.floating.map { root -> root.copy(rect =
+            if (EditorPanel.BRUSHES in EditorPanelLayouts.members(root.node)) PanelRect(20f, 40f, 280f, 300f)
+            else PanelRect(320f, 40f, 280f, 300f)) })
+        compose.runOnUiThread {
+            state = EditorPanelState(compose.activity, AppSettings()); state.layout = start
+            compose.activity.setContent { MaterialTheme { ResizeHost(state) } }
+        }
+        compose.waitForIdle()
+        val density = compose.activity.resources.displayMetrics.density
+        val title = point(hasContentDescription("Move panel group") and
+            hasAnyAncestor(hasTestTag("editor-panel-pages")))
+        drag(title, title + Offset(-210f * density, 75f * density), cancel = true, holdMillis = 0)
+        assertEquals(start, state.layout)
+        val grip = point(hasContentDescription("Move panel group") and
+            hasAnyAncestor(hasTestTag("editor-panel-pages")))
+        drag(grip, grip + Offset(-210f * density, 75f * density), holdMillis = 0)
+        val detached = state.layout.floating.last()
+        assertEquals(setOf(EditorPanel.PAGES, EditorPanel.LAYERS, EditorPanel.PROPERTIES),
+            EditorPanelLayouts.members(detached.node).toSet())
+        assertFalse(EditorPanel.PAGES in EditorPanelLayouts.members(state.layout.dock))
+        assertFalse(EditorPanel.LAYERS in EditorPanelLayouts.members(state.layout.dock))
+        assertTrue(EditorPanelLayouts.isValid(state.layout))
     }
     @Test fun floatingPanelsResizeAllEdgesAndCornersWithoutDroppingMotion() {
         lateinit var state: EditorPanelState
@@ -207,10 +289,11 @@ class EditorPanelsWindowTest {
             val c = point("Resize layers panel · $cross edge")
             drag(c, c + if(horizontal) Offset(0f, 40f * density) else Offset(40f * density, 0f))
             assertEquals("$edge expand again", 40f, if(horizontal) rect().height-shortened.height else rect().width-shortened.width, 2f)
-            val title = point("Drag layers panel")
+            val title = point(hasContentDescription("Move panel group") and
+                hasAnyAncestor(hasTestTag("editor-panel-layers")))
             val host = compose.onNodeWithTag("resize-host").fetchSemanticsNode()
             val center = host.boundsInWindow.center + host.positionOnScreen - host.positionInWindow
-            drag(title, center)
+            drag(title, center, holdMillis = 0)
             assertFalse("$edge title must still undock instead of resizing", EditorPanel.LAYERS in EditorPanelLayouts.members(state.layout.dock))
         }
     }
@@ -285,6 +368,10 @@ class EditorPanelsWindowTest {
 
     private fun point(label:String):Offset {
         val node=compose.onNodeWithContentDescription(label).assertIsDisplayed().fetchSemanticsNode()
+        return node.boundsInWindow.center+node.positionOnScreen-node.positionInWindow
+    }
+    private fun point(matcher: SemanticsMatcher): Offset {
+        val node=compose.onNode(matcher).assertIsDisplayed().fetchSemanticsNode()
         return node.boundsInWindow.center+node.positionOnScreen-node.positionInWindow
     }
     private fun tap(point:Offset) { val time=SystemClock.uptimeMillis();event(0,point,time);event(1,point,time);compose.waitForIdle() }
