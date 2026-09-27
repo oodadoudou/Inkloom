@@ -40,6 +40,8 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import java.util.UUID
 
+internal const val MAX_NOTEBOOK_PAGES = 20_000
+
 class DocumentAssetService(private val context: Context) {
     private val directory = File(context.filesDir, "document-assets").apply { mkdirs() }
     private val pixelTileDirectory = File(directory, "pixel-tiles")
@@ -56,7 +58,7 @@ class DocumentAssetService(private val context: Context) {
             val renderer = PdfRenderer(descriptor)
             try {
                 val count = renderer.pageCount
-                require(count in 1..MAX_IMPORT_PDF_PAGES) { "PDF has $count pages; the supported limit is $MAX_IMPORT_PDF_PAGES" }
+                require(count in 1..MAX_NOTEBOOK_PAGES) { "PDF has $count pages; the supported limit is $MAX_NOTEBOOK_PAGES" }
                 val pageIds = List(count) { UUID.randomUUID().toString() }
                 val destinationPages = if (indexText) pageIds.mapIndexed { index, id ->
                     checkCancelled()
@@ -148,6 +150,31 @@ class DocumentAssetService(private val context: Context) {
         val asset = copyAsset(uri, title.substringAfterLast('.', "image"))
         val (width, height) = ImagePaperRenderer.dimensions(asset)
         return InkDocument(title = title.substringBeforeLast('.').ifBlank { "Imported Image" }, pages = listOf(InkPage(width = width.toFloat(), height = height.toFloat(), background = PageBackground.Image(asset.absolutePath))))
+    }
+
+    /** Prepares new full pages for an existing notebook without publishing a partial import. */
+    fun importAdditionalPages(
+        uri: Uri,
+        displayName: String,
+        onProgress: (Int, Int) -> Unit = { _, _ -> },
+        checkCancelled: () -> Unit = {},
+    ): List<InkPage> {
+        val mime = context.contentResolver.getType(uri).orEmpty().lowercase()
+        val name = displayName.trim().take(120).ifBlank { "Imported file" }
+        val source = when {
+            mime == "application/pdf" || name.endsWith(".pdf", ignoreCase = true) ->
+                importPdf(uri, name, indexText = true, onProgress = onProgress, checkCancelled = checkCancelled)
+            mime.startsWith("image/") || name.substringAfterLast('.', "").lowercase() in setOf("png", "jpg", "jpeg", "webp", "heic", "heif", "bmp", "gif") -> {
+                checkCancelled()
+                importImage(uri, name).also { onProgress(1, 1) }
+            }
+            else -> throw IllegalArgumentException("Unsupported file: $name. Import a PDF or image.")
+        }
+        checkCancelled()
+        val base = name.substringBeforeLast('.').ifBlank { name }
+        return source.pages.mapIndexed { index, page ->
+            page.copy(title = if (source.pages.size == 1) base else "$base · ${index + 1}")
+        }
     }
 
     fun prepareImagePaper(uri: Uri, name: String): ImagePaperDraft {
@@ -1289,7 +1316,6 @@ class DocumentAssetService(private val context: Context) {
         const val MAX_DYNAMIC_GRAIN_VARIANTS_PER_STROKE = 64
         const val PDF_TEXT_INDEX_VERSION = 1
         const val PDF_LINK_INDEX_VERSION = 1
-        const val MAX_IMPORT_PDF_PAGES = 20_000
         const val MAX_PDF_TEXT_CHARACTERS_PER_PAGE = 1_000_000
         const val MAX_PDF_TEXT_BLOCKS_PER_PAGE = 20_000
         const val MAX_PDF_BOUNDS_PER_BLOCK = 4_096

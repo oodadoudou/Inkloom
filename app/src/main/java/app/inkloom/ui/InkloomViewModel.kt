@@ -2,6 +2,7 @@ package app.inkloom.ui
 
 import android.app.Application
 import android.net.Uri
+import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.inkloom.document.*
@@ -36,7 +37,14 @@ data class LibraryUiState(
     val legacyFillMigrationError: String? = null,
 )
 
-data class PdfImportProgress(val completed: Int, val total: Int, val committing: Boolean = false)
+data class PdfImportProgress(
+    val completed: Int,
+    val total: Int,
+    val committing: Boolean = false,
+    val addingPages: Boolean = false,
+    val fileIndex: Int = 1,
+    val fileCount: Int = 1,
+)
 
 class InkloomViewModel(application: Application) : AndroidViewModel(application) {
     private val store = FileDocumentStore(application.filesDir)
@@ -55,6 +63,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     private val mutablePdfImportProgress = MutableStateFlow<PdfImportProgress?>(null)
     val pdfImportProgress = mutablePdfImportProgress.asStateFlow()
     private var pdfImportJob: Job? = null
+    private val pendingPdfIndexDocumentIds = mutableSetOf<String>()
     private var assetGarbageCollectionJob: Job? = null
 
     override fun onCleared() {
@@ -172,6 +181,55 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
     fun cancelPdfImport() { if (mutablePdfImportProgress.value?.committing != true) pdfImportJob?.cancel(CancellationException("PDF import cancelled")) }
     fun importImage(uri: Uri, title: String) = assets.importImage(uri, title).also { store.save(it); refresh(); select(it.id) }
+    fun appendFilesAsync(documentId: String, files: List<Pair<Uri, String>>, onComplete: (Result<Int>) -> Unit) {
+        if (files.isEmpty()) return
+        if (pdfImportJob?.isActive == true) {
+            onComplete(Result.failure(IllegalStateException("Another document import is already running")))
+            return
+        }
+        if (store.get(documentId)?.takeIf { it.trashedAt == null } == null) {
+            onComplete(Result.failure(IllegalStateException("The target notebook is unavailable")))
+            return
+        }
+        mutablePdfImportProgress.value = PdfImportProgress(0, 0, addingPages = true)
+        pdfImportJob = viewModelScope.launch {
+            val result = try {
+                val pages = withContext(Dispatchers.IO) {
+                    val running = coroutineContext
+                    buildList {
+                        files.forEachIndexed { index, (uri, name) ->
+                            running.ensureActive()
+                            mutablePdfImportProgress.value = PdfImportProgress(0, 0, addingPages = true, fileIndex = index + 1, fileCount = files.size)
+                            addAll(assets.importAdditionalPages(uri, name,
+                                onProgress = { completed, total -> mutablePdfImportProgress.value = PdfImportProgress(completed, total, addingPages = true, fileIndex = index + 1, fileCount = files.size) },
+                                checkCancelled = { running.ensureActive() }))
+                        }
+                    }
+                }
+                coroutineContext.ensureActive()
+                mutablePdfImportProgress.value = PdfImportProgress(pages.size, pages.size, committing = true, addingPages = true)
+                withContext(Dispatchers.IO + NonCancellable) {
+                    synchronized(store) {
+                        val latest = store.get(documentId)?.takeIf { it.trashedAt == null }
+                            ?: error("The target notebook is unavailable")
+                        store.save(AppendImportedPages.apply(latest, pages))
+                    }
+                }
+                Result.success(pages.first().id to pages.size)
+            } catch (failure: Throwable) { Result.failure(failure) }
+            mutablePdfImportProgress.value = null
+            result.onSuccess { (firstPageId, count) ->
+                refresh()
+                if (mutableState.value.selectedDocumentId == documentId) selectPage(firstPageId)
+                indexPdfText(documentId)
+                onComplete(Result.success(count))
+            }.onFailure { failure ->
+                scheduleAssetGarbageCollection()
+                onComplete(Result.failure(failure))
+            }
+            pdfImportJob = null
+        }
+    }
     fun importBundle(uri: Uri) = assets.importBundle(uri).also { store.save(it); refresh(); select(it.id) }
     fun insertImage(uri: Uri) {
         val documentId = mutableState.value.selectedDocumentId ?: return
@@ -722,7 +780,11 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun indexPdfText(documentId: String) {
-        if (documentId in mutableState.value.pdfIndexingDocumentIds) return
+        if (Build.VERSION.SDK_INT < 35) return
+        if (documentId in mutableState.value.pdfIndexingDocumentIds) {
+            pendingPdfIndexDocumentIds += documentId
+            return
+        }
         val document = store.get(documentId) ?: return
         if (document.pages.none { it.background is PageBackground.Pdf && it.pdfTextIndexVersion == 0 }) return
         mutableState.value = mutableState.value.copy(pdfIndexingDocumentIds = mutableState.value.pdfIndexingDocumentIds + documentId)
@@ -730,18 +792,26 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             try {
                 val indexed = withContext(Dispatchers.IO) { store.get(documentId)?.let(assets::indexPdfText) }
                 if (indexed != null) withContext(Dispatchers.IO) {
-                    val latest = store.get(documentId) ?: return@withContext
-                    val indexedPages = indexed.pages.associateBy(InkPage::id)
-                    val mergedPages = latest.pages.map { current ->
-                        val indexedPage = indexedPages[current.id] ?: return@map current
-                        if (current.background != indexedPage.background || current.backgroundRotationQuarterTurns != indexedPage.backgroundRotationQuarterTurns) current
-                        else current.copy(pdfTextBlocks = indexedPage.pdfTextBlocks, pdfTextIndexVersion = indexedPage.pdfTextIndexVersion)
+                    synchronized(store) {
+                        val latest = store.get(documentId) ?: return@synchronized
+                        val indexedPages = indexed.pages.associateBy(InkPage::id)
+                        val mergedPages = latest.pages.map { current ->
+                            val indexedPage = indexedPages[current.id] ?: return@map current
+                            if (current.background != indexedPage.background || current.backgroundRotationQuarterTurns != indexedPage.backgroundRotationQuarterTurns) current
+                            else current.copy(
+                                pdfTextBlocks = indexedPage.pdfTextBlocks,
+                                pdfTextIndexVersion = indexedPage.pdfTextIndexVersion,
+                                pdfGotoLinks = if (current.pdfLinkIndexVersion > 0) current.pdfGotoLinks else indexedPage.pdfGotoLinks,
+                                pdfLinkIndexVersion = maxOf(current.pdfLinkIndexVersion, indexedPage.pdfLinkIndexVersion),
+                            )
+                        }
+                        if (mergedPages != latest.pages) store.save(latest.copy(pages = mergedPages))
                     }
-                    if (mergedPages != latest.pages) store.save(latest.copy(pages = mergedPages))
                 }
             } finally {
                 refreshSelection()
                 mutableState.value = mutableState.value.copy(pdfIndexingDocumentIds = mutableState.value.pdfIndexingDocumentIds - documentId)
+                if (pendingPdfIndexDocumentIds.remove(documentId)) indexPdfText(documentId)
             }
         }
     }

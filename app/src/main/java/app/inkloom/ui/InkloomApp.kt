@@ -791,6 +791,27 @@ fun InkloomApp(initialIntent: Intent?) {
             viewModel.insertImage(uri)
         }.onFailure { importError = it.message }
     }
+    var pendingAppendDocumentId by rememberSaveable { mutableStateOf<String?>(null) }
+    val appendPageFilesPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        val targetId = pendingAppendDocumentId
+        pendingAppendDocumentId = null
+        if (targetId != null && uris.isNotEmpty()) runCatching {
+            val files = uris.map { uri ->
+                runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                val name = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                } ?: uri.lastPathSegment ?: "Imported file"
+                uri to name
+            }
+            viewModel.appendFilesAsync(targetId, files) { result ->
+                result.onFailure { if (it !is kotlinx.coroutines.CancellationException) importError = it.message }
+            }
+        }.onFailure { importError = it.message }
+    }
+    fun launchAppendPageFiles(documentId: String) {
+        pendingAppendDocumentId = documentId
+        appendPageFilesPicker.launch(arrayOf("application/pdf", "image/*"))
+    }
     var pendingPageScan by remember { mutableStateOf<Pair<Uri, java.io.File>?>(null) }
     val pageScanLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { captured ->
         val pending = pendingPageScan
@@ -866,9 +887,10 @@ fun InkloomApp(initialIntent: Intent?) {
     ) }
     pdfImportProgress?.let { progress -> AlertDialog(
         onDismissRequest = {},
-        title = { Text(tr("Importing PDF", "正在导入 PDF")) },
+        title = { Text(if (progress.addingPages) tr("Adding pages", "正在追加页面") else tr("Importing PDF", "正在导入 PDF")) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(if (progress.committing) tr("Saving notebook…", "正在保存笔记本…") else if (progress.total > 0) tr("Page ${progress.completed} of ${progress.total}", "第 ${progress.completed} / ${progress.total} 页") else tr("Copying PDF…", "正在复制 PDF…"))
+            if (progress.addingPages && progress.fileCount > 1 && !progress.committing) Text(tr("File ${progress.fileIndex} of ${progress.fileCount}", "第 ${progress.fileIndex} / ${progress.fileCount} 个文件"))
+            Text(if (progress.committing) tr("Saving notebook…", "正在保存笔记本…") else if (progress.total > 0) tr("Page ${progress.completed} of ${progress.total}", "第 ${progress.completed} / ${progress.total} 页") else tr("Copying file…", "正在复制文件…"))
             if (progress.total > 0) LinearProgressIndicator(progress = { progress.completed.toFloat() / progress.total }, modifier = Modifier.fillMaxWidth())
             else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         } },
@@ -980,6 +1002,7 @@ fun InkloomApp(initialIntent: Intent?) {
             pageTemplates = pageTemplates,
             onAppendCurrentPage = { pageId -> libraryState.selectedDocumentId?.let { viewModel.appendPageUsingTemplate(it, pageId) } },
             onAddPage = { templateId, paperColor -> libraryState.selectedDocumentId?.let { viewModel.addPage(it, templateId, paperColor) } },
+            onAppendPageFiles = ::launchAppendPageFiles,
             onDuplicatePage = { documentId, pageId -> viewModel.duplicatePage(documentId, pageId) },
             onDeletePage = { documentId, pageId -> viewModel.deletePage(documentId, pageId) },
             onMovePage = viewModel::movePage,
@@ -1737,6 +1760,7 @@ private fun EditorScreen(
     pageTemplates: PageTemplateLibrary,
     onAppendCurrentPage: (String) -> Unit,
     onAddPage: (String, Long?) -> Unit,
+    onAppendPageFiles: (String) -> Unit,
     onDuplicatePage: (String, String) -> Unit,
     onDeletePage: (String, String) -> Unit,
     onMovePage: (String, String, Int) -> Unit,
@@ -2087,6 +2111,7 @@ private fun EditorScreen(
     var searchFocus by remember(document.id) { mutableStateOf<PageSearchHit?>(null) }
     var pdfLinkFocus by remember(document.id) { mutableStateOf<Pair<String, PdfTextBounds>?>(null) }
     var outlineOpen by remember { mutableStateOf(false) }
+    var bookmarksOpen by remember { mutableStateOf(false) }
     var outlineMenuPageId by remember { mutableStateOf<String?>(null) }
     var outlineRenamePageId by remember { mutableStateOf<String?>(null) }
     var outlineRenameText by remember { mutableStateOf("") }
@@ -2434,6 +2459,9 @@ private fun EditorScreen(
                 ProcreateTopButton(Icons.Outlined.Build, tr("Actions", "操作"), selected = workspaceMenu, onClick = { workspaceMenu = true })
                 DropdownMenu(expanded = workspaceMenu, onDismissRequest = { workspaceMenu = false }, modifier = Modifier.width(280.dp)) {
                     DropdownMenuItem(text = { Text(tr("Search this notebook", "搜索当前笔记")) }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, onClick = { workspaceMenu = false; searchOpen = true })
+                    DropdownMenuItem(text = { Text(tr("Add PDF or image pages", "追加 PDF／图片页面")) }, leadingIcon = { Icon(Icons.Outlined.NoteAdd, null) }, onClick = { workspaceMenu = false; onAppendPageFiles(document.id) })
+                    DropdownMenuItem(text = { Text(if (selectedPage.bookmarked) tr("Remove page bookmark", "取消本页书签") else tr("Bookmark this page", "收藏本页")) }, leadingIcon = { Icon(if (selectedPage.bookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder, null) }, onClick = { workspaceMenu = false; onToggleBookmark(document.id, selectedPage.id) })
+                    DropdownMenuItem(text = { Text(tr("Bookmarks", "书签")) }, leadingIcon = { Icon(Icons.Outlined.Bookmarks, null) }, onClick = { workspaceMenu = false; bookmarksOpen = true })
                     DropdownMenuItem(text = { Text(tr("Notebook settings", "笔记设置")) }, leadingIcon = { Icon(Icons.Outlined.Settings, null) }, onClick = { workspaceMenu = false; onSettings() })
                     DropdownMenuItem(text = { Text(tr("Page outline", "页面大纲")) }, leadingIcon = { Icon(Icons.Outlined.FormatListBulleted, null) }, onClick = { workspaceMenu = false; outlineOpen = true })
                     DropdownMenuItem(text = { Text(tr("Export PDF", "导出 PDF")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { workspaceMenu = false; onExport() })
@@ -3868,7 +3896,7 @@ private fun EditorScreen(
                 document, documents, selectedPage.id, assets,
                 onClose = { onPanelVisibilityChange(EditorPanel.PAGES, false) },
                 pageTemplates = pageTemplates,
-                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage, onTransferPages = onTransferPages,
+                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onAppendFiles = { onAppendPageFiles(document.id) }, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage, onTransferPages = onTransferPages,
                 onApplyTemplate = onApplyPageTemplate, onApplyTemplates = onApplyPageTemplates, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate, onCreateCustomTemplate = onCreateCustomTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -4136,6 +4164,26 @@ private fun EditorScreen(
         confirmButton = { Button(onClick = { imageInsertOpen = false; onScanImage() }) { Icon(Icons.Outlined.DocumentScanner, null); Spacer(Modifier.width(6.dp)); Text(tr("Scan page", "扫描页面")) } },
         dismissButton = { Row { TextButton(onClick = { imageInsertOpen = false }) { Text(tr("Cancel", "取消")) }; TextButton(onClick = { imageInsertOpen = false; onInsertImage() }) { Text(tr("Import image", "导入图片")) } } },
     )
+    if (bookmarksOpen) AlertDialog(
+        onDismissRequest = { bookmarksOpen = false },
+        title = { Text(tr("Bookmarks", "书签")) },
+        text = {
+            val marked = document.pages.withIndex().filter { it.value.bookmarked }
+            if (marked.isEmpty()) Text(tr("No bookmarked pages yet.", "还没有收藏的页面。"), color = MutedInk)
+            else LazyColumn(Modifier.widthIn(min = 320.dp, max = 520.dp).heightIn(max = 420.dp)) {
+                items(marked, key = { it.value.id }) { (index, page) ->
+                    ListItem(
+                        headlineContent = { Text(page.title, maxLines = 1) },
+                        supportingContent = { Text(tr("Page ${index + 1}", "第 ${index + 1} 页"), color = MutedInk) },
+                        leadingContent = { Icon(Icons.Default.Bookmark, null) },
+                        trailingContent = { IconButton(onClick = { onToggleBookmark(document.id, page.id) }) { Icon(Icons.Outlined.BookmarkRemove, tr("Remove bookmark", "删除书签")) } },
+                        modifier = Modifier.clickable { selectPageWithViewport(page.id); bookmarksOpen = false },
+                    )
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { bookmarksOpen = false }) { Text(tr("Done", "完成")) } },
+    )
     if (outlineOpen) {
         val visibleOutlinePages = PageOutline.visiblePages(document.pages)
         AlertDialog(
@@ -4319,6 +4367,7 @@ private fun PageRail(
     onSelect: (String) -> Unit,
     onOpenLayers: (String) -> Unit,
     onAdd: (String, Long?) -> Unit,
+    onAppendFiles: () -> Unit,
     onDuplicate: (String, String) -> Unit,
     onDelete: (String, String) -> Unit,
     onMove: (String, String, Int) -> Unit,
@@ -4357,6 +4406,7 @@ private fun PageRail(
     val pageManagementDescription = tr("Page management: ${selectedPageIds.size} selected", "页面管理：已选择 ${selectedPageIds.size} 页")
     Column(modifier) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            IconButton(onClick = onAppendFiles, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.NoteAdd, tr("Add PDF or image pages", "追加 PDF／图片页面"), Modifier.size(18.dp)) }
             IconButton(onClick = { addTemplateOpen = true }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, tr("Add page", "添加页面")) }
         }
         val pageListDescription = tr("Page list", "页面列表")

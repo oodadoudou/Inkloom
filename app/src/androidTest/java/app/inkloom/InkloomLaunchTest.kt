@@ -502,6 +502,19 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Index the whole notebook").assertIsDisplayed()
     }
 
+    @Test fun readingActionsExposeAppendSearchAndPageBookmarks() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
+        composeRule.onNodeWithText("Add PDF or image pages").assertIsDisplayed()
+        composeRule.onNodeWithText("Search this notebook").assertIsDisplayed()
+        composeRule.onNodeWithText("Bookmark this page").performClick()
+
+        composeRule.onNodeWithContentDescription("Actions").performClick()
+        composeRule.onNodeWithText("Bookmarks").performClick()
+        composeRule.onNodeWithContentDescription("Remove bookmark").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("No bookmarked pages yet.").assertIsDisplayed()
+    }
+
     @Test fun editorCreatesAnInternalNotebookPageLink() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("More").performClick()
