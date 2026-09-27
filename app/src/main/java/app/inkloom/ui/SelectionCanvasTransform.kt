@@ -56,9 +56,11 @@ internal class SelectionCanvasTransform(
     fun setGeometry(x: Float, y: Float, width: Float, height: Float, angle: Float) {
         if (!listOf(x, y, width, height, angle).all(Float::isFinite) || width < 1f || height < 1f) return
         val anchored = anchoredPose(pose, pose.copy(width = width, height = height, angle = angle.mod(360f)), pivotX, pivotY)
-        val moved = anchored.withPose(anchored.copy(centerX = anchored.centerX + x - pivotX,
-            centerY = anchored.centerY + y - pivotY))
-        pivotX = x; pivotY = y
+        val dx = x - (anchored.centerX - anchored.width / 2f)
+        val dy = y - (anchored.centerY - anchored.height / 2f)
+        val moved = anchored.withPose(anchored.copy(centerX = anchored.centerX + dx,
+            centerY = anchored.centerY + dy))
+        pivotX += dx; pivotY += dy
         replace(moved)
         pivotChanged()
     }

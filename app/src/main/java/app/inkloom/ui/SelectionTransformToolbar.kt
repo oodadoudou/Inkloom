@@ -156,8 +156,8 @@ internal fun SelectionTransformToolbar(
     }
     if (dimensionsOpen) {
         fun number(value: Float) = String.format(Locale.ROOT, "%.2f", value)
-        var x by remember { mutableStateOf(number(state.pivotX)) }
-        var y by remember { mutableStateOf(number(state.pivotY)) }
+        var x by remember { mutableStateOf(number(state.pose.centerX - state.pose.width / 2f)) }
+        var y by remember { mutableStateOf(number(state.pose.centerY - state.pose.height / 2f)) }
         var width by remember { mutableStateOf(number(state.pose.width)) }
         var height by remember { mutableStateOf(number(state.pose.height)) }
         var angle by remember { mutableStateOf(number(state.pose.angle)) }
@@ -177,11 +177,11 @@ internal fun SelectionTransformToolbar(
                         Text(t("Transform dimensions", "变换尺寸"), style = MaterialTheme.typography.titleLarge)
                         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(t("Drag the crosshair on the canvas to move the reference point.", "拖动画布上的十字准星可移动变换基准点。"), fontSize = 11.sp)
-                            OutlinedTextField(x, { x = it }, label = { Text(t("Reference X (px)", "基准点 X（像素）")) },
+                            OutlinedTextField(x, { x = it }, label = { Text(t("Position X (px)", "位置 X（像素）")) },
                                 singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                            OutlinedTextField(y, { y = it }, label = { Text(t("Reference Y (px)", "基准点 Y（像素）")) },
+                            OutlinedTextField(y, { y = it }, label = { Text(t("Position Y (px)", "位置 Y（像素）")) },
                                 singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                            TextButton(onClick = { onResetPivot(); x = number(state.pose.centerX); y = number(state.pose.centerY) }) {
+                            TextButton(onClick = onResetPivot) {
                                 Text(t("Reset reference point to center", "基准点回到中心"))
                             }
                             OutlinedTextField(width, { value -> width = value; if (linked) value.toFloatOrNull()?.takeIf(Float::isFinite)?.let { height = number(it / ratio) } },
