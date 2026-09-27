@@ -87,6 +87,8 @@ data class AppSettings(
     val toolbarOffsetYDp: Float = 16f,
     val selectionStudioXDp: Float = -1f,
     val selectionStudioYDp: Float = -1f,
+    val selectionLauncherVisible: Boolean = true,
+    val selectionLauncherOrder: String = SelectionLauncherLayout.encode(SelectionLauncherLayout.default),
     val verticalToolbar: Boolean = true,
     val toolbarDock: ToolbarDock = ToolbarDock.LEFT,
     val toolPaletteLayout: String = ToolPaletteLayout.encode(ToolPaletteLayout.defaultEntries),
@@ -298,6 +300,8 @@ class AppSettingsStore(context: Context) {
             toolbarOffsetYDp = preferences.getFloat("toolbarOffsetYDp", 16f).coerceIn(-1200f, 1200f),
             selectionStudioXDp = preferences.getFloat("selectionStudioXDp", -1f).takeIf(Float::isFinite)?.coerceIn(-1f, 2400f) ?: -1f,
             selectionStudioYDp = preferences.getFloat("selectionStudioYDp", -1f).takeIf(Float::isFinite)?.coerceIn(-1f, 2400f) ?: -1f,
+            selectionLauncherVisible = preferences.getBoolean("selectionLauncherVisible", true),
+            selectionLauncherOrder = SelectionLauncherLayout.encode(SelectionLauncherLayout.decode(preferences.getString("selectionLauncherOrder", null))),
             verticalToolbar = preferences.getBoolean("verticalToolbar", true),
             toolbarDock = enumValue(preferences.getString("toolbarDock", null), ToolbarDock.LEFT),
             toolPaletteLayout = ToolPaletteLayout.encode(ToolPaletteLayout.decode(preferences.getString("toolPaletteLayout", null))),
@@ -480,6 +484,8 @@ class AppSettingsStore(context: Context) {
             .putFloat("toolbarOffsetYDp", persisted.toolbarOffsetYDp)
             .putFloat("selectionStudioXDp", persisted.selectionStudioXDp.takeIf(Float::isFinite)?.coerceIn(-1f, 2400f) ?: -1f)
             .putFloat("selectionStudioYDp", persisted.selectionStudioYDp.takeIf(Float::isFinite)?.coerceIn(-1f, 2400f) ?: -1f)
+            .putBoolean("selectionLauncherVisible", persisted.selectionLauncherVisible)
+            .putString("selectionLauncherOrder", SelectionLauncherLayout.encode(SelectionLauncherLayout.decode(persisted.selectionLauncherOrder)))
             .putBoolean("verticalToolbar", persisted.verticalToolbar)
             .putString("toolbarDock", persisted.toolbarDock.name)
             .putString("toolPaletteLayout", ToolPaletteLayout.encode(ToolPaletteLayout.decode(persisted.toolPaletteLayout)))

@@ -156,6 +156,8 @@ import app.inkloom.settings.EraserPreset
 import app.inkloom.settings.FloatingToolbarPlacement
 import app.inkloom.settings.FloatingToolbarPosition
 import app.inkloom.settings.SelectionFilter
+import app.inkloom.settings.SelectionLauncherAction
+import app.inkloom.settings.SelectionLauncherLayout
 import app.inkloom.settings.SelectionMode
 import app.inkloom.settings.SelectionShape
 import app.inkloom.settings.ReferenceTarget
@@ -3707,6 +3709,10 @@ private fun EditorScreen(
                 )
                 if (tool == EditorTool.SELECT && imageCanvasTransform == null && selectionTransformState == null) SelectionStudioPanel(
                     shape = settings.selectionShape, mode = settings.selectionMode, hasSelection = selectionActive,
+                    launcherVisible = settings.selectionLauncherVisible,
+                    launcherOrder = SelectionLauncherLayout.decode(settings.selectionLauncherOrder),
+                    onLauncherVisible = { onSettingsChange(settings.copy(selectionLauncherVisible = it)) },
+                    onLauncherOrder = { onSettingsChange(settings.copy(selectionLauncherOrder = SelectionLauncherLayout.encode(it))) },
                     brushSize = settings.selectionBrushSize, onBrushSize = { onSettingsChange(settings.copy(selectionBrushSize = it)) },
                     threshold = settings.selectionThreshold, onThreshold = { onSettingsChange(settings.copy(selectionThreshold = it)) },
                     referenceTarget = settings.referenceTarget, onReferenceTarget = { onSettingsChange(settings.copy(referenceTarget = it)) },
@@ -9620,6 +9626,8 @@ private fun FillOptionsLauncher(
 @Composable
 private fun SelectionStudioPanel(
     shape: SelectionShape, mode: SelectionMode, hasSelection: Boolean,
+    launcherVisible: Boolean, launcherOrder: List<SelectionLauncherAction>,
+    onLauncherVisible: (Boolean) -> Unit, onLauncherOrder: (List<SelectionLauncherAction>) -> Unit,
     brushSize: Float, onBrushSize: (Float) -> Unit,
     threshold: Float, onThreshold: (Float) -> Unit,
     referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit,
@@ -9641,6 +9649,7 @@ private fun SelectionStudioPanel(
 ) {
     var optionsOpen by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
+    var launcherSettingsOpen by remember { mutableStateOf(false) }
     var featherOpen by remember { mutableStateOf(false) }
     var colorRangeOpen by remember { mutableStateOf(false) }
     var colorRangeTolerance by rememberSaveable { mutableFloatStateOf(.18f) }
@@ -9727,6 +9736,35 @@ private fun SelectionStudioPanel(
                         } },
         confirmButton = { TextButton(onClick = { optionsOpen = false }) { Text(tr("Done", "完成")) } },
     )
+    if (launcherSettingsOpen) AlertDialog(
+        onDismissRequest = { launcherSettingsOpen = false },
+        title = { Text(tr("Selection shortcuts", "选区快捷操作")) },
+        text = { Column(Modifier.width(320.dp).heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
+            Text(tr("Arrange shortcuts with the arrows. Essential commands remain in More.", "用箭头调整顺序；必要操作始终可从「更多」访问。"), fontSize = 11.sp)
+            launcherOrder.forEachIndexed { index, action ->
+                val label = when (action) {
+                    SelectionLauncherAction.ADD -> tr("Add", "添加")
+                    SelectionLauncherAction.SUBTRACT -> tr("Remove", "移除")
+                    SelectionLauncherAction.INVERT -> tr("Invert", "反选")
+                    SelectionLauncherAction.COPY -> tr("Copy & Paste", "复制并粘贴")
+                    SelectionLauncherAction.FEATHER -> tr("Feather", "羽化")
+                    SelectionLauncherAction.SAVED -> tr("Save & Load", "保存与载入")
+                    SelectionLauncherAction.QUICK_MASK -> tr("Quick mask", "快速蒙版")
+                    SelectionLauncherAction.COLOR_FILL -> tr("Color Fill", "颜色填充")
+                    SelectionLauncherAction.CLEAR -> tr("Clear", "清除")
+                    SelectionLauncherAction.FILL -> tr("Fill selection", "填充选区")
+                    SelectionLauncherAction.TRANSFORM -> tr("Transform", "变换")
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(label, Modifier.weight(1f), maxLines = 1)
+                    TextButton(onClick = { onLauncherOrder(SelectionLauncherLayout.move(launcherOrder, action, -1)) }, enabled = index > 0) { Text("↑") }
+                    TextButton(onClick = { onLauncherOrder(SelectionLauncherLayout.move(launcherOrder, action, 1)) }, enabled = index < launcherOrder.lastIndex) { Text("↓") }
+                }
+            }
+            TextButton(onClick = { onLauncherOrder(SelectionLauncherLayout.default) }) { Text(tr("Restore default order", "恢复默认顺序")) }
+        } },
+        confirmButton = { TextButton(onClick = { launcherSettingsOpen = false }) { Text(tr("Done", "完成")) } },
+    )
     val studioDescription = tr("Selection studio", "选区面板")
     BoxWithConstraints(modifier) {
     val density=LocalDensity.current.density
@@ -9772,22 +9810,16 @@ private fun SelectionStudioPanel(
                 Spacer(Modifier.width(12.dp))
                 SelectionLauncherButton(Icons.Outlined.Check, tr("Exit selection tool", "退出选区工具"), onDone)
                 SelectionLauncherButton(Icons.Outlined.Close, tr("Deselect and exit", "取消选区并退出"), onDeselect)
-            }
-            HorizontalDivider(Modifier.widthIn(max = 880.dp), color = OutlineSoft)
-            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                SelectionStudioAction(Icons.Outlined.Add, tr("Add", "添加"), selected = mode == SelectionMode.ADD) { onMode(SelectionMode.ADD) }
-                SelectionStudioAction(Icons.Outlined.Remove, tr("Remove", "移除"), selected = mode == SelectionMode.SUBTRACT) { onMode(SelectionMode.SUBTRACT) }
-                SelectionStudioAction(Icons.Outlined.Flip, tr("Invert", "反选"), enabled = hasSelection, onClick = onInvert)
-                SelectionStudioAction(Icons.Outlined.ContentCopy, tr("Copy & Paste", "复制并粘贴"), enabled = hasSelection, onClick = onCopy)
-                SelectionStudioAction(Icons.Outlined.BlurOn, tr("Feather", "羽化"), enabled = hasSelection) { featherOpen = onBeginFeather() }
-                SelectionStudioAction(Icons.Outlined.Bookmarks, tr("Save & Load", "保存与载入"), onClick = onSaveLoad)
-                SelectionStudioAction(Icons.Outlined.Layers, tr("Quick mask", "快速蒙版"), selected = quickMask, onClick = onQuickMask)
-                SelectionStudioAction(Icons.Outlined.FormatColorFill, tr("Color Fill", "颜色填充"), selected = colorFill, onClick = onColorFill)
-                SelectionStudioAction(Icons.Outlined.Close, tr("Clear", "清除"), onClick = onClear)
+                TextButton(onClick = { onLauncherVisible(!launcherVisible) }) {
+                    Text(if (launcherVisible) tr("Hide actions", "隐藏操作") else tr("Show actions", "显示操作"), fontSize = 11.sp)
+                }
+                IconButton(onClick = { launcherSettingsOpen = true }) { Icon(Icons.Outlined.Tune, tr("Arrange selection shortcuts", "排列选区快捷操作")) }
                 Box {
                     SelectionStudioAction(Icons.Outlined.MoreHoriz, tr("More", "更多")) { settingsOpen = true }
                     DropdownMenu(settingsOpen, { settingsOpen = false }) {
                         DropdownMenuItem(text = { Text(tr("Free transform", "自由变换")) }, onClick = { settingsOpen = false; onTransform() })
+                        DropdownMenuItem(text = { Text(tr("Invert", "反选")) }, enabled = hasSelection, onClick = { settingsOpen = false; onInvert() })
+                        DropdownMenuItem(text = { Text(tr("Clear", "清除")) }, onClick = { settingsOpen = false; onClear() })
                         DropdownMenuItem(text = { Text(tr("Cut & Paste", "剪切并粘贴")) }, enabled = hasSelection, onClick = { settingsOpen = false; onCut() })
                         DropdownMenuItem(text = { Text(tr("Delete selected pixels", "删除所选像素")) }, enabled = hasSelection, onClick = { settingsOpen = false; onDelete() })
                         DropdownMenuItem(text = { Text(tr("Fill selection", "填充选区")) }, enabled = hasSelection, onClick = { settingsOpen = false; onFill() })
@@ -9798,6 +9830,24 @@ private fun SelectionStudioPanel(
                         DropdownMenuItem(text = { Text(tr("Color range…", "色域选择…")) }, onClick = { settingsOpen = false; colorRangeOpen = true })
                         DropdownMenuItem(text = { Text(tr("Selection settings", "选区设置")) }, onClick = { settingsOpen = false; optionsOpen = true })
                     }
+                }
+            }
+            if (launcherVisible) {
+                HorizontalDivider(Modifier.widthIn(max = 880.dp), color = OutlineSoft)
+                Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                    launcherOrder.forEach { action -> when (action) {
+                        SelectionLauncherAction.ADD -> SelectionStudioAction(Icons.Outlined.Add, tr("Add", "添加"), selected = mode == SelectionMode.ADD) { onMode(SelectionMode.ADD) }
+                        SelectionLauncherAction.SUBTRACT -> SelectionStudioAction(Icons.Outlined.Remove, tr("Remove", "移除"), selected = mode == SelectionMode.SUBTRACT) { onMode(SelectionMode.SUBTRACT) }
+                        SelectionLauncherAction.INVERT -> SelectionStudioAction(Icons.Outlined.Flip, tr("Invert", "反选"), enabled = hasSelection, onClick = onInvert)
+                        SelectionLauncherAction.COPY -> SelectionStudioAction(Icons.Outlined.ContentCopy, tr("Copy & Paste", "复制并粘贴"), enabled = hasSelection, onClick = onCopy)
+                        SelectionLauncherAction.FEATHER -> SelectionStudioAction(Icons.Outlined.BlurOn, tr("Feather", "羽化"), enabled = hasSelection) { featherOpen = onBeginFeather() }
+                        SelectionLauncherAction.SAVED -> SelectionStudioAction(Icons.Outlined.Bookmarks, tr("Save & Load", "保存与载入"), onClick = onSaveLoad)
+                        SelectionLauncherAction.QUICK_MASK -> SelectionStudioAction(Icons.Outlined.Layers, tr("Quick mask", "快速蒙版"), selected = quickMask, onClick = onQuickMask)
+                        SelectionLauncherAction.COLOR_FILL -> SelectionStudioAction(Icons.Outlined.FormatColorFill, tr("Color Fill", "颜色填充"), selected = colorFill, onClick = onColorFill)
+                        SelectionLauncherAction.CLEAR -> SelectionStudioAction(Icons.Outlined.Close, tr("Clear", "清除"), onClick = onClear)
+                        SelectionLauncherAction.FILL -> SelectionStudioAction(Icons.Outlined.FormatColorFill, tr("Fill selection", "填充选区"), enabled = hasSelection, onClick = onFill)
+                        SelectionLauncherAction.TRANSFORM -> SelectionStudioAction(Icons.Outlined.Transform, tr("Transform", "变换"), enabled = hasSelection, onClick = onTransform)
+                    } }
                 }
             }
         }
