@@ -7023,17 +7023,31 @@ class InkCanvasView(context: Context) : View(context) {
         onSelectionTransformChanged(selectionTransformUiState)
     }
 
-    internal fun distributeSelectionLayers(horizontal: Boolean, equalGap: Boolean = false) {
+    internal fun distributeSelectionLayers(horizontal: Boolean, equalGap: Boolean = false) =
+        distributeSelectionLayers(horizontal, if (equalGap)
+            app.inkloom.engine.v5.tools.SelectionDistributionMode.EQUAL_GAP
+        else app.inkloom.engine.v5.tools.SelectionDistributionMode.CENTER)
+
+    internal fun distributeSelectionLayers(horizontal: Boolean,
+                                            mode: app.inkloom.engine.v5.tools.SelectionDistributionMode) {
         val ordered = rasterSelectionTransformSessions.keys.mapNotNull { layerId ->
             selectionTransformLayerBounds(layerId)?.let { layerId to it }
-        }.sortedBy { (_, bounds) -> if (horizontal) bounds.left else bounds.top }
+        }.sortedBy { (_, bounds) -> when (mode) {
+            app.inkloom.engine.v5.tools.SelectionDistributionMode.START_EDGE,
+            app.inkloom.engine.v5.tools.SelectionDistributionMode.EQUAL_GAP ->
+                if (horizontal) bounds.left.toFloat() else bounds.top.toFloat()
+            app.inkloom.engine.v5.tools.SelectionDistributionMode.CENTER ->
+                if (horizontal) (bounds.left + bounds.right) / 2f else (bounds.top + bounds.bottom) / 2f
+            app.inkloom.engine.v5.tools.SelectionDistributionMode.END_EDGE ->
+                if (horizontal) bounds.right.toFloat() else bounds.bottom.toFloat()
+        } }
         if (ordered.size < 3) {
             onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
                 "均分至少需要三个含选中内容的图层" else "Distribute requires selected content on at least three layers")
             return
         }
         val offsets = app.inkloom.engine.v5.tools.SelectionDistributionGeometry.offsets(
-            ordered.map { it.second }, horizontal, equalGap)
+            ordered.map { it.second }, horizontal, mode)
         ordered.forEachIndexed { index, (layerId, _) ->
             if (index == 0 || index == ordered.lastIndex) return@forEachIndexed
             val delta = offsets[index]

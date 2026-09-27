@@ -278,6 +278,38 @@ class SelectionTransformTest {
         assertEquals(Color.BLUE, last.pixelAt(48, 20))
     }
 
+    @Test fun selectedLayersDistributeByLeftEdgesWithoutResizingContent() {
+        fun layer(x: Int, width: Int, color: Int) = PixelTileSurface(64, 64, 64).also { surface ->
+            surface.beginWrite("edge distribution fixture").use { write ->
+                for (column in x until x + width) write.setPixel(column, 20, color)
+                write.commit().close()
+            }
+        }
+        val first = layer(4, 4, Color.RED)
+        val middle = layer(12, 8, Color.GREEN)
+        val last = layer(40, 4, Color.BLUE)
+        val mask = MaskTileSurface(64, 64, 64).also { surface ->
+            surface.beginWrite("selection").use { write ->
+                write.composeAlpha(PixelRect(0, 0, 64, 64), ByteArray(64 * 64) { -1 }, mode = MaskComposeMode.REPLACE)
+                write.commit().close()
+            }
+        }
+        canvas {
+            pageModelWidth = 64f; pageModelHeight = 64f; activeLayerId = "first"
+            selectionTransformLayerIds = setOf("first", "middle", "last")
+            setRasterLayerSurfaces(linkedMapOf("first" to first, "middle" to middle, "last" to last))
+            bindDocumentSelectionState(DocumentSelectionRuntime(64).stateFor("distribute-edge", "page", 64, 64))
+            replaceSelectionFromMask(mask.snapshot())
+            assertTrue(enterFreeTransform())
+            distributeSelectionLayers(horizontal = true,
+                mode = app.inkloom.engine.v5.tools.SelectionDistributionMode.START_EDGE)
+            assertTrue(finishSelectionTransform(true))
+        }
+        assertEquals(PixelRect(22, 20, 30, 21), app.inkloom.engine.v5.tools.selectionContentBounds(middle.snapshot()))
+        assertEquals(PixelRect(4, 20, 8, 21), app.inkloom.engine.v5.tools.selectionContentBounds(first.snapshot()))
+        assertEquals(PixelRect(40, 20, 44, 21), app.inkloom.engine.v5.tools.selectionContentBounds(last.snapshot()))
+    }
+
     @Test fun multiLayerTextAndImageRemainEditableAfterOneTransform() {
         val text = PageElement.Text(id = "text", layerId = "first", x = .1f, y = .2f, width = 12f, height = 8f, text = "Editable")
         val image = PageElement.Image(id = "image", layerId = "second", x = .3f, y = .4f, width = 14f, height = 10f, assetPath = "fixture.png")

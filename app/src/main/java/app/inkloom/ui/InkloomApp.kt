@@ -3815,7 +3815,7 @@ private fun EditorScreen(
                         onClearPuppetPins = { canvasView?.clearSelectionPuppetPins() },
                         onReference = { canvasView?.setSelectionAlignmentReference(it) },
                         onAlign = { canvasView?.alignSelectionToCanvas(it) },
-                        onDistribute = { horizontal, equalGap -> canvasView?.distributeSelectionLayers(horizontal, equalGap) },
+                        onDistribute = { horizontal, mode -> canvasView?.distributeSelectionLayers(horizontal, mode) },
                         onFlip = { canvasView?.flipSelection(it) },
                         onReset = { canvasView?.resetSelectionTransform() },
                         onSnapping = { snap, magnetic, distance -> canvasView?.configureSelectionSnapping(snap, magnetic, distance) },

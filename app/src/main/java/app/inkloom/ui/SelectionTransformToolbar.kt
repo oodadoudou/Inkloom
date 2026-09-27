@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.inkloom.engine.v5.tools.SelectionTransformMode
 import app.inkloom.engine.v5.tools.SelectionAlignment
+import app.inkloom.engine.v5.tools.SelectionDistributionMode
 import app.inkloom.settings.UiLanguage
 import app.inkloom.settings.text
 import java.util.Locale
@@ -44,7 +45,7 @@ internal fun SelectionTransformToolbar(
     onClearPuppetPins: () -> Unit,
     onReference: (SelectionAlignmentReference) -> Unit,
     onAlign: (SelectionAlignment) -> Unit,
-    onDistribute: (Boolean, Boolean) -> Unit,
+    onDistribute: (Boolean, SelectionDistributionMode) -> Unit,
     onFlip: (Boolean) -> Unit,
     onReset: () -> Unit,
     onSnapping: (Boolean, Boolean, Float) -> Unit,
@@ -124,14 +125,22 @@ internal fun SelectionTransformToolbar(
                         }) }, onClick = { onAlign(alignment); alignOpen = false })
                     }
                     HorizontalDivider()
-                    DropdownMenuItem(text = { Text(t("Distribute horizontally", "水平均分")) }, enabled = state.layerCount >= 3,
-                        onClick = { onDistribute(true, false); alignOpen = false })
-                    DropdownMenuItem(text = { Text(t("Distribute vertically", "垂直均分")) }, enabled = state.layerCount >= 3,
-                        onClick = { onDistribute(false, false); alignOpen = false })
+                    DropdownMenuItem(text = { Text(t("Distribute left edges", "左边缘均分")) }, enabled = state.layerCount >= 3,
+                        onClick = { onDistribute(true, SelectionDistributionMode.START_EDGE); alignOpen = false })
+                    DropdownMenuItem(text = { Text(t("Distribute horizontal centers", "水平中心均分")) }, enabled = state.layerCount >= 3,
+                        onClick = { onDistribute(true, SelectionDistributionMode.CENTER); alignOpen = false })
+                    DropdownMenuItem(text = { Text(t("Distribute right edges", "右边缘均分")) }, enabled = state.layerCount >= 3,
+                        onClick = { onDistribute(true, SelectionDistributionMode.END_EDGE); alignOpen = false })
+                    DropdownMenuItem(text = { Text(t("Distribute top edges", "上边缘均分")) }, enabled = state.layerCount >= 3,
+                        onClick = { onDistribute(false, SelectionDistributionMode.START_EDGE); alignOpen = false })
+                    DropdownMenuItem(text = { Text(t("Distribute vertical centers", "垂直中心均分")) }, enabled = state.layerCount >= 3,
+                        onClick = { onDistribute(false, SelectionDistributionMode.CENTER); alignOpen = false })
+                    DropdownMenuItem(text = { Text(t("Distribute bottom edges", "下边缘均分")) }, enabled = state.layerCount >= 3,
+                        onClick = { onDistribute(false, SelectionDistributionMode.END_EDGE); alignOpen = false })
                     DropdownMenuItem(text = { Text(t("Equal horizontal gaps", "水平等间距")) }, enabled = state.layerCount >= 3,
-                        onClick = { onDistribute(true, true); alignOpen = false })
+                        onClick = { onDistribute(true, SelectionDistributionMode.EQUAL_GAP); alignOpen = false })
                     DropdownMenuItem(text = { Text(t("Equal vertical gaps", "垂直等间距")) }, enabled = state.layerCount >= 3,
-                        onClick = { onDistribute(false, true); alignOpen = false })
+                        onClick = { onDistribute(false, SelectionDistributionMode.EQUAL_GAP); alignOpen = false })
                 }
             }
             Box {
