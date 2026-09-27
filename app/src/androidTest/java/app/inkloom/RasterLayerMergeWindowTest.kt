@@ -12,6 +12,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
@@ -63,7 +65,9 @@ class RasterLayerMergeWindowTest {
         val upperName = requireNotNull(model.currentPage()).layers.first { it.id == upperId }.name
         org.junit.Assert.assertNotEquals("Adding a layer must select a distinct new layer", lowerId, upperId)
         stroke(pagePoint(view, .2f, .6f), pagePoint(view, .65f, .6f))
-        tap("Layers"); tapLayerActions(upperName); tap("Merge down")
+        tap("Layers")
+        tapLayerActions(upperName)
+        compose.onNodeWithText("Merge down").performScrollTo().performClick()
         compose.waitUntil(15_000) { model.currentPage()?.layers?.none { it.id == upperId } == true && !view.selectionLayerTransferPending }
         assertEquals(lowerId, view.activeLayerId)
         val merged = pixels(view)

@@ -300,7 +300,7 @@ class InkloomLaunchTest {
         composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().gridSnapEnabled }
 
         composeRule.onNodeWithContentDescription("More").performClick()
-        composeRule.onNodeWithText("Show alignment guides").performClick()
+        composeRule.onNodeWithText("Show alignment guides").performScrollTo().performClick()
         composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().alignmentGuidesEnabled }
 
         assertTrue(AppSettingsStore(composeRule.activity).load().gridSnapEnabled)
@@ -925,7 +925,7 @@ class InkloomLaunchTest {
 
         composeRule.onNodeWithText("Layer 1 copy").assertIsDisplayed()
         composeRule.onAllNodes(hasContentDescription("Layer actions")).onFirst().performClick()
-        composeRule.onNodeWithText("Merge down").performClick()
+        composeRule.onNodeWithText("Merge down").performScrollTo().performClick()
 
         composeRule.waitUntil(15_000) { composeRule.onAllNodes(hasText("Layer 1 copy")).fetchSemanticsNodes().isEmpty() }
         composeRule.onNodeWithText("Layer 1").assertIsDisplayed()
@@ -1039,7 +1039,7 @@ class InkloomLaunchTest {
 
         composeRule.onAllNodesWithText("Diamond").onLast().performClick()
         composeRule.onAllNodesWithText("Repeat").onLast().performClick()
-        composeRule.onAllNodesWithText("Add color stop").onLast().performClick()
+        composeRule.onAllNodesWithText("Add color stop").onLast().performScrollTo().performClick()
         composeRule.waitForIdle()
 
         val settings = AppSettingsStore(composeRule.activity).load()
