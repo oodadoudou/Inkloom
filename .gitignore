@@ -44,6 +44,15 @@ docs/
 /*.docx
 /*.pdf
 
+# Private product requirements and planning documents stay on this machine
+/AGENTS.md
+/DOCUMENTATION.md
+/*REQUIREMENT*.md
+/*requirement*.md
+/*REQUESTED_FEATURE*.md
+/*INTERACTION_CONTRACT*.md
+/*需求*.md
+
 # User-owned brush corpus and local compatibility reports
 real-brush-fixtures/
 brush-corpus/
