@@ -1,11 +1,31 @@
 package app.inkloom.document
 
 import app.inkloom.engine.v5.surface.MaskTileSurface
+import app.inkloom.engine.v5.surface.MaskComposeMode
+import app.inkloom.engine.v5.selection.SavedSelectionComposition
 import org.junit.Assert.*
 import org.junit.Test
 import java.nio.file.Files
 
 class SavedSelectionTest {
+    @Test fun savedSelectionModesPreserveSoftAlphaAndLeaveOriginalsUnchanged() {
+        val current = MaskTileSurface(20, 20, 64)
+        current.beginWrite("current").use { it.setAlpha(5, 5, 128); it.commit().close() }
+        val saved = MaskTileSurface(20, 20, 64)
+        saved.beginWrite("saved").use {
+            it.setAlpha(5, 5, 128)
+            it.setAlpha(6, 5, 255)
+            it.commit().close()
+        }
+        val a = current.snapshot(); val b = saved.snapshot()
+        assertEquals(192, SavedSelectionComposition.apply(a, b, MaskComposeMode.ADD).alphaAt(5, 5))
+        assertEquals(64, SavedSelectionComposition.apply(a, b, MaskComposeMode.SUBTRACT).alphaAt(5, 5))
+        assertEquals(64, SavedSelectionComposition.apply(a, b, MaskComposeMode.INTERSECT).alphaAt(5, 5))
+        assertEquals(255, SavedSelectionComposition.apply(a, b, MaskComposeMode.REPLACE).alphaAt(6, 5))
+        assertEquals(0, a.alphaAt(6, 5))
+        assertEquals(255, b.alphaAt(6, 5))
+    }
+
     @Test fun savedMaskSurvivesCheckpointAndGarbageCollection() {
         val root = Files.createTempDirectory("saved-selection").toFile()
         try {

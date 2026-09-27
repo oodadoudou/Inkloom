@@ -6652,14 +6652,18 @@ class InkCanvasView(context: Context) : View(context) {
         return loadSavedSelection(mask.snapshot())
     }
 
-    fun loadSavedSelection(snapshot: MaskTileSurfaceSnapshot): Boolean {
+    fun loadSavedSelection(
+        snapshot: MaskTileSurfaceSnapshot,
+        mode: app.inkloom.engine.v5.surface.MaskComposeMode = app.inkloom.engine.v5.surface.MaskComposeMode.REPLACE,
+    ): Boolean {
         val state = documentSelectionState ?: return false
         if (snapshot.logicalWidth != state.logicalWidth || snapshot.logicalHeight != state.logicalHeight) return false
         commitSelectionContour()
         val before = state.snapshot()
         val radius = selectionFeatherPixels
         val base = selectionFeatherBase
-        if (!replaceSelectionFromMask(snapshot)) return false
+        val next = app.inkloom.engine.v5.selection.SavedSelectionComposition.apply(before, snapshot, mode)
+        if (!replaceSelectionFromMask(next)) return false
         recordSelectionHistory(state, before, radius, base)
         return true
     }

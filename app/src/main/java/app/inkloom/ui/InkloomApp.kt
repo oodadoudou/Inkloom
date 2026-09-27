@@ -3654,20 +3654,55 @@ private fun EditorScreen(
                                 val reference = assets.saveMaskTileSurface(mask)
                                 try {
                                     val entry = app.inkloom.document.SavedSelection(name = trSelectionName + " ${selectedPage.savedSelections.size + 1}", surface = reference, crop = selectedPage.crop)
-                                    onSetSavedSelections(document.id, selectedPage.id, selectedPage.savedSelections + entry)
+                                    val before = selectedPage.savedSelections
+                                    val after = before + entry
+                                    onSetSavedSelections(document.id, selectedPage.id, after)
+                                    canvasView?.let { view ->
+                                        val releaseHistoryAsset = assets.retainHistoryAssets(listOf(entry.surface.assetPath))
+                                        view.recordExternalEdit(
+                                            undo = { onSetSavedSelections(document.id, selectedPage.id, before) },
+                                            redo = { onSetSavedSelections(document.id, selectedPage.id, after) },
+                                            dispose = releaseHistoryAsset,
+                                        )
+                                    }
                                 } finally { assets.releaseAssetReservation(reference.assetPath) }
                             }.onFailure { Toast.makeText(context, selectionSaveError, Toast.LENGTH_LONG).show() }
                         }
                     },
-                    onLoad = { entry ->
+                    onLoad = { entry, mode ->
                         runCatching {
                             val current = requireNotNull(canvasView?.selectionMaskSurfaceSnapshot())
                             val mask = app.inkloom.document.SavedSelectionGeometry.projected(assets.loadMaskTileSurface(entry.surface).snapshot(), entry.rotationQuarterTurns, entry.crop, selectedPage.crop, current.logicalWidth, current.logicalHeight)
-                            check(canvasView?.loadSavedSelection(mask) == true)
+                            check(canvasView?.loadSavedSelection(mask, mode) == true)
                             savedSelectionsOpen = false
                         }.onFailure { Toast.makeText(context, selectionLoadError, Toast.LENGTH_LONG).show() }
                     },
-                    onDelete = { entry -> onSetSavedSelections(document.id, selectedPage.id, selectedPage.savedSelections.filterNot { it.id == entry.id }) },
+                    onRename = { entry, name ->
+                        val before = selectedPage.savedSelections
+                        val after = before.map { if (it.id == entry.id) it.copy(name = name) else it }
+                        if (before != after) {
+                            onSetSavedSelections(document.id, selectedPage.id, after)
+                            canvasView?.recordExternalEdit(
+                                undo = { onSetSavedSelections(document.id, selectedPage.id, before) },
+                                redo = { onSetSavedSelections(document.id, selectedPage.id, after) },
+                            )
+                        }
+                    },
+                    onDelete = { entry ->
+                        val before = selectedPage.savedSelections
+                        val after = before.filterNot { it.id == entry.id }
+                        if (before != after) {
+                            onSetSavedSelections(document.id, selectedPage.id, after)
+                            canvasView?.let { view ->
+                                val releaseHistoryAsset = assets.retainHistoryAssets(listOf(entry.surface.assetPath))
+                                view.recordExternalEdit(
+                                    undo = { onSetSavedSelections(document.id, selectedPage.id, before) },
+                                    redo = { onSetSavedSelections(document.id, selectedPage.id, after) },
+                                    dispose = releaseHistoryAsset,
+                                )
+                            }
+                        }
+                    },
                     onDismiss = { savedSelectionsOpen = false },
                 )
                 if (tool == EditorTool.SELECT && imageCanvasTransform == null && selectionTransformState == null) SelectionStudioPanel(
