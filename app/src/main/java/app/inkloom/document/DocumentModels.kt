@@ -297,6 +297,9 @@ data class LayerMask(
     val baseVisible: Boolean = true,
     val enabled: Boolean = true,
     val linked: Boolean = true,
+    /** Soft alpha by default; disabling it displays thresholded but retains editable source alpha. */
+    val showGradients: Boolean = true,
+    val expressionThreshold: Int = 128,
     /** Authoritative V5 sparse alpha surface. */
     val surface: MaskTileSurfaceRef? = null,
 )

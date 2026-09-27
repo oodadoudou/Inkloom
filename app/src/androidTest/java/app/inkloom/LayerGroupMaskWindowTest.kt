@@ -94,6 +94,28 @@ class LayerGroupMaskWindowTest {
         compose.waitUntil(10_000) { color() == app.inkloom.document.LayerPaletteColor.RED }
     }
 
+    @Test fun maskExpressionDialogCommitsOnceAndUndoRestoresSoftGradients() {
+        tap("New Note"); tap("Create")
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync {
+            model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java]
+        }
+        fun mask() = requireNotNull(model.currentPage()).layers.first { it.name == "Layer 1" }.mask
+        tap("Layers"); tap("Add layer")
+        tap("Layer actions Layer 1"); tap("Mask"); tap("Mask selection")
+        compose.waitUntil(10_000) { mask() != null }
+        tap("Layer actions Layer 1"); tap("Mask")
+        compose.onNodeWithText("Mask gradients and threshold").performScrollTo().performClick()
+        tap("Show mask gradients switch")
+        tap("Apply")
+        compose.waitUntil(10_000) { mask()?.showGradients == false }
+        assertEquals(128, mask()?.expressionThreshold)
+        tap("Undo")
+        compose.waitUntil(10_000) { mask()?.showGradients == true }
+        tap("Redo")
+        compose.waitUntil(10_000) { mask()?.showGradients == false }
+    }
+
     @Test fun groupCopyDeleteUngroupAndUndoKeepNestedPaintOnTheRealWindow() {
         tap("New Note"); tap("Create"); val view = canvas()
         lateinit var model: app.inkloom.ui.InkloomViewModel

@@ -117,6 +117,33 @@ internal class LayerMaskEditor(
         }
     }
 
+    fun setExpression(layerId: String, showGradients: Boolean, threshold: Int) {
+        val view = canvas()
+        if (closed || job?.isActive == true || view == null || view.selectionLayerTransferPending ||
+            view.hasActivePaintContact() || !view.isBoundToSelectionPage(documentId, pageId)) {
+            rejected("BUSY"); return
+        }
+        val captured = page()
+        val layer = captured.layers.firstOrNull { it.id == layerId }
+        val before = layer?.mask
+        if (layer == null || before == null || LayerHierarchy.effectiveLocked(captured.layers, layer)) {
+            rejected("MASK_TARGET_UNAVAILABLE"); return
+        }
+        val after = before.copy(showGradients = showGradients, expressionThreshold = threshold.coerceIn(0, 255))
+        val edit = LayerMaskAttachmentEdit(layerId, before, after)
+        if (edit.isNoOp) return
+        val release = assets.retainHistoryAssets(listOfNotNull(before.surface?.assetPath))
+        try {
+            if (!apply(edit, false)) { release(); rejected("STALE_HISTORY"); return }
+            view.layerMasks = view.layerMasks + (layerId to after)
+            view.recordExternalEdit(
+                undo = { if (apply(edit, true)) view.layerMasks = view.layerMasks + (layerId to before) else rejected("STALE_HISTORY") },
+                redo = { if (apply(edit, false)) view.layerMasks = view.layerMasks + (layerId to after) else rejected("STALE_HISTORY") },
+                dispose = release,
+            )
+        } catch (_: Exception) { release(); rejected("MASK_ASSET_OR_HISTORY_UNAVAILABLE") }
+    }
+
     fun transfer(sourceLayerId: String, targetLayerId: String, copy: Boolean) {
         val view = canvas()
         if (closed || job?.isActive == true || view == null || view.selectionLayerTransferPending ||

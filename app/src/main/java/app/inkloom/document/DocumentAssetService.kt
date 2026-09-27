@@ -1084,7 +1084,7 @@ class DocumentAssetService(private val context: Context) {
             }
             drawLayerWithAlphaLock(layer)
             if (applyLayerEffects) layer.mask?.takeIf { it.enabled }?.surface?.let { reference ->
-                val sparse = runCatching { loadMaskTileSurface(reference).snapshot() }.getOrNull()
+                val sparse = runCatching { layer.mask!!.expressed(loadMaskTileSurface(reference).snapshot()) }.getOrNull()
                     ?: return@let
                 val maskCheckpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     blendMode = android.graphics.BlendMode.DST_IN
@@ -1129,7 +1129,7 @@ class DocumentAssetService(private val context: Context) {
                 })
                 drawSiblings(node.children)
                 layer.mask?.takeIf { it.enabled }?.surface?.let { reference ->
-                    val mask = loadMaskTileSurface(reference).snapshot()
+                    val mask = layer.mask!!.expressed(loadMaskTileSurface(reference).snapshot())
                     val checkpoint = canvas.saveLayer(null, Paint().apply { blendMode = android.graphics.BlendMode.DST_IN })
                     app.inkloom.engine.v5.android.MaskTileCanvasRenderer.draw(mask, canvas, RectF(0f, 0f, width.toFloat(), height.toFloat()))
                     canvas.restoreToCount(checkpoint)
@@ -1205,21 +1205,24 @@ class DocumentAssetService(private val context: Context) {
                 else raw ?: PixelLayerProjectionInput(layer.id, projection.emptySnapshot)
             layer.id to content.copy(opacity = layer.opacity, blendMode = layer.blendMode.toPixelBlendMode(),
                 colorReplacement = layer.colorReplacement,
-                mask = layer.mask?.takeIf(LayerMask::enabled)?.surface?.let { loadMaskTileSurface(it).snapshot() },
+                mask = layer.mask?.takeIf(LayerMask::enabled)?.let { mask ->
+                    mask.surface?.let { mask.expressed(loadMaskTileSurface(it).snapshot()) } },
                 clipToBaseBelow = layer.clippedToBelow)
         } } finally { contentCache?.endFrame() }
         val visibleIds = visibleLayers.mapTo(hashSetOf()) { it.id }
         val nodes = LayerCompositingTree.project<PixelProjectionNode>(projectedPage.layers,
             paint = { layer -> if (layer.role == LayerRole.ADJUSTMENT && layer.adjustment != null)
                 PixelProjectionNode.Adjustment(layer.id, layer.adjustment, layer.opacity, layer.blendMode.toPixelBlendMode(),
-                    layer.mask?.takeIf { it.enabled }?.surface?.let { loadMaskTileSurface(it).snapshot() },
+                    layer.mask?.takeIf { it.enabled }?.let { mask ->
+                        mask.surface?.let { mask.expressed(loadMaskTileSurface(it).snapshot()) } },
                     layer.id in visibleIds)
             else PixelProjectionNode.Paint((inputs[layer.id] ?: PixelLayerProjectionInput(layer.id,
                 projection.emptySnapshot, opacity = layer.opacity, clipToBaseBelow = layer.clippedToBelow))
                 .copy(visible = layer.id in visibleIds)) },
             group = { layer, children -> PixelProjectionNode.Group(layer.id, children, layer.opacity,
                 layer.blendMode.toPixelBlendMode(),
-                layer.mask?.takeIf { it.enabled }?.surface?.let { loadMaskTileSurface(it).snapshot() },
+                layer.mask?.takeIf { it.enabled }?.let { mask ->
+                    mask.surface?.let { mask.expressed(loadMaskTileSurface(it).snapshot()) } },
                 layer.clippedToBelow, visible = layer.visible, passThrough = layer.passThrough) })
         val update = projection.update(nodes)
         PixelTileCanvasRenderer().use { renderer ->

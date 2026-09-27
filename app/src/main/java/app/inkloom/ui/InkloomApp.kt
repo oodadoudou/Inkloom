@@ -3909,6 +3909,7 @@ private fun EditorScreen(
                 onToggleDraft = { onToggleLayerDraft(document.id, selectedPage.id, it) },
                 onToggleDrawingAssist = { onToggleLayerDrawingAssist(document.id, selectedPage.id, it, settings.toLayerDrawingGuide()) },
                 onMaskCommand = ::performLayerMaskCommand,
+                onMaskExpression = maskEditor::setExpression,
                 onMaskTransfer = ::performLayerMaskTransfer,
                 editingMaskId = editingMaskId,
                 onRelocate = appearanceEditor::move,
@@ -6954,6 +6955,7 @@ internal fun LayerMaskMenuItems(
     layer: InkLayer,
     transferTargets: List<InkLayer> = emptyList(),
     onTransfer: (targetLayerId: String, copy: Boolean) -> Unit = { _, _ -> },
+    onExpression: () -> Unit = {},
     onCommand: (LayerMaskCommand) -> Unit,
 ) {
     if (layer.role == LayerRole.BACKGROUND) return
@@ -6992,6 +6994,10 @@ internal fun LayerMaskMenuItems(
             text = { Text(tr("Show or hide mask overlay", "显示或隐藏蒙版覆盖")) },
             onClick = { onCommand(LayerMaskCommand.TOGGLE_OVERLAY) },
         )
+        DropdownMenuItem(
+            text = { Text(tr("Mask gradients and threshold", "蒙版渐变与阈值")) },
+            onClick = onExpression,
+        )
         DropdownMenuItem(text = { Text(tr("Invert layer mask", "反相图层蒙版")) }, onClick = { onCommand(LayerMaskCommand.INVERT) })
         if (mask.surface != null) DropdownMenuItem(
             text = { Text(tr("Load mask as selection", "从蒙版载入选区")) },
@@ -7023,6 +7029,9 @@ private fun LayerMaskThumbnailView(mask: LayerMask, modifier: Modifier = Modifie
             runCatching { DocumentAssetService(context).loadMaskTileSurface(reference).snapshot() }.getOrNull()
         }
     }
+    val expressed = remember(snapshot, mask.showGradients, mask.expressionThreshold) {
+        snapshot?.let(mask::expressed)
+    }
     if (snapshot == null) {
         Icon(Icons.Outlined.FilterAlt, tr("Layer mask", "图层蒙版"), modifier, tint = if (mask.enabled) Ink else MutedInk)
         return
@@ -7035,7 +7044,7 @@ private fun LayerMaskThumbnailView(mask: LayerMask, modifier: Modifier = Modifie
     ) {
         drawIntoCanvas { composeCanvas ->
             app.inkloom.engine.v5.android.MaskTileCanvasRenderer.draw(
-                snapshot,
+                requireNotNull(expressed),
                 composeCanvas.nativeCanvas,
                 android.graphics.RectF(0f, 0f, size.width, size.height),
                 android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG).apply {
@@ -7101,6 +7110,7 @@ private fun LayerPanel(
     onToggleDraft: (String) -> Unit,
     onToggleDrawingAssist: (String) -> Unit,
     onMaskCommand: (String, LayerMaskCommand) -> Unit,
+    onMaskExpression: (String, Boolean, Int) -> Unit,
     onMaskTransfer: (String, String, Boolean) -> Unit,
     editingMaskId: String? = null,
     onRelocate: (String, Set<String>, LayerDrop) -> Unit,
@@ -7145,7 +7155,8 @@ private fun LayerPanel(
             onToggleReference = onToggleReference,
             onToggleDraft = onToggleDraft,
             onToggleDrawingAssist = onToggleDrawingAssist,
-            onMaskCommand = onMaskCommand, onMaskTransfer = onMaskTransfer, editingMaskId = editingMaskId,
+            onMaskCommand = onMaskCommand, onMaskExpression = onMaskExpression,
+            onMaskTransfer = onMaskTransfer, editingMaskId = editingMaskId,
             onRelocate = onRelocate, secondarySelection = secondarySelection, onSecondarySelection = onSecondarySelection,
             onToggleFolderCollapsed = onToggleFolderCollapsed,
             onDuplicate = onDuplicate,
@@ -7207,6 +7218,7 @@ private fun PaintingLayerPanel(
     onToggleDraft: (String) -> Unit,
     onToggleDrawingAssist: (String) -> Unit,
     onMaskCommand: (String, LayerMaskCommand) -> Unit,
+    onMaskExpression: (String, Boolean, Int) -> Unit,
     onMaskTransfer: (String, String, Boolean) -> Unit,
     editingMaskId: String? = null,
     onRelocate: (String, Set<String>, LayerDrop) -> Unit,
@@ -7223,6 +7235,9 @@ private fun PaintingLayerPanel(
 ) {
     var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
     var colorLayer by remember { mutableStateOf<InkLayer?>(null) }
+    var expressionLayer by remember { mutableStateOf<InkLayer?>(null) }
+    var expressionGradients by remember { mutableStateOf(true) }
+    var expressionThreshold by remember { mutableFloatStateOf(128f) }
     var colorDark by remember { mutableIntStateOf(brushColor) }
     var colorLight by remember { mutableIntStateOf(secondaryBrushColor) }
     var renameValue by remember { mutableStateOf("") }
@@ -7485,6 +7500,12 @@ private fun PaintingLayerPanel(
                                         maskMenu = false
                                         onMaskTransfer(layer.id, targetId, copy)
                                     },
+                                    onExpression = {
+                                        maskMenu = false
+                                        expressionLayer = layer
+                                        expressionGradients = layer.mask?.showGradients ?: true
+                                        expressionThreshold = (layer.mask?.expressionThreshold ?: 128).toFloat()
+                                    },
                                 ) { command -> maskMenu = false; onMaskCommand(layer.id, command) }
                             }
                             DropdownMenu(paletteColorMenu, { paletteColorMenu = false }) {
@@ -7597,6 +7618,28 @@ private fun PaintingLayerPanel(
             }
             TextButton(onClick = { colorLayer = null }) { Text(tr("Cancel", "取消")) }
         } },
+    ) }
+    expressionLayer?.let { layer -> AlertDialog(
+        onDismissRequest = { expressionLayer = null },
+        title = { Text(tr("Mask expression", "蒙版表达")) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val switchDescription = tr("Show mask gradients switch", "显示蒙版渐变开关")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(tr("Show gradients", "显示渐变"), Modifier.weight(1f))
+                Switch(expressionGradients, { expressionGradients = it },
+                    modifier = Modifier.semantics { contentDescription = switchDescription })
+            }
+            if (!expressionGradients) {
+                Text("${tr("Threshold", "阈值")} ${expressionThreshold.roundToInt()} / 255")
+                Slider(expressionThreshold, { expressionThreshold = it }, valueRange = 0f..255f,
+                    modifier = Modifier.width(260.dp))
+            }
+        } },
+        confirmButton = { TextButton(onClick = {
+            onMaskExpression(layer.id, expressionGradients, expressionThreshold.roundToInt())
+            expressionLayer = null
+        }) { Text(tr("Apply", "应用")) } },
+        dismissButton = { TextButton(onClick = { expressionLayer = null }) { Text(tr("Cancel", "取消")) } },
     ) }
 }
 

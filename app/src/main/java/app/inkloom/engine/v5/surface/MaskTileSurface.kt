@@ -42,6 +42,23 @@ class MaskTileSurfaceSnapshot internal constructor(
     val defaultAlpha: Int,
     private val tiles: Map<PixelTileKey, MaskTileGeneration>,
 ) {
+    private val thresholdCache = mutableMapOf<Int, MaskTileSurfaceSnapshot>()
+
+    /** Display-only CSP mask expression. The source mask and its editable alpha stay unchanged. */
+    fun thresholded(cutoff: Int): MaskTileSurfaceSnapshot = synchronized(thresholdCache) {
+        require(cutoff in 0..255)
+        thresholdCache[cutoff]?.let { return@synchronized it }
+        fun expressed(alpha: Int): Int = if (alpha > 0 && alpha >= cutoff) 255 else 0
+        val default = expressed(defaultAlpha)
+        val mapped = tiles.mapNotNull { (key, tile) ->
+            val alpha = ByteArray(tile.alpha.size) { index -> expressed(tile.alpha[index].toInt() and 0xff).toByte() }
+            if (alpha.all { (it.toInt() and 0xff) == default }) null
+            else key to MaskTileGeneration(tile.id, alpha, alpha.count { it.toInt() != 0 })
+        }.toMap()
+        MaskTileSurfaceSnapshot("$surfaceId:threshold:$cutoff", logicalWidth, logicalHeight,
+            tileSize, revision, default, mapped).also { thresholdCache[cutoff] = it }
+    }
+
     /** Internal immutable generation lookup used by frame-time caches. */
     internal fun generationAt(key: PixelTileKey): Long? = tiles[key]?.id
 

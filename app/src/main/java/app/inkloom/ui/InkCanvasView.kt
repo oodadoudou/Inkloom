@@ -155,6 +155,7 @@ import app.inkloom.document.LayerBlendMode
 import app.inkloom.document.LayerColorReplacement
 import app.inkloom.document.toColorFilter
 import app.inkloom.document.LayerMask
+import app.inkloom.document.expressed
 import app.inkloom.document.toBlendMode
 import app.inkloom.document.toPixelBlendMode
 import app.inkloom.document.LaserTrail
@@ -747,7 +748,7 @@ class InkCanvasView(context: Context) : View(context) {
             if ((layerOpacities[layerId] ?: 1f) <= 0f) return@filter false
             val mask = layerMasks[layerId]
             if (mask?.enabled == true) {
-                val surface = layerMaskSurfaces[layerId]
+                val surface = layerMaskSurfaces[layerId]?.let { layerMasks[layerId]?.expressed(it) ?: it }
                 if (surface != null && surface.alphaAt(
                         (normalizedX * surface.logicalWidth).toInt().coerceIn(0, surface.logicalWidth - 1),
                         (normalizedY * surface.logicalHeight).toInt().coerceIn(0, surface.logicalHeight - 1),
@@ -1768,7 +1769,7 @@ class InkCanvasView(context: Context) : View(context) {
     /** CSP-style purple overlay: the colored area is the portion hidden by the selected mask. */
     private fun drawLayerMaskOverlay(canvas: Canvas) {
         val layerId = editingLayerMaskId ?: layerMaskOverlayId ?: return
-        val mask = layerMaskSurfaces[layerId] ?: return
+        val mask = layerMaskSurfaces[layerId]?.let { layerMasks[layerId]?.expressed(it) ?: it } ?: return
         val area = RectF(0f, 0f, width.toFloat(), height.toFloat())
         val key = listOf(layerId, mask.surfaceId, mask.revision, width, height)
         if (key != layerMaskOverlayKey) {
@@ -1972,7 +1973,7 @@ class InkCanvasView(context: Context) : View(context) {
                 })
                 drawV5RawLayerContent(canvas, layerId, includeElements)
                 layerMasks[layerId]?.takeIf { it.enabled }?.let {
-                    val sparse = layerMaskSurfaces[layerId] ?: return@let
+                    val sparse = layerMaskSurfaces[layerId]?.let(it::expressed) ?: return@let
                     val maskCheckpoint = canvas.saveLayer(compositionBounds, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
                     MaskTileCanvasRenderer.draw(sparse, canvas, RectF(0f, 0f, width.toFloat(), height.toFloat()))
                     canvas.restoreToCount(maskCheckpoint)
@@ -1987,7 +1988,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         fun drawMask(layerId: String) {
             layerMasks[layerId]?.takeIf { it.enabled }?.let {
-                val sparse = layerMaskSurfaces[layerId] ?: return@let
+                val sparse = layerMaskSurfaces[layerId]?.let(it::expressed) ?: return@let
                 val save = canvas.saveLayer(compositionBounds, Paint().apply { blendMode = android.graphics.BlendMode.DST_IN })
                 MaskTileCanvasRenderer.draw(sparse, canvas, RectF(0f, 0f, width.toFloat(), height.toFloat()))
                 canvas.restoreToCount(save)
@@ -2128,7 +2129,8 @@ class InkCanvasView(context: Context) : View(context) {
             content.copy(opacity = layerOpacities[layerId] ?: 1f,
                 blendMode = (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL).toPixelBlendMode(),
                 colorReplacement = layerColorReplacements[layerId],
-                mask = layerMasks[layerId]?.takeIf(LayerMask::enabled)?.let { layerMaskSurfaces[layerId] },
+                mask = layerMasks[layerId]?.takeIf(LayerMask::enabled)?.let { mask ->
+                    layerMaskSurfaces[layerId]?.let(mask::expressed) },
                 clipToBaseBelow = layerId in clippedLayers)
         } } finally { contentCache?.endFrame() }
         val nodes = boundDocumentLayers?.let { layers -> LayerCompositingTree.project<PixelProjectionNode>(layers,
@@ -2136,14 +2138,16 @@ class InkCanvasView(context: Context) : View(context) {
                 PixelProjectionNode.Adjustment(layer.id, layer.adjustment,
                     layerOpacities[layer.id] ?: layer.opacity,
                     (layerBlendModes[layer.id] ?: layer.blendMode).toPixelBlendMode(),
-                    layerMasks[layer.id]?.takeIf { it.enabled }?.let { layerMaskSurfaces[layer.id] }, layer.visible)
+                    layerMasks[layer.id]?.takeIf { it.enabled }?.let { mask ->
+                        layerMaskSurfaces[layer.id]?.let(mask::expressed) }, layer.visible)
             else PixelProjectionNode.Paint((inputs[layer.id] ?: PixelLayerProjectionInput(layer.id,
                 cache.emptySnapshot, opacity = layer.opacity, blendMode = layer.blendMode.toPixelBlendMode(),
                 clipToBaseBelow = layer.clippedToBelow)).copy(visible = layer.visible)) },
             group = { layer, children -> PixelProjectionNode.Group(layer.id, children,
                 layerOpacities[layer.id] ?: layer.opacity,
                 (layerBlendModes[layer.id] ?: layer.blendMode).toPixelBlendMode(),
-                layerMasks[layer.id]?.takeIf { it.enabled }?.let { layerMaskSurfaces[layer.id] },
+                layerMasks[layer.id]?.takeIf { it.enabled }?.let { mask ->
+                    layerMaskSurfaces[layer.id]?.let(mask::expressed) },
                 layer.id in clippedLayers, visible = layer.visible, passThrough = layer.passThrough) }) }
             ?: inputs.values.map(PixelProjectionNode::Paint)
         val update = cache.update(nodes)
