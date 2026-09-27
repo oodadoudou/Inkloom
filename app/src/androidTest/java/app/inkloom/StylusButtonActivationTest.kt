@@ -48,6 +48,7 @@ class StylusButtonActivationTest {
                 // Brush sizes are preset-scoped. Seed the selected G Pen through the same store
                 // used by the editor instead of relying on the retired global pen-size fallback.
                 BrushMasterSettingsStore(context).save(EditorTool.PEN, "system-g-pen", 19f, .43f)
+                BrushMasterSettingsStore(context).save(EditorTool.ERASER, "system-hard-eraser", 41f, 1f)
                 try {
                     base.evaluate()
                 } finally {
