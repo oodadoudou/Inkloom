@@ -4,7 +4,7 @@ An offline professional painting engine inside a lightweight Android notebook, w
 
 ## Product notes
 
-Detailed product requirements, priorities, interaction contracts, and agent notes are kept locally and are not included in this repository. Historical plans are not current completion evidence.
+Detailed product requirements, priorities, interaction contracts, and local development instructions live in the ignored `docs/` directory and are not included in this repository. Historical plans are not current completion evidence.
 
 ## Build prerequisites
 
