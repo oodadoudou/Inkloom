@@ -9,6 +9,24 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class SelectionTransformPivotTest {
+    @Test fun normalCornerResizeKeepsOppositeCornerAndCarriesReferencePoint() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val transform = SelectionCanvasTransform(SelectionTransformPose(100f, 100f, 40f, 40f),
+                1000, 1000, 1f, {})
+            fun touch(action: Int, x: Float, y: Float) {
+                val event = MotionEvent.obtain(0, 10, action, x, y, 0)
+                try { transform.touch(event, x, y, 1000, 1000, 1f) } finally { event.recycle() }
+            }
+            touch(MotionEvent.ACTION_DOWN, 80f, 80f)
+            touch(MotionEvent.ACTION_MOVE, 60f, 60f)
+            touch(MotionEvent.ACTION_UP, 60f, 60f)
+            assertEquals(120f, transform.pose.point(1f, 1f).first, .01f)
+            assertEquals(120f, transform.pose.point(1f, 1f).second, .01f)
+            assertEquals(transform.pose.centerX, transform.pivotX, .01f)
+            assertEquals(transform.pose.centerY, transform.pivotY, .01f)
+        }
+    }
+
     @Test fun referencePointDragDoesNotMoveContentAndNumericPositionMovesIt() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val original = SelectionTransformPose(100f, 100f, 40f, 40f)

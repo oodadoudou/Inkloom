@@ -182,9 +182,6 @@ internal class SelectionCanvasTransform(
                             atan2(startY - startPivotY, startX - startPivotX)
                         anchoredPose(start, start.copy(angle = (start.angle + Math.toDegrees(delta.toDouble()).toFloat()).mod(360f)), startPivotX, startPivotY)
                     } else start.drag(node,startX,startY,tx,ty,mode)
-                    if (node != SelectionTransformNode.MOVE && node != SelectionTransformNode.ROTATE) {
-                        next = anchoredPose(start, next, startPivotX, startPivotY)
-                    }
                     if(snapping && node==SelectionTransformNode.MOVE) {
                         val q=next.mesh ?: next.sourceCorners()
                         fun snap(values: List<Float>, targets: List<Float>, threshold: Float): Pair<Float,Float>? =
@@ -193,6 +190,18 @@ internal class SelectionCanvasTransform(
                         val sy=snap(listOf(q.minOf { it.second },q.maxOf { it.second },next.centerY),listOf(0f,rasterHeight/2f,rasterHeight.toFloat())+contentTargets.map { it.second },snapDistance/zoom*rasterHeight/h)
                         guideX=sx?.second; guideY=sy?.second
                         next=next.withPose(next.copy(centerX=next.centerX+(sx?.first ?: 0f),centerY=next.centerY+(sy?.first ?: 0f)))
+                    }
+                    // A normal handle drag keeps its opposite edge/corner fixed. The reference
+                    // point controls rotation; resizing from it is a separate modifier gesture.
+                    if (node != SelectionTransformNode.MOVE && node != SelectionTransformNode.ROTATE) {
+                        val local = SelectionTransformPose.rotate(startPivotX - start.centerX,
+                            startPivotY - start.centerY, -start.angle)
+                        val mapped = SelectionTransformPose.rotate(
+                            local.first * next.width / start.width,
+                            local.second * next.height / start.height, next.angle)
+                        pivotX = next.centerX + mapped.first
+                        pivotY = next.centerY + mapped.second
+                        pivotChanged()
                     }
                     replace(next)
                     if (node == SelectionTransformNode.MOVE) {
