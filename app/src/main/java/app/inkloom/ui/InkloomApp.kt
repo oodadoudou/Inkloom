@@ -3811,6 +3811,7 @@ private fun EditorScreen(
                 onEditAdjustment = { adjustmentDialogId = it },
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
+                onSolo = appearanceEditor::toggleSolo,
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
                 onOpacity = appearanceEditor::handle,
                 onBlendMode = appearanceEditor::setBlendMode,
@@ -6990,6 +6991,7 @@ private fun LayerPanel(
     onEditAdjustment: (String) -> Unit,
     onRename: (String, String) -> Unit,
     onVisibility: (String) -> Unit,
+    onSolo: (String) -> Unit,
     onLock: (String) -> Unit,
     onOpacity: (String, LayerOpacityAction) -> Unit,
     onBlendMode: (String, LayerBlendMode) -> Unit,
@@ -7030,6 +7032,7 @@ private fun LayerPanel(
             onEditAdjustment = onEditAdjustment,
             onRename = onRename,
             onVisibility = onVisibility,
+            onSolo = onSolo,
             onLock = onLock,
             onOpacity = onOpacity,
             onBlendMode = onBlendMode,
@@ -7086,6 +7089,7 @@ private fun PaintingLayerPanel(
     onEditAdjustment: (String) -> Unit,
     onRename: (String, String) -> Unit,
     onVisibility: (String) -> Unit,
+    onSolo: (String) -> Unit,
     onLock: (String) -> Unit,
     onOpacity: (String, LayerOpacityAction) -> Unit,
     onBlendMode: (String, LayerBlendMode) -> Unit,
@@ -7287,9 +7291,13 @@ private fun PaintingLayerPanel(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(Modifier.width(4.dp).fillMaxHeight().background(layerPaletteColor(layer.paletteColor)))
-                        IconButton(onClick = { onVisibility(layer.id) }, modifier = Modifier.width(30.dp).fillMaxHeight().background(Paper)) {
+                        val visibilityDescription = tr("Toggle visibility; long press to solo", "点击切换可见性，长按独显")
+                        Box(Modifier.width(30.dp).fillMaxHeight().background(Paper).combinedClickable(
+                            onClick = { onVisibility(layer.id) }, onLongClick = { onSolo(layer.id) },
+                            onLongClickLabel = tr("Solo layer or restore visibility", "独显图层或恢复可见性"),
+                        ).semantics { contentDescription = visibilityDescription }, contentAlignment = Alignment.Center) {
                             Icon(if (layer.visible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
-                                tr("Toggle layer visibility", "切换图层可见性"), Modifier.size(18.dp), tint = MutedInk)
+                                null, Modifier.size(18.dp), tint = MutedInk)
                         }
                         val secondaryDescription = "${tr("Secondary selection", "图层多选")} ${layer.name}"
                         IconButton(onClick = {

@@ -60,6 +60,9 @@ data class InkPage(
     val pdfLinkIndexVersion: Int = 0,
     val recognizedTextBlocks: List<RecognizedTextBlock> = emptyList(),
     val savedSelections: List<SavedSelection> = emptyList(),
+    /** Visibility before the current solo preview; keyed by layer ID so reorder is harmless. */
+    val soloVisibilityBefore: Map<String, Boolean> = emptyMap(),
+    val soloLayerId: String? = null,
     val handwritingIndexFingerprint: String = "",
     val imageOcrFingerprint: String = "",
 )

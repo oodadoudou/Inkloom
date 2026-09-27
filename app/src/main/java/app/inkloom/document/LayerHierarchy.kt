@@ -32,7 +32,7 @@ object LayerHierarchy {
         )
     }
 
-    private fun ancestors(layers: List<InkLayer>, layer: InkLayer): List<InkLayer> {
+    fun ancestors(layers: List<InkLayer>, layer: InkLayer): List<InkLayer> {
         val byId = layers.associateBy(InkLayer::id)
         val result = mutableListOf<InkLayer>()
         val seen = mutableSetOf(layer.id)

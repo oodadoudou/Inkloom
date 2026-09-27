@@ -14,6 +14,7 @@ import app.inkloom.document.LayerHierarchy
 import app.inkloom.document.LayerRole
 import app.inkloom.document.LayerPaletteColor
 import app.inkloom.document.LayerPaletteColorEdit
+import app.inkloom.document.LayerSoloVisibilityEdit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -82,6 +83,13 @@ internal class LayerAppearanceEditor(
         if (begin(layerId, allowBackground = true, allowLocked = true) {
                 LayerPaletteColorEdit(layerId, it.paletteColor, color)
             }) commit()
+        rejectedGesture = false
+    }
+
+    fun toggleSolo(layerId: String) {
+        if (closed || finishing || preview != null) { rejected(); return }
+        val edit = LayerSoloVisibilityEdit.create(page(), layerId) ?: run { rejected(); return }
+        if (begin(layerId, allowBackground = true, allowLocked = true) { edit }) commit()
         rejectedGesture = false
     }
 
