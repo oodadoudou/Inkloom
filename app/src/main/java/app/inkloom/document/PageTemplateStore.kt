@@ -98,6 +98,13 @@ object PageTemplateOperations {
         background = template.background,
     )
 
+    fun newBlankPageBeside(source: InkPage, title: String): InkPage = InkPage(
+        title = title,
+        width = source.width,
+        height = source.height,
+        background = source.background as? PageBackground.Paper ?: PageBackground.Paper(),
+    )
+
     /** Existing page content keeps its coordinate system; an empty page adopts the template dimensions. */
     fun apply(page: InkPage, template: PageTemplate): InkPage {
         val empty = page.layers.none { layer ->

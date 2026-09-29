@@ -9,6 +9,7 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.longClick
@@ -594,6 +595,44 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Page list").performScrollToIndex(7)
         composeRule.onNodeWithContentDescription("Add page").assertIsDisplayed().performClick()
         composeRule.onNodeWithText("Choose template for new page").assertIsDisplayed()
+    }
+
+    @Test fun pagesPanelReopensAtCurrentPageAndInsertsOnEitherSide() {
+        createNotebookAndOpenEditor()
+        repeat(7) {
+            composeRule.onNodeWithContentDescription("Add page using current template").performClick()
+            composeRule.waitForIdle()
+        }
+        val store = FileDocumentStore(composeRule.activity.filesDir)
+        val original = store.list().maxBy { it.createdAt }
+        val currentId = original.pages.last().id
+        composeRule.onNodeWithContentDescription("Page list").performScrollToIndex(0)
+        composeRule.onNodeWithContentDescription("Toggle pages").performClick()
+        composeRule.onNodeWithContentDescription("Toggle pages").performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithContentDescription("Page 8. Long press to manage.")
+                .fetchSemanticsNodes().any { it.boundsInRoot.height > 0f }
+        }
+        composeRule.onNodeWithContentDescription("Page 8. Long press to manage.")
+            .assertIsDisplayed().assertIsSelected()
+
+        composeRule.onNodeWithContentDescription("Insert page before current").performClick()
+        composeRule.waitForIdle()
+        val withBefore = store.get(original.id)!!
+        assertEquals(9, withBefore.pages.size)
+        assertEquals(currentId, withBefore.pages[8].id)
+        val insertedBeforeId = withBefore.pages[7].id
+        assertTrue(insertedBeforeId != currentId)
+        assertEquals(original.pages.last().width, withBefore.pages[7].width)
+
+        composeRule.onNodeWithContentDescription("Insert page after current").performClick()
+        composeRule.waitForIdle()
+        val withAfter = store.get(original.id)!!
+        assertEquals(10, withAfter.pages.size)
+        assertEquals(insertedBeforeId, withAfter.pages[7].id)
+        assertEquals(currentId, withAfter.pages[9].id)
+        assertTrue(withAfter.pages[8].id !in original.pages.map { it.id })
     }
 
     @Test fun longPressPagesEntersMultiSelectManagement() {

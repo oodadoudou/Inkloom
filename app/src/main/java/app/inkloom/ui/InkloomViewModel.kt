@@ -378,6 +378,19 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         document.copy(pages = document.pages + page, updatedAt = System.currentTimeMillis())
     }
 
+    fun insertPageNextTo(documentId: String, pageId: String, after: Boolean) = update(documentId) { document ->
+        val sourceIndex = document.pages.indexOfFirst { it.id == pageId }
+        if (sourceIndex < 0) return@update document
+        val source = document.pages[sourceIndex]
+        val page = PageTemplateOperations.newBlankPageBeside(source, "Page ${document.pages.size + 1}")
+        val insertionIndex = sourceIndex + if (after) 1 else 0
+        mutableState.value = mutableState.value.copy(selectedPageId = page.id)
+        document.copy(
+            pages = document.pages.toMutableList().apply { add(insertionIndex, page) },
+            updatedAt = System.currentTimeMillis(),
+        )
+    }
+
     fun duplicatePage(documentId: String, pageId: String) = update(documentId) { document ->
         val source = document.pages.first { it.id == pageId }
         val copiedPageId = java.util.UUID.randomUUID().toString()

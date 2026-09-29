@@ -8,6 +8,21 @@ import org.junit.Test
 import java.nio.file.Files
 
 class PageTemplateStoreTest {
+    @Test fun quickInsertKeepsPageSizeWithoutRepeatingPdfOrImageContent() {
+        val pdf = InkPage(width = 1300f, height = 2100f, background = PageBackground.Pdf("/safe/lecture.pdf", 4))
+        val besidePdf = PageTemplateOperations.newBlankPageBeside(pdf, "New page")
+        assertEquals(1300f, besidePdf.width)
+        assertEquals(2100f, besidePdf.height)
+        assertEquals(PageBackground.Paper(), besidePdf.background)
+        assertTrue(besidePdf.elements.isEmpty())
+
+        val image = pdf.copy(background = PageBackground.Image("/safe/diagram.png"))
+        assertEquals(PageBackground.Paper(), PageTemplateOperations.newBlankPageBeside(image, "New page").background)
+
+        val ruled = PageBackground.Paper(PaperColorCatalog.SOFT_GREEN, PaperPattern.RULED)
+        assertEquals(ruled, PageTemplateOperations.newBlankPageBeside(pdf.copy(background = ruled), "New page").background)
+    }
+
     @Test fun customSizeValidatesAndPersistsThroughNotebookDefault() {
         val paper = PageBackground.Paper(pattern = PaperPattern.GRID, density = PaperDensity.SPACIOUS)
         assertNull(PageTemplateOperations.customPaper("bad", 0, 2048, paper))

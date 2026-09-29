@@ -1001,6 +1001,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onSelectPage = viewModel::selectPage,
             pageTemplates = pageTemplates,
             onAppendCurrentPage = { pageId -> libraryState.selectedDocumentId?.let { viewModel.appendPageUsingTemplate(it, pageId) } },
+            onInsertPageNextTo = viewModel::insertPageNextTo,
             onAddPage = { templateId, paperColor -> libraryState.selectedDocumentId?.let { viewModel.addPage(it, templateId, paperColor) } },
             onAppendPageFiles = ::launchAppendPageFiles,
             onDuplicatePage = { documentId, pageId -> viewModel.duplicatePage(documentId, pageId) },
@@ -1759,6 +1760,7 @@ private fun EditorScreen(
     onSelectPage: (String) -> Unit,
     pageTemplates: PageTemplateLibrary,
     onAppendCurrentPage: (String) -> Unit,
+    onInsertPageNextTo: (String, String, Boolean) -> Unit,
     onAddPage: (String, Long?) -> Unit,
     onAppendPageFiles: (String) -> Unit,
     onDuplicatePage: (String, String) -> Unit,
@@ -3896,7 +3898,7 @@ private fun EditorScreen(
                 document, documents, selectedPage.id, assets,
                 onClose = { onPanelVisibilityChange(EditorPanel.PAGES, false) },
                 pageTemplates = pageTemplates,
-                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onAppendFiles = { onAppendPageFiles(document.id) }, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage, onTransferPages = onTransferPages,
+                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onInsertNextTo = onInsertPageNextTo, onAppendFiles = { onAppendPageFiles(document.id) }, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage, onTransferPages = onTransferPages,
                 onApplyTemplate = onApplyPageTemplate, onApplyTemplates = onApplyPageTemplates, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate, onCreateCustomTemplate = onCreateCustomTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -4367,6 +4369,7 @@ private fun PageRail(
     onSelect: (String) -> Unit,
     onOpenLayers: (String) -> Unit,
     onAdd: (String, Long?) -> Unit,
+    onInsertNextTo: (String, String, Boolean) -> Unit,
     onAppendFiles: () -> Unit,
     onDuplicate: (String, String) -> Unit,
     onDelete: (String, String) -> Unit,
@@ -4394,6 +4397,13 @@ private fun PageRail(
 ) {
 
     val pageDensity = LocalDensity.current.density
+    val pageListState = rememberLazyListState()
+    LaunchedEffect(document.id, selectedPageId) {
+        val index = document.pages.indexOfFirst { it.id == selectedPageId }
+        if (index >= 0 && pageListState.layoutInfo.visibleItemsInfo.none { it.key == selectedPageId }) {
+            pageListState.scrollToItem(index)
+        }
+    }
     val measuredPageBounds = remember(document.id) { mutableMapOf<String, Rect>() }
     val pagePointerCoordinates = remember(document.id) { mutableMapOf<String, androidx.compose.ui.layout.LayoutCoordinates>() }
     val transferTargets = documents.filter { it.id != document.id && it.trashedAt == null }
@@ -4405,12 +4415,18 @@ private fun PageRail(
     val currentSelectedPageIds by rememberUpdatedState(selectedPageIds)
     val pageManagementDescription = tr("Page management: ${selectedPageIds.size} selected", "页面管理：已选择 ${selectedPageIds.size} 页")
     Column(modifier) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            IconButton(onClick = onAppendFiles, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.NoteAdd, tr("Add PDF or image pages", "追加 PDF／图片页面"), Modifier.size(18.dp)) }
-            IconButton(onClick = { addTemplateOpen = true }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, tr("Add page", "添加页面")) }
+        Column(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                IconButton(onClick = { onInsertNextTo(document.id, selectedPageId, false) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.KeyboardDoubleArrowUp, tr("Insert page before current", "在当前页前插入页面"), Modifier.size(18.dp)) }
+                IconButton(onClick = { onInsertNextTo(document.id, selectedPageId, true) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.KeyboardDoubleArrowDown, tr("Insert page after current", "在当前页后插入页面"), Modifier.size(18.dp)) }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                IconButton(onClick = onAppendFiles, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.NoteAdd, tr("Add PDF or image pages", "追加 PDF／图片页面"), Modifier.size(18.dp)) }
+                IconButton(onClick = { addTemplateOpen = true }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, tr("Add page", "添加页面")) }
+            }
         }
         val pageListDescription = tr("Page list", "页面列表")
-        LazyColumn(Modifier.fillMaxWidth().weight(1f).semantics { contentDescription = pageListDescription }, horizontalAlignment = Alignment.CenterHorizontally,
+        LazyColumn(Modifier.fillMaxWidth().weight(1f).semantics { contentDescription = pageListDescription }, state = pageListState, horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (managingPages) stickyHeader(key = "page-management") {
             Column(Modifier.fillMaxWidth().background(Paper, RoundedCornerShape(4.dp)).padding(4.dp)) {
@@ -4524,8 +4540,8 @@ private fun PageRail(
                             scaleY = if (pageDragging) 1.06f else 1f
                             shadowElevation = if (pageDragging) 12.dp.toPx() else 0f
                         }
-                        .background(if (pageBatchSelected) SageContainer else Paper, RoundedCornerShape(5.dp))
-                        .border(if (page.id == selectedPageId || pageBatchSelected) 2.dp else 1.dp, if (page.id == selectedPageId || pageBatchSelected) Sage else OutlineSoft, RoundedCornerShape(5.dp))
+                        .background(if (page.id == selectedPageId || pageBatchSelected) SageContainer else Paper, RoundedCornerShape(5.dp))
+                        .border(if (page.id == selectedPageId) 3.dp else if (pageBatchSelected) 2.dp else 1.dp, if (page.id == selectedPageId) Ink else if (pageBatchSelected) MutedInk else OutlineSoft, RoundedCornerShape(5.dp))
                         .padding(4.dp),
                 ) {
                     PageInkPreview(page, assets, Modifier.matchParentSize().clip(RoundedCornerShape(2.dp)))
@@ -4545,6 +4561,7 @@ private fun PageRail(
                         })
                     }.pageReorderDrag().semantics {
                         contentDescription = pageDescription
+                        selected = page.id == selectedPageId || pageBatchSelected
                         onClick { selectPage(); true }
                         onLongClick { managePage(); true }
                     })
@@ -4556,13 +4573,15 @@ private fun PageRail(
                         Modifier.size(36.dp).padding(6.dp).onGloballyPositioned { pagePointerCoordinates[page.id + ":handle"] = it }.pageHandleDrag(),
                         tint = MutedInk,
                     )
-                    Text(page.customNumber ?: (document.pages.indexOf(page) + 1).toString(), color = if (page.id == selectedPageId) Sage else MutedInk, modifier = Modifier.weight(1f).clip(RoundedCornerShape(5.dp)).clickable { onSelect(page.id) }.padding(vertical = 6.dp), maxLines = 1)
+                    Text(page.customNumber ?: (document.pages.indexOf(page) + 1).toString(), color = if (page.id == selectedPageId) Ink else MutedInk, fontWeight = if (page.id == selectedPageId) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f).clip(RoundedCornerShape(5.dp)).background(if (page.id == selectedPageId) SageContainer else Color.Transparent).clickable { onSelect(page.id) }.padding(vertical = 6.dp), maxLines = 1)
                     if (page.id == selectedPageId) {
                         Box(Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(Workspace).clickable { menu = true }, contentAlignment = Alignment.Center) { Icon(Icons.Default.MoreVert, tr("Page menu", "页面菜单"), modifier = Modifier.size(16.dp)) }
                     } else {
                         Spacer(Modifier.size(26.dp))
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text(tr("Insert page before", "在此页前插入页面")) }, onClick = { menu = false; onInsertNextTo(document.id, page.id, false) })
+                        DropdownMenuItem(text = { Text(tr("Insert page after", "在此页后插入页面")) }, onClick = { menu = false; onInsertNextTo(document.id, page.id, true) })
                         DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(document.id, page.id) })
                         DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameOpen = true })
                         DropdownMenuItem(text = { Text(tr("Number and tags", "页码与标签")) }, onClick = { menu = false; metadataOpen = true })
