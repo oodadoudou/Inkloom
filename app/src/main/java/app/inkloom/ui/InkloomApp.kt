@@ -5572,7 +5572,7 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
                     android.graphics.RectF(it.left / renderedPage.width, it.top / renderedPage.height,
                         (it.left + it.width) / renderedPage.width, (it.top + it.height) / renderedPage.height) })
                 view.setLayerElementBitmaps(layerElementBitmaps, page.elements)
-                view.setRasterLayerSurfaces(rasterLayerSurfaces)
+                view.setRasterLayerSurfaces(filterController.presentationSurfaces(rasterLayerSurfaces))
                 view.activeLayerId = activeLayerId
                 view.selectionTransformLayerIds = transformLayerIds
                 view.layerOpacities = layerOpacities

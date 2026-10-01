@@ -39,6 +39,33 @@ class RasterFilterWindowTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    @Test fun filterWindowRejectsMaskTargetInsteadOfEditingItsContent() {
+        compose.onNodeWithText("New Note").performClick();compose.onNodeWithText("Create").performClick()
+        compose.onNodeWithContentDescription("Layers").performClick()
+        compose.onNodeWithContentDescription("Add layer").performClick()
+        compose.onNodeWithContentDescription("Active layer mask").performClick()
+        compose.onNodeWithText("Mask selection").performClick()
+        compose.waitForIdle()
+        val view=canvas()
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            model=androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java]
+        }
+        val id=model.currentPage()!!.layers.first { it.name=="Layer 1" }.id
+        compose.waitUntil(10_000){view.layerMaskSurfaces.containsKey(id)}
+        compose.waitUntil(10_000){view.isEditingLayerMask(id)}
+        val original=fingerprint(view)
+        compose.onNodeWithContentDescription("Layers").performClick()
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithContentDescription("Actions Canvas").performClick()
+        compose.onNodeWithText("Image filter…").performClick()
+        compose.waitForIdle()
+        assertTrue(view.isEditingLayerMask(id));assertFalse(view.selectionLayerTransferPending)
+        assertEquals(original,fingerprint(view))
+        compose.onNodeWithText("Cancel").performClick()
+        assertTrue(view.isEditingLayerMask(id))
+    }
+
     @Test fun previewCancelApplyAndUndoShareOneActualWindowHistory() {
         compose.onNodeWithText("New Note").performClick()
         compose.onNodeWithText("Create").performClick()

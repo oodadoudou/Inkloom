@@ -38,6 +38,7 @@ internal class RasterFilterController(
         var generation: Int = 0,
         var effect: RasterImageFilter.Effect? = null,
         var preview: PixelTileSurface? = null,
+        var displayedPreview: PixelTileSurface? = null,
         var worker: Job? = null,
     )
 
@@ -48,6 +49,10 @@ internal class RasterFilterController(
 
     fun preview(view: InkCanvasView, layerId: String, effect: RasterImageFilter.Effect) {
         if (finishing) return
+        if (view.isEditingLayerMask(layerId)) {
+            reject("Select layer content before using color filters", "请先选中图层内容，再使用颜色滤镜")
+            return
+        }
         pendingEffect = effect
         val active = session
         if (active == null) {
@@ -108,6 +113,7 @@ internal class RasterFilterController(
                 }
                 if (session !== current || generation != current.generation || finishing) return@launch
                 current.preview = output
+                current.displayedPreview = output
                 val page = pageProvider()
                 if (view.isBoundToSelectionPage(documentId, pageId)) {
                     view.setRasterLayerSurfaces(runtime.reconcile(page) + (current.layerId to output))
@@ -119,6 +125,13 @@ internal class RasterFilterController(
                 reject(error.message ?: "Filter preview failed", "滤镜预览失败：${error.message ?: "未知原因"}")
             }
         }
+    }
+
+    /** Compose must not replace a fast completed preview with the durable input generation. */
+    fun presentationSurfaces(durable: Map<String, PixelTileSurface>): Map<String, PixelTileSurface> {
+        val current = session ?: return durable
+        val preview = current.displayedPreview ?: return durable
+        return durable + (current.layerId to preview)
     }
 
     fun finish(view: InkCanvasView, apply: Boolean) {
