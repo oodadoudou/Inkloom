@@ -55,4 +55,24 @@ class SelectedItemNavigationTest {
         compose.onNode(hasText("Rectangle") and isSelected()).assertIsDisplayed()
     }
 
+    @Test fun palettesRevealSelectedSwatchAndActiveSetWithVisibleLightColorMarker() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val sets = (0..39).map { index -> NamedColorSet("set-$index", "Test set $index",
+            (0..299).map { ColorSetSwatch("tile-$index-$it", 0xffffffff.toInt()) }, "tile-$index-270") }
+        ColorSetLibraryStore(context).update("Saved colors") { ColorSetLibrary(sets, "set-39") }
+        compose.setContent { MaterialTheme { androidx.compose.foundation.layout.Box(Modifier.width(320.dp)) {
+            ColorSetPanel(0xff000000.toInt(), UiLanguage.ENGLISH, 300.dp, {}, {})
+        } } }
+        val selected = compose.onNodeWithContentDescription("Color tile 271")
+        selected.assertIsDisplayed().assertIsSelected()
+        val pixels = selected.captureToImage().toPixelMap()
+        var darkPixels = 0
+        for (y in 0 until pixels.height) for (x in 0 until pixels.width) {
+            val pixel = pixels[x, y]
+            if (pixel.red < .1f && pixel.green < .1f && pixel.blue < .1f) darkPixels++
+        }
+        assertTrue("White selected tile must have a dark selection marker", darkPixels > 10)
+        compose.onNodeWithContentDescription("Choose color set").performClick()
+        compose.onNode(hasText("Test set 39") and isSelected()).assertIsDisplayed()
+    }
 }

@@ -11,6 +11,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -95,7 +97,9 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
     }
     val set = library.activeSet
     val bounds = remember { mutableMapOf<String, Rect>() }
-    val gridState = rememberLazyGridState()
+    val gridState = key(set?.id) { rememberLazyGridState() }
+    val activeSetRequester = remember { BringIntoViewRequester() }
+    RevealSelectedItem(gridState, set?.id, set?.selectedSwatchId, set?.swatches?.indexOfFirst { it.id == set.selectedSwatchId } ?: -1)
     var dragging by remember { mutableStateOf<String?>(null) }
     var target by remember { mutableStateOf<String?>(null) }
     var position by remember { mutableStateOf(Offset.Zero) }
@@ -152,8 +156,16 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
                     Icon(Icons.Outlined.UnfoldMore, null, Modifier.size(16.dp), tint = MutedInk)
                 }
                 ColorPaletteDropdownMenu(chooser, { chooser = false }) {
+                    LaunchedEffect(set?.id) {
+                        withFrameNanos { }
+                        activeSetRequester.bringIntoView()
+                    }
                     library.sets.forEach { candidate ->
-                        DropdownMenuItem(text = { Text(candidate.name) }, trailingIcon = { if (set?.id == candidate.id) Icon(Icons.Outlined.Check, null) }, onClick = { edit { it.selectSet(candidate.id) }; chooser = false })
+                        val isActive = set?.id == candidate.id
+                        DropdownMenuItem(text = { Text(candidate.name) },
+                            modifier = (if (isActive) Modifier.bringIntoViewRequester(activeSetRequester) else Modifier).semantics { selected = isActive },
+                            trailingIcon = { if (isActive) Icon(Icons.Outlined.Check, null) },
+                            onClick = { edit { it.selectSet(candidate.id) }; chooser = false })
                     }
                 }
             }
@@ -227,7 +239,11 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
                             } finally { dragging = null; target = null }
                         }
                     }
-                    .clickable { if (set != null) edit { it.selectSwatch(set.id, tile.id) }; onPick(tile.color) })
+                    .clickable { if (set != null) edit { it.selectSwatch(set.id, tile.id) }; onPick(tile.color) }) {
+                    // A black-and-white badge stays legible on both very light and very dark colors.
+                    if (set?.selectedSwatchId == tile.id) Icon(Icons.Outlined.Check, null,
+                        Modifier.align(Alignment.BottomEnd).size(14.dp).background(Color.Black).padding(1.dp), tint = Color.White)
+                }
             }
         }
         HorizontalDivider(color = OutlineSoft, thickness = .5.dp)
