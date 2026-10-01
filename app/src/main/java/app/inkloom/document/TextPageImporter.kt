@@ -11,7 +11,7 @@ import java.nio.charset.CodingErrorAction
 /** UTF-8 plain text/Markdown becomes editable, sequential notebook pages. */
 internal object TextPageImporter {
     fun read(input: InputStream, name: String): List<InkPage> {
-        val bytes=input.readNBytes(4_194_305); require(bytes.size<=4_194_304) { "Text append supports up to 4 MB" }
+        val bytes=input.readBoundedBytes(4_194_304, "Text append supports up to 4 MB")
         val text=Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT)
             .decode(ByteBuffer.wrap(bytes)).toString().removePrefix("\ufeff").replace("\r\n","\n").replace('\r','\n')
         require(text.isNotBlank()) { "Text file is empty" }

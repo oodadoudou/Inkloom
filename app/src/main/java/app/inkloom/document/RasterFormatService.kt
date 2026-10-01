@@ -220,7 +220,7 @@ internal class RasterFormatService(private val context: Context, private val ass
         require(names.size==names.distinct().size && names.all { !it.startsWith('/') && '\\' !in it && it.split('/').none { part -> part==".." } }) { "Unsafe archive paths" }
         fun text(path:String):String {
             val entry=requireNotNull(zip.getEntry(path)) { "Missing $path" }; require(entry.size in 0..2_097_152L)
-            return zip.getInputStream(entry).use { input -> val bytes=input.readNBytes(2_097_153); require(bytes.size<=2_097_152); bytes.toString(Charsets.UTF_8) }
+            return zip.getInputStream(entry).use { input -> val bytes=input.readBoundedBytes(2_097_152, "Archive metadata exceeds 2 MB"); bytes.toString(Charsets.UTF_8) }
         }
         fun image(path:String):Bitmap {
             val entry=requireNotNull(zip.getEntry(path)); require(entry.size in 0..268_435_456L)
