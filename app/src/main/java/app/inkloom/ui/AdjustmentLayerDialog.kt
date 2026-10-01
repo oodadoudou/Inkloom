@@ -30,6 +30,7 @@ internal fun adjustmentName(kind: LayerAdjustmentKind, language: UiLanguage): St
 @Composable
 internal fun AdjustmentLayerDialog(layer: InkLayer, onDismiss: () -> Unit, onPreview: (LayerAdjustment) -> Unit, onApply: (LayerAdjustment) -> Unit) {
     val language = LocalUiLanguage.current
+    var levelsChannel by remember(layer.id) { mutableIntStateOf(0) }
     var value by remember(layer.id) { mutableStateOf(layer.adjustment ?: LayerAdjustment()) }
     fun update(next: LayerAdjustment) { value = next; onPreview(next) }
     @Composable fun parameter(label: String, current: Float, range: ClosedFloatingPointRange<Float>, update: (Float) -> Unit) {
@@ -62,11 +63,29 @@ internal fun AdjustmentLayerDialog(layer: InkLayer, onDismiss: () -> Unit, onPre
                         parameter(language.text("Threshold", "阈值"), value.threshold, 0f..1f) { update(value.copy(threshold = it)) }
                     }
                     LayerAdjustmentKind.LEVELS -> {
-                        parameter(language.text("Input black", "输入黑场"), value.inputBlack, 0f..(value.inputWhite - .01f).coerceAtLeast(0f)) { update(value.copy(inputBlack = it)) }
-                        parameter(language.text("Gamma", "伽马"), value.inputGamma, .2f..4f) { update(value.copy(inputGamma = it)) }
-                        parameter(language.text("Input white", "输入白场"), value.inputWhite, (value.inputBlack + .01f).coerceAtMost(1f)..1f) { update(value.copy(inputWhite = it)) }
-                        parameter(language.text("Output black", "输出黑场"), value.outputBlack, 0f..value.outputWhite) { update(value.copy(outputBlack = it)) }
-                        parameter(language.text("Output white", "输出白场"), value.outputWhite, value.outputBlack..1f) { update(value.copy(outputWhite = it)) }
+                        val levels = when (levelsChannel) {
+                            1 -> value.redLevels; 2 -> value.greenLevels; 3 -> value.blueLevels
+                            else -> AdjustmentLevels(value.inputBlack, value.inputGamma, value.inputWhite, value.outputBlack, value.outputWhite)
+                        }
+                        fun change(next: AdjustmentLevels) {
+                            update(when (levelsChannel) {
+                                1 -> value.copy(redLevels = next); 2 -> value.copy(greenLevels = next); 3 -> value.copy(blueLevels = next)
+                                else -> value.copy(inputBlack = next.inputBlack, inputGamma = next.inputGamma,
+                                    inputWhite = next.inputWhite, outputBlack = next.outputBlack, outputWhite = next.outputWhite)
+                            })
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            listOf("RGB", language.text("Red", "红"), language.text("Green", "绿"), language.text("Blue", "蓝")).forEachIndexed { index, label ->
+                                FilterChip(selected = levelsChannel == index, onClick = { levelsChannel = index },
+                                    label = { Text(label) }, modifier = Modifier.weight(1f))
+                            }
+                        }
+                        parameter(language.text("Input black", "输入黑场"), levels.inputBlack, 0f..(levels.inputWhite - .01f).coerceAtLeast(0f)) { change(levels.copy(inputBlack = it)) }
+                        parameter(language.text("Gamma", "伽马"), levels.inputGamma, .2f..4f) { change(levels.copy(inputGamma = it)) }
+                        parameter(language.text("Input white", "输入白场"), levels.inputWhite, (levels.inputBlack + .01f).coerceAtMost(1f)..1f) { change(levels.copy(inputWhite = it)) }
+                        parameter(language.text("Output black", "输出黑场"), levels.outputBlack, 0f..levels.outputWhite) { change(levels.copy(outputBlack = it)) }
+                        parameter(language.text("Output white", "输出白场"), levels.outputWhite, levels.outputBlack..1f) { change(levels.copy(outputWhite = it)) }
+                        TextButton({ change(AdjustmentLevels()) }) { Text(language.text("Reset channel", "重置此通道")) }
                     }
                     LayerAdjustmentKind.CURVES -> {
                         listOf(.25f, .5f, .75f).forEach { x ->

@@ -277,6 +277,15 @@ enum class LayerAdjustmentKind {
 data class AdjustmentCurvePoint(val input: Float, val output: Float)
 
 @Serializable
+data class AdjustmentLevels(
+    val inputBlack: Float = 0f,
+    val inputGamma: Float = 1f,
+    val inputWhite: Float = 1f,
+    val outputBlack: Float = 0f,
+    val outputWhite: Float = 1f,
+)
+
+@Serializable
 data class LayerAdjustment(
     val kind: LayerAdjustmentKind = LayerAdjustmentKind.BRIGHTNESS_CONTRAST,
     val brightness: Float = 0f,
@@ -291,6 +300,9 @@ data class LayerAdjustment(
     val inputWhite: Float = 1f,
     val outputBlack: Float = 0f,
     val outputWhite: Float = 1f,
+    val redLevels: AdjustmentLevels = AdjustmentLevels(),
+    val greenLevels: AdjustmentLevels = AdjustmentLevels(),
+    val blueLevels: AdjustmentLevels = AdjustmentLevels(),
     val curve: List<AdjustmentCurvePoint> = listOf(AdjustmentCurvePoint(0f, 0f), AdjustmentCurvePoint(1f, 1f)),
     val shadowsRed: Float = 0f,
     val shadowsGreen: Float = 0f,

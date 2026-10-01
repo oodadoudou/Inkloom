@@ -10,6 +10,49 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PixelAdjustmentTest {
+    @Test fun singleChannelLevelsLeaveOtherColorsAndAlphaUntouched() {
+        val value = LayerAdjustment(LayerAdjustmentKind.LEVELS,
+            redLevels = app.inkloom.document.AdjustmentLevels(outputWhite = 0f))
+        org.junit.Assert.assertArrayEquals(floatArrayOf(0f, .4f, .8f),
+            PixelAdjustmentMath.apply(.2f, .4f, .8f, value), .00001f)
+        val kernel = PixelAdjustmentKernel(value); val result = FloatArray(3)
+        kernel.applyInto(.2f, .4f, .8f, result)
+        org.junit.Assert.assertArrayEquals(PixelAdjustmentMath.apply(.2f, .4f, .8f, value), result, .00001f)
+        val legacy = LayerAdjustment(LayerAdjustmentKind.LEVELS, inputBlack = .1f, inputGamma = 2f,
+            inputWhite = .9f, outputBlack = .2f, outputWhite = .8f)
+        val neutral = app.inkloom.document.AdjustmentLevels()
+        assertEquals(legacy, legacy.copy(redLevels = neutral, greenLevels = neutral, blueLevels = neutral))
+    }
+
+    @Test fun levelsCombineRgbMasterWithAllChannelsAndSanitizeInvalidParameters() {
+        val value = LayerAdjustment(LayerAdjustmentKind.LEVELS, outputBlack = .2f, outputWhite = .8f,
+            redLevels = app.inkloom.document.AdjustmentLevels(outputWhite = 0f),
+            greenLevels = app.inkloom.document.AdjustmentLevels(outputBlack = 1f),
+            blueLevels = app.inkloom.document.AdjustmentLevels(inputGamma = 2f))
+        org.junit.Assert.assertArrayEquals(floatArrayOf(.2f, .8f, .5f),
+            PixelAdjustmentMath.apply(.2f, .4f, .25f, value), .00001f)
+        val malformed = value.copy(redLevels = app.inkloom.document.AdjustmentLevels(Float.NaN,
+            Float.POSITIVE_INFINITY, Float.NaN, Float.NEGATIVE_INFINITY, Float.NaN))
+        val kernel = PixelAdjustmentKernel(malformed); val result = FloatArray(3)
+        for (n in 0..100) {
+            kernel.applyInto(n / 100f, .4f, .25f, result)
+            org.junit.Assert.assertArrayEquals(PixelAdjustmentMath.apply(n / 100f, .4f, .25f, malformed), result, .00001f)
+            assertTrue(result.all { it.isFinite() && it in 0f..1f })
+        }
+    }
+
+    @Test fun channelLevelsRoundTripAndOldDocumentsDefaultToNeutral() {
+        val json = kotlinx.serialization.json.Json { encodeDefaults = true }
+        val value = LayerAdjustment(LayerAdjustmentKind.LEVELS,
+            redLevels = app.inkloom.document.AdjustmentLevels(inputBlack = .2f),
+            blueLevels = app.inkloom.document.AdjustmentLevels(outputWhite = .7f))
+        val encoded = json.encodeToString(LayerAdjustment.serializer(), value)
+        assertEquals(value, json.decodeFromString(LayerAdjustment.serializer(), encoded))
+        val old = json.decodeFromString(LayerAdjustment.serializer(), """{"kind":"LEVELS","inputGamma":2.0}""")
+        assertEquals(app.inkloom.document.AdjustmentLevels(), old.redLevels)
+        assertEquals(.5f, PixelAdjustmentMath.apply(.25f, .25f, .25f, old)[0], .00001f)
+    }
+
     @Test fun posterizeUsesExactPerChannelLevelsAndClampsInvalidCounts() {
         for (levels in listOf(-1, 2, 3, 8, 20, 200)) {
             val actual = levels.coerceIn(2, 20)

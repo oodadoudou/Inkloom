@@ -44,6 +44,39 @@ class AdjustmentControlsWindowTest {
     private fun progress(label: String, value: Float) = compose.onNodeWithContentDescription("$label adjustment")
         .performSemanticsAction(SemanticsActions.SetProgress) { it(value) }
 
+    @Test fun levelsKeepIndependentChannelsAndResetCancelUndoAndReopen() {
+        createNote(); add("Levels")
+        compose.onNodeWithText("Red", substring = false).performClick(); progress("Output white", .6f)
+        compose.onNodeWithText("Green", substring = false).performClick(); progress("Gamma", 2f)
+        compose.onNodeWithText("Blue", substring = false).performClick(); progress("Input black", .1f)
+        compose.onNodeWithText("RGB", substring = false).performClick(); progress("Output black", .2f)
+        compose.onNodeWithText("Apply").performClick()
+        val value = adjustment(LayerAdjustmentKind.LEVELS).adjustment!!
+        assertEquals(.6f, value.redLevels.outputWhite, .001f)
+        assertEquals(2f, value.greenLevels.inputGamma, .001f)
+        assertEquals(.1f, value.blueLevels.inputBlack, .001f)
+        assertEquals(.2f, value.outputBlack, .001f)
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        assertEquals(LayerAdjustment(LayerAdjustmentKind.LEVELS), adjustment(LayerAdjustmentKind.LEVELS).adjustment)
+        compose.onAllNodesWithContentDescription("Redo").onFirst().performClick()
+        val name = adjustment(LayerAdjustmentKind.LEVELS).name
+        compose.onNodeWithContentDescription("Edit adjustment $name").performScrollTo().performClick()
+        compose.onNodeWithText("Red", substring = false).performClick()
+        compose.onNodeWithText("Reset channel").performScrollTo().performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        assertEquals(value, adjustment(LayerAdjustmentKind.LEVELS).adjustment)
+        compose.onNodeWithContentDescription("Edit adjustment $name").performScrollTo().performClick()
+        compose.onNodeWithText("Green", substring = false).performClick()
+        compose.onNodeWithText("Reset channel").performScrollTo().performClick()
+        compose.onNodeWithText("Apply").performClick()
+        val reset = adjustment(LayerAdjustmentKind.LEVELS).adjustment!!
+        assertEquals(AdjustmentLevels(), reset.greenLevels)
+        assertEquals(value.redLevels, reset.redLevels)
+        assertEquals(value.blueLevels, reset.blueLevels)
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        assertEquals(reset, adjustment(LayerAdjustmentKind.LEVELS).adjustment)
+    }
+
     @Test fun correctionMenuCreatesRealKindsAndPersistsParameters() {
         createNote()
         add("Invert"); compose.onNodeWithText("Apply").performClick()

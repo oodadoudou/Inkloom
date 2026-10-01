@@ -60,15 +60,10 @@ object PixelAdjustmentMath {
     }
 
     private fun levels(rgb: FloatArray, value: LayerAdjustment): FloatArray {
-        val black = value.inputBlack.coerceIn(0f, .999f)
-        val white = value.inputWhite.coerceIn(black + .001f, 1f)
-        val gamma = value.inputGamma.coerceIn(.05f, 10f)
-        val outBlack = value.outputBlack.coerceIn(0f, 1f)
-        val outWhite = value.outputWhite.coerceIn(outBlack, 1f)
-        return FloatArray(3) { index ->
-            val normalized = ((rgb[index] - black) / (white - black)).coerceIn(0f, 1f).pow(1f / gamma)
-            outBlack + normalized * (outWhite - outBlack)
-        }
+        val master = PreparedLevels(app.inkloom.document.AdjustmentLevels(
+            value.inputBlack, value.inputGamma, value.inputWhite, value.outputBlack, value.outputWhite))
+        val channels = listOf(value.redLevels, value.greenLevels, value.blueLevels).map(::PreparedLevels)
+        return FloatArray(3) { master.apply(channels[it].apply(rgb[it])) }
     }
 
     private fun curve(rgb: FloatArray, value: LayerAdjustment): FloatArray {
@@ -140,8 +135,24 @@ object PixelAdjustmentMath {
     private fun finite(value: Float) = if (value.isFinite()) value else 0f
 }
 
+/** Both reference math and the tile kernel use this validated transfer function. */
+internal class PreparedLevels(value: app.inkloom.document.AdjustmentLevels) {
+    private fun finite(value: Float, fallback: Float) = value.takeIf(Float::isFinite) ?: fallback
+    private val black = finite(value.inputBlack, 0f).coerceIn(0f, .999f)
+    private val white = finite(value.inputWhite, 1f).coerceIn(black + .001f, 1f)
+    private val exponent = 1f / finite(value.inputGamma, 1f).coerceIn(.05f, 10f)
+    private val outBlack = finite(value.outputBlack, 0f).coerceIn(0f, 1f)
+    private val outWhite = finite(value.outputWhite, 1f).coerceIn(outBlack, 1f)
+    fun apply(channel: Float): Float = outBlack +
+        ((channel - black) / (white - black)).coerceIn(0f, 1f).pow(exponent) * (outWhite - outBlack)
+}
+
 /** Parameter-derived work is prepared once per projection update, not for every pixel. */
 internal class PixelAdjustmentKernel(private val value: LayerAdjustment) {
+    private val masterLevels = PreparedLevels(app.inkloom.document.AdjustmentLevels(
+        value.inputBlack, value.inputGamma, value.inputWhite, value.outputBlack, value.outputWhite))
+    private val channelLevels = listOf(value.redLevels, value.greenLevels, value.blueLevels).map(::PreparedLevels)
+
     private val curvePoints = value.curve.filter { it.input.isFinite() && it.output.isFinite() }
         .sortedBy { it.input }.ifEmpty { listOf(app.inkloom.document.AdjustmentCurvePoint(0f, 0f),
             app.inkloom.document.AdjustmentCurvePoint(1f, 1f)) }
@@ -190,14 +201,9 @@ internal class PixelAdjustmentKernel(private val value: LayerAdjustment) {
                     output[index] + (1f - output[index]) * lightness else output[index] * (1f + lightness)
             }
             LayerAdjustmentKind.LEVELS -> {
-                val black = value.inputBlack.coerceIn(0f, .999f)
-                val white = value.inputWhite.coerceIn(black + .001f, 1f)
-                val gamma = value.inputGamma.coerceIn(.05f, 10f)
-                val outBlack = value.outputBlack.coerceIn(0f, 1f)
-                val outWhite = value.outputWhite.coerceIn(outBlack, 1f)
-                fun level(channel: Float) = outBlack +
-                    ((channel - black) / (white - black)).coerceIn(0f, 1f).pow(1f / gamma) * (outWhite - outBlack)
-                output[0] = level(red); output[1] = level(green); output[2] = level(blue)
+                output[0] = masterLevels.apply(channelLevels[0].apply(red))
+                output[1] = masterLevels.apply(channelLevels[1].apply(green))
+                output[2] = masterLevels.apply(channelLevels[2].apply(blue))
             }
             LayerAdjustmentKind.CURVES -> {
                 fun sample(channel: Float): Float {
