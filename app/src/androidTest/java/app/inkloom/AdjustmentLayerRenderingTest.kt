@@ -45,6 +45,10 @@ class AdjustmentLayerRenderingTest {
         val topRef = assets.saveRasterTileSurface(top)
         val maskRef = assets.saveMaskTileSurface(mask.snapshot())
         val cases = listOf(
+            LayerAdjustment(LayerAdjustmentKind.GRADIENT_MAP, gradient = listOf(
+                app.inkloom.document.GradientColorStop(0f, 0xFF000000L),
+                app.inkloom.document.GradientColorStop(128f / 255f, 0xFFFF0000L),
+                app.inkloom.document.GradientColorStop(1f, 0xFFFFFFFFL))) to Color.rgb(237, 0, 0),
             LayerAdjustment(LayerAdjustmentKind.CURVES, redCurve = listOf(
                 app.inkloom.document.AdjustmentCurvePoint(0f, 0f), app.inkloom.document.AdjustmentCurvePoint(1f, 0f)),
                 redCurveSmooth = true) to Color.rgb(0, 128, 192),

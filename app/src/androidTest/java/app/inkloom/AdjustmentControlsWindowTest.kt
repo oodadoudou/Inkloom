@@ -44,6 +44,32 @@ class AdjustmentControlsWindowTest {
     private fun progress(label: String, value: Float) = compose.onNodeWithContentDescription("$label adjustment")
         .performSemanticsAction(SemanticsActions.SetProgress) { it(value) }
 
+    @Test fun gradientMapEditsManyStopsAndPickerCancelApplyUndoAndReopen() {
+        createNote(); add("Gradient Map")
+        compose.onNodeWithText("Add color stop").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Gradient stop position 2").performSemanticsAction(SemanticsActions.SetProgress) { it(.3f) }
+        compose.onNodeWithContentDescription("Gradient stop color 2").performSemanticsAction(SemanticsActions.OnLongClick) { it() }
+        compose.onNodeWithContentDescription("Hex color").performTextReplacement("FF0000")
+        compose.onAllNodesWithText("Apply").onLast().performClick()
+        compose.onNodeWithText("Add color stop").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Delete gradient stop 3").performScrollTo().performClick()
+        compose.onNodeWithText("Apply").performClick()
+        val value = adjustment(LayerAdjustmentKind.GRADIENT_MAP).adjustment!!
+        assertEquals(3, value.gradient.size)
+        assertEquals(.3f, value.gradient[1].position, .001f)
+        assertEquals(0xFFFF0000L, value.gradient[1].colorArgb)
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        assertEquals(2, adjustment(LayerAdjustmentKind.GRADIENT_MAP).adjustment!!.gradient.size)
+        compose.onAllNodesWithContentDescription("Redo").onFirst().performClick()
+        val name = adjustment(LayerAdjustmentKind.GRADIENT_MAP).name
+        compose.onNodeWithContentDescription("Edit adjustment $name").performScrollTo().performClick()
+        compose.onNodeWithText("Reset gradient").performScrollTo().performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        assertEquals(value, adjustment(LayerAdjustmentKind.GRADIENT_MAP).adjustment)
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        assertEquals(value, adjustment(LayerAdjustmentKind.GRADIENT_MAP).adjustment)
+    }
+
     @Test fun nativeCurveGraphAddsDragsDeletesAndNumericChannelsPersistWithOneUndo() {
         createNote(); add("Curves")
         val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()

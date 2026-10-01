@@ -122,17 +122,7 @@ internal fun AdjustmentLayerDialog(layer: InkLayer, onDismiss: () -> Unit, onPre
                         parameter(language.text("Highlights · Blue", "亮部 · 蓝"), value.highlightsBlue, -.5f..0.5f) { update(value.copy(highlightsBlue = it)) }
                     }
                     LayerAdjustmentKind.GRADIENT_MAP -> {
-                        value.gradient.take(2).forEachIndexed { index, stop ->
-                            var hex by remember(layer.id, index) { mutableStateOf("%06X".format(Locale.ROOT, stop.colorArgb and 0xFFFFFF)) }
-                            OutlinedTextField(hex, { raw ->
-                                hex = raw.take(6).uppercase(Locale.ROOT)
-                                val color = hex.toLongOrNull(16)
-                                if (hex.length == 6 && color != null) update(value.copy(gradient = value.gradient.toMutableList().apply {
-                                    this[index] = this[index].copy(colorArgb = 0xFF000000L or color)
-                                }))
-                            }, label = { Text(if (index == 0) language.text("Dark color · RGB hex", "暗部颜色 · RGB 十六进制") else language.text("Light color · RGB hex", "亮部颜色 · RGB 十六进制")) },
-                                singleLine = true, modifier = Modifier.fillMaxWidth())
-                        }
+                        AdjustmentGradientEditor(value.gradient) { update(value.copy(gradient = it)) }
                     }
                 }
             }
