@@ -31,6 +31,33 @@ class SelectionInteractionTest {
         return view to pixels
     }
 
+    @Test fun pasteAtShownCenterRespectsViewportAndRestoresPixelsAndOriginalMaskInOneUndo() {
+        instrumentation.runOnMainSync {
+            val (view, pixels) = fixture()
+            pixels.beginWrite("copy fixture").use { it.setPixel(10, 10, Color.RED); it.commit().close() }
+            val mask = MaskTileSurface(128, 128, 64)
+            mask.beginWrite("copy area").use { it.setAlpha(10, 10, 255); it.commit().close() }
+            view.replaceSelectionFromMask(mask.snapshot())
+            assertTrue(view.copySelectionToClipboard())
+            view.viewportScale = 2f; view.viewportPanX = 100f; view.viewportPanY = -80f; view.viewportRotationDegrees = 90f
+            val expected = app.inkloom.document.RasterClipboardPlacement.atViewCenter(400f, 400f, 128, 128, 1, 1,
+                app.inkloom.document.ViewportState(2f, 100f, -80f, 90f))
+            assertTrue(view.pasteSelectionFromClipboard(atViewCenter = true))
+            assertEquals(Color.RED, pixels.pixelAt(expected.first, expected.second))
+            assertEquals(255, view.selectionMaskSurfaceSnapshot()!!.alphaAt(expected.first, expected.second))
+            view.undo()
+            assertEquals(0, pixels.pixelAt(expected.first, expected.second))
+            assertEquals(Color.RED, pixels.pixelAt(10, 10))
+            assertEquals(255, view.selectionMaskSurfaceSnapshot()!!.alphaAt(10, 10))
+            assertEquals(0, view.selectionMaskSurfaceSnapshot()!!.alphaAt(expected.first, expected.second))
+            view.redo()
+            assertEquals(Color.RED, pixels.pixelAt(expected.first, expected.second))
+            assertEquals(255, view.selectionMaskSurfaceSnapshot()!!.alphaAt(expected.first, expected.second))
+            view.setProtectedLayerIds(setOf(LayerIds.INK))
+            assertFalse(view.pasteSelectionFromClipboard(atViewCenter = true))
+        }
+    }
+
     @Test fun selectionStrokeUsesFillHistoryPreservesMaskAndHonorsProtectedTargets() {
         instrumentation.runOnMainSync {
             val (view, pixels) = fixture()

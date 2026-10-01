@@ -40,7 +40,13 @@ object RasterSelectionContent {
         val pixels = when (clipboard.pixelFormat) {
             PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> requireNotNull(clipboard.rgba8).copyOf()
             PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 ->
-                requireNotNull(clipboard.rgbaF16).map(PackedRgbaF16::toPremultipliedArgb8888).toIntArray()
+                requireNotNull(clipboard.rgbaF16).let { source -> IntArray(source.size) { PackedRgbaF16.toPremultipliedArgb8888(source[it]) } }
+        }
+        // Android setPixels/getPixels use straight ARGB; the engine payload is premultiplied.
+        pixels.indices.forEach { index ->
+            val value = pixels[index]; val alpha = value ushr 24
+            fun straight(shift: Int) = if (alpha == 0) 0 else (((value ushr shift and 255) * 255 + alpha / 2) / alpha).coerceIn(0, 255)
+            pixels[index] = (alpha shl 24) or (straight(16) shl 16) or (straight(8) shl 8) or straight(0)
         }
         return Bitmap.createBitmap(clipboard.width, clipboard.height, Bitmap.Config.ARGB_8888).also {
             it.setPixels(pixels, 0, clipboard.width, 0, 0, clipboard.width, clipboard.height)
@@ -61,6 +67,11 @@ object RasterSelectionContent {
         bitmap.getPixels(rgba, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         val alpha = ByteArray(rgba.size) { index -> (rgba[index] ushr 24).toByte() }
         if (alpha.none { it.toInt().and(0xff) != 0 }) return null
+        rgba.indices.forEach { index ->
+            val value = rgba[index]; val coverage = value ushr 24
+            fun premultiplied(shift: Int) = ((value ushr shift and 255) * coverage + 127) / 255
+            rgba[index] = (coverage shl 24) or (premultiplied(16) shl 16) or (premultiplied(8) shl 8) or premultiplied(0)
+        }
         return when (pixelFormat) {
             PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> RasterSelectionClipboard(
                 destinationWidth, destinationHeight, sourceLeft, sourceTop,
@@ -214,11 +225,21 @@ object RasterSelectionContent {
         }
     }
 
+    /** Cross-document paste keeps native F16 precision when possible and converts only on demand. */
+    fun convert(clipboard: RasterSelectionClipboard, format: PixelTileFormat): RasterSelectionClipboard =
+        if (clipboard.pixelFormat == format) clipboard else when (format) {
+            PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> clipboard.copy(pixelFormat = format,
+                rgba8 = requireNotNull(clipboard.rgbaF16).let { source -> IntArray(source.size) { PackedRgbaF16.toPremultipliedArgb8888(source[it]) } }, rgbaF16 = null)
+            PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 -> clipboard.copy(pixelFormat = format,
+                rgba8 = null, rgbaF16 = requireNotNull(clipboard.rgba8).let { source -> LongArray(source.size) { PackedRgbaF16.fromPremultipliedArgb8888(source[it]) } })
+        }
+
     fun paste(
         surface: PixelTileSurface,
         clipboard: RasterSelectionClipboard,
         left: Int,
         top: Int,
+        preserveAlpha: Boolean = false,
     ): RasterSelectionEdit? {
         require(surface.pixelFormat == clipboard.pixelFormat) { "Clipboard color format does not match the layer" }
         val requested = PixelRect(left, top, left + clipboard.width, top + clipboard.height)
@@ -233,7 +254,8 @@ object RasterSelectionContent {
                         for (y in tileBounds.top until tileBounds.bottom) for (x in tileBounds.left until tileBounds.right) {
                             val sourceIndex = (y - top) * clipboard.width + x - left
                             val destinationIndex = (y - key.row * surface.tileSize) * stride + x - key.column * surface.tileSize
-                            values[destinationIndex] = sourceOverArgb(source[sourceIndex], values[destinationIndex])
+                            values[destinationIndex] = if (preserveAlpha) sourceAtopArgb(source[sourceIndex], values[destinationIndex])
+                                else sourceOverArgb(source[sourceIndex], values[destinationIndex])
                         }
                     }
                     PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 -> transaction.editTileF16(key, localDirty) { values, stride ->
@@ -241,7 +263,8 @@ object RasterSelectionContent {
                         for (y in tileBounds.top until tileBounds.bottom) for (x in tileBounds.left until tileBounds.right) {
                             val sourceIndex = (y - top) * clipboard.width + x - left
                             val destinationIndex = (y - key.row * surface.tileSize) * stride + x - key.column * surface.tileSize
-                            values[destinationIndex] = sourceOverF16(source[sourceIndex], values[destinationIndex])
+                            values[destinationIndex] = if (preserveAlpha) sourceAtopF16(source[sourceIndex], values[destinationIndex])
+                                else sourceOverF16(source[sourceIndex], values[destinationIndex])
                         }
                     }
                 }

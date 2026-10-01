@@ -3285,6 +3285,7 @@ private fun EditorScreen(
                             ShortcutAction.NEXT_BRUSH -> ShortcutBrushSelection.adjacent(brushes, activeBrush?.id, 1)?.let(::selectImportedBrush)
                             ShortcutAction.CUT_SELECTION -> if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.cutSelectionToClipboard() != true) Toast.makeText(context, selectBeforeCutMessage, Toast.LENGTH_SHORT).show()
                             ShortcutAction.COPY_SELECTION -> if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.copySelectionToClipboard() != true) Toast.makeText(context, selectBeforeCopyMessage, Toast.LENGTH_SHORT).show()
+                            ShortcutAction.PASTE_SELECTION_AT_VIEW -> { selectedElementId = null; if (canvasView?.pasteSelectionFromClipboard(atViewCenter = true) != true) Toast.makeText(context, noInkClipboardMessage, Toast.LENGTH_SHORT).show() }
                             ShortcutAction.PASTE_SELECTION -> { selectedElementId = null; if (canvasView?.pasteSelectionFromClipboard() != true) Toast.makeText(context, noInkClipboardMessage, Toast.LENGTH_SHORT).show() }
                             ShortcutAction.DELETE_SELECTION -> selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection()
                             ShortcutAction.SELECT_ALL -> { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.selectAllEditableStrokes() }
@@ -3854,6 +3855,7 @@ private fun EditorScreen(
                     onSelectAll = { canvasView?.selectAllEditableStrokes() },
                     onClipboardCopy = { canvasView?.copySelectionToClipboard() },
                     onPaste = { canvasView?.pasteSelectionFromClipboard() },
+                    onPasteAtView = { canvasView?.pasteSelectionFromClipboard(atViewCenter = true) },
                     filter = settings.selectionFilter,
                     onFilter = { onSettingsChange(settings.copy(selectionFilter = it)) },
                     onExpand = { canvasView?.expandSelection(it) },
@@ -9838,6 +9840,7 @@ private fun shortcutActionLabel(action: ShortcutAction, language: UiLanguage): S
     ShortcutAction.CUT_SELECTION -> language.text("Cut selection", "剪切选区")
     ShortcutAction.COPY_SELECTION -> language.text("Copy selection", "复制选区")
     ShortcutAction.PASTE_SELECTION -> language.text("Paste selection", "粘贴选区")
+    ShortcutAction.PASTE_SELECTION_AT_VIEW -> language.text("Paste to shown position", "粘贴至显示位置")
     ShortcutAction.DELETE_SELECTION -> language.text("Delete selection", "删除选区")
     ShortcutAction.SELECT_ALL -> language.text("Select all ink strokes", "选择全部墨迹")
     ShortcutAction.DESELECT -> language.text("Deselect", "取消选择")
@@ -10091,7 +10094,7 @@ private fun SelectionStudioPanel(
     onCut: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit, onDeleteOutside: () -> Unit,
     strokeColor: Int, strokeOpacity: Float,
     onStroke: (Float, app.inkloom.engine.v5.selection.SelectionStrokePlacement, Int, Float) -> Boolean,
-    onSelectAll: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit,
+    onSelectAll: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onPasteAtView: () -> Unit,
     filter: SelectionFilter, onFilter: (SelectionFilter) -> Unit,
     onExpand: (Float) -> Unit, onShrink: (Float) -> Unit, onBorder: (Float) -> Unit,
     onFeather: (Float) -> Unit, onBeginFeather: () -> Boolean, onFinishFeather: (Boolean) -> Unit,
@@ -10307,6 +10310,7 @@ private fun SelectionStudioPanel(
                         DropdownMenuItem(text = { Text(tr("Select all", "全部选择")) }, onClick = { settingsOpen = false; onSelectAll() })
                         DropdownMenuItem(text = { Text(tr("Copy to clipboard", "复制到剪贴板")) }, enabled = hasSelection, onClick = { settingsOpen = false; onClipboardCopy() })
                         DropdownMenuItem(text = { Text(tr("Paste", "粘贴")) }, onClick = { settingsOpen = false; onPaste() })
+                        DropdownMenuItem(text = { Text(tr("Paste to shown position", "粘贴至显示位置")) }, onClick = { settingsOpen = false; onPasteAtView() })
                         DropdownMenuItem(text = { Text(tr("Fill selection", "填充选区")) }, enabled = hasSelection, onClick = { settingsOpen = false; onFill() })
                         DropdownMenuItem(text = { Text(tr("Stroke selection…", "选区描边…")) }, enabled = hasSelection, onClick = { settingsOpen = false; strokeOpen = true })
                         DropdownMenuItem(text = { Text(tr("Quick mask", "快速蒙版")) }, trailingIcon = { if (quickMask) Icon(Icons.Outlined.Check, null) }, onClick = { settingsOpen = false; onQuickMask() })

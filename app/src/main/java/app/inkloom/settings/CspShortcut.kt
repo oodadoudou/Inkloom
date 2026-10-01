@@ -28,6 +28,7 @@ enum class ShortcutAction {
     CUT_SELECTION,
     COPY_SELECTION,
     PASTE_SELECTION,
+    PASTE_SELECTION_AT_VIEW,
     DELETE_SELECTION,
     SELECT_ALL,
     DESELECT,
@@ -75,7 +76,7 @@ fun ShortcutAction.category(): ShortcutCategory = when (this) {
     ShortcutAction.LASER_TOOL -> ShortcutCategory.TOOLS
     ShortcutAction.BRUSH_SIZE_DECREASE, ShortcutAction.BRUSH_SIZE_INCREASE, ShortcutAction.OPACITY_DECREASE,
     ShortcutAction.OPACITY_INCREASE -> ShortcutCategory.BRUSH_ADJUSTMENTS
-    ShortcutAction.CUT_SELECTION, ShortcutAction.COPY_SELECTION, ShortcutAction.PASTE_SELECTION, ShortcutAction.DELETE_SELECTION,
+    ShortcutAction.CUT_SELECTION, ShortcutAction.COPY_SELECTION, ShortcutAction.PASTE_SELECTION, ShortcutAction.PASTE_SELECTION_AT_VIEW, ShortcutAction.DELETE_SELECTION,
     ShortcutAction.SELECT_ALL, ShortcutAction.DESELECT,
     ShortcutAction.UNDO, ShortcutAction.REDO -> ShortcutCategory.EDITING
     ShortcutAction.ZOOM_OUT, ShortcutAction.ZOOM_IN, ShortcutAction.ROTATE_VIEW_LEFT, ShortcutAction.ROTATE_VIEW_RIGHT,
@@ -152,6 +153,7 @@ object CspShortcutResolver {
         ShortcutBinding(ShortcutAction.COPY_SELECTION, ShortcutChord(KeyEvent.KEYCODE_C, ctrl = true)),
         ShortcutBinding(ShortcutAction.COPY_SELECTION, ShortcutChord(KeyEvent.KEYCODE_F3)),
         ShortcutBinding(ShortcutAction.PASTE_SELECTION, ShortcutChord(KeyEvent.KEYCODE_V, ctrl = true)),
+        ShortcutBinding(ShortcutAction.PASTE_SELECTION_AT_VIEW, ShortcutChord(KeyEvent.KEYCODE_V, ctrl = true, shift = true)),
         ShortcutBinding(ShortcutAction.PASTE_SELECTION, ShortcutChord(KeyEvent.KEYCODE_F4)),
         ShortcutBinding(ShortcutAction.SELECT_ALL, ShortcutChord(KeyEvent.KEYCODE_A, ctrl = true)),
         ShortcutBinding(ShortcutAction.DESELECT, ShortcutChord(KeyEvent.KEYCODE_D, ctrl = true)),

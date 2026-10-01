@@ -6629,31 +6629,38 @@ class InkCanvasView(context: Context) : View(context) {
         return true
     }
 
-    fun pasteSelectionFromClipboard(): Boolean {
-        if (rejectLayerContentEdit()) return false
+    fun pasteSelectionFromClipboard(atViewCenter: Boolean = false): Boolean {
+        if (selectionLayerTransferPending || hasActivePaintContact() || rejectLayerContentEdit()) return false
+        if (editingLayerMaskId != null) {
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                "请先选中图层内容，再粘贴图片" else "Select layer content before pasting an image")
+            return false
+        }
+        finishSelectionColorFill(true)
         finishSelectionTransform(apply = true)
+        v5StrokeController.awaitIdle()
         val rasterSurface = rasterTileSurfaceFor(activeLayerId) ?: return false
-        val systemClipboard = TransparentImageClipboard.read(
-            context,
-            rasterSurface.logicalWidth,
-            rasterSurface.logicalHeight,
-            rasterSurface.pixelFormat,
-        )
-        val rasterClipboard = if (TransparentImageClipboard.ownsPrimaryClip(context) && rasterSelectionClipboard != null)
-            rasterSelectionClipboard else systemClipboard ?: rasterSelectionClipboard
-        if (rasterClipboard != null && rasterClipboard.pixelFormat == rasterSurface.pixelFormat) {
+        // Our live native payload is lossless; avoid re-decoding its exported PNG on every paste.
+        val capturedClipboard = if (TransparentImageClipboard.ownsPrimaryClip(context) && rasterSelectionClipboard != null)
+            rasterSelectionClipboard else TransparentImageClipboard.read(context, rasterSurface.logicalWidth,
+                rasterSurface.logicalHeight, rasterSurface.pixelFormat) ?:
+                rasterSelectionClipboard.takeIf { TransparentImageClipboard.isEmptyOrUnavailable(context) }
+        val rasterClipboard = capturedClipboard?.let { RasterSelectionContent.convert(it, rasterSurface.pixelFormat) }
+        if (rasterClipboard != null) {
             val offsetX = (pageModelWidth * .03f).toInt()
             val offsetY = (pageModelHeight * .03f).toInt()
-            val left = (rasterClipboard.sourceLeft + offsetX).coerceIn(-rasterClipboard.width + 1, rasterSurface.logicalWidth - 1)
-            val top = (rasterClipboard.sourceTop + offsetY).coerceIn(-rasterClipboard.height + 1, rasterSurface.logicalHeight - 1)
-            val edit = RasterSelectionContent.paste(rasterSurface, rasterClipboard, left, top) ?: return false
+            val position = if (atViewCenter) app.inkloom.document.RasterClipboardPlacement.atViewCenter(
+                width.coerceAtLeast(1).toFloat(), height.coerceAtLeast(1).toFloat(),
+                rasterSurface.logicalWidth, rasterSurface.logicalHeight, rasterClipboard.width, rasterClipboard.height, viewportState())
+                else (rasterClipboard.sourceLeft + offsetX).coerceIn(-rasterClipboard.width + 1, rasterSurface.logicalWidth - 1) to
+                    (rasterClipboard.sourceTop + offsetY).coerceIn(-rasterClipboard.height + 1, rasterSurface.logicalHeight - 1)
+            val left = position.first; val top = position.second
+            val beforeMask = selectionMaskForRasterTools()
+            val beforeFeather = selectionFeatherPixels; val beforeBase = selectionFeatherBase
+            val edit = RasterSelectionContent.paste(rasterSurface, rasterClipboard, left, top,
+                preserveAlpha = activeLayerId in alphaLockedLayers) ?: return false
             val layerId = activeLayerId
             publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds)
-            recordExternalEdit(
-                undo = { rasterSurface.apply(edit.record, app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection.UNDO); publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds) },
-                redo = { rasterSurface.apply(edit.record, app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection.REDO); publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds) },
-                dispose = edit.record::close,
-            )
             val pastedSelection = RasterSelectionContent.selectionAt(
                 rasterClipboard,
                 documentSelectionState?.logicalWidth ?: selectionMaskForRasterTools()?.logicalWidth ?: rasterSurface.logicalWidth,
@@ -6665,6 +6672,23 @@ class InkCanvasView(context: Context) : View(context) {
                 rasterSurface.logicalHeight,
             )
             replaceSelectionFromMask(pastedSelection)
+            val afterMask = selectionMaskForRasterTools()
+            fun restoreMask(mask: MaskTileSurfaceSnapshot?, feather: Float, base: MaskTileSurfaceSnapshot?) {
+                selectionFeatherPixels = feather; selectionFeatherBase = base
+                replaceSelectionAlphaMask(mask?.let(SparseAlphaMask::fromSnapshot), resetFeather = false)
+            }
+            recordExternalEdit(
+                undo = {
+                    rasterSurface.apply(edit.record, PixelTileSurface.HistoryDirection.UNDO)
+                    publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds)
+                    restoreMask(beforeMask, beforeFeather, beforeBase)
+                },
+                redo = {
+                    rasterSurface.apply(edit.record, PixelTileSurface.HistoryDirection.REDO)
+                    publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds)
+                    restoreMask(afterMask, 0f, null)
+                }, dispose = edit.record::close,
+            )
             return true
         }
         return false

@@ -52,6 +52,36 @@ class SelectionWindowRegressionTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    @Test fun pasteToShownPositionMenuCentersPayloadAndUndoRestoresOriginalSelectionAndSavedPixels() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        stroke(pagePoint(view, .25f, .3f), pagePoint(view, .35f, .3f))
+        compose.waitUntil(15_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 && !view.hasPendingPaintPublicationForMerge() }
+        val source = view.activeRasterSnapshotForTest()!!
+        val bounds = PixelRect(0, 0, source.logicalWidth, source.logicalHeight)
+        val original = source.copyPremultipliedPixels(bounds)
+        tap("Selection"); tap("Rectangle selection")
+        stroke(pagePoint(view, .2f, .2f), pagePoint(view, .4f, .4f))
+        val mask = view.selectionMaskSurfaceSnapshot()!!
+        val maskBounds = PixelRect(0, 0, mask.logicalWidth, mask.logicalHeight)
+        val originalMask = mask.copyAlpha(maskBounds)
+        tap("Selection actions"); tap("Copy to clipboard")
+        tap("Selection actions"); tap("Paste to shown position")
+        compose.waitUntil(15_000) { view.activeRasterSnapshotForTest()?.copyPremultipliedPixels(bounds)?.contentEquals(original) == false }
+        val pasted = view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(bounds)
+        val pastedBounds = view.selectionMaskSurfaceSnapshot()!!.nonZeroBounds()!!
+        assertEquals(mask.logicalWidth / 2f, (pastedBounds.left + pastedBounds.right) / 2f, 2f)
+        assertEquals(mask.logicalHeight / 2f, (pastedBounds.top + pastedBounds.bottom) / 2f, 2f)
+        tapAt(toolbarCenter("Undo"))
+        compose.waitUntil(15_000) { view.activeRasterSnapshotForTest()?.copyPremultipliedPixels(bounds)?.contentEquals(original) == true }
+        org.junit.Assert.assertArrayEquals(originalMask, view.selectionMaskSurfaceSnapshot()!!.copyAlpha(maskBounds))
+        tapAt(toolbarCenter("Redo"))
+        compose.waitUntil(15_000) { view.activeRasterSnapshotForTest()?.copyPremultipliedPixels(bounds)?.contentEquals(pasted) == true }
+        tap("Exit selection tool"); tap("Gallery"); tap("Untitled Note")
+        val reopened = canvas()
+        compose.waitUntil(15_000) { reopened.activeRasterSnapshotForTest()?.copyPremultipliedPixels(bounds)?.contentEquals(pasted) == true }
+    }
+
     @Test fun strokeDialogCancelApplyColorUndoAndReopenKeepSelectionAndPixels() {
         tap("New Note"); tap("Create")
         val view = canvas()

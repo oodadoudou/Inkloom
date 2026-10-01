@@ -39,11 +39,40 @@ class SelectionClipboardAndColorRangeTest {
                 val restored = RasterSelectionContent.toBitmap(imported)
                 assertEquals(0, Color.alpha(restored.getPixel(0, 0)))
                 assertEquals(128, Color.alpha(restored.getPixel(1, 0)))
+                assertTrue("Translucent clipboard colors must not darken or brighten", kotlin.math.abs(128 - Color.red(restored.getPixel(1, 0))) <= 1)
+                val destination = app.inkloom.engine.v5.surface.PixelTileSurface(10, 10)
+                val edit = requireNotNull(RasterSelectionContent.paste(destination, imported, 2, 3))
+                assertEquals(0x80400000.toInt(), destination.pixelAt(3, 3))
+                edit.record.close()
                 assertEquals(Color.BLUE, restored.getPixel(2, 1))
                 restored.recycle()
             }
         }
         bitmap.recycle()
+    }
+
+    @Test fun externalTextClipboardDoesNotResurrectOldNativeImagePayload() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val surface = app.inkloom.engine.v5.surface.PixelTileSurface(64, 64)
+                surface.beginWrite("fixture").use { it.setPixel(10, 10, Color.RED); it.commit().close() }
+                val mask = app.inkloom.engine.v5.surface.MaskTileSurface(64, 64)
+                mask.beginWrite("fixture selection").use { it.setAlpha(10, 10, 255); it.commit().close() }
+                val view = app.inkloom.ui.InkCanvasView(activity).apply {
+                    layout(0, 0, 400, 400); pageModelWidth = 64f; pageModelHeight = 64f
+                    setRasterLayerSurfaces(mapOf(app.inkloom.document.LayerIds.INK to surface))
+                    bindDocumentSelectionState(app.inkloom.engine.v5.selection.DocumentSelectionRuntime(64)
+                        .stateFor("clipboard fixture", "page", 64, 64))
+                    assertTrue(replaceSelectionFromMask(mask.snapshot()))
+                }
+                assertTrue(view.copySelectionToClipboard())
+                (activity.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("fixture text", "unrelated text"))
+                org.junit.Assert.assertFalse(view.pasteSelectionFromClipboard(atViewCenter = true))
+                assertEquals(0, surface.pixelAt(32, 32))
+                assertEquals(Color.RED, surface.pixelAt(10, 10))
+            }
+        }
     }
 
     @Test fun colorRangeSelectsMatchingDisconnectedPixelsAndCanIncludeAlpha() {

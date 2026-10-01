@@ -56,6 +56,9 @@ internal object TransparentImageClipboard {
         }
     }.getOrNull()
 
+    fun isEmptyOrUnavailable(context: Context): Boolean =
+        (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).primaryClipDescription == null
+
     fun ownsPrimaryClip(context: Context): Boolean {
         val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         return manager.primaryClipDescription?.label?.toString() == LABEL

@@ -137,6 +137,42 @@ class RasterSelectionContentTest {
         }
     }
 
+    @Test fun clipboardConversionPreservesAlphaAndExtendedNativePayload() {
+        val source = PixelTileSurface(64, 64, 64)
+        source.beginWrite("colored half-alpha").use { it.setPixel(10, 10, 0x80402010.toInt()); it.commit().close() }
+        val mask = MaskTileSurface(64, 64, 64)
+        mask.beginWrite("soft copy").use { it.setAlpha(10, 10, 128); it.commit().close() }
+        val copied = requireNotNull(RasterSelectionContent.copy(source.snapshot(), mask.snapshot()))
+        val linear = RasterSelectionContent.convert(copied, PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16)
+        assertEquals(copied.sourceLeft, linear.sourceLeft)
+        assertTrue(copied.selectionAlpha.contentEquals(linear.selectionAlpha))
+        val roundtrip = RasterSelectionContent.convert(linear, PixelTileFormat.PREMULTIPLIED_SRGB_8888)
+        assertEquals(copied.rgba8!!.single(), roundtrip.rgba8!!.single())
+        val hdr = linear.copy(rgbaF16 = longArrayOf(PackedRgbaF16.packPremultiplied(2f, -.25f, .5f, .5f)))
+        assertTrue(hdr === RasterSelectionContent.convert(hdr, hdr.pixelFormat))
+    }
+
+    @Test fun alphaLockedPastePreservesDestinationCoverageAcrossFormatsAndUndo() {
+        PixelTileFormat.entries.forEach { format ->
+            val destination = PixelTileSurface(64, 64, 64, pixelFormat = format)
+            destination.beginWrite("half-opaque destination").use {
+                if (format == PixelTileFormat.PREMULTIPLIED_SRGB_8888) it.setPixel(20, 20, 0x80000080.toInt())
+                else it.setLinearPixel(20, 20, LinearRgba(0f, 0f, 1f, .5f))
+                it.commit().close()
+            }
+            val before = destination.snapshot()
+            val source = RasterSelectionClipboard(64, 64, 0, 0, 2, 1, PixelTileFormat.PREMULTIPLIED_SRGB_8888,
+                byteArrayOf(-1, -1), rgba8 = intArrayOf(0xFFFF0000.toInt(), 0xFFFF0000.toInt()))
+            val edit = requireNotNull(RasterSelectionContent.paste(destination, RasterSelectionContent.convert(source, format), 20, 20, preserveAlpha = true))
+            assertEquals(0f, destination.linearPixelAt(21, 20).alpha, .002f)
+            assertEquals(.5f, destination.linearPixelAt(20, 20).alpha, .003f)
+            destination.apply(edit.record, PixelTileSurface.HistoryDirection.UNDO)
+            if (format == PixelTileFormat.PREMULTIPLIED_SRGB_8888) assertEquals(before.pixelAt(20, 20), destination.pixelAt(20, 20))
+            else assertEquals(before.packedF16At(20, 20), destination.snapshot().packedF16At(20, 20))
+            edit.record.close()
+        }
+    }
+
     @Test fun featheredCopyClearPasteAndUndoShareTheSameAlphaMask() {
         val pixels = PixelTileSurface(256, 256, tileSize = 64)
         pixels.beginWrite("seed").run {

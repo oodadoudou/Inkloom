@@ -49,6 +49,7 @@ class CspShortcutResolverTest {
         assertEquals(ShortcutAction.CUT_SELECTION, resolve(KeyEvent.KEYCODE_X, ctrl = true))
         assertEquals(ShortcutAction.COPY_SELECTION, resolve(KeyEvent.KEYCODE_C, ctrl = true))
         assertEquals(ShortcutAction.PASTE_SELECTION, resolve(KeyEvent.KEYCODE_V, ctrl = true))
+        assertEquals(ShortcutAction.PASTE_SELECTION_AT_VIEW, resolve(KeyEvent.KEYCODE_V, ctrl = true, shift = true))
         assertEquals(ShortcutAction.SELECT_ALL, resolve(KeyEvent.KEYCODE_A, ctrl = true))
         assertEquals(ShortcutAction.DESELECT, resolve(KeyEvent.KEYCODE_D, ctrl = true))
         assertEquals(ShortcutAction.DELETE_SELECTION, resolve(KeyEvent.KEYCODE_FORWARD_DEL))
