@@ -52,7 +52,7 @@ class NotebookCreationWindowTest {
             context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE).edit().clear().commit()
             context.getSharedPreferences("inkloom_color_palette", Context.MODE_PRIVATE).edit().clear().commit()
             context.filesDir.resolve("color-mixing-board.bin").delete()
-            context.filesDir.resolve("library.json").delete()
+            resetNotebookTestLibrary(context)
             context.filesDir.resolve("page-templates.json").delete()
             base.evaluate()
         }

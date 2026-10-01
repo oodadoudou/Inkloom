@@ -35,7 +35,7 @@ class ImageLongPressWindowTest {
                 .putBoolean("showBrushPanel", false).putBoolean("showLayerPanel", false)
                 .putBoolean("showPageRail", false).commit()
             context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE).edit().clear().commit()
-            context.filesDir.resolve("library.json").delete()
+            resetNotebookTestLibrary(context)
             val png = context.cacheDir.resolve("image-hold.png")
             android.graphics.Bitmap.createBitmap(400, 300, android.graphics.Bitmap.Config.ARGB_8888).also { bitmap ->
                 bitmap.eraseColor(android.graphics.Color.BLUE)

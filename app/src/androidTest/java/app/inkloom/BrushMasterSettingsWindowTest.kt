@@ -52,7 +52,7 @@ class BrushMasterSettingsWindowTest {
             context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE).edit().clear().commit()
             context.getSharedPreferences("brush_preset_sizes", Context.MODE_PRIVATE).edit().clear().commit()
             context.getSharedPreferences("brush_slider_memories", Context.MODE_PRIVATE).edit().clear().commit()
-            context.filesDir.resolve("library.json").delete()
+            resetNotebookTestLibrary(context)
             try { base.evaluate() }
             finally {
                 context.getSharedPreferences("brush_preset_sizes", Context.MODE_PRIVATE).edit().clear().commit()

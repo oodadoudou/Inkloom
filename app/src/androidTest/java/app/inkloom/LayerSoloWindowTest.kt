@@ -28,7 +28,7 @@ class LayerSoloWindowTest {
                 .putString("language", "ENGLISH").putInt("studioWorkspaceVersion", 2)
                 .putBoolean("showBrushPanel", false).putBoolean("showLayerPanel", false)
                 .putBoolean("showPageRail", false).commit()
-            context.filesDir.resolve("library.json").delete()
+            resetNotebookTestLibrary(context)
             base.evaluate()
         }
     } }

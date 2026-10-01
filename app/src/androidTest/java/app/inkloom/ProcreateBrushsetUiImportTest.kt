@@ -52,7 +52,7 @@ class ProcreateBrushsetUiImportTest {
                     .putBoolean("showPageRail", false)
                     .commit()
                 context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE).edit().clear().commit()
-                context.filesDir.resolve("library.json").delete()
+                resetNotebookTestLibrary(context)
                 val source = File("/data/local/tmp/inkloom-ui-brushset/Inkloom-P0-Test.brushset")
                 check(source.isFile && source.length() > 0L) { "LOCAL_FIXTURE_REQUIRED: stage 吹石笔刷2025.brushset before this UI import test" }
                 fixtureGroupName = "Inkloom-P0-Test-${System.nanoTime()}"

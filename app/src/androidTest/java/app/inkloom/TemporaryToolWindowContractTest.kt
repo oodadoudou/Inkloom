@@ -36,7 +36,7 @@ class TemporaryToolWindowContractTest {
                 .putBoolean("showPageRail", false).commit()
             context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE).edit().clear().commit()
             context.getSharedPreferences("inkloom_color_palette", Context.MODE_PRIVATE).edit().remove("studioTab").commit()
-            context.filesDir.resolve("library.json").delete()
+            resetNotebookTestLibrary(context)
             base.evaluate()
         }
     } }

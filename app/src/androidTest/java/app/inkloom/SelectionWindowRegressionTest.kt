@@ -46,7 +46,7 @@ class SelectionWindowRegressionTest {
                 .putString("persistentDrawingTool", "PEN")
                 .putString("persistentBrushPresetId", "system-g-pen").commit()
             context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE).edit().clear().commit()
-            context.filesDir.resolve("library.json").delete()
+            resetNotebookTestLibrary(context)
             base.evaluate()
         }
     } }

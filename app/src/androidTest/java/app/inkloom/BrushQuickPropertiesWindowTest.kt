@@ -38,7 +38,7 @@ class BrushQuickPropertiesWindowTest {
             context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE).edit().clear().commit()
             context.getSharedPreferences("brush_preset_sizes", Context.MODE_PRIVATE).edit().clear().commit()
             context.getSharedPreferences("inkloom_color_palette", Context.MODE_PRIVATE).edit().remove("studioTab").putBoolean("wheelHlsTriangle", true).commit()
-            context.filesDir.resolve("library.json").delete()
+            resetNotebookTestLibrary(context)
             try { base.evaluate() }
             finally { context.getSharedPreferences("brush_preset_sizes", Context.MODE_PRIVATE).edit().clear().commit() }
         }

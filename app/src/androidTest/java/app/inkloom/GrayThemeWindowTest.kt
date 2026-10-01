@@ -27,7 +27,7 @@ class GrayThemeWindowTest {
             context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE).edit().clear()
                 .putString("language", "ENGLISH").commit()
             context.getSharedPreferences("inkloom_editor_panels", Context.MODE_PRIVATE).edit().clear().commit()
-            context.filesDir.resolve("library.json").delete()
+            resetNotebookTestLibrary(context)
             base.evaluate()
         }
     } }

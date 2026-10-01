@@ -35,7 +35,7 @@ class DrawAndHoldWindowTest {
                 .putBoolean("showBrushPanel", false).putBoolean("showLayerPanel", false)
                 .putBoolean("showPageRail", false).commit()
             context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE).edit().clear().commit()
-            context.filesDir.resolve("library.json").delete()
+            resetNotebookTestLibrary(context)
             base.evaluate()
         }
     } }

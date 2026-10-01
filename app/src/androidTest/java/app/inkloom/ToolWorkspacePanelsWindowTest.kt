@@ -42,7 +42,7 @@ class ToolWorkspacePanelsWindowTest {
             context.getSharedPreferences("inkloom_editor_panels", Context.MODE_PRIVATE).edit().clear().commit()
             context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE).edit().clear()
                 .putString("language", "ENGLISH").putInt("studioWorkspaceVersion", 2).commit()
-            context.filesDir.resolve("library.json").delete()
+            resetNotebookTestLibrary(context)
             base.evaluate()
         }
     } }

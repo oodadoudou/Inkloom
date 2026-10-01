@@ -23,7 +23,7 @@ class NavigationContextWindowTest {
             context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE).edit().clear()
                 .putString("language", "ENGLISH").putInt("studioWorkspaceVersion", 2)
                 .putBoolean("showBrushPanel", false).putBoolean("showLayerPanel", false).putBoolean("showPageRail", true).commit()
-            context.filesDir.resolve("library.json").delete()
+            resetNotebookTestLibrary(context)
             val store = FileDocumentStore(context.filesDir)
             val layers = listOf(defaultInkLayers().first(), InkLayer(id = "nav-folder", name = "Nested folder", role = LayerRole.FOLDER, collapsed = true),
                 defaultInkLayers().last().copy(parentId = "nav-folder")) + (0..29).map { InkLayer(id = "nav-layer-$it", name = "Extra layer $it") }
