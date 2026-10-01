@@ -7,6 +7,12 @@ object LayerHierarchy {
     fun effectiveLocked(layers: List<InkLayer>, layer: InkLayer): Boolean =
         layer.locked || ancestors(layers, layer).any(InkLayer::locked)
 
+    fun effectiveReference(layers: List<InkLayer>, layer: InkLayer): Boolean =
+        layer.reference || ancestors(layers, layer).any(InkLayer::reference)
+
+    fun effectiveDraft(layers: List<InkLayer>, layer: InkLayer): Boolean =
+        layer.draft || ancestors(layers, layer).any(InkLayer::draft)
+
     fun depth(layers: List<InkLayer>, layer: InkLayer): Int = ancestors(layers, layer).size
 
     fun panelOrder(layers: List<InkLayer>): List<InkLayer> {

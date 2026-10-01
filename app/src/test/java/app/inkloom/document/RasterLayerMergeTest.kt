@@ -11,6 +11,21 @@ class RasterLayerMergeTest {
     private fun mergeDown(page: InkPage, id: String) = RasterLayerMerge.plan(
         page, RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_DOWN, id))
 
+    @Test fun visibleMergeExcludesNestedDraftFolderAndKeepsItsSources() {
+        val folder = InkLayer(id = "draft-folder", name = "Sketches", role = LayerRole.FOLDER, draft = true)
+        val child = upper.copy(parentId = folder.id)
+        val source = page.copy(layers = defaultInkLayers() + folder + child + lower)
+        val plan = requireNotNull(RasterLayerMerge.plan(source,
+            RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_VISIBLE)).plan)
+        assertFalse(child.id in plan.sourceLayerIds)
+        assertFalse(folder.id in plan.removedLayerIds)
+        assertTrue(lower.id in plan.sourceLayerIds)
+        val edit = RasterLayerMerge.edit(source, plan, reference)
+        val after = edit.apply(source, false)
+        assertTrue(after.layers.any { it.id == child.id })
+        assertEquals(source, edit.apply(after, true))
+    }
+
     @Test fun ordinaryPaintLayersUseTheirNativeResolution() {
         val plan = mergeDown(page, upper.id)
         assertNull(plan.rejection)

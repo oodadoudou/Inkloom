@@ -969,6 +969,7 @@ class InkCanvasView(context: Context) : View(context) {
     var eyedropperIncludePaper: Boolean = true
     var referenceLayerIds: Set<String> = emptySet()
     var draftLayerIds: Set<String> = emptySet()
+    var excludeDraftLayersFromReference: Boolean = true
     var liquifyMode: LiquifyMode = LiquifyMode.PUSH
     var liquifyStrength: Float = .55f
         set(value) { field = value.coerceIn(0f, 1f) }
@@ -1282,6 +1283,8 @@ class InkCanvasView(context: Context) : View(context) {
     fun setDocumentLayers(layers: List<app.inkloom.document.InkLayer>) {
         if (boundDocumentLayers == layers) return
         boundDocumentLayers = layers
+        referenceLayerIds = layers.filter { app.inkloom.document.LayerHierarchy.effectiveReference(layers, it) }.mapTo(hashSetOf()) { it.id }
+        draftLayerIds = layers.filter { app.inkloom.document.LayerHierarchy.effectiveDraft(layers, it) }.mapTo(hashSetOf()) { it.id }
         invalidate()
         val targets = layers.associate { it.id to app.inkloom.document.LayerEditingTarget.rejection(layers, it.id) }
         // A folder's content rejection remains FOLDER even when its lock/visibility changes;
@@ -4662,7 +4665,7 @@ class InkCanvasView(context: Context) : View(context) {
         val availableLayers = layerOrder.ifEmpty {
             (rasterLayerTileSurfaces.keys + layerElementBitmaps.keys).distinct()
         }
-        val visibleNonDraft = availableLayers.filterNotTo(linkedSetOf()) { it in draftLayerIds }
+        val visibleNonDraft = availableLayers.filterNotTo(linkedSetOf()) { excludeDraftLayersFromReference && it in draftLayerIds }
         val referenced = when (referenceTarget) {
             ReferenceTarget.ALL_VISIBLE -> visibleNonDraft
             ReferenceTarget.ACTIVE_LAYER -> setOf(activeLayerId).intersect(visibleNonDraft)

@@ -112,6 +112,36 @@ class FillToolTest {
         output.recycle()
     }
 
+    @Test fun referenceAndDraftFoldersControlFillWithoutHidingSketches() {
+        var committedWidth = 0
+        val folder = app.inkloom.document.InkLayer(id = "reference-folder", name = "Sketch", role = app.inkloom.document.LayerRole.FOLDER,
+            reference = true, draft = true)
+        val line = app.inkloom.document.InkLayer(id = "line", name = "Line", parentId = folder.id)
+        val paint = app.inkloom.document.InkLayer(id = "color", name = "Color")
+        val pixels = PixelTileSurface(200, 200)
+        pixels.beginWrite("border").use { w ->
+            for (offset in -4..4) for (c in 50..150) {
+                w.setPixel(c, 50 + offset, Color.BLACK); w.setPixel(c, 150 + offset, Color.BLACK)
+                w.setPixel(50 + offset, c, Color.BLACK); w.setPixel(150 + offset, c, Color.BLACK)
+            }
+            w.commit().close()
+        }
+        val view = canvas {
+            tool = EditorTool.FILL; fingerDrawingEnabled = true; pagePaperColor = Color.WHITE
+            pageModelWidth = 200f; pageModelHeight = 200f; activeLayerId = paint.id
+            referenceTarget = ReferenceTarget.REFERENCE_LAYERS
+            setDocumentLayers(listOf(paint, folder, line)); layerOrder = listOf(paint.id, line.id)
+            setRasterLayerSurfaces(mapOf(paint.id to PixelTileSurface(200, 200), line.id to pixels))
+            onSparseFillCommitted = { mask, _, _, _ -> committedWidth = mask.nonZeroBounds()?.width ?: 0 }
+        }
+        assertTrue(line.id in view.referenceLayerIds); assertTrue(line.id in view.draftLayerIds)
+        send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f); send(view, 50L, MotionEvent.ACTION_UP, 100f, 100f)
+        assertEquals(200, committedWidth)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.excludeDraftLayersFromReference = false }
+        send(view, 100L, MotionEvent.ACTION_DOWN, 100f, 100f); send(view, 150L, MotionEvent.ACTION_UP, 100f, 100f)
+        assertTrue("Including a draft reference folder must restore its boundary", committedWidth in 80..120)
+    }
+
     @Test fun referenceTargetConfinesFillToMarkedLineArtLayer() {
         var committedWidth = 0f
         val color = PixelTileSurface(200, 200)

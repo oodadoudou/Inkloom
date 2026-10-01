@@ -652,7 +652,7 @@ class DocumentAssetService(private val context: Context) {
         fun mask(layer: InkLayer) = layer.mask?.takeIf { it.enabled }?.let { m ->
             m.surface?.let { m.expressed(loadMaskTileSurface(it).snapshot()) }
         }
-        val inputs = page.layers.filter { it.isPaintSurfaceLayer() && LayerHierarchy.effectiveVisible(page.layers, it) && !it.draft }.associate { layer ->
+        val inputs = page.layers.filter { it.isPaintSurfaceLayer() && LayerHierarchy.effectiveVisible(page.layers, it) && !LayerHierarchy.effectiveDraft(page.layers, it) }.associate { layer ->
             val reference = layer.rasterTileSurface
             val raw = if (reference != null) {
                 val original = renderRasterLayerSurface(source, layer.id, width).snapshot()
@@ -680,11 +680,11 @@ class DocumentAssetService(private val context: Context) {
             paint = { layer -> when {
                 layer.role == LayerRole.BACKGROUND -> null
                 layer.role == LayerRole.ADJUSTMENT && layer.adjustment != null -> PixelProjectionNode.Adjustment(
-                    layer.id, layer.adjustment, layer.opacity, layer.blendMode.toPixelBlendMode(), mask(layer), layer.visible && !layer.draft)
+                    layer.id, layer.adjustment, layer.opacity, layer.blendMode.toPixelBlendMode(), mask(layer), layer.visible && !LayerHierarchy.effectiveDraft(page.layers, layer))
                 else -> inputs[layer.id]?.let(PixelProjectionNode::Paint)
             } },
             group = { layer, children -> PixelProjectionNode.Group(layer.id, children, layer.opacity, layer.blendMode.toPixelBlendMode(),
-                mask(layer), layer.clippedToBelow, layer.visible && !layer.draft, layer.passThrough) })
+                mask(layer), layer.clippedToBelow, layer.visible && !LayerHierarchy.effectiveDraft(page.layers, layer), layer.passThrough) })
         return cache.update(nodes).snapshot
     }
 
@@ -740,7 +740,10 @@ class DocumentAssetService(private val context: Context) {
                 width,
                 height,
                 includeBackground = plan.includeBackground,
-                includeDraftLayers = false,
+                // Explicit layer edits must retain draft content; export/visible-only commands
+                // exclude drafts, but merging a selected sketch is not an export operation.
+                includeDraftLayers = plan.request.operation !in setOf(RasterLayerMergeOperation.MERGE_VISIBLE,
+                    RasterLayerMergeOperation.MERGE_VISIBLE_COPY, RasterLayerMergeOperation.FLATTEN),
             )
             PixelTileBitmapAdapter.import(bitmap)
         } finally { bitmap.recycle() }
@@ -1248,7 +1251,7 @@ class DocumentAssetService(private val context: Context) {
             if (backgroundVisible) (page.background as? PageBackground.Paper)?.let { PaperPatternRenderer.draw(canvas, it.pattern, it.density, width.toFloat(), height.toFloat()) }
         } else canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
-        val visibleLayers = page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && (includeDraftLayers || !it.draft) && (includedLayerIds == null || it.id in includedLayerIds) }
+        val visibleLayers = page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && (includeDraftLayers || !LayerHierarchy.effectiveDraft(page.layers, it)) && (includedLayerIds == null || it.id in includedLayerIds) }
         if (drawV5RasterProjectionIfCompatible(
                 canvas = canvas,
                 sourcePage = sourcePage,

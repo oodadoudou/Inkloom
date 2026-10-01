@@ -183,6 +183,9 @@ internal fun WorkspaceToolPropertiesPanel(
         }
         HorizontalDivider(color = Color(0xFF595959))
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+            if (tool in setOf(EditorTool.FILL, EditorTool.SELECT)) WorkspacePropertySwitch(
+                language.text("Exclude draft layers", "排除草稿图层"), settings.excludeDraftLayersFromReference,
+            ) { onSettings(settings.copy(excludeDraftLayersFromReference = it)) }
             when (tool) {
                 EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY -> {
                     WorkspacePropertySlider(language.text("Size", "大小"), "${brushSize.toInt()} px",

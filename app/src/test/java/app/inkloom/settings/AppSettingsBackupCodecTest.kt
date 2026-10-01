@@ -23,6 +23,14 @@ class AppSettingsBackupCodecTest {
         assertEquals(UiGrayTheme.DEFAULT, UiGrayTheme.decode("future-theme"))
     }
 
+    @Test fun `draft reference exclusion can be disabled and old backups keep exclusion`() {
+        val restored = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(
+            AppSettings(excludeDraftLayersFromReference = false))).getOrThrow().settings
+        assertFalse(restored.excludeDraftLayersFromReference)
+        val old = """{"format":"inkloom-app-settings","version":1,"settings":{}}""".encodeToByteArray()
+        assertTrue(AppSettingsBackupCodec.decode(old).getOrThrow().settings.excludeDraftLayersFromReference)
+    }
+
     @Test fun `liquify parameters survive backup`() {
         val settings = AppSettings(liquifyStrengthScale = 1.4f,
             liquifyDistortion = .45f, liquifyMomentum = .7f)

@@ -185,8 +185,9 @@ class AppSettingsStoreTest {
         context.getSharedPreferences("inkloom_editor_panels",0).edit().clear().commit()
         preferences.edit().clear().commit()
         try {
-            AppSettingsStore(context).save(AppSettings(referenceTarget = ReferenceTarget.REFERENCE_LAYERS))
+            AppSettingsStore(context).save(AppSettings(referenceTarget = ReferenceTarget.REFERENCE_LAYERS, excludeDraftLayersFromReference = false))
             assertEquals(ReferenceTarget.REFERENCE_LAYERS, AppSettingsStore(context).load().referenceTarget)
+            org.junit.Assert.assertFalse(AppSettingsStore(context).load().excludeDraftLayersFromReference)
         } finally {
             preferences.edit().clear().commit()
         }

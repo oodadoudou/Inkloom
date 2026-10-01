@@ -75,7 +75,7 @@ object RasterLayerMerge {
             RasterLayerMergeOperation.MERGE_VISIBLE,
             RasterLayerMergeOperation.MERGE_VISIBLE_COPY -> page.layers.filterTo(linkedSetOf()) {
                 (it.isPaintSurfaceLayer() || it.role == LayerRole.ADJUSTMENT) &&
-                    LayerHierarchy.effectiveVisible(page.layers, it) && !it.draft
+                    LayerHierarchy.effectiveVisible(page.layers, it) && !LayerHierarchy.effectiveDraft(page.layers, it)
             }.mapTo(linkedSetOf(), InkLayer::id).takeIf(Set<String>::isNotEmpty)
                 ?: return rejected(Rejection.NO_VISIBLE_LAYERS)
             RasterLayerMergeOperation.FLATTEN -> page.layers.filterTo(linkedSetOf()) {

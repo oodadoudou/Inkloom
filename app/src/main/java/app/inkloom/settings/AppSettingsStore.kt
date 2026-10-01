@@ -127,6 +127,7 @@ data class AppSettings(
     val selectionMode: SelectionMode = SelectionMode.REPLACE,
     val selectionFilter: SelectionFilter = SelectionFilter.ALL,
     val referenceTarget: ReferenceTarget = ReferenceTarget.ALL_VISIBLE,
+    val excludeDraftLayersFromReference: Boolean = true,
     val eyedropperReferenceTarget: ReferenceTarget = ReferenceTarget.ALL_VISIBLE,
     val eyedropperIncludePaper: Boolean = true,
     val correctLineMode: CorrectLineMode = CorrectLineMode.SMOOTH,
@@ -292,6 +293,7 @@ class AppSettingsStore(context: Context) {
             selectionInterpolation = enumValue(preferences.getString("selectionInterpolation", null), app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR),
             selectionMode = enumValue(preferences.getString("selectionMode", null), SelectionMode.REPLACE),
             selectionFilter = enumValue(preferences.getString("selectionFilter", null), SelectionFilter.ALL),
+            excludeDraftLayersFromReference = preferences.getBoolean("excludeDraftLayersFromReference", true),
             referenceTarget = enumValue(preferences.getString("referenceTarget", null), ReferenceTarget.ALL_VISIBLE),
             eyedropperReferenceTarget = enumValue(preferences.getString("eyedropperReferenceTarget", null), ReferenceTarget.ALL_VISIBLE),
             eyedropperIncludePaper = preferences.getBoolean("eyedropperIncludePaper", true),
@@ -435,6 +437,7 @@ class AppSettingsStore(context: Context) {
             .putString("selectionInterpolation", persisted.selectionInterpolation.name)
             .putString("selectionMode", persisted.selectionMode.name)
             .putString("selectionFilter", persisted.selectionFilter.name)
+            .putBoolean("excludeDraftLayersFromReference", persisted.excludeDraftLayersFromReference)
             .putString("referenceTarget", persisted.referenceTarget.name)
             .putString("eyedropperReferenceTarget", persisted.eyedropperReferenceTarget.name)
             .putBoolean("eyedropperIncludePaper", persisted.eyedropperIncludePaper)
