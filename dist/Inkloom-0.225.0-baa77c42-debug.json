@@ -1,0 +1,22 @@
+{
+  "version": "0.225.0",
+  "versionCode": 225,
+  "variant": "debug",
+  "commit": "baa77c42d3eb83fede723598a3ea7d87c128256d",
+  "sha256": "30c585fef434ebe802297209123665eb619ca1d76320c8aa73faa41e0e73f578",
+  "bytes": 112151129,
+  "generatedUtc": "2026-10-01T22:13:04.692689+00:00",
+  "verification": {
+    "JVM": "PASS 1010 tests, 0 failures, 8 skipped",
+    "Android15Targeted": "PASS 49 unique tests across final relevant runs: 48 draft/group composite, fill, settings and merge cases, plus actual folder reference/draft buttons, inheritance, undo/redo and Activity recreation test. Window test passed again after flag history integration.",
+    "SelectionClipboardBaseline": "0.224.0 passed 64 unique targeted selection/clipboard/persistence cases across final runs; no new full selection-suite rerun is claimed for 0.225.0.",
+    "Android15Full": "NOT CLAIMED: no new full-suite run or full-suite success.",
+    "lint": "PASS 0 errors, 114 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS emulator installation, versionCode 225, cold startup; crash buffer empty",
+    "DriveDesktop": "PASS all four files SHA-256 verified in local sync folder; cloud transfer managed by Drive Desktop, cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING",
+  "evidenceRoot": "app/build/test-results, app/build/outputs/androidTest-results/connected/debug and ignored tasks/draft-folder-test-runner.log"
+}
