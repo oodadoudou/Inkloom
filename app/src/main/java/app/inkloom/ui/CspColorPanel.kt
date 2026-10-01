@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -281,10 +282,12 @@ private fun ColorDialogButton(label: String, action: () -> Unit) {
 private fun ColorValueInput(label: String, value: Float, maximum: Float, onValue: (Float) -> Unit) {
     var entry by remember { mutableStateOf(value.roundToInt().toString()) }
     val keyboard = LocalSoftwareKeyboardController.current
-    LaunchedEffect(value) { if (entry.toFloatOrNull()?.let { abs(it - value) > .005f } != false) entry = value.roundToInt().toString() }
+    var focused by remember { mutableStateOf(false) }
+    // A preview update must not overwrite a newer keystroke or an intentionally empty entry.
+    LaunchedEffect(value, focused) { if (!focused && entry.toFloatOrNull()?.let { abs(it - value) > .005f } != false) entry = value.roundToInt().toString() }
     Row(verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(entry, { text -> entry = text; text.toFloatOrNull()?.takeIf { it.isFinite() && it in 0f..maximum }?.let(onValue) },
-            Modifier.width(88.dp).semantics { contentDescription = "Color value $label" }, label = { Text(label) }, singleLine = true,
+            Modifier.width(88.dp).onFocusChanged { focused = it.isFocused }.semantics { contentDescription = "Color value $label" }, label = { Text(label) }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }))
         Spacer(Modifier.width(12.dp))

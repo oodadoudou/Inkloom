@@ -332,16 +332,19 @@ class LayerOpacityWindowTest {
         tap("Colors"); tap("Wheel"); tap("Edit color values")
         for (channel in listOf("R", "G", "B")) {
             val node = compose.onNodeWithContentDescription("Color value $channel")
+            // The real IME can reduce the dialog to two visible channels; reveal before tapping.
+            node.performScrollTo().assertIsDisplayed()
             val field = node.fetchSemanticsNode()
             tapAt(field.boundsInWindow.center + field.positionOnScreen - field.positionInWindow)
+            compose.waitForIdle()
             instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_MOVE_END)
             repeat(field.config[SemanticsProperties.EditableText].text.length) {
                 instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DEL)
             }
             value.toString().forEach { digit -> instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_0 + digit.digitToInt()) }
             compose.waitForIdle()
+            assertEquals("Native RGB entry must retain every typed digit", value.toString(), node.fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
         }
-        // Use the dialog semantic coordinates: the active accessibility window can be the IME.
         val done = compose.onNodeWithText("Done").assertIsDisplayed().fetchSemanticsNode()
         tapAt(done.boundsInWindow.center + done.positionOnScreen - done.positionInWindow)
         compose.waitForIdle()
