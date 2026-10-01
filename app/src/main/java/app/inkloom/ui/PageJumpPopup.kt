@@ -14,7 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -54,12 +54,13 @@ internal fun PageJumpPopup(pages: List<InkPage>, selectedPageId: String, navigat
         val index = pages.indexOfFirst { it.id == selectedPageId }
         if (index >= 0 && list.layoutInfo.visibleItemsInfo.none { it.key == selectedPageId }) list.scrollToItem(index)
     }
-    val configuration = LocalConfiguration.current
-    val height = (configuration.screenHeightDp - with(density) { (top + bottom).toDp().value } - 100f).coerceIn(100f, 400f).dp
+    val window = LocalWindowInfo.current.containerSize
+    val width = with(density) { window.width.toDp() }
+    val height = with(density) { (window.height - top - bottom).toDp() - 100.dp }.coerceIn(100.dp, 400.dp)
     Popup(popupPositionProvider = remember(navigator, gap, top, bottom) { PageJumpPosition(navigator, gap, top, bottom) },
         onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
         Surface(shape = RoundedCornerShape(12.dp), color = Paper, shadowElevation = 6.dp,
-            modifier = Modifier.width(minOf(280, (configuration.screenWidthDp - 24).coerceAtLeast(72)).dp)
+            modifier = Modifier.width(minOf(280.dp, (width - 24.dp).coerceAtLeast(72.dp)))
                 .semantics { contentDescription = language.text("Page jump panel", "页面跳转面板") }) {
             Column(Modifier.padding(6.dp)) {
                 Row(Modifier.fillMaxWidth().height(36.dp), verticalAlignment = Alignment.CenterVertically) {
