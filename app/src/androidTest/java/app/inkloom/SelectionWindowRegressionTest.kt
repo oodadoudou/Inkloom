@@ -18,6 +18,7 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
+import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertNotEquals
@@ -58,7 +59,21 @@ class SelectionWindowRegressionTest {
         tap("Selection"); tap("Rectangle selection")
         stroke(pagePoint(view, .2f, .2f), pagePoint(view, .4f, .4f))
         compose.waitForIdle()
+        compose.waitUntil(15_000) { !view.hasPendingPaintPublicationForMerge() }
         val before = requireNotNull(view.activeRasterSnapshotForTest())
+        val bounds = PixelRect(0, 0, before.logicalWidth, before.logicalHeight)
+        val beforePixels = before.copyPremultipliedPixels(bounds)
+        val selection = requireNotNull(view.selectionMaskSurfaceSnapshot())
+        var keptIndex = -1
+        for (index in beforePixels.indices) {
+            if (beforePixels[index] ushr 24 > (beforePixels.getOrNull(keptIndex) ?: 0) ushr 24 &&
+                selection.alphaAt((index % before.logicalWidth) * selection.logicalWidth / before.logicalWidth,
+                    (index / before.logicalWidth) * selection.logicalHeight / before.logicalHeight) == 255) keptIndex = index
+        }
+        assertTrue("The authored stroke has content inside the selection", keptIndex >= 0)
+        val keptX = keptIndex % before.logicalWidth; val keptY = keptIndex / before.logicalWidth
+        val kept = beforePixels[keptIndex]
+        assertTrue("The authored stroke has opaque content inside the selection", kept ushr 24 > 0)
         val x = (before.logicalWidth * .75f).toInt(); val y = (before.logicalHeight * .7f).toInt()
         val outside = before.pixelAt(x, y)
         assertTrue(outside ushr 24 > 0)
@@ -69,14 +84,22 @@ class SelectionWindowRegressionTest {
         compose.waitUntil(10_000) { view.activeRasterSnapshotForTest()?.pixelAt(x, y) == outside }
         tapAt(toolbarCenter("Redo")); compose.waitForIdle()
         compose.waitUntil(10_000) { view.activeRasterSnapshotForTest()?.pixelAt(x, y) == 0 }
+        assertEquals("Clearing outside must preserve selected pixels", kept,
+            view.activeRasterSnapshotForTest()!!.pixelAt(keptX, keptY))
+        compose.waitUntil(15_000) { !view.hasPendingPaintPublicationForMerge() }
+        val expected = view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(bounds)
         tap("Exit selection tool")
         tap("Gallery")
         tap("Untitled Note")
         val reopened = canvas()
-        compose.waitUntil(15_000) { reopened.activeRasterSnapshotForTest() != null }
+        // A newly bound canvas has a non-null empty placeholder before persisted tiles arrive.
+        // Wait for the full pixel payload, rather than treating that placeholder as loaded content.
+        compose.waitUntil(15_000) {
+            reopened.activeRasterSnapshotForTest()?.copyPremultipliedPixels(bounds)?.contentEquals(expected) == true
+        }
         val saved = reopened.activeRasterSnapshotForTest()!!
         assertEquals(0, saved.pixelAt(x, y))
-        assertTrue(saved.pixelAt((saved.logicalWidth * .3f).toInt(), (saved.logicalHeight * .3f).toInt()) ushr 24 > 0)
+        assertEquals(kept, saved.pixelAt(keptX, keptY))
     }
 
     @Test fun lightFingerAndPenTapsKeepSelectionModesAndHighlightsInSync() {
