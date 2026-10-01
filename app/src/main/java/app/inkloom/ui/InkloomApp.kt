@@ -5350,7 +5350,7 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
     val layerBlendModes = page.layers.associate { it.id to it.blendMode }
     val layerOrder = page.layers.mapIndexed { index, layer -> layer.id to index }.toMap()
     val retainedLayerKeys = RetainedLayerRenderKey.forPage(page)
-    val layerElementBitmaps = remember(page.id, page.width, page.height, page.elements, retainedLayerKeys, page.crop, page.backgroundRotationQuarterTurns, rasterRenderWidth, page.colorManagement.highPrecision) {
+    val layerElementBitmaps = remember(page.id, page.width, page.height, page.elements, retainedLayerKeys, page.crop, page.backgroundRotationQuarterTurns, rasterRenderWidth, page.colorManagement) {
         page.layers.mapNotNull { layer ->
             val elementIds = page.elements.filter { it.layerId == layer.id }.mapTo(linkedSetOf(), PageElement::id)
             if (elementIds.isEmpty() || !LayerHierarchy.effectiveVisible(page.layers, layer)) return@mapNotNull null
@@ -5359,7 +5359,7 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
             val baseElementIds = if (splitAtAlphaLock) elementIds.intersect(capturedIds) else elementIds
             val addedElementIds = if (splitAtAlphaLock) elementIds - capturedIds else emptySet()
             val renderHeight = (rasterRenderWidth * PageCropTransform.visibleHeight(page) / PageCropTransform.visibleWidth(page)).toInt().coerceAtLeast(1)
-            if (page.colorManagement.highPrecision || rasterRenderWidth.toLong() * renderHeight > 4_194_304L) {
+            if (page.colorManagement.highPrecision || page.colorManagement.assignedProfile!=null || page.colorManagement.softProof || rasterRenderWidth.toLong() * renderHeight > 4_194_304L) {
                 layer.id to LayerElementBitmaps(null, null,
                     baseElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerSurface(page, layer.id, rasterRenderWidth, renderHeight, it) },
                     addedElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerSurface(page, layer.id, rasterRenderWidth, renderHeight, it) })

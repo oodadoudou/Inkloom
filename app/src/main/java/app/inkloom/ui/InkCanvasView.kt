@@ -1260,10 +1260,17 @@ class InkCanvasView(context: Context) : View(context) {
 
     private var colorSettings=app.inkloom.color.PageColorManagement()
     private var colorPreview:app.inkloom.color.IccPreviewCache?=null
+    private var colorBackgroundPreview:app.inkloom.color.IccPreviewCache?=null
+    private var colorBackdropPixels:PixelTileSurfaceSnapshot?=null
     fun setColorManagement(settings:app.inkloom.color.PageColorManagement) {
         if(colorSettings==settings && (colorPreview!=null || (settings.assignedProfile==null && !settings.softProof)))return
-        colorPreview?.close();colorPreview=null;colorSettings=settings
-        if(settings.assignedProfile!=null || settings.softProof) colorPreview=app.inkloom.color.IccPreviewCache(settings)
+        colorPreview?.close();colorPreview=null
+        colorBackgroundPreview?.close();colorBackgroundPreview=null;colorBackdropPixels=null;colorSettings=settings
+        if(settings.assignedProfile!=null || settings.softProof) {
+            colorPreview=app.inkloom.color.IccPreviewCache(settings,rasterTileRenderer::releaseSurface)
+            colorBackgroundPreview=app.inkloom.color.IccPreviewCache(settings,rasterTileRenderer::releaseSurface)
+            backgroundBitmap?.takeUnless { it.isRecycled }?.let { colorBackdropPixels=app.inkloom.engine.v5.android.PixelTileBitmapAdapter.import(it).snapshot() }
+        }
         invalidate()
     }
 
@@ -1346,6 +1353,8 @@ class InkCanvasView(context: Context) : View(context) {
         if (backgroundBitmap === bitmap && backgroundFrame == frame) return
         backgroundFrame = frame?.let(::RectF)
         backgroundBitmap = bitmap
+        colorBackdropPixels=if(colorPreview!=null) bitmap?.takeUnless { it.isRecycled }?.let {
+            app.inkloom.engine.v5.android.PixelTileBitmapAdapter.import(it).snapshot() } else null
         invalidate()
     }
 
@@ -1704,12 +1713,15 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    private fun drawPageContent(canvas: Canvas, includeInteractionOverlays: Boolean = true, referencedLayerIds: Set<String>? = null, includePageBackground: Boolean = true) {
+    private fun drawPageContent(canvas: Canvas, includeInteractionOverlays: Boolean = true, referencedLayerIds: Set<String>? = null, includePageBackground: Boolean = true, applyColorManagement: Boolean = includeInteractionOverlays) {
         if (includePageBackground) {
             backgroundBitmap?.let { bitmap ->
                 val destination = backgroundFrame?.let { RectF(it.left * width, it.top * height, it.right * width, it.bottom * height) }
                     ?: RectF(0f, 0f, width.toFloat(), height.toFloat())
-                canvas.drawBitmap(bitmap, null, destination, Paint(Paint.FILTER_BITMAP_FLAG))
+                val canonical=colorBackdropPixels
+                if(applyColorManagement && canonical!=null && colorBackgroundPreview!=null) rasterTileRenderer.draw(canvas,
+                    requireNotNull(colorBackgroundPreview).update(canonical),destination)
+                else canvas.drawBitmap(bitmap, null, destination, Paint(Paint.FILTER_BITMAP_FLAG))
             }
                 ?: pagePaperColor?.let { color ->
                     paperFillPaint.color = color
@@ -1717,8 +1729,9 @@ class InkCanvasView(context: Context) : View(context) {
                     pagePaperPattern?.let { drawPaperPattern(canvas, it) }
                 }
         }
-        if (includeInteractionOverlays) drawSnapGrid(canvas)
-        drawV5LayerComposition(canvas, includeElements = true, layerFilter = referencedLayerIds)
+        if (includeInteractionOverlays && colorPreview==null) drawSnapGrid(canvas)
+        drawV5LayerComposition(canvas, includeElements = true, layerFilter = referencedLayerIds, includeBackdrop = includePageBackground, applyColorManagement = applyColorManagement)
+        if (includeInteractionOverlays && colorPreview!=null) drawSnapGrid(canvas)
         if (includeInteractionOverlays) drawLayerMaskOverlay(canvas)
         if (includeInteractionOverlays) selectionCanvasTransform?.let { draft ->
             val mapping = draft.pose.rasterMappingFrom(draft.original)
@@ -1932,6 +1945,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     override fun onDetachedFromWindow() {
         colorPreview?.close();colorPreview=null
+        colorBackgroundPreview?.close();colorBackgroundPreview=null;colorBackdropPixels=null
         clearLiquifyReconstruction()
         selectionAnimation.cancel()
         finishSelectionColorFill(true)
@@ -1970,8 +1984,10 @@ class InkCanvasView(context: Context) : View(context) {
         canvas: Canvas,
         includeElements: Boolean = false,
         layerFilter: Set<String>? = null,
+        includeBackdrop: Boolean = true,
+        applyColorManagement: Boolean = true,
     ) {
-        if (drawV5RasterLayerProjection(canvas, includeElements, layerFilter)) return
+        if (drawV5RasterLayerProjection(canvas, includeElements, layerFilter, includeBackdrop, applyColorManagement)) return
         val elementLayerIds = if (includeElements) layerElementBitmaps.keys.filter { layerFilter == null || it in layerFilter } else emptyList()
         val rasterLayerIds = rasterLayerTileSurfaces.keys.filter { layerFilter == null || it in layerFilter }
         val availableLayerIds = elementLayerIds + rasterLayerIds
@@ -2068,7 +2084,10 @@ class InkCanvasView(context: Context) : View(context) {
         canvas: Canvas,
         includeElements: Boolean,
         layerFilter: Set<String>?,
+        includeBackdrop: Boolean,
+        applyColorManagement: Boolean,
     ): Boolean {
+        val preview=if(applyColorManagement) colorPreview else null
         if (!includeElements || layerFilter != null) return false
         val through = boundDocumentLayers?.any { it.role == app.inkloom.document.LayerRole.FOLDER && it.passThrough } == true
         val hasAdjustments = boundDocumentLayers?.any {
@@ -2076,17 +2095,17 @@ class InkCanvasView(context: Context) : View(context) {
         } == true
         val hasElements = layerElementBitmaps.isNotEmpty() || mixedElementOverrides.values.any { it != null }
         val customBlend = layerBlendModes.values.any { it.requiresPixelCompositor }
-        if (hasElements && !through && !hasAdjustments && !customBlend) return false
-        if (rasterLayerTileSurfaces.isEmpty() && (!hasElements || (!through && !hasAdjustments && !customBlend))) return false
+        if (hasElements && !through && !hasAdjustments && !customBlend && preview==null) return false
+        if (rasterLayerTileSurfaces.isEmpty() && (!hasElements || (!through && !hasAdjustments && !customBlend && preview==null))) return false
         if (layerMasks.any { (layerId, mask) ->
                 layerId in rasterLayerTileSurfaces && mask.enabled && layerMaskSurfaces[layerId] == null
             }) return false
 
-        val contentIds = rasterLayerTileSurfaces.keys + if (through || hasAdjustments || customBlend)
+        val contentIds = rasterLayerTileSurfaces.keys + if (through || hasAdjustments || customBlend || preview!=null)
             (layerElementBitmaps.keys + mixedElementOverrides.keys) else emptySet()
         val orderedIds = (layerOrder.filter(contentIds::contains) + contentIds.filterNot(layerOrder::contains)).distinct()
         if (orderedIds.isEmpty()) return false
-        val directSourceOverStack = colorPreview==null && !hasElements && !hasAdjustments && boundDocumentLayers?.none { it.role == app.inkloom.document.LayerRole.FOLDER } != false && orderedIds.all { layerId ->
+        val directSourceOverStack = preview==null && !hasElements && !hasAdjustments && boundDocumentLayers?.none { it.role == app.inkloom.document.LayerRole.FOLDER } != false && orderedIds.all { layerId ->
             (layerOpacities[layerId] ?: 1f) >= .999f &&
                 (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL) == LayerBlendMode.NORMAL &&
                 layerColorReplacements[layerId] == null &&
@@ -2107,7 +2126,8 @@ class InkCanvasView(context: Context) : View(context) {
             v5RasterProjectionDrawCount++
             return true
         }
-        val firstSurface = orderedIds.firstNotNullOfOrNull { rasterLayerTileSurfaces[it] }
+        val firstSurface = orderedIds.firstNotNullOfOrNull { rasterLayerTileSurfaces[it]?.snapshot() }
+            ?: orderedIds.firstNotNullOfOrNull { layerElementBitmaps[it]?.baseSurface ?: layerElementBitmaps[it]?.additionsSurface }
         val geometry = RasterProjectionGeometry(
             firstSurface?.logicalWidth ?: width,
             firstSurface?.logicalHeight ?: height,
@@ -2185,7 +2205,10 @@ class InkCanvasView(context: Context) : View(context) {
         v5RasterProjectionDrawCount++
         rasterTileRenderer.draw(
             canvas,
-            colorPreview?.update(update.snapshot) ?: update.snapshot,
+            preview?.update(update.snapshot,if(includeBackdrop) colorBackdropPixels?.let { pixels ->
+                val frame=backgroundFrame
+                app.inkloom.color.IccBackdrop(pixels,frame?.left ?: 0f,frame?.top ?: 0f,frame?.right ?: 1f,frame?.bottom ?: 1f)
+            } else null) ?: update.snapshot,
             RectF(0f, 0f, width.toFloat(), height.toFloat()),
         )
         return true

@@ -419,7 +419,7 @@ class DocumentAssetService(private val context: Context) {
 
     fun renderManagedBackground(page:InkPage,width:Int):Bitmap? {
         val bg=page.background
-        if(bg is PageBackground.Paper)return null
+        if(bg is PageBackground.Paper && page.colorManagement.assignedProfile==null && !page.colorManagement.softProof)return null
         val height=(width*PageCropTransform.visibleHeight(page)/PageCropTransform.visibleWidth(page)).toInt().coerceAtLeast(1)
         val size=if(width.toLong()*height>16_777_216L) (width*kotlin.math.sqrt(16_777_216.0/(width.toLong()*height))).toInt().coerceAtLeast(1) else width
         val h=(size.toLong()*height/width).toInt().coerceAtLeast(1)
@@ -431,12 +431,8 @@ class DocumentAssetService(private val context: Context) {
                     try {renderer.draw(strip,y);Canvas(bitmap).drawBitmap(strip,0f,y.toFloat(),null)} finally {strip.recycle()}
                 }
             }
-            if(page.colorManagement.assignedProfile!=null || page.colorManagement.softProof) {
-                app.inkloom.color.IccPreviewCache(page.colorManagement).use { cache ->
-                    val result=PixelTileBitmapAdapter.render(cache.update(PixelTileBitmapAdapter.import(bitmap).snapshot()))
-                    bitmap.recycle();return result
-                }
-            };return bitmap
+            // Return canonical pixels. The live view proofs the composed paper and ink together.
+            return bitmap
         } catch(failure:Throwable){bitmap.recycle();throw failure}
     }
 

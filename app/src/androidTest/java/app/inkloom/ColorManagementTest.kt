@@ -45,6 +45,70 @@ class ColorManagementTest {
             } } finally{proof.delete()}
         }finally{file.delete()}
     }
+    @Test fun softProofComposesTransparentInkWithPaperBeforeTheIccTransform() {
+        val proof=File(context.cacheDir,"alpha-proof-fixture.icc").apply { writeBytes(cmyk()) }
+        val ink=PixelTileSurface(32,32,pixelFormat=PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16)
+        ink.beginWrite("transparent red").use { it.setLinearPixel(8,8,LinearRgba(1f,0f,0f,.5f));it.commit().close() }
+        val paper=PixelTileSurface(32,32,pixelFormat=PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16)
+        paper.beginWrite("white paper").use { for(y in 0..31) for(x in 0..31) it.setLinearPixel(x,y,LinearRgba(1f,1f,1f,1f));it.commit().close() }
+        val settings=PageColorManagement(proofProfile=proof.path,softProof=true)
+        try {
+            val expected=FloatArray(4)
+            IccColorPipeline(settings,preview=true).use { it.convert(floatArrayOf(1f,.5f,.5f,1f),expected) }
+            IccPreviewCache(settings).use { cache ->
+                val backdrop=IccBackdrop(paper.snapshot())
+                val preview=cache.update(ink.snapshot(),backdrop)
+                val color=preview.linearPixelAt(8,8)
+                assertEquals(1f,color.alpha,.001f)
+                assertEquals(expected[0],color.red,.002f);assertEquals(expected[1],color.green,.002f);assertEquals(expected[2],color.blue,.002f)
+                assertEquals(preview.revision,cache.update(ink.snapshot(),backdrop).revision)
+                assertEquals(.5f,ink.snapshot().linearPixelAt(8,8).alpha,.001f)
+                // Clearing ink and replacing paper must discard the former composited proof tile.
+                ink.beginWrite("clear").use { it.setLinearPixel(8,8,LinearRgba(0f,0f,0f,0f));it.commit().close() }
+                val empty=cache.update(ink.snapshot(),IccBackdrop(paper.snapshot(),.2f,.2f,.8f,.8f))
+                assertEquals(0f,empty.linearPixelAt(8,8).alpha,.001f)
+            }
+            val assets=DocumentAssetService(context)
+            val bitmap=assets.renderManagedBackground(InkPage(width=32f,height=32f,colorManagement=settings,
+                background=PageBackground.Paper(0xffff0000,PaperPattern.PLAIN)),32)!!
+            try { assertEquals(android.graphics.Color.RED,bitmap.getPixel(8,8)) } finally { bitmap.recycle() }
+        } finally { proof.delete() }
+    }
+
+    @Test fun objectsOnlyCanvasUsesTheSameComposedSoftProofAsRasterLayers() {
+        val proof=File(context.cacheDir,"object-proof-fixture.icc").apply { writeBytes(cmyk()) }
+        val settings=PageColorManagement(proofProfile=proof.path,softProof=true)
+        val ink=PixelTileSurface(32,32,pixelFormat=PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16)
+        ink.beginWrite("blue object").use { for(y in 0..31) for(x in 0..31) it.setLinearPixel(x,y,LinearRgba(0f,0f,1f,.5f));it.commit().close() }
+        val expected=FloatArray(4)
+        IccColorPipeline(settings,preview=true).use { it.convert(floatArrayOf(.5f,.5f,1f,1f),expected) }
+        try {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                val paper=ColorBitmap.create(32,32,true).apply { eraseColor(Color.WHITE) }
+                val result=ColorBitmap.create(32,32,true)
+                val view=app.inkloom.ui.InkCanvasView(context).apply {
+                    layout(0,0,32,32)
+                    setDocumentLayers(listOf(InkLayer(id="object",name="Object")))
+                    layerOrder=listOf("object")
+                    setLayerElementBitmaps(mapOf("object" to app.inkloom.ui.LayerElementBitmaps(null,null,ink.snapshot())))
+                    setColorManagement(settings);setPageBackground(paper)
+                }
+                try {
+                    view.draw(Canvas(result))
+                    val color=app.inkloom.engine.v5.android.PixelTileBitmapAdapter.import(result).snapshot().linearPixelAt(16,16)
+                    assertEquals(1f,color.alpha,.001f)
+                    assertEquals(expected[0],color.red,.004f);assertEquals(expected[1],color.green,.004f);assertEquals(expected[2],color.blue,.004f)
+                    view.draw(Canvas(result));assertEquals(0,view.lastRasterProjectionRecomposedTileCount)
+                    view.eyedropperIncludePaper=true
+                    val sample=app.inkloom.ui.InkCanvasView::class.java.getDeclaredMethod("sampleRenderedColor",Float::class.javaPrimitiveType,Float::class.javaPrimitiveType).apply { isAccessible=true }
+                    val proofSample=sample.invoke(view,16f,16f)
+                    view.setColorManagement(PageColorManagement())
+                    assertEquals("Picking a color must not bake the printer proof into the working color",proofSample,sample.invoke(view,16f,16f))
+                } finally { view.setColorManagement(PageColorManagement());paper.recycle();result.recycle() }
+            }
+        } finally { proof.delete() }
+    }
+
     @Test fun highPrecisionResizeAndCheckpointRemainExtended() {
         val source=PixelTileSurface(32,32,pixelFormat=PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16)
         source.beginWrite("extended").use{it.setLinearPixel(5,6,LinearRgba(1.4f,-.1f,.5f,.5f));it.commit().close()}
