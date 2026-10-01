@@ -7342,6 +7342,11 @@ private fun PaintingLayerPanel(
     val selectedLayerIds = secondarySelection
     val primaryListState = rememberLazyListState()
     val secondaryListState = rememberLazyListState()
+    LaunchedEffect(page.id, activeLayerId) {
+        page.layers.firstOrNull { it.id == activeLayerId }?.let { active ->
+            LayerHierarchy.ancestors(page.layers, active).filter(InkLayer::collapsed).forEach { onToggleFolderCollapsed(it.id) }
+        }
+    }
     val primaryDrag = rememberLayerPanelDrag(page, activeLayerId, selectedLayerIds, primaryListState,
         with(LocalDensity.current) { 48.dp.toPx() },
         { onSecondarySelection(emptySet()); onSelect(it) }, onRelocate, onToggleFolderCollapsed)
@@ -7474,6 +7479,8 @@ private fun PaintingLayerPanel(
             val renderLayerList: @Composable (Modifier, androidx.compose.foundation.lazy.LazyListState, LayerPanelDrag, String) -> Unit = { listModifier, listState, drag, description ->
             val filteredLayers = LayerHierarchy.panelOrder(page.layers.map { if (it.id in drag.expanded) it.copy(collapsed = false) else it })
                 .filter { layerSearch.isBlank() || it.name.contains(layerSearch.trim(), ignoreCase = true) }
+            RevealSelectedItem(listState, page.id to filteredLayers.map(InkLayer::id), activeLayerId,
+                filteredLayers.indexOfFirst { it.id == activeLayerId }, enabled = drag.origin == null)
             LazyColumn(listModifier.onGloballyPositioned { drag.viewport = it.boundsInRoot() }.layerPanelDrag(drag).semantics { contentDescription = description }, state = listState, contentPadding = PaddingValues(vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 items(filteredLayers, key = { it.id }) { layer ->
                     var menu by remember { mutableStateOf(false) }

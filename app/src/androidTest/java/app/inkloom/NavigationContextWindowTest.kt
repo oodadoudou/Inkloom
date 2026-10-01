@@ -76,6 +76,17 @@ class NavigationContextWindowTest {
         compose.onNodeWithText("Review page 1").assertIsDisplayed()
     }
 
+    @Test fun layerPanelRevealsActiveLayerInCollapsedFolderOnReopen() {
+        openFixtureAtPage30()
+        compose.onNodeWithContentDescription("Layers").performClick()
+        compose.onNodeWithContentDescription("Select layer Notes").assertIsSelected().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Layer list").performScrollToIndex(0)
+        compose.onNodeWithContentDescription("Select layer Extra layer 29").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Layers").performClick()
+        compose.onNodeWithContentDescription("Layers").performClick()
+        compose.onNodeWithContentDescription("Select layer Notes").assertIsSelected().assertIsDisplayed()
+    }
+
     @Test fun linkTargetPickerReopensAtLastChosenPage() {
         openFixtureAtPage30()
         fun openLink() {
