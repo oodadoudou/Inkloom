@@ -14,9 +14,10 @@ class PagePngExportSizeTest {
         )
     }
 
-    @Test fun oversizeIsRejectedInsteadOfUpscalingAClampedPaintingSurface() {
+    @Test fun native8kIsAcceptedAndLargerCanvasStillRejected() {
+        assertEquals(PagePngExportSize(8192, 8192), PagePngExportSize.from(InkPage(width = 8192f, height = 8192f)))
         assertThrows(IllegalArgumentException::class.java) {
-            PagePngExportSize.from(InkPage(width = 8000f, height = 8000f))
+            PagePngExportSize.from(InkPage(width = 8193f, height = 8000f))
         }
     }
 }

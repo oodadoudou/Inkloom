@@ -16,8 +16,8 @@ import kotlin.math.sqrt
  */
 internal object CanvasRasterResolution {
     const val BASELINE_DRAWING_WIDTH = 1600
-    const val MAXIMUM_DIMENSION = 4096
-    const val MAXIMUM_PIXELS = 16_777_216L
+    const val MAXIMUM_DIMENSION = 8192
+    const val MAXIMUM_PIXELS = 67_108_864L
 
     fun forPage(page: InkPage): Int = forDimensions(
         PageCropTransform.visibleWidth(page),

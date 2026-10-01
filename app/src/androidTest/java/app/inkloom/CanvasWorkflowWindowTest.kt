@@ -9,6 +9,11 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
@@ -52,6 +57,23 @@ class CanvasWorkflowWindowTest {
         val painted = requireNotNull(view.activeRasterSnapshotForTest())
         assertEquals(1600, painted.logicalWidth)
         assertEquals(2263, painted.logicalHeight)
+    }
+
+    @Test fun canvasSizeDialogAppliesAndUndoesNativeDimensions() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        compose.onNodeWithContentDescription("More").performClick()
+        compose.onNodeWithText("Canvas & resolution").performScrollTo().performClick()
+        compose.onNodeWithText("Width").performTextReplacement("1800")
+        compose.onNodeWithText("Height").performTextReplacement("2400")
+        compose.onNodeWithText("Apply").performClick()
+        compose.waitUntil(15_000) { view.activeRasterSnapshotForTest()?.logicalWidth == 1800 }
+        assertEquals(2400, view.activeRasterSnapshotForTest()?.logicalHeight)
+        tap("Undo")
+        compose.waitUntil(10_000) { view.activeRasterSnapshotForTest()?.logicalWidth == 1600 }
+        assertEquals(2263, view.activeRasterSnapshotForTest()?.logicalHeight)
+        tap("Redo")
+        compose.waitUntil(10_000) { view.activeRasterSnapshotForTest()?.logicalWidth == 1800 }
     }
 
     @Test fun colorDropLeavesTwoFingerNavigationAndDrawingAvailable() {

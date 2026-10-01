@@ -7,8 +7,8 @@ internal data class PagePngExportSize(val width: Int, val height: Int) {
     companion object {
         // Mirrors the maximum editable raster budget. Raising this requires a real large-canvas
         // compositor, not a larger Bitmap allocation at export time.
-        private const val MAX_DIMENSION = 4096
-        private const val MAX_PIXELS = 16_777_216L
+        private const val MAX_DIMENSION = 8192
+        private const val MAX_PIXELS = 67_108_864L
 
         fun from(page: InkPage): PagePngExportSize {
             val visibleWidth = PageCropTransform.visibleWidth(page)
@@ -17,7 +17,7 @@ internal data class PagePngExportSize(val width: Int, val height: Int) {
                 "The visible page has invalid dimensions"
             }
             require(visibleWidth <= MAX_DIMENSION && visibleHeight <= MAX_DIMENSION) {
-                "Original-size PNG exceeds the current 4096-pixel canvas limit; reduce the canvas size before exporting"
+                "Original-size PNG exceeds the current 8192-pixel canvas limit; reduce the canvas size before exporting"
             }
             val width = visibleWidth.roundToInt().coerceAtLeast(1)
             val height = visibleHeight.roundToInt().coerceAtLeast(1)

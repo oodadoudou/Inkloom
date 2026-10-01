@@ -73,7 +73,7 @@ class DocumentAssetService(private val context: Context) {
                         val gotoLinks = if (indexText) extractPdfGotoLinks(page, destinationPages) else null
                         InkPage(
                             id = pageIds[index], title = "Page ${index + 1}",
-                            width = page.width.toFloat(), height = page.height.toFloat(),
+                            width = page.width.toFloat(), height = page.height.toFloat(), dpi = 72f,
                             background = PageBackground.Pdf(asset.absolutePath, index),
                             pdfTextBlocks = textBlocks.orEmpty(),
                             pdfTextIndexVersion = if (textBlocks != null) PDF_TEXT_INDEX_VERSION else 0,
@@ -399,16 +399,196 @@ class DocumentAssetService(private val context: Context) {
         }
     }
 
-    fun exportPagePng(page: InkPage, uri: Uri) {
-        val size = PagePngExportSize.from(page)
-        val bitmap = renderPageBitmap(page, size.width, size.height)
-        try {
-            context.contentResolver.openOutputStream(uri)?.use { output ->
-                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) { "PNG encoding failed" }
-            } ?: error("Could not open image destination")
-        } finally {
-            bitmap.recycle()
+    fun exportPagePng(page: InkPage, uri: Uri, options: PageRasterExportOptions = PageRasterExportOptions()) {
+        val authored = PagePngExportSize.from(page)
+        val width = options.width ?: authored.width; val height = options.height ?: authored.height
+        require(width in 1..8192 && height in 1..8192)
+        val projection = renderPageCompositeSurface(page, width, height)
+        val tileHeight = 128
+        var strip: Bitmap? = null
+        var stripStart = -1
+        val backgroundRenderer = if (options.includeBackground) PageBackgroundStripRenderer(page, width, height) else null
+        PixelTileCanvasRenderer().use { renderer ->
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    StreamingPng.write(output, width, height, page.dpi) { y, row ->
+                        if (strip == null || y >= stripStart + requireNotNull(strip).height) {
+                            strip?.recycle(); stripStart = y
+                            strip = Bitmap.createBitmap(width, minOf(tileHeight, height - y), Bitmap.Config.ARGB_8888)
+                            backgroundRenderer?.draw(requireNotNull(strip), y)
+                            val canvas = Canvas(requireNotNull(strip)); canvas.translate(0f, -y.toFloat())
+                            renderer.draw(canvas, projection, RectF(0f, 0f, width.toFloat(), height.toFloat()))
+                        }
+                        requireNotNull(strip).getPixels(row, 0, width, 0, y - stripStart, width, 1)
+                    }
+                } ?: error("Could not open image destination")
+            } finally { strip?.recycle(); backgroundRenderer?.close() }
         }
+    }
+
+    /** Fully prepares a reversible replacement before publishing any new page metadata. */
+    fun prepareCanvasSize(page: InkPage, request: CanvasSizeRequest): PreparedPageGeometry {
+        val (width, height) = request.pixels()
+        if (page.crop == PageCrop() && width.toFloat() == page.width && height.toFloat() == page.height) {
+            return PreparedPageGeometry(PageGeometryEdit(page, page.copy(dpi = request.dpi))) {}
+        }
+        val visible = PageCropTransform.project(page)
+        val sx = if (request.mode == CanvasResizeMode.RESAMPLE) width / visible.width else 1f
+        val sy = if (request.mode == CanvasResizeMode.RESAMPLE) height / visible.height else 1f
+        val offset = if (request.mode == CanvasResizeMode.CANVAS)
+            CanvasSizing.anchorOffset(request.anchor, visible.width, visible.height, width.toFloat(), height.toFloat()) else 0f to 0f
+        val rasterReservations = mutableListOf<RasterTileSurfaceRef>()
+        val maskReservations = mutableListOf<String>()
+        var releaseHistory: () -> Unit = {}
+        fun close() { releaseHistory(); rasterReservations.forEach(::releaseRasterTileReservation); maskReservations.forEach(::releaseAssetReservation) }
+        try {
+            page.layers.mapNotNull { it.rasterTileSurface }.forEach { reference ->
+                rasterReservations += saveRasterTileSurface(loadRasterTileSurface(reference), reference)
+            }
+            fun resizedMask(reference: MaskTileSurfaceRef, saved: SavedSelection? = null): MaskTileSurfaceRef {
+                val original = loadMaskTileSurface(reference).snapshot()
+                val source = if (saved == null) original else SavedSelectionGeometry.projected(original, saved.rotationQuarterTurns, saved.crop, page.crop, visible.width.toInt(), visible.height.toInt())
+                val mask = MaskTileSurface(width, height, initialDefaultAlpha = source.defaultAlpha)
+                val mx = (if (saved == null) page.width else visible.width) / source.logicalWidth * sx
+                val my = (if (saved == null) page.height else visible.height) / source.logicalHeight * sy
+                val dx = offset.first - (if (saved == null) page.crop.left * page.width * sx else 0f)
+                val dy = offset.second - (if (saved == null) page.crop.top * page.height * sy else 0f)
+                val keys = linkedSetOf<app.inkloom.engine.v5.surface.PixelTileKey>()
+                source.tileInfo.forEach { info ->
+                    val l = kotlin.math.floor(info.key.column * source.tileSize * mx + dx - 1).toInt().coerceIn(0, width)
+                    val t = kotlin.math.floor(info.key.row * source.tileSize * my + dy - 1).toInt().coerceIn(0, height)
+                    val r = kotlin.math.ceil((info.key.column + 1) * source.tileSize * mx + dx + 1).toInt().coerceIn(0, width)
+                    val b = kotlin.math.ceil((info.key.row + 1) * source.tileSize * my + dy + 1).toInt().coerceIn(0, height)
+                    if (r > l && b > t) for (y in t / mask.tileSize..(b - 1) / mask.tileSize)
+                        for (x in l / mask.tileSize..(r - 1) / mask.tileSize) keys += app.inkloom.engine.v5.surface.PixelTileKey(x, y)
+                }
+                mask.beginWrite("resize mask").use { write ->
+                    keys.forEach { key ->
+                        val tw = minOf(mask.tileSize, width - key.column * mask.tileSize)
+                        val th = minOf(mask.tileSize, height - key.row * mask.tileSize)
+                        write.editTile(key, PixelRect(0, 0, tw, th)) { pixels, stride ->
+                            for (y in 0 until th) for (x in 0 until tw) {
+                                val ox = kotlin.math.floor((key.column * mask.tileSize + x + .5f - dx) / mx).toInt()
+                                val oy = kotlin.math.floor((key.row * mask.tileSize + y + .5f - dy) / my).toInt()
+                                pixels[y * stride + x] = (if (ox in 0 until source.logicalWidth && oy in 0 until source.logicalHeight)
+                                    source.alphaAt(ox, oy) else source.defaultAlpha).toByte()
+                            }
+                        }
+                    }
+                    write.commit().close()
+                }
+                return saveMaskTileSurface(mask.snapshot()).also { maskReservations += it.assetPath }
+            }
+            val layers = visible.layers.map { layer ->
+                val raster = layer.rasterTileSurface?.let {
+                    val original = renderRasterLayerSurface(page, layer.id, visible.width.toInt().coerceAtLeast(1))
+                    val resized = app.inkloom.engine.v5.tools.PixelSurfaceResampling.resample(original.snapshot(), width, height,
+                        sx, sy, offset.first, offset.second)
+                    saveRasterTileSurface(resized).also(rasterReservations::add)
+                }
+                layer.copy(rasterTileSurface = raster, rasterRotationQuarterTurns = 0,
+                    mask = layer.mask?.let { it.copy(surface = it.surface?.let { ref -> resizedMask(ref) }) })
+            }
+            val transform = app.inkloom.engine.v5.tools.SelectionAffineTransform(0f, 0f, sx, sy, 0f, offset.first, offset.second)
+            val elements = visible.elements.map { original ->
+                val mapped = StructuredElementTransform.map(original, transform, visible.width.toInt(), visible.height.toInt(), visible.width, visible.height)
+                val normalized = PageCropTransform.unproject(mapped, PageCrop())
+                val x = normalized.x * visible.width / width; val y = normalized.y * visible.height / height
+                when (normalized) {
+                    is PageElement.Text -> normalized.copy(x = x, y = y, textSize = if (normalized.deformation == null) (original as PageElement.Text).textSize * sx else (original as PageElement.Text).textSize)
+                    is PageElement.Sticky -> normalized.copy(x = x, y = y)
+                    is PageElement.Shape -> normalized.copy(x = x, y = y, strokeWidth = (original as PageElement.Shape).strokeWidth * if (request.mode == CanvasResizeMode.RESAMPLE) sx else 1f)
+                    is PageElement.Image -> normalized.copy(x = x, y = y)
+                    is PageElement.Fill -> normalized.copy(x = x, y = y)
+                    is PageElement.Link -> normalized.copy(x = x, y = y)
+                }
+            }
+            val previousFrame = visible.backgroundFrame ?: PageBackgroundFrame(0f, 0f, visible.width, visible.height)
+            fun bounds(b: PdfTextBounds): PdfTextBounds = PdfTextBounds(
+                (b.left * visible.width * sx + offset.first) / width,
+                (b.top * visible.height * sy + offset.second) / height,
+                (b.right * visible.width * sx + offset.first) / width,
+                (b.bottom * visible.height * sy + offset.second) / height)
+            val after = visible.copy(width = width.toFloat(), height = height.toFloat(), dpi = request.dpi,
+                layers = layers, elements = elements, crop = PageCrop(),
+                backgroundFrame = PageBackgroundFrame(previousFrame.left * sx + offset.first, previousFrame.top * sy + offset.second,
+                    previousFrame.width * sx, previousFrame.height * sy),
+                backgroundSourceCrop = page.backgroundSourceCrop ?: page.crop,
+                pdfTextBlocks = visible.pdfTextBlocks.map { it.copy(bounds = it.bounds.map(::bounds)) },
+                pdfGotoLinks = visible.pdfGotoLinks.map { it.copy(bounds = it.bounds.map(::bounds)) },
+                recognizedTextBlocks = emptyList(), handwritingIndexFingerprint = "", imageOcrFingerprint = "",
+                savedSelections = visible.savedSelections.map { it.copy(surface = resizedMask(it.surface, it), crop = PageCrop(), rotationQuarterTurns = 0) })
+            releaseHistory = retainHistoryAssets((page.layers + after.layers).mapNotNull { it.mask?.surface?.assetPath } +
+                (page.savedSelections + after.savedSelections).map { it.surface.assetPath })
+            return PreparedPageGeometry(PageGeometryEdit(page, after), ::close)
+        } catch (failure: Throwable) { close(); throw failure }
+    }
+
+    /** Same group, mask, clipping and adjustment semantics, with bounded object rasterization. */
+    fun renderPageCompositeSurface(source: InkPage, width: Int, height: Int): app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot {
+        require(width in 1..8192 && height in 1..8192)
+        val page = PageCropTransform.project(source)
+        val cache = PixelGroupProjectionCache(width, height)
+        fun mask(layer: InkLayer) = layer.mask?.takeIf { it.enabled }?.let { m ->
+            m.surface?.let { m.expressed(loadMaskTileSurface(it).snapshot()) }
+        }
+        val inputs = page.layers.filter { it.isPaintSurfaceLayer() && LayerHierarchy.effectiveVisible(page.layers, it) && !it.draft }.associate { layer ->
+            val reference = layer.rasterTileSurface
+            val raw = if (reference != null) {
+                val original = renderRasterLayerSurface(source, layer.id, width).snapshot()
+                if (original.logicalHeight == height && original.tileSize == PixelTileSurface.DEFAULT_TILE_SIZE) original
+                else app.inkloom.engine.v5.tools.PixelSurfaceResampling.resample(original, width, height,
+                    1f, height.toFloat() / original.logicalHeight, targetTileSize = PixelTileSurface.DEFAULT_TILE_SIZE).snapshot()
+            } else null
+            val ids = page.elements.filter { it.layerId == layer.id }.mapTo(hashSetOf(), PageElement::id)
+            val captured = layer.alphaLockBaseContentIds.toSet().takeIf { layer.alphaLock && it.isNotEmpty() }
+            val nodes = mutableListOf<PixelProjectionNode>()
+            val base = buildList<PixelProjectionNode> {
+                raw?.let { add(PixelProjectionNode.Paint(PixelLayerProjectionInput("raw", it))) }
+                if (ids.isNotEmpty()) add(PixelProjectionNode.Paint(PixelLayerProjectionInput("objects",
+                    renderElementLayerSurface(source, layer.id, width, height, captured))))
+            }
+            nodes += PixelProjectionNode.Group("base", base)
+            if (captured != null && (ids - captured).isNotEmpty()) nodes += PixelProjectionNode.Paint(PixelLayerProjectionInput("additions",
+                renderElementLayerSurface(source, layer.id, width, height, ids - captured), clipToBaseBelow = true))
+            val content = if (ids.isEmpty()) raw ?: cache.emptySnapshot else PixelGroupProjectionCache(width, height).update(nodes).snapshot
+            layer.id to PixelLayerProjectionInput(layer.id, content, opacity = layer.opacity,
+                blendMode = layer.blendMode.toPixelBlendMode(), mask = mask(layer),
+                clipToBaseBelow = layer.clippedToBelow, colorReplacement = layer.colorReplacement)
+        }
+        val nodes = LayerCompositingTree.project<PixelProjectionNode>(page.layers,
+            paint = { layer -> when {
+                layer.role == LayerRole.BACKGROUND -> null
+                layer.role == LayerRole.ADJUSTMENT && layer.adjustment != null -> PixelProjectionNode.Adjustment(
+                    layer.id, layer.adjustment, layer.opacity, layer.blendMode.toPixelBlendMode(), mask(layer), layer.visible && !layer.draft)
+                else -> inputs[layer.id]?.let(PixelProjectionNode::Paint)
+            } },
+            group = { layer, children -> PixelProjectionNode.Group(layer.id, children, layer.opacity, layer.blendMode.toPixelBlendMode(),
+                mask(layer), layer.clippedToBelow, layer.visible && !layer.draft, layer.passThrough) })
+        return cache.update(nodes).snapshot
+    }
+
+    fun renderElementLayerSurface(page: InkPage, layerId: String, width: Int, height: Int,
+                                         contentIds: Set<String>? = null): app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot {
+        val surface = PixelTileSurface(width, height)
+        val step = surface.tileSize
+        surface.beginWrite("render retained elements").use { write ->
+            for (top in 0 until height step step) {
+                val bitmap = Bitmap.createBitmap(width, minOf(step, height - top), Bitmap.Config.ARGB_8888)
+                try {
+                    val canvas = Canvas(bitmap); canvas.translate(0f, -top.toFloat())
+                    drawPage(canvas, page, width, height, includeBackground = false, includedLayerIds = setOf(layerId),
+                        includedContentIds = contentIds, includeRaster = false, applyLayerEffects = false, includeDraftLayers = true)
+                    val strip = PixelTileBitmapAdapter.import(bitmap, step).snapshot()
+                    strip.tileInfo.forEach { info -> strip.readRgba8Tile(info.key) { pixels ->
+                        write.editTile(app.inkloom.engine.v5.surface.PixelTileKey(info.key.column, top / step),
+                            PixelRect(0, 0, minOf(step, width - info.key.column * step), bitmap.height)) { target, _ -> pixels.copyInto(target) }
+                    } }
+                } finally { bitmap.recycle() }
+            }
+            write.commit().close()
+        }
+        return surface.snapshot()
     }
 
     fun renderPageBitmap(page: InkPage, width: Int): Bitmap {
@@ -460,7 +640,7 @@ class DocumentAssetService(private val context: Context) {
     }
 
     fun renderElementLayerBitmap(page: InkPage, layerId: String, width: Int, contentIds: Set<String>? = null): Bitmap {
-        require(width in 1..4096) { "Layer render width must be between 1 and 4096 pixels" }
+        require(width in 1..8192) { "Layer render width must be between 1 and 8192 pixels" }
         val height = (width * PageCropTransform.visibleHeight(page) / PageCropTransform.visibleWidth(page).coerceAtLeast(1f)).toInt().coerceAtLeast(1)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         drawPage(
@@ -479,7 +659,7 @@ class DocumentAssetService(private val context: Context) {
      * Layer opacity, blend mode, clipping, and masks are deliberately applied by the live canvas
      * so the returned bitmap remains a reusable source surface. */
     fun renderRasterLayerBitmap(page: InkPage, layerId: String, width: Int): Bitmap {
-        require(width in 1..4096) { "Layer render width must be between 1 and 4096 pixels" }
+        require(width in 1..8192) { "Layer render width must be between 1 and 8192 pixels" }
         val height = (width * PageCropTransform.visibleHeight(page) / PageCropTransform.visibleWidth(page).coerceAtLeast(1f)).toInt().coerceAtLeast(1)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         drawPage(
@@ -502,6 +682,18 @@ class DocumentAssetService(private val context: Context) {
      * method returns; callers retain no page-sized bitmap mirror.
      */
     fun renderRasterLayerSurface(page: InkPage, layerId: String, width: Int): PixelTileSurface {
+        val sourceLayer = page.layers.firstOrNull { it.id == layerId }
+        val reference = sourceLayer?.rasterTileSurface
+        val height = (width * PageCropTransform.visibleHeight(page) / PageCropTransform.visibleWidth(page)).toInt().coerceAtLeast(1)
+        if (sourceLayer != null && reference == null) return PixelTileSurface(width, height)
+        if (reference != null && reference.pixelFormat == app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_SRGB_8888.manifestId) {
+            val surface = loadRasterTileSurface(reference)
+            if (page.crop == PageCrop() && sourceLayer.rasterRotationQuarterTurns.mod(4) == 0 &&
+                surface.logicalWidth == width && surface.logicalHeight == height) return surface
+            val crop = PageCropTransform.normalized(page.crop)
+            return app.inkloom.engine.v5.tools.PixelSurfaceResampling.project(surface.snapshot(), width, height,
+                sourceLayer.rasterRotationQuarterTurns, crop.left, crop.top, crop.right, crop.bottom)
+        }
         val projection = renderRasterLayerBitmap(page, layerId, width)
         return try {
             PixelTileBitmapAdapter.import(projection)
@@ -612,9 +804,9 @@ class DocumentAssetService(private val context: Context) {
         val crop = PageCropTransform.normalized(page.crop)
         val surface = layer.rasterTileSurface?.let(::loadRasterTileSurface) ?: run {
                 val rotatedWidth = (visibleSourceWidth / (crop.right - crop.left).coerceAtLeast(.01f))
-                    .toInt().coerceIn(visibleSourceWidth, 4096)
+                    .toInt().coerceIn(visibleSourceWidth, 8192)
                 val rotatedHeight = (visibleSourceHeight / (crop.bottom - crop.top).coerceAtLeast(.01f))
-                    .toInt().coerceIn(visibleSourceHeight, 4096)
+                    .toInt().coerceIn(visibleSourceHeight, 8192)
                 PixelTileSurface(
                     logicalWidth = if (turns % 2 == 0) rotatedWidth else rotatedHeight,
                     logicalHeight = if (turns % 2 == 0) rotatedHeight else rotatedWidth,
@@ -914,7 +1106,17 @@ class DocumentAssetService(private val context: Context) {
         val paperColor = (page.background as? PageBackground.Paper)?.colorArgb?.toInt() ?: Color.WHITE
         if (includeBackground) {
             canvas.drawColor(if (backgroundVisible) paperColor else Color.WHITE)
-            if (backgroundVisible) renderBackground(sourcePage.background, width, sourcePage.backgroundRotationQuarterTurns, sourcePage.crop)?.let { bitmap -> canvas.drawBitmap(bitmap, null, android.graphics.Rect(0, 0, width, height), null); bitmap.recycle() }
+            if (backgroundVisible) {
+                val frame = page.backgroundFrame
+                val backgroundWidth = if (frame == null) width else (frame.width * width / page.width).toInt().coerceIn(1, 8192)
+                renderBackground(sourcePage.background, backgroundWidth, sourcePage.backgroundRotationQuarterTurns,
+                    sourcePage.backgroundSourceCrop ?: sourcePage.crop)?.let { bitmap ->
+                    val target = if (frame == null) RectF(0f, 0f, width.toFloat(), height.toFloat()) else
+                        RectF(frame.left * width / page.width, frame.top * height / page.height,
+                            (frame.left + frame.width) * width / page.width, (frame.top + frame.height) * height / page.height)
+                    canvas.drawBitmap(bitmap, null, target, Paint(Paint.FILTER_BITMAP_FLAG)); bitmap.recycle()
+                }
+            }
             if (backgroundVisible) (page.background as? PageBackground.Paper)?.let { PaperPatternRenderer.draw(canvas, it.pattern, it.density, width.toFloat(), height.toFloat()) }
         } else canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
@@ -1041,7 +1243,7 @@ class DocumentAssetService(private val context: Context) {
                         ShapeKind.FREEFORM -> canvas.drawPath(freeform, paint)
                     }
                 }
-                is PageElement.Image -> ImageAssetDecoder.decodeCropped(element.assetPath, element.crop)?.let { bitmap ->
+                is PageElement.Image -> {
                     val destination = android.graphics.RectF(left, top, right, bottom)
                     canvas.save()
                     when (element.mask) {
@@ -1052,7 +1254,7 @@ class DocumentAssetService(private val context: Context) {
                         }
                         ImageMask.OVAL -> canvas.clipPath(Path().apply { addOval(destination, Path.Direction.CW) })
                     }
-                    canvas.drawBitmap(bitmap, null, destination, paint); canvas.restore(); bitmap.recycle()
+                    try { ImageAssetDecoder.drawCropped(canvas, element.assetPath, element.crop, destination, paint) } finally { canvas.restore() }
                 }
                 is PageElement.Fill -> {
                     val destination = android.graphics.RectF(left, top, right, bottom)

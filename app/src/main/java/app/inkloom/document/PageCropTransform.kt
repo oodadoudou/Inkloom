@@ -21,7 +21,9 @@ object PageCropTransform {
             width = page.width * width(crop),
             height = page.height * height(crop),
             crop = PageCrop(),
+            backgroundFrame = page.backgroundFrame?.let { it.copy(left = it.left - crop.left * page.width, top = it.top - crop.top * page.height) },
             elements = page.elements.map { project(it, crop) },
+            pdfTextBlocks = page.pdfTextBlocks.mapNotNull { block -> block.copy(bounds = block.bounds.mapNotNull { project(it, crop) }).takeIf { it.bounds.isNotEmpty() } },
             pdfGotoLinks = page.pdfGotoLinks.mapNotNull { link ->
                 link.copy(bounds = link.bounds.mapNotNull { project(it, crop) }).takeIf { it.bounds.isNotEmpty() }
             },

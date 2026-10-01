@@ -541,6 +541,13 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun clearPageInk(documentId: String, pageId: String) = updatePage(documentId, pageId) { page ->
         RasterLayerDocumentOperations.clearUnlocked(page)
     }
+    fun applyPageGeometry(documentId: String, pageId: String, edit: app.inkloom.document.PageGeometryEdit, undo: Boolean): Boolean {
+        val current = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return false
+        val next = edit.apply(current, undo) ?: return false
+        updatePage(documentId, pageId) { next }
+        return true
+    }
+
     fun setPageCrop(documentId: String, pageId: String, crop: PageCrop) = updatePage(documentId, pageId) { page ->
         page.copy(crop = PageCropTransform.normalized(crop))
     }
@@ -728,13 +735,13 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun currentDocument(): InkDocument? = mutableState.value.selectedDocumentId?.let(store::get)
     fun currentPage(): InkPage? = currentDocument()?.pages?.firstOrNull { it.id == mutableState.value.selectedPageId }
     fun exportCurrent(uri: Uri) { currentDocument()?.let { assets.exportPdf(it, uri) } }
-    fun exportCurrentPage(uri: Uri, onComplete: (Result<Unit>) -> Unit) {
+    fun exportCurrentPage(uri: Uri, options: app.inkloom.document.PageRasterExportOptions = app.inkloom.document.PageRasterExportOptions(), onComplete: (Result<Unit>) -> Unit) {
         val page = currentPage() ?: run {
             onComplete(Result.failure(IllegalStateException("No page is open for export")))
             return
         }
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { assets.exportPagePng(page, uri) } }
+            val result = withContext(Dispatchers.IO) { runCatching { assets.exportPagePng(page, uri, options) } }
             onComplete(result)
         }
     }

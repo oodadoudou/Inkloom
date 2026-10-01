@@ -696,8 +696,9 @@ fun InkloomApp(initialIntent: Intent?) {
     val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if (uri != null) runCatching { viewModel.exportCurrent(uri) }.onFailure { importError = it.message }
     }
+    var pendingRasterExport by remember { mutableStateOf(PageRasterExportOptions()) }
     val imageExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
-        if (uri != null) viewModel.exportCurrentPage(uri) { result -> result.onFailure { importError = it.message } }
+        if (uri != null) viewModel.exportCurrentPage(uri, pendingRasterExport) { result -> result.onFailure { importError = it.message } }
     }
     val bundleExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) runCatching { viewModel.exportCurrentBundle(uri) }.onFailure { importError = it.message } }
     val libraryBackupExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
@@ -1027,6 +1028,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onSetPageMetadata = viewModel::setPageMetadata,
             onClearPageInk = viewModel::clearPageInk,
             onSetPageCrop = viewModel::setPageCrop,
+            onApplyPageGeometry = viewModel::applyPageGeometry,
             onRotatePage = viewModel::rotatePageClockwise,
             onApplySelectionLayerTransfer = viewModel::applySelectionLayerTransfer,
             onSetSavedSelections = viewModel::setSavedSelections,
@@ -1068,7 +1070,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onInsertImage = { pageImagePicker.launch(arrayOf("image/*")) },
             onScanImage = ::launchPageScanner,
             onExport = { exportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}.pdf") },
-            onExportPage = { imageExportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}-page.png") },
+            onExportPage = { options -> pendingRasterExport = options; imageExportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}-page.png") },
             onExportBundle = { bundleExportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}.inkloom.zip") },
             assets = viewModel.assets,
             selectionRuntime = viewModel.selectionRuntime,
@@ -1790,6 +1792,7 @@ private fun EditorScreen(
     onSetPageMetadata: (String, String, String?, List<String>) -> Unit,
     onClearPageInk: (String, String) -> Unit,
     onSetPageCrop: (String, String, PageCrop) -> Unit,
+    onApplyPageGeometry: (String, String, PageGeometryEdit, Boolean) -> Boolean,
     onRotatePage: (String, String) -> Unit,
     onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit,
     onSetSavedSelections: (String, String, List<app.inkloom.document.SavedSelection>) -> Unit,
@@ -1817,7 +1820,7 @@ private fun EditorScreen(
     onInsertImage: () -> Unit,
     onScanImage: () -> Unit,
     onExport: () -> Unit,
-    onExportPage: () -> Unit,
+    onExportPage: (PageRasterExportOptions) -> Unit,
     onExportBundle: () -> Unit,
     assets: DocumentAssetService,
     selectionRuntime: DocumentSelectionRuntime,
@@ -2037,6 +2040,9 @@ private fun EditorScreen(
     var rotateToolHeld by remember { mutableStateOf(false) }
     fun exitCanvasNavigation() { handToolEnabled = false; handToolHeld = false; rotateToolEnabled = false; rotateToolHeld = false }
     var exportMenu by remember { mutableStateOf(false) }
+    var canvasSizeOpen by remember { mutableStateOf(false) }
+    var canvasSizeBusy by remember { mutableStateOf(false) }
+    var pageExportOpen by remember { mutableStateOf(false) }
     var viewMenu by remember { mutableStateOf(false) }
     var quickZoomMenu by remember { mutableStateOf(false) }
     var workspaceMenu by remember { mutableStateOf(false) }
@@ -2859,11 +2865,43 @@ private fun EditorScreen(
                     HorizontalDivider()
                     document.pages.forEachIndexed { index, page -> DropdownMenuItem(text = { Text(tr("Go to page ${index + 1}", "前往第 ${index + 1} 页")) }, onClick = { exportMenu = false; selectPageWithViewport(page.id) }) }
                     HorizontalDivider()
-                    DropdownMenuItem(text = { Text(tr("Export current page PNG", "将当前页导出为 PNG")) }, onClick = { exportMenu = false; onExportPage() })
+                    DropdownMenuItem(text = { Text(tr("Canvas & resolution", "画布与分辨率")) }, onClick = { exportMenu = false; canvasSizeOpen = true })
+                    DropdownMenuItem(text = { Text(tr("Export current page PNG", "将当前页导出为 PNG")) }, onClick = { exportMenu = false; pageExportOpen = true })
                     DropdownMenuItem(text = { Text(tr("Export editable Inkloom package", "导出可编辑 Inkloom 文件")) }, onClick = { exportMenu = false; onExportBundle() })
                 }
             }
         }
+        if (pageExportOpen) PageRasterExportDialog(storedPage, settings.language,
+            onDismiss = { pageExportOpen = false }, onExport = { options -> pageExportOpen = false; onExportPage(options) })
+        if (canvasSizeOpen) CanvasSizeDialog(storedPage, settings.language, canvasSizeBusy,
+            onDismiss = { canvasSizeOpen = false }, onApply = { request ->
+                val view = canvasView
+                if (view != null && !view.selectionLayerTransferPending) {
+                    view.finishSelectionTransform(apply = true)
+                    view.selectionLayerTransferPending = true; canvasSizeBusy = true
+                    appearanceScope.launch {
+                        var prepared: PreparedPageGeometry? = null
+                        var published = false
+                        try {
+                            kotlinx.coroutines.withTimeout(15_000) { while (view.hasPendingPaintPublicationForMerge()) kotlinx.coroutines.delay(8) }
+                            val before = currentAppearancePage
+                            prepared = withContext(Dispatchers.IO) { maskAssets.prepareCanvasSize(before, request) }
+                            val transaction = requireNotNull(prepared)
+                            check(onApplyPageGeometry(document.id, before.id, transaction.edit, false)) { "Page changed during resize" }
+                            view.recordExternalEdit(
+                                undo = { onApplyPageGeometry(document.id, before.id, transaction.edit, true) },
+                                redo = { onApplyPageGeometry(document.id, before.id, transaction.edit, false) }, dispose = transaction::close)
+                            published = true; canvasSizeOpen = false; fitPage()
+                        } catch (failure: Throwable) {
+                            android.util.Log.e("InkloomCanvas", "Canvas resize failed", failure)
+                            Toast.makeText(context, failure.message ?: "Canvas resize failed", Toast.LENGTH_LONG).show()
+                        } finally {
+                            if (!published) prepared?.close()
+                            view.selectionLayerTransferPending = false; canvasSizeBusy = false
+                        }
+                    }
+                }
+            })
         if (viewManagerOpen) EditorViewManagerDialog(
             openPanels = panelState.layout.open,
             onToggle = ::setManagedPanelVisible,
@@ -5226,7 +5264,7 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
         }
     }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
-    val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible, rasterRenderWidth) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, rasterRenderWidth, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
+    val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, page.backgroundFrame, page.backgroundSourceCrop, backgroundVisible, rasterRenderWidth) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, rasterRenderWidth, page.backgroundRotationQuarterTurns, page.backgroundSourceCrop ?: page.crop) }.getOrNull() else null }
     DisposableEffect(background) { onDispose { background?.recycle() } }
     val paperColor = (page.background as? PageBackground.Paper)?.colorArgb?.let(::Color) ?: Color.White
     val visibleLayerIds = page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role != LayerRole.FOLDER }.mapTo(mutableSetOf()) { it.id }
@@ -5243,9 +5281,16 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
             val splitAtAlphaLock = layer.alphaLock && capturedIds.isNotEmpty()
             val baseElementIds = if (splitAtAlphaLock) elementIds.intersect(capturedIds) else elementIds
             val addedElementIds = if (splitAtAlphaLock) elementIds - capturedIds else emptySet()
-            val base = baseElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerBitmap(page, layer.id, rasterRenderWidth, it) }
-            val additions = addedElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerBitmap(page, layer.id, rasterRenderWidth, it) }
-            layer.id to LayerElementBitmaps(base, additions)
+            val renderHeight = (rasterRenderWidth * PageCropTransform.visibleHeight(page) / PageCropTransform.visibleWidth(page)).toInt().coerceAtLeast(1)
+            if (rasterRenderWidth.toLong() * renderHeight > 4_194_304L) {
+                layer.id to LayerElementBitmaps(null, null,
+                    baseElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerSurface(page, layer.id, rasterRenderWidth, renderHeight, it) },
+                    addedElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerSurface(page, layer.id, rasterRenderWidth, renderHeight, it) })
+            } else {
+                val base = baseElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerBitmap(page, layer.id, rasterRenderWidth, it) }
+                val additions = addedElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerBitmap(page, layer.id, rasterRenderWidth, it) }
+                layer.id to LayerElementBitmaps(base, additions)
+            }
         }.toMap()
     }
     DisposableEffect(layerElementBitmaps) { onDispose { layerElementBitmaps.values.forEach(LayerElementBitmaps::recycle) } }
@@ -5411,7 +5456,9 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
                 view.viewportRotationDegrees = viewportState.rotationDegrees
                 view.setDocumentLayers(page.layers)
                 view.setProtectedLayerIds(lockedLayerIds)
-                view.setPageBackground(background)
+                view.setPageBackground(background, PageCropTransform.project(page).backgroundFrame?.let {
+                    android.graphics.RectF(it.left / renderedPage.width, it.top / renderedPage.height,
+                        (it.left + it.width) / renderedPage.width, (it.top + it.height) / renderedPage.height) })
                 view.setLayerElementBitmaps(layerElementBitmaps, page.elements)
                 view.setRasterLayerSurfaces(rasterLayerSurfaces)
                 view.activeLayerId = activeLayerId

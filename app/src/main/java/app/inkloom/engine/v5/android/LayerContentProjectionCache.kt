@@ -30,18 +30,18 @@ internal class LayerContentProjectionCache(
     fun endFrame() { converted.keys.retainAll(usedBitmaps); caches.keys.retainAll(usedLayers) }
 
     fun resolve(layerId: String, raster: PixelLayerProjectionInput?, baseBitmap: Bitmap?, additionsBitmap: Bitmap?,
-        capturedAlphaLock: Boolean): PixelTileSurfaceSnapshot? {
-        if (baseBitmap == null && additionsBitmap == null) return null
+        capturedAlphaLock: Boolean, baseSurface: PixelTileSurfaceSnapshot? = null, additionsSurface: PixelTileSurfaceSnapshot? = null): PixelTileSurfaceSnapshot? {
+        if (baseBitmap == null && additionsBitmap == null && baseSurface == null && additionsSurface == null) return null
         usedLayers += layerId
         val cache = caches.getOrPut(layerId) { PixelGroupProjectionCache(width, height, tileSize, format, "content/$layerId") }
         val base = buildList<PixelProjectionNode> {
             raster?.let { add(PixelProjectionNode.Paint(it.copy(layerId = "raster/$layerId"))) }
-            baseBitmap?.let { add(PixelProjectionNode.Paint(PixelLayerProjectionInput("elements/$layerId", pixels(it)))) }
+            (baseSurface ?: baseBitmap?.let(::pixels))?.let { add(PixelProjectionNode.Paint(PixelLayerProjectionInput("elements/$layerId", it))) }
         }
         val nodes = mutableListOf<PixelProjectionNode>()
         nodes += PixelProjectionNode.Group("base/$layerId", base)
-        additionsBitmap?.let {
-            nodes += PixelProjectionNode.Paint(PixelLayerProjectionInput("additions/$layerId", pixels(it),
+        (additionsSurface ?: additionsBitmap?.let(::pixels))?.let {
+            nodes += PixelProjectionNode.Paint(PixelLayerProjectionInput("additions/$layerId", it,
                 clipToBaseBelow = capturedAlphaLock))
         }
         return cache.update(nodes).snapshot

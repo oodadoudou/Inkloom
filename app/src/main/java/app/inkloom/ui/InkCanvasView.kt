@@ -101,6 +101,7 @@ import app.inkloom.engine.v5.selection.DocumentSelectionState
 import app.inkloom.engine.v5.selection.SparseAlphaMask
 import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
 import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
 import app.inkloom.engine.v5.tools.NativeRasterOps
 import app.inkloom.engine.v5.tools.RasterLayerPatch
 import app.inkloom.engine.v5.tools.RasterSelectionMask
@@ -226,7 +227,10 @@ import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
 
-data class LayerElementBitmaps(val base: Bitmap?, val additions: Bitmap?) {
+data class LayerElementBitmaps(val base: Bitmap?, val additions: Bitmap?,
+    val baseSurface: PixelTileSurfaceSnapshot? = null, val additionsSurface: PixelTileSurfaceSnapshot? = null) {
+    val hasContent get() = base != null || additions != null || baseSurface != null || additionsSurface != null
+    fun surfaces() = listOfNotNull(baseSurface, additionsSurface)
     fun recycle() {
         base?.recycle()
         if (additions !== base) additions?.recycle()
@@ -766,7 +770,10 @@ class InkCanvasView(context: Context) : View(context) {
                     (normalizedX * bitmap.width).toInt().coerceIn(0, bitmap.width - 1),
                     (normalizedY * bitmap.height).toInt().coerceIn(0, bitmap.height - 1),
                 ) ushr 24) > 0
-            rasterHit || bitmapHit(elements?.base) || bitmapHit(elements?.additions)
+            rasterHit || bitmapHit(elements?.base) || bitmapHit(elements?.additions) || elements?.surfaces().orEmpty().any {
+                it.pixelAt((normalizedX * it.logicalWidth).toInt().coerceIn(0, it.logicalWidth - 1),
+                    (normalizedY * it.logicalHeight).toInt().coerceIn(0, it.logicalHeight - 1)) ushr 24 > 0
+            }
         }
     }
     var layerOpacities: Map<String, Float> = emptyMap()
@@ -1325,8 +1332,10 @@ class InkCanvasView(context: Context) : View(context) {
         protectedLayerIds.addAll(value)
     }
 
-    fun setPageBackground(bitmap: Bitmap?) {
-        if (backgroundBitmap === bitmap) return
+    private var backgroundFrame: RectF? = null
+    fun setPageBackground(bitmap: Bitmap?, frame: RectF? = null) {
+        if (backgroundBitmap === bitmap && backgroundFrame == frame) return
+        backgroundFrame = frame?.let(::RectF)
         backgroundBitmap = bitmap
         invalidate()
     }
@@ -1688,7 +1697,11 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun drawPageContent(canvas: Canvas, includeInteractionOverlays: Boolean = true, referencedLayerIds: Set<String>? = null, includePageBackground: Boolean = true) {
         if (includePageBackground) {
-            backgroundBitmap?.let { bitmap -> backgroundDestination.set(0, 0, width, height); canvas.drawBitmap(bitmap, null, backgroundDestination, null) }
+            backgroundBitmap?.let { bitmap ->
+                val destination = backgroundFrame?.let { RectF(it.left * width, it.top * height, it.right * width, it.bottom * height) }
+                    ?: RectF(0f, 0f, width.toFloat(), height.toFloat())
+                canvas.drawBitmap(bitmap, null, destination, Paint(Paint.FILTER_BITMAP_FLAG))
+            }
                 ?: pagePaperColor?.let { color ->
                     paperFillPaint.color = color
                     canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paperFillPaint)
@@ -2125,7 +2138,7 @@ class InkCanvasView(context: Context) : View(context) {
                 }) }
             val elements = if (mixedElementOverrides.containsKey(layerId)) mixedElementOverrides[layerId] else layerElementBitmaps[layerId]
             val composed = contentCache?.resolve(layerId, raw, elements?.base, elements?.additions,
-                layerId in alphaLockedLayers && alphaLockBaseContentIds[layerId].orEmpty().isNotEmpty())
+                layerId in alphaLockedLayers && alphaLockBaseContentIds[layerId].orEmpty().isNotEmpty(), elements?.baseSurface, elements?.additionsSurface)
             val content = if (composed != null) PixelLayerProjectionInput(layerId, composed)
                 else raw ?: PixelLayerProjectionInput(layerId, cache.emptySnapshot)
             content.copy(opacity = layerOpacities[layerId] ?: 1f,
@@ -2181,24 +2194,29 @@ class InkCanvasView(context: Context) : View(context) {
         val hasCapturedAlpha = layerId in alphaLockedLayers && baseIds.isNotEmpty()
         if (!hasCapturedAlpha) {
             drawRasterLayer(canvas, layerId, rasterSurface)
-            drawElementBitmap(canvas, elements?.base)
-            drawElementBitmap(canvas, elements?.additions)
+            drawElementContent(canvas, elements?.base, elements?.baseSurface)
+            drawElementContent(canvas, elements?.additions, elements?.additionsSurface)
             return
         }
         fun drawBase() {
             drawRasterLayer(canvas, layerId, rasterSurface)
-            drawElementBitmap(canvas, elements?.base)
+            drawElementContent(canvas, elements?.base, elements?.baseSurface)
         }
         drawBase()
-        if (elements?.additions != null) {
+        if (elements?.additions != null || elements?.additionsSurface != null) {
             val compositionBounds = RectF(canvas.clipBounds)
             val additionsCheckpoint = canvas.saveLayer(compositionBounds, null)
-            drawElementBitmap(canvas, elements?.additions)
+            drawElementContent(canvas, elements?.additions, elements?.additionsSurface)
             val maskCheckpoint = canvas.saveLayer(compositionBounds, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
             drawBase()
             canvas.restoreToCount(maskCheckpoint)
             canvas.restoreToCount(additionsCheckpoint)
         }
+    }
+
+    private fun drawElementContent(canvas: Canvas, bitmap: Bitmap?, surface: PixelTileSurfaceSnapshot?) {
+        if (surface != null) { rasterTileRenderer.draw(canvas, surface, RectF(0f, 0f, width.toFloat(), height.toFloat())); return }
+        drawElementBitmap(canvas, bitmap)
     }
 
     private fun drawElementBitmap(canvas: Canvas, bitmap: Bitmap?) {
@@ -5178,7 +5196,7 @@ class InkCanvasView(context: Context) : View(context) {
                         }
                         mixedElementOverrides[layerId] = prepared.remainingBitmap?.let { LayerElementBitmaps(it, null) }
                     } else if (listOfNotNull(layerElementBitmaps[layerId]?.base, layerElementBitmaps[layerId]?.additions)
-                            .any { !it.isRecycled && NativeRasterOps.alphaBounds(it) != null }) {
+                            .any { !it.isRecycled && NativeRasterOps.alphaBounds(it) != null } || layerElementBitmaps[layerId]?.surfaces().orEmpty().any { it.tileCount > 0 }) {
                         throw IllegalStateException("Retained objects are unavailable for structured transformation")
                     }
                 }
@@ -6515,7 +6533,7 @@ class InkCanvasView(context: Context) : View(context) {
     var selectionLayerTransferPending: Boolean = false
     private fun rejectRetainedObjectPixelEdit(): Boolean {
         val objects = layerElementBitmaps[activeLayerId] ?: return false
-        if (objects.base == null && objects.additions == null) return false
+        if (!objects.hasContent) return false
         onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
             "此图层包含独立图片或对象，暂不支持与像素选区一起变换或转移；请使用对象的变换工具"
         else "This layer contains separate images or objects. Combined pixel-selection transforms and transfers are not supported; use the object's transform tool.")
@@ -6923,6 +6941,12 @@ class InkCanvasView(context: Context) : View(context) {
             listOfNotNull(elements?.base,elements?.additions).filterNot(Bitmap::isRecycled).forEach { bitmap ->
                 NativeRasterOps.alphaBounds(bitmap)?.let { b -> include(RectF(b.left.toFloat()/bitmap.width,b.top.toFloat()/bitmap.height,
                     b.right.toFloat()/bitmap.width,b.bottom.toFloat()/bitmap.height)) }
+            }
+            elements?.surfaces().orEmpty().forEach { surface ->
+                app.inkloom.engine.v5.tools.selectionContentBounds(surface)?.let { b ->
+                    include(RectF(b.left.toFloat()/surface.logicalWidth, b.top.toFloat()/surface.logicalHeight,
+                        b.right.toFloat()/surface.logicalWidth, b.bottom.toFloat()/surface.logicalHeight))
+                }
             }
             bounds?.let { b -> listOf(b.left*transformWidth to b.top*transformHeight,
                 b.centerX()*transformWidth to b.centerY()*transformHeight,
