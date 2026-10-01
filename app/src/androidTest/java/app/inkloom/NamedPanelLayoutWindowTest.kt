@@ -183,7 +183,7 @@ class NamedPanelLayoutWindowTest {
         compose.onNodeWithContentDescription("Settings").performClick()
         compose.onNodeWithText("Shortcuts").performClick()
         compose.onNodeWithText("Customize shortcuts").performClick()
-        compose.onNodeWithText("Export profile").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Import profile").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Export profile").assertIsDisplayed()
+        compose.onNodeWithText("Import profile").assertIsDisplayed()
     }
 }

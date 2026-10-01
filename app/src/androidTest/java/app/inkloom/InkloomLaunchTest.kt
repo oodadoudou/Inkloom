@@ -420,6 +420,7 @@ class InkloomLaunchTest {
 
     @Test fun settingsExposeInputAndToolControls() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNodeWithText("Gestures").performClick()
         composeRule.onNodeWithText("Draw with finger").assertIsDisplayed()
         composeRule.onNodeWithText("Single-finger double tap to undo").assertIsDisplayed()
     }
@@ -439,8 +440,6 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Search actions or keys").assertIsDisplayed()
         composeRule.onNodeWithText("Brush groups").assertIsDisplayed()
 
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true)))
-            .performScrollToIndex(16 + ShortcutCategory.entries.size + ShortcutAction.entries.size)
         composeRule.onNodeWithText("Import profile").assertIsDisplayed()
         composeRule.onNodeWithText("Export profile").assertIsDisplayed()
     }

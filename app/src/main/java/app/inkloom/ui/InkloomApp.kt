@@ -9358,135 +9358,136 @@ private fun ShortcutEditorDialog(settings: AppSettings, brushes: List<ImportedBr
         onDismissRequest = onDismiss,
         title = { Text(tr("Toolbox shortcuts", "Toolbox 快捷键")) },
         text = {
-            LazyColumn(
-                Modifier.widthIn(min = 400.dp, max = 580.dp).heightIn(max = 540.dp)
-                    .focusRequester(focusRequester)
-                    .focusable()
-                    .onPreviewKeyEvent { event ->
-                        val action = listeningFor ?: return@onPreviewKeyEvent false
-                        val native = event.nativeKeyEvent
-                        if (native.action != android.view.KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent true
-                        if (native.keyCode in setOf(android.view.KeyEvent.KEYCODE_CTRL_LEFT, android.view.KeyEvent.KEYCODE_CTRL_RIGHT, android.view.KeyEvent.KEYCODE_ALT_LEFT, android.view.KeyEvent.KEYCODE_ALT_RIGHT, android.view.KeyEvent.KEYCODE_SHIFT_LEFT, android.view.KeyEvent.KEYCODE_SHIFT_RIGHT)) return@onPreviewKeyEvent true
-                        if (native.keyCode == android.view.KeyEvent.KEYCODE_ESCAPE || native.keyCode == android.view.KeyEvent.KEYCODE_BACK) {
-                            listeningFor = null
-                            return@onPreviewKeyEvent true
-                        }
-                        val effectiveMode = if (captureMode == ShortcutMatchMode.SCAN_CODE && native.scanCode > 0) ShortcutMatchMode.SCAN_CODE else ShortcutMatchMode.KEY_CODE
-                        val chord = ShortcutChord(native.keyCode, native.isCtrlPressed, native.isAltPressed, native.isShiftPressed, native.scanCode, effectiveMode)
-                        val device = native.device.takeIf { deviceSpecific }
-                        onChange(settings.copy(shortcutBindings = CspShortcutResolver.replace(settings.shortcutBindings, action, chord, captureTrigger, device?.descriptor, device?.name)))
-                        listeningFor = null
-                        true
-                    },
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                item { Text(tr("Tap Change, then press a Toolbox or keyboard combination. Rotary, touch-ring, wheel and pointer-button mappings are configured below.", "点击“更改”，然后按下 Toolbox 或键盘组合键。旋钮、触控环、滚轮与侧键映射可在下方配置。"), color = MutedInk, fontSize = 12.sp) }
-                item {
-                    OutlinedTextField(
-                        value = search,
-                        onValueChange = { search = it },
-                        leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                        placeholder = { Text(tr("Search actions or keys", "搜索操作或按键")) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+            Column(Modifier.widthIn(max = 580.dp).heightIn(max = 540.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onImportShortcuts, modifier = Modifier.weight(1f)) { Icon(Icons.Outlined.FileOpen, null, Modifier.size(17.dp)); Spacer(Modifier.width(6.dp)); Text(tr("Import profile", "导入配置"), fontSize = 12.sp) }
+                    OutlinedButton(onClick = onExportShortcuts, modifier = Modifier.weight(1f)) { Icon(Icons.Outlined.SaveAlt, null, Modifier.size(17.dp)); Spacer(Modifier.width(6.dp)); Text(tr("Export profile", "导出配置"), fontSize = 12.sp) }
                 }
-                item {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        item { FilterChip(selected = selectedCategory == null, onClick = { selectedCategory = null }, label = { Text(tr("All", "全部")) }) }
-                        items(ShortcutCategory.entries, key = { it.name }) { category ->
-                            FilterChip(selected = selectedCategory == category, onClick = { selectedCategory = if (selectedCategory == category) null else category }, label = { Text(shortcutCategoryLabel(category, language)) })
-                        }
-                    }
-                }
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(tr("Capture mode", "捕获方式"), color = MutedInk, fontSize = 11.sp)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            FilterChip(selected = captureMode == ShortcutMatchMode.KEY_CODE, onClick = { captureMode = ShortcutMatchMode.KEY_CODE }, label = { Text(tr("Logical key", "逻辑键")) })
-                            FilterChip(selected = captureMode == ShortcutMatchMode.SCAN_CODE, onClick = { captureMode = ShortcutMatchMode.SCAN_CODE }, label = { Text(tr("Physical scan code", "物理扫描码")) })
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            FilterChip(selected = captureTrigger == ShortcutTrigger.PRESS, onClick = { captureTrigger = ShortcutTrigger.PRESS }, label = { Text(tr("Tap to switch", "单击切换")) })
-                            FilterChip(selected = captureTrigger == ShortcutTrigger.HOLD, onClick = { captureTrigger = ShortcutTrigger.HOLD }, label = { Text(tr("Hold, release to return", "按住，松开返回")) })
-                        }
-                        SettingSwitch(tr("Only this input device", "仅此输入设备"), tr("Keeps the global CSP key while adding a Toolbox-specific mapping.", "保留全局 CSP 键位，同时添加此 Toolbox 的专用映射。"), deviceSpecific) { deviceSpecific = it }
-                    }
-                }
-                item { Text(tr("ROTARY & SCROLL", "旋钮与滚轮"), color = MutedInk, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp)) }
-                ToolboxAxis.entries.forEach { axis ->
-                    item("axis-${axis.name}") { ToolboxAxisBindingRow(axis, settings, onChange) }
-                }
-                item { Text(tr("POINTER / TOOLBOX BUTTONS", "鼠标／TOOLBOX 按钮"), color = MutedInk, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp)) }
-                listOf(android.view.MotionEvent.BUTTON_PRIMARY, android.view.MotionEvent.BUTTON_SECONDARY, android.view.MotionEvent.BUTTON_TERTIARY, android.view.MotionEvent.BUTTON_BACK, android.view.MotionEvent.BUTTON_FORWARD).forEachIndexed { index, button ->
-                    item("motion-button-$button") { ToolboxButtonBindingRow(index + 1, button, settings, onChange) }
-                }
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(tr("BRUSH GROUP TARGETS", "笔刷组目标"), color = MutedInk, fontSize = 11.sp)
-                        Text(tr("Choose the real groups used by CSP-style P and B shortcuts. Automatic keeps name-based detection.", "选择 CSP 风格 P、B 快捷键实际使用的笔刷组；“自动”会继续按名称识别。"), color = MutedInk, fontSize = 11.sp)
-                        ShortcutBrushGroup.entries.forEach { group ->
-                            ShortcutBrushGroupTargetRow(
-                                group = group,
-                                selectedPath = settings.shortcutBrushGroupTargets.forGroup(group),
-                                groupPaths = brushGroups,
-                                onSelect = { path ->
-                                    onChange(settings.copy(shortcutBrushGroupTargets = settings.shortcutBrushGroupTargets.withGroup(group, path)))
-                                },
-                            )
-                        }
-                        OutlinedButton(onClick = { quickSlotsOpen = true }, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.Outlined.DashboardCustomize, null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(tr("Configure 8 quick slots", "配置 8 个快速槽"))
-                        }
-                    }
-                }
-                groupedActions.forEach { (category, actions) ->
-                    item("category-${category.name}") { Text(shortcutCategoryLabel(category, language).uppercase(), color = MutedInk, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)) }
-                    items(actions, key = { it.name }) { action ->
-                        val actionBindings = settings.shortcutBindings.filter { it.action == action }
-                        val defaultBindings = CspShortcutResolver.defaultBindings.filter { it.action == action }
-                        val chords = actionBindings.map { binding ->
-                            buildString {
-                                append(CspShortcutResolver.display(binding.chord))
-                                if (binding.trigger == ShortcutTrigger.HOLD) append(tr(" · hold", " · 按住"))
-                                binding.deviceName?.let { append(" · "); append(it) }
+                HorizontalDivider(color = OutlineSoft)
+                LazyColumn(
+                    Modifier.fillMaxWidth().weight(1f)
+                        .focusRequester(focusRequester)
+                        .focusable()
+                        .onPreviewKeyEvent { event ->
+                            val action = listeningFor ?: return@onPreviewKeyEvent false
+                            val native = event.nativeKeyEvent
+                            if (native.action != android.view.KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent true
+                            if (native.keyCode in setOf(android.view.KeyEvent.KEYCODE_CTRL_LEFT, android.view.KeyEvent.KEYCODE_CTRL_RIGHT, android.view.KeyEvent.KEYCODE_ALT_LEFT, android.view.KeyEvent.KEYCODE_ALT_RIGHT, android.view.KeyEvent.KEYCODE_SHIFT_LEFT, android.view.KeyEvent.KEYCODE_SHIFT_RIGHT)) return@onPreviewKeyEvent true
+                            if (native.keyCode == android.view.KeyEvent.KEYCODE_ESCAPE || native.keyCode == android.view.KeyEvent.KEYCODE_BACK) {
+                                listeningFor = null
+                                return@onPreviewKeyEvent true
                             }
-                        }
-                        ListItem(
-                            headlineContent = { Text(shortcutActionDisplayLabel(action, settings, language), fontSize = 13.sp) },
-                            supportingContent = { Text(if (listeningFor == action) tr("Press a key combination…", "请按组合键…") else chords.joinToString(" / ").ifBlank { tr("Not assigned", "未分配") }, color = if (listeningFor == action) Ink else MutedInk) },
-                            trailingContent = {
-                                Row {
-                                    if (chords.isNotEmpty()) IconButton(onClick = { onChange(settings.copy(shortcutBindings = settings.shortcutBindings.filterNot { it.action == action })) }) { Icon(Icons.Outlined.LinkOff, tr("Remove shortcut", "移除快捷键")) }
-                                    if (actionBindings != defaultBindings) IconButton(onClick = { onChange(settings.copy(shortcutBindings = CspShortcutResolver.restoreActionDefaults(settings.shortcutBindings, action))) }) { Icon(Icons.Outlined.RestartAlt, tr("Reset this action", "重置此操作")) }
-                                    TextButton(onClick = {
-                                        captureMode = ShortcutMatchMode.SCAN_CODE
-                                        captureTrigger = ShortcutTrigger.PRESS
-                                        deviceSpecific = true
-                                        listeningFor = action
-                                    }) { Text(tr("Add device", "添加设备")) }
-                                    TextButton(onClick = {
-                                        actionBindings.firstOrNull()?.let { existing ->
-                                            captureMode = existing.chord.matchMode
-                                            captureTrigger = existing.trigger
-                                            deviceSpecific = existing.deviceDescriptor != null
-                                        }
-                                        listeningFor = action
-                                    }) { Text(tr("Change", "更改")) }
-                                }
-                            },
-                            colors = ListItemDefaults.colors(containerColor = if (listeningFor == action) SageContainer else Color.Transparent),
+                            val effectiveMode = if (captureMode == ShortcutMatchMode.SCAN_CODE && native.scanCode > 0) ShortcutMatchMode.SCAN_CODE else ShortcutMatchMode.KEY_CODE
+                            val chord = ShortcutChord(native.keyCode, native.isCtrlPressed, native.isAltPressed, native.isShiftPressed, native.scanCode, effectiveMode)
+                            val device = native.device.takeIf { deviceSpecific }
+                            onChange(settings.copy(shortcutBindings = CspShortcutResolver.replace(settings.shortcutBindings, action, chord, captureTrigger, device?.descriptor, device?.name)))
+                            listeningFor = null
+                            true
+                        },
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    item { Text(tr("Tap Change, then press a Toolbox or keyboard combination. Rotary, touch-ring, wheel and pointer-button mappings are configured below.", "点击“更改”，然后按下 Toolbox 或键盘组合键。旋钮、触控环、滚轮与侧键映射可在下方配置。"), color = MutedInk, fontSize = 12.sp) }
+                    item {
+                        OutlinedTextField(
+                            value = search,
+                            onValueChange = { search = it },
+                            leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                            placeholder = { Text(tr("Search actions or keys", "搜索操作或按键")) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
-                }
-                item { OutlinedButton(onClick = { onChange(settings.copy(shortcutBindings = CspShortcutResolver.defaultBindings)); listeningFor = null }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text(tr("Restore CSP defaults", "恢复 CSP 默认键位")) } }
-                item {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onImportShortcuts, modifier = Modifier.weight(1f)) { Icon(Icons.Outlined.FileOpen, null); Spacer(Modifier.width(6.dp)); Text(tr("Import profile", "导入配置")) }
-                        OutlinedButton(onClick = onExportShortcuts, modifier = Modifier.weight(1f)) { Icon(Icons.Outlined.SaveAlt, null); Spacer(Modifier.width(6.dp)); Text(tr("Export profile", "导出配置")) }
+                    item {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            item { FilterChip(selected = selectedCategory == null, onClick = { selectedCategory = null }, label = { Text(tr("All", "全部")) }) }
+                            items(ShortcutCategory.entries, key = { it.name }) { category ->
+                                FilterChip(selected = selectedCategory == category, onClick = { selectedCategory = if (selectedCategory == category) null else category }, label = { Text(shortcutCategoryLabel(category, language)) })
+                            }
+                        }
                     }
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(tr("Capture mode", "捕获方式"), color = MutedInk, fontSize = 11.sp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                FilterChip(selected = captureMode == ShortcutMatchMode.KEY_CODE, onClick = { captureMode = ShortcutMatchMode.KEY_CODE }, label = { Text(tr("Logical key", "逻辑键")) })
+                                FilterChip(selected = captureMode == ShortcutMatchMode.SCAN_CODE, onClick = { captureMode = ShortcutMatchMode.SCAN_CODE }, label = { Text(tr("Physical scan code", "物理扫描码")) })
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                FilterChip(selected = captureTrigger == ShortcutTrigger.PRESS, onClick = { captureTrigger = ShortcutTrigger.PRESS }, label = { Text(tr("Tap to switch", "单击切换")) })
+                                FilterChip(selected = captureTrigger == ShortcutTrigger.HOLD, onClick = { captureTrigger = ShortcutTrigger.HOLD }, label = { Text(tr("Hold, release to return", "按住，松开返回")) })
+                            }
+                            SettingSwitch(tr("Only this input device", "仅此输入设备"), tr("Keeps the global CSP key while adding a Toolbox-specific mapping.", "保留全局 CSP 键位，同时添加此 Toolbox 的专用映射。"), deviceSpecific) { deviceSpecific = it }
+                        }
+                    }
+                    item { Text(tr("ROTARY & SCROLL", "旋钮与滚轮"), color = MutedInk, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp)) }
+                    ToolboxAxis.entries.forEach { axis ->
+                        item("axis-${axis.name}") { ToolboxAxisBindingRow(axis, settings, onChange) }
+                    }
+                    item { Text(tr("POINTER / TOOLBOX BUTTONS", "鼠标／TOOLBOX 按钮"), color = MutedInk, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp)) }
+                    listOf(android.view.MotionEvent.BUTTON_PRIMARY, android.view.MotionEvent.BUTTON_SECONDARY, android.view.MotionEvent.BUTTON_TERTIARY, android.view.MotionEvent.BUTTON_BACK, android.view.MotionEvent.BUTTON_FORWARD).forEachIndexed { index, button ->
+                        item("motion-button-$button") { ToolboxButtonBindingRow(index + 1, button, settings, onChange) }
+                    }
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(tr("BRUSH GROUP TARGETS", "笔刷组目标"), color = MutedInk, fontSize = 11.sp)
+                            Text(tr("Choose the real groups used by CSP-style P and B shortcuts. Automatic keeps name-based detection.", "选择 CSP 风格 P、B 快捷键实际使用的笔刷组；“自动”会继续按名称识别。"), color = MutedInk, fontSize = 11.sp)
+                            ShortcutBrushGroup.entries.forEach { group ->
+                                ShortcutBrushGroupTargetRow(
+                                    group = group,
+                                    selectedPath = settings.shortcutBrushGroupTargets.forGroup(group),
+                                    groupPaths = brushGroups,
+                                    onSelect = { path ->
+                                        onChange(settings.copy(shortcutBrushGroupTargets = settings.shortcutBrushGroupTargets.withGroup(group, path)))
+                                    },
+                                )
+                            }
+                            OutlinedButton(onClick = { quickSlotsOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Outlined.DashboardCustomize, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(tr("Configure 8 quick slots", "配置 8 个快速槽"))
+                            }
+                        }
+                    }
+                    groupedActions.forEach { (category, actions) ->
+                        item("category-${category.name}") { Text(shortcutCategoryLabel(category, language).uppercase(), color = MutedInk, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)) }
+                        items(actions, key = { it.name }) { action ->
+                            val actionBindings = settings.shortcutBindings.filter { it.action == action }
+                            val defaultBindings = CspShortcutResolver.defaultBindings.filter { it.action == action }
+                            val chords = actionBindings.map { binding ->
+                                buildString {
+                                    append(CspShortcutResolver.display(binding.chord))
+                                    if (binding.trigger == ShortcutTrigger.HOLD) append(tr(" · hold", " · 按住"))
+                                    binding.deviceName?.let { append(" · "); append(it) }
+                                }
+                            }
+                            ListItem(
+                                headlineContent = { Text(shortcutActionDisplayLabel(action, settings, language), fontSize = 13.sp) },
+                                supportingContent = { Text(if (listeningFor == action) tr("Press a key combination…", "请按组合键…") else chords.joinToString(" / ").ifBlank { tr("Not assigned", "未分配") }, color = if (listeningFor == action) Ink else MutedInk) },
+                                trailingContent = {
+                                    Row {
+                                        if (chords.isNotEmpty()) IconButton(onClick = { onChange(settings.copy(shortcutBindings = settings.shortcutBindings.filterNot { it.action == action })) }) { Icon(Icons.Outlined.LinkOff, tr("Remove shortcut", "移除快捷键")) }
+                                        if (actionBindings != defaultBindings) IconButton(onClick = { onChange(settings.copy(shortcutBindings = CspShortcutResolver.restoreActionDefaults(settings.shortcutBindings, action))) }) { Icon(Icons.Outlined.RestartAlt, tr("Reset this action", "重置此操作")) }
+                                        TextButton(onClick = {
+                                            captureMode = ShortcutMatchMode.SCAN_CODE
+                                            captureTrigger = ShortcutTrigger.PRESS
+                                            deviceSpecific = true
+                                            listeningFor = action
+                                        }) { Text(tr("Add device", "添加设备")) }
+                                        TextButton(onClick = {
+                                            actionBindings.firstOrNull()?.let { existing ->
+                                                captureMode = existing.chord.matchMode
+                                                captureTrigger = existing.trigger
+                                                deviceSpecific = existing.deviceDescriptor != null
+                                            }
+                                            listeningFor = action
+                                        }) { Text(tr("Change", "更改")) }
+                                    }
+                                },
+                                colors = ListItemDefaults.colors(containerColor = if (listeningFor == action) SageContainer else Color.Transparent),
+                            )
+                        }
+                    }
+                    item { OutlinedButton(onClick = { onChange(settings.copy(shortcutBindings = CspShortcutResolver.defaultBindings)); listeningFor = null }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text(tr("Restore CSP defaults", "恢复 CSP 默认键位")) } }
                 }
             }
         },
