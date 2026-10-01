@@ -268,6 +268,9 @@ enum class LayerAdjustmentKind {
     CURVES,
     COLOR_BALANCE,
     GRADIENT_MAP,
+    POSTERIZE,
+    INVERT,
+    THRESHOLD,
 }
 
 @Serializable
@@ -280,6 +283,9 @@ data class LayerAdjustment(
     val contrast: Float = 0f,
     val hueDegrees: Float = 0f,
     val saturation: Float = 0f,
+    val luminosity: Float = 0f,
+    val posterizeLevels: Int = 8,
+    val threshold: Float = .5f,
     val inputBlack: Float = 0f,
     val inputGamma: Float = 1f,
     val inputWhite: Float = 1f,

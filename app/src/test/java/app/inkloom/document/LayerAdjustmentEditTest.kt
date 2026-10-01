@@ -7,6 +7,26 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 
 class LayerAdjustmentEditTest {
+    @Test fun newCorrectionKindsPersistWithGroupMasksAndUndoAsOneEdit() {
+        for (kind in listOf(LayerAdjustmentKind.HUE_SATURATION, LayerAdjustmentKind.POSTERIZE,
+            LayerAdjustmentKind.INVERT, LayerAdjustmentKind.THRESHOLD)) {
+            val original = LayerAdjustment(kind)
+            val changed = original.copy(luminosity = .4f, posterizeLevels = 3, threshold = .7f)
+            val folder = InkLayer(id = "folder", name = "Folder", role = LayerRole.FOLDER)
+            val layer = InkLayer(id = "adjust", name = "Adjust", role = LayerRole.ADJUSTMENT,
+                parentId = folder.id, mask = LayerMask(baseVisible = false), adjustment = original)
+            val page = InkPage(layers = listOf(folder, layer))
+            val edit = LayerAdjustmentEdit(layer.id, original, changed)
+            val applied = requireNotNull(edit.apply(page, undo = false))
+            val restored = Json.decodeFromString<InkPage>(Json.encodeToString(applied))
+            assertEquals(applied, restored)
+            assertEquals(page, edit.apply(restored, undo = true))
+        }
+        val legacy = Json.decodeFromString<LayerAdjustment>("{\"kind\":\"HUE_SATURATION\",\"saturation\":0.25}")
+        assertEquals(0f, legacy.luminosity, 0f)
+        assertEquals(.25f, legacy.saturation, 0f)
+    }
+
     @Test fun parameterPreviewCanCommitAndUndoWithoutChangingOtherLayers() {
         val before = LayerAdjustment(kind = LayerAdjustmentKind.BRIGHTNESS_CONTRAST)
         val after = before.copy(brightness = .3f, contrast = .2f)

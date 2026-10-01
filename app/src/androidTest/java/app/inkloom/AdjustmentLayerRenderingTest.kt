@@ -25,6 +25,62 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AdjustmentLayerRenderingTest {
+    @Test fun newAdjustmentsRespectMasksAndUpperLayersInCanvasAndExport() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val assets = DocumentAssetService(instrumentation.targetContext)
+        val sourceColor = Color.rgb(64, 128, 192)
+        val ink = PixelTileSurface(64, 64, 64, "new-adjustment-fixture")
+        ink.beginWrite("fixture").use { write ->
+            write.editTile(PixelTileKey(0, 0), PixelRect(0, 0, 64, 64)) { pixels, _ -> pixels.fill(sourceColor) }
+            write.commit().close()
+        }
+        val top = PixelTileSurface(64, 64, 64, "top")
+        top.beginWrite("top").use { write -> write.setPixel(48, 32, Color.RED); write.commit().close() }
+        val mask = MaskTileSurface(64, 64, 64, initialDefaultAlpha = 255)
+        mask.beginWrite("mask").use { write ->
+            for (y in 0 until 64) for (x in 32 until 64) write.setAlpha(x, y, 0)
+            write.commit().close()
+        }
+        val inkRef = assets.saveRasterTileSurface(ink)
+        val topRef = assets.saveRasterTileSurface(top)
+        val maskRef = assets.saveMaskTileSurface(mask.snapshot())
+        val cases = listOf(
+            LayerAdjustment(LayerAdjustmentKind.INVERT) to Color.rgb(191, 127, 63),
+            LayerAdjustment(LayerAdjustmentKind.POSTERIZE, posterizeLevels = 3) to Color.rgb(128, 128, 255),
+            LayerAdjustment(LayerAdjustmentKind.THRESHOLD) to Color.BLACK,
+            LayerAdjustment(LayerAdjustmentKind.HUE_SATURATION, luminosity = .5f) to Color.rgb(160, 192, 224))
+        try {
+            for ((adjustment, expected) in cases) {
+                val layers = listOf(InkLayer("ink", "Ink", rasterTileSurface = inkRef),
+                    InkLayer("adjust", "Adjust", role = LayerRole.ADJUSTMENT, adjustment = adjustment,
+                        mask = LayerMask(surface = maskRef)), InkLayer("top", "Top", rasterTileSurface = topRef))
+                val page = InkPage(width = 64f, height = 64f, layers = layers)
+                val exported = assets.renderPageBitmap(page, 64)
+                try {
+                    assertEquals("${adjustment.kind} exports real corrected pixels", expected, exported.getPixel(16, 32))
+                    assertEquals(sourceColor, exported.getPixel(40, 32))
+                    assertEquals(Color.RED, exported.getPixel(48, 32))
+                    instrumentation.runOnMainSync {
+                        val view = InkCanvasView(instrumentation.targetContext).apply {
+                            layout(0, 0, 64, 64); pagePaperColor = Color.WHITE
+                            setDocumentLayers(layers); setRasterLayerSurfaces(mapOf("ink" to ink, "top" to top))
+                            layerOrder = listOf("ink", "top")
+                            layerMasks = mapOf("adjust" to requireNotNull(layers[1].mask))
+                            layerMaskSurfaces = mapOf("adjust" to mask.snapshot())
+                        }
+                        val live = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
+                        try {
+                            view.draw(Canvas(live))
+                            for (x in listOf(16, 40, 48)) assertEquals(exported.getPixel(x, 32), live.getPixel(x, 32))
+                        } finally { live.recycle() }
+                    }
+                } finally { exported.recycle() }
+            }
+        } finally {
+            assets.releaseRasterTileReservation(inkRef); assets.releaseRasterTileReservation(topRef)
+        }
+    }
+
     @Test fun folderIsolationControlsWhetherAdjustmentReachesLowerOutsideLayers() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val assets = DocumentAssetService(instrumentation.targetContext)

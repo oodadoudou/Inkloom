@@ -25,6 +25,16 @@ object PixelAdjustmentMath {
             LayerAdjustmentKind.CURVES -> curve(input, adjustment)
             LayerAdjustmentKind.COLOR_BALANCE -> colorBalance(input, adjustment)
             LayerAdjustmentKind.GRADIENT_MAP -> gradientMap(input, adjustment.gradient)
+            LayerAdjustmentKind.POSTERIZE -> {
+                val steps = adjustment.posterizeLevels.coerceIn(2, 20) - 1
+                FloatArray(3) { (input[it].coerceIn(0f, 1f) * steps).roundToInt().toFloat() / steps }
+            }
+            LayerAdjustmentKind.INVERT -> FloatArray(3) { 1f - input[it] }
+            LayerAdjustmentKind.THRESHOLD -> {
+                val gray = if (.2126f * input[0] + .7152f * input[1] + .0722f * input[2] >=
+                    finite(adjustment.threshold).coerceIn(0f, 1f)) 1f else 0f
+                FloatArray(3) { gray }
+            }
         }
         for (index in output.indices) output[index] = finite(output[index]).coerceIn(0f, 1f)
         return output
@@ -41,7 +51,12 @@ object PixelAdjustmentMath {
         val hsv = rgbToHsv(rgb[0], rgb[1], rgb[2])
         hsv[0] = (hsv[0] + value.hueDegrees).mod(360f)
         hsv[1] = (hsv[1] * (1f + value.saturation.coerceIn(-1f, 1f))).coerceIn(0f, 1f)
-        return hsvToRgb(hsv[0], hsv[1], hsv[2])
+        val output = hsvToRgb(hsv[0], hsv[1], hsv[2])
+        val lightness = finite(value.luminosity).coerceIn(-1f, 1f)
+        return FloatArray(3) {
+            if (lightness >= 0f) output[it] + (1f - output[it]) * lightness
+            else output[it] * (1f + lightness)
+        }
     }
 
     private fun levels(rgb: FloatArray, value: LayerAdjustment): FloatArray {
@@ -170,6 +185,9 @@ internal class PixelAdjustmentKernel(private val value: LayerAdjustment) {
                     4 -> { output[0] = x + match; output[1] = match; output[2] = chroma + match }
                     else -> { output[0] = chroma + match; output[1] = match; output[2] = x + match }
                 }
+                val lightness = finite(value.luminosity).coerceIn(-1f, 1f)
+                for (index in 0..2) output[index] = if (lightness >= 0f)
+                    output[index] + (1f - output[index]) * lightness else output[index] * (1f + lightness)
             }
             LayerAdjustmentKind.LEVELS -> {
                 val black = value.inputBlack.coerceIn(0f, .999f)
@@ -215,6 +233,20 @@ internal class PixelAdjustmentKernel(private val value: LayerAdjustment) {
                     return from + (to - from) * amount
                 }
                 output[0] = channel(16); output[1] = channel(8); output[2] = channel(0)
+            }
+            LayerAdjustmentKind.POSTERIZE -> {
+                val steps = value.posterizeLevels.coerceIn(2, 20) - 1
+                output[0] = (red.coerceIn(0f, 1f) * steps).roundToInt().toFloat() / steps
+                output[1] = (green.coerceIn(0f, 1f) * steps).roundToInt().toFloat() / steps
+                output[2] = (blue.coerceIn(0f, 1f) * steps).roundToInt().toFloat() / steps
+            }
+            LayerAdjustmentKind.INVERT -> {
+                output[0] = 1f - red; output[1] = 1f - green; output[2] = 1f - blue
+            }
+            LayerAdjustmentKind.THRESHOLD -> {
+                val gray = if (.2126f * red + .7152f * green + .0722f * blue >=
+                    finite(value.threshold).coerceIn(0f, 1f)) 1f else 0f
+                output[0] = gray; output[1] = gray; output[2] = gray
             }
         }
         for (index in 0..2) output[index] = finite(output[index]).coerceIn(0f, 1f)

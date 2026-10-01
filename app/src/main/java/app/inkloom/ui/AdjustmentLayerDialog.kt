@@ -13,14 +13,18 @@ import app.inkloom.document.*
 import app.inkloom.settings.UiLanguage
 import app.inkloom.settings.text
 import java.util.Locale
+import kotlin.math.roundToInt
 
 internal fun adjustmentName(kind: LayerAdjustmentKind, language: UiLanguage): String = when (kind) {
     LayerAdjustmentKind.BRIGHTNESS_CONTRAST -> language.text("Brightness / Contrast", "亮度／对比度")
-    LayerAdjustmentKind.HUE_SATURATION -> language.text("Hue / Saturation", "色相／饱和度")
+    LayerAdjustmentKind.HUE_SATURATION -> language.text("Hue / Saturation / Luminosity", "色相／饱和度／明度")
     LayerAdjustmentKind.LEVELS -> language.text("Levels", "色阶")
     LayerAdjustmentKind.CURVES -> language.text("Curves", "曲线")
     LayerAdjustmentKind.COLOR_BALANCE -> language.text("Color Balance", "色彩平衡")
     LayerAdjustmentKind.GRADIENT_MAP -> language.text("Gradient Map", "渐变映射")
+    LayerAdjustmentKind.POSTERIZE -> language.text("Posterize", "色调分离")
+    LayerAdjustmentKind.INVERT -> language.text("Invert", "反转")
+    LayerAdjustmentKind.THRESHOLD -> language.text("Threshold", "二值化")
 }
 
 @Composable
@@ -30,7 +34,7 @@ internal fun AdjustmentLayerDialog(layer: InkLayer, onDismiss: () -> Unit, onPre
     fun update(next: LayerAdjustment) { value = next; onPreview(next) }
     @Composable fun parameter(label: String, current: Float, range: ClosedFloatingPointRange<Float>, update: (Float) -> Unit) {
         Text("$label  ${String.format(Locale.ROOT, "%.2f", current)}", style = MaterialTheme.typography.labelMedium)
-        Slider(current.coerceIn(range.start, range.endInclusive), update, valueRange = range,
+        BrushParameterSlider(current.coerceIn(range.start, range.endInclusive), update, valueRange = range,
             modifier = Modifier.fillMaxWidth().height(34.dp).semantics { contentDescription = "$label adjustment" })
     }
     AlertDialog(
@@ -46,6 +50,16 @@ internal fun AdjustmentLayerDialog(layer: InkLayer, onDismiss: () -> Unit, onPre
                     LayerAdjustmentKind.HUE_SATURATION -> {
                         parameter(language.text("Hue", "色相"), value.hueDegrees, -180f..180f) { update(value.copy(hueDegrees = it)) }
                         parameter(language.text("Saturation", "饱和度"), value.saturation, -1f..1f) { update(value.copy(saturation = it)) }
+                        parameter(language.text("Luminosity", "明度"), value.luminosity, -1f..1f) { update(value.copy(luminosity = it)) }
+                    }
+                    LayerAdjustmentKind.POSTERIZE -> {
+                        parameter(language.text("Levels per channel", "每通道级数"), value.posterizeLevels.toFloat(), 2f..20f) {
+                            update(value.copy(posterizeLevels = it.roundToInt().coerceIn(2, 20)))
+                        }
+                    }
+                    LayerAdjustmentKind.INVERT -> Text(language.text("Invert RGB, preserving transparency.", "反转 RGB，保留透明度。"))
+                    LayerAdjustmentKind.THRESHOLD -> {
+                        parameter(language.text("Threshold", "阈值"), value.threshold, 0f..1f) { update(value.copy(threshold = it)) }
                     }
                     LayerAdjustmentKind.LEVELS -> {
                         parameter(language.text("Input black", "输入黑场"), value.inputBlack, 0f..(value.inputWhite - .01f).coerceAtLeast(0f)) { update(value.copy(inputBlack = it)) }
