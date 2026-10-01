@@ -63,8 +63,11 @@ def main():
             parser.error(f'Missing delivery evidence: {source.name}')
     for source in sources:
         atomic_copy(source, target / source.name)
-    if sha256(target / apk.name) != metadata['sha256']:
-        raise RuntimeError('Drive copy hash mismatch; old deliveries retained')
+    # Evidence is part of the delivery: validate every copy before retiring an older package.
+    # Comparing only the APK would allow an incomplete metadata/notes upload to erase fallback evidence.
+    for source in sources:
+        if sha256(target / source.name) != sha256(source):
+            raise RuntimeError(f'Drive copy hash mismatch for {source.name}; old deliveries retained')
     keep = {source.name for source in sources}
     current = tuple(map(int, metadata['version'].split('.')))
     deleted = []
@@ -75,7 +78,7 @@ def main():
                 path.unlink()
                 deleted.append(path.name)
     result = {'destination': str(target), 'apk': apk.name, 'version': metadata['version'],
-              'sha256': metadata['sha256'], 'localDriveCopyVerified': True,
+              'sha256': metadata['sha256'], 'localDriveCopyVerified': True, 'fourFilesHashVerified': True,
               'cloudTransfer': 'Managed by Google Drive Desktop; not a cloud download verification',
               'removedSupersededDeliveries': deleted}
     (root / 'tasks/APK_DRIVE_SYNC.json').write_text(json.dumps(result, indent=2) + '\n')
