@@ -41,6 +41,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -460,6 +461,7 @@ private fun localizedBrushLabel(raw: String): String {
 @Composable
 fun InkloomApp(initialIntent: Intent?) {
     var destination by rememberSaveable { mutableStateOf(AppDestination.LIBRARY) }
+    val librarySavedState = rememberSaveableStateHolder()
     var importError by remember { mutableStateOf<String?>(null) }
     var settingsOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -906,7 +908,7 @@ fun InkloomApp(initialIntent: Intent?) {
             }
         }
     } else when (destination) {
-        AppDestination.LIBRARY -> LibraryScreen(
+        AppDestination.LIBRARY -> librarySavedState.SaveableStateProvider("library") { LibraryScreen(
             documents = libraryState.documents,
             folders = libraryState.folders,
             pageTemplates = pageTemplates,
@@ -945,7 +947,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onMoveFolders = viewModel::moveFolders,
             onDeleteFolders = viewModel::deleteFolders,
             onSettings = { settingsOpen = true },
-        )
+        ) }
         AppDestination.EDITOR -> EditorScreen(
             panelState = panelState,
             document = libraryState.documents.firstOrNull { it.id == libraryState.selectedDocumentId } ?: viewModel.currentDocument(),
@@ -1115,9 +1117,11 @@ fun InkloomApp(initialIntent: Intent?) {
 
 @Composable
 private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkloom.document.ImagePaperDraft, onSaveImagePaper: (PageTemplate) -> PageTemplate, onCreateCustomTemplate: (String, Int, Int, PageBackground.Paper) -> PageTemplate?, documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long, String?) -> Boolean, onImportCover: (Uri, String, PageCrop) -> NotebookCoverTemplate, onDeleteCover: (String) -> Unit, onChangeCover: (String, CoverStyle, String?) -> Boolean, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onMoveToFolder: (String, String?) -> Unit, onMoveNotesToFolder: (Set<String>, String?) -> Boolean, onDeleteFolder: (String) -> Unit, onMoveFolders: (Set<String>, String?) -> Boolean, onDeleteFolders: (Set<String>) -> Boolean, onSettings: () -> Unit) {
-    var filter by remember { mutableStateOf(LibraryFilter.ALL) }
-    var search by remember { mutableStateOf("") }
-    var folderId by remember { mutableStateOf<String?>(null) }
+    var filter by rememberSaveable { mutableStateOf(LibraryFilter.ALL) }
+    var search by rememberSaveable { mutableStateOf("") }
+    var folderId by rememberSaveable { mutableStateOf<String?>(null) }
+    val noteListState = rememberLazyListState()
+    val noteGridState = rememberLazyGridState()
     var newNoteOpen by remember { mutableStateOf(false) }
     var newNoteCreateFailed by remember { mutableStateOf(false) }
     var managingNotes by remember { mutableStateOf(false) }
@@ -1293,7 +1297,7 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                 }
             }
             when (layout) {
-                LibraryLayout.LIST -> LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                LibraryLayout.LIST -> LazyColumn(state = noteListState, modifier = Modifier.semantics { contentDescription = "Notebook list" }, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(visible, key = { it.id }) { NotebookCard(it, Modifier.libraryDocumentDrag(it).fillMaxWidth().height(220.dp), { note -> if (managingNotes) selectedNoteIds = if (note.id in selectedNoteIds) selectedNoteIds - note.id else selectedNoteIds + note.id else onOpen(note) }, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder, selectionMode = managingNotes, selected = it.id in selectedNoteIds, onEditCover = { document ->
                         editingCoverDocumentId = document.id
                         editingCoverStyle = document.coverStyle
@@ -1302,6 +1306,8 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                     }) }
                 }
                 LibraryLayout.GRID, LibraryLayout.COMPACT_GRID -> LazyVerticalGrid(
+                    state = noteGridState,
+                    modifier = Modifier.semantics { contentDescription = "Notebook grid" },
                     columns = GridCells.Adaptive(if (layout == LibraryLayout.COMPACT_GRID) 140.dp else 180.dp),
                     horizontalArrangement = Arrangement.spacedBy(if (layout == LibraryLayout.COMPACT_GRID) 10.dp else 16.dp),
                     verticalArrangement = Arrangement.spacedBy(if (layout == LibraryLayout.COMPACT_GRID) 10.dp else 16.dp),
