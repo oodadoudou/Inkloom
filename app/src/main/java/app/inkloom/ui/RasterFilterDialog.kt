@@ -1,77 +1,74 @@
 package app.inkloom.ui
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import app.inkloom.engine.v5.tools.RasterImageFilter
-import app.inkloom.settings.text
+import app.inkloom.settings.*
 import java.util.Locale
 
-/** Compact image-filter controls. The canvas behind the dialog is the live, cancellable preview. */
 @Composable
-internal fun RasterFilterDialog(onPreview: (RasterImageFilter.Effect) -> Unit,
-    onApply: () -> Unit, onCancel: () -> Unit) {
-    val language = LocalUiLanguage.current
-    var kind by remember { mutableStateOf(0) }
-    var strength by remember { mutableFloatStateOf(2f) }
-    var amount by remember { mutableFloatStateOf(1.2f) }
-    var wavelength by remember { mutableFloatStateOf(64f) }
-    var growLine by remember { mutableStateOf(true) }
-    val effect = when (kind) {
-        0 -> RasterImageFilter.Effect.GaussianBlur(strength)
-        1 -> RasterImageFilter.Effect.UnsharpMask(strength, amount)
-        2 -> RasterImageFilter.Effect.Denoise(strength.coerceIn(1f, 3f))
-        3 -> RasterImageFilter.Effect.CleanLineArt(strength)
-        4 -> RasterImageFilter.Effect.AdjustLineWidth(strength.coerceIn(1f, 3f), growLine)
-        else -> RasterImageFilter.Effect.Wave(strength, wavelength)
-    }
-    LaunchedEffect(effect) { onPreview(effect) }
-    val names = listOf(
-        language.text("Gaussian blur", "高斯模糊"),
-        language.text("Unsharp mask", "USM 锐化"),
-        language.text("Denoise", "降噪"),
-        language.text("Remove stray pixels", "清理杂点"),
-        language.text("Correct line width", "修正线宽"),
-        language.text("Wave distortion", "波形变形"),
-    )
-    AlertDialog(
-        onDismissRequest = onCancel,
-        title = { Text(language.text("Image filter", "图像滤镜")) },
-        text = {
-            Column(Modifier.widthIn(min = 270.dp, max = 420.dp).heightIn(max = 480.dp)
-                .verticalScroll(rememberScrollState())) {
-                names.forEachIndexed { index, label ->
-                    FilterChip(selected = kind == index, onClick = {
-                        kind = index
-                        strength = when (index) { 2, 3, 4 -> 1f; 5 -> 8f; else -> 2f }
-                    }, label = { Text(label) }, modifier = Modifier.padding(vertical = 1.dp))
+internal fun RasterFilterDialog(presets:List<RasterFilterPreset>,onPresets:(List<RasterFilterPreset>)->Unit,
+    compositePreview:Bitmap?,copyBusy:Boolean,onPreview:(RasterImageFilter.Effect,Boolean)->Unit,
+    onApply:(RasterImageFilter.Effect,Boolean)->Unit,onCancel:()->Unit) {
+    val language=LocalUiLanguage.current
+    fun tr(en:String,zh:String)=language.text(en,zh)
+    var state by remember{mutableStateOf(RasterFilterPreset())}
+    var composite by remember{mutableStateOf(false)}
+    var name by remember{mutableStateOf("")}
+    var presetMenu by remember{mutableStateOf(false)}
+    val effect=state.effect()
+    LaunchedEffect(effect,composite){onPreview(effect,composite)}
+    val names=listOf(tr("Gaussian blur","高斯模糊"),tr("Unsharp mask","USM 锐化"),tr("Denoise","降噪"),tr("Remove stray pixels","清理杂点"),
+        tr("Correct line width","修正线宽"),tr("Wave distortion","波形变形"),tr("Motion blur","动感模糊"),tr("Radial blur","径向模糊"),
+        tr("Lens blur","镜头模糊"),tr("Mosaic","马赛克"),tr("Noise","噪点"),tr("Chromatic aberration","色差"))
+    AlertDialog(onDismissRequest={if(!copyBusy)onCancel()},title={Text(tr("Image filter","图像滤镜"))},text={
+        Column(Modifier.widthIn(min=270.dp,max=420.dp).heightIn(max=520.dp).verticalScroll(rememberScrollState())) {
+            Box {
+                TextButton({presetMenu=true}){Text(tr("Presets & favorites","预设与收藏"))}
+                DropdownMenu(presetMenu,{presetMenu=false}){
+                    presets.sortedByDescending{it.favorite}.forEach{p->DropdownMenuItem(text={Text((if(p.favorite) "★ " else "")+p.name)},onClick={state=p;presetMenu=false})}
+                    if(presets.isEmpty())DropdownMenuItem(text={Text(tr("No saved presets","暂无预设"))},onClick={},enabled=false)
                 }
-                Spacer(Modifier.height(8.dp))
-                Text("${language.text("Strength", "强度")}  ${String.format(Locale.ROOT, "%.1f", strength)}")
-                Slider(strength, { strength = it }, valueRange = 1f..(when (kind) { 2, 4 -> 3f; 3 -> 4f; else -> 20f }))
-                if (kind == 1) {
-                    Text("${language.text("Amount", "锐化量")}  ${String.format(Locale.ROOT, "%.1f", amount)}")
-                    Slider(amount, { amount = it }, valueRange = 0f..4f)
-                }
-                if (kind == 4) {
-                    Row { FilterChip(growLine, { growLine = true }, label = { Text(language.text("Thicken", "加粗")) })
-                        Spacer(Modifier.width(6.dp))
-                        FilterChip(!growLine, { growLine = false }, label = { Text(language.text("Thin", "变细")) }) }
-                }
-                if (kind == 5) {
-                    Text("${language.text("Wavelength", "波长")}  ${wavelength.toInt()} px")
-                    Slider(wavelength, { wavelength = it }, valueRange = 16f..512f)
-                }
-                Text(language.text("The canvas previews the selected pixel layer. Cancel restores it without changing history.",
-                    "画布预览当前像素图层；取消后恢复原图，不写入历史。"),
-                    style = MaterialTheme.typography.bodySmall)
             }
-        },
-        confirmButton = { TextButton(onApply) { Text(language.text("Apply", "应用")) } },
-        dismissButton = { TextButton(onCancel) { Text(language.text("Cancel", "取消")) } },
-    )
+            Box {
+                var kinds by remember{mutableStateOf(false)}
+                TextButton({kinds=true}){Text(names[state.kind])}
+                DropdownMenu(kinds,{kinds=false}){names.forEachIndexed{i,label->DropdownMenuItem(text={Text(label)},onClick={state=state.copy(kind=i,strength=when(i){2,3,4->1f;5->8f;else->2f});kinds=false})}}
+            }
+            Text("${tr("Strength","强度")}  ${String.format(Locale.ROOT,"%.1f",state.strength)}")
+            BrushParameterSlider(state.strength,{state=state.copy(strength=it)},valueRange=1f..if(state.kind in listOf(2,4))3f else 20f)
+            if(state.kind==1){Text(tr("Amount","锐化量"));BrushParameterSlider(state.amount,{state=state.copy(amount=it)},valueRange=0f..4f)}
+            if(state.kind==4)Row{FilterChip(state.grow,{state=state.copy(grow=true)},label={Text(tr("Thicken","加粗"))});FilterChip(!state.grow,{state=state.copy(grow=false)},label={Text(tr("Thin","变细"))})}
+            if(state.kind==5){Text(tr("Wavelength","波长"));BrushParameterSlider(state.wavelength,{state=state.copy(wavelength=it)},valueRange=16f..512f)}
+            if(state.kind==6 || state.kind==11){Text("${tr("Angle","角度")} ${state.angle.toInt()}°");BrushParameterSlider(state.angle,{state=state.copy(angle=it)},valueRange=-180f..180f)}
+            if(state.kind==7){
+                Row{FilterChip(!state.zoom,{state=state.copy(zoom=false)},label={Text(tr("Spin","旋转"))});FilterChip(state.zoom,{state=state.copy(zoom=true)},label={Text(tr("Zoom","缩放"))})}
+                Text("X ${(state.centerX*100).toInt()}%");BrushParameterSlider(state.centerX,{state=state.copy(centerX=it)},valueRange=0f..1f)
+                Text("Y ${(state.centerY*100).toInt()}%");BrushParameterSlider(state.centerY,{state=state.copy(centerY=it)},valueRange=0f..1f)
+            }
+            if(state.kind==10){Row{Checkbox(state.monochrome,{state=state.copy(monochrome=it)});Text(tr("Monochrome","单色"))};TextButton({state=state.copy(seed=state.seed+1)}){Text(tr("New noise","重新生成噪点"))}}
+            Row{Checkbox(composite,{composite=it},enabled=!copyBusy);Text(tr("Process visible copy","处理可见画面副本"))}
+            if(composite){
+                compositePreview?.takeUnless{it.isRecycled}?.let{Image(it.asImageBitmap(),tr("Composite preview","合成预览"),Modifier.fillMaxWidth().heightIn(max=180.dp))}
+                if(copyBusy)LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text(tr("Preview is scaled. Apply creates a pixel layer at authored resolution; source layers stay editable.","预览按比例缩小；应用后按原尺寸创建像素图层，原图层保留。"),style=MaterialTheme.typography.bodySmall)
+            }
+            Row(horizontalArrangement=Arrangement.spacedBy(4.dp)){
+                OutlinedTextField(name,{name=it.take(48)},Modifier.weight(1f),singleLine=true,label={Text(tr("Preset name","预设名称"))})
+                TextButton({val p=state.copy(id=java.util.UUID.randomUUID().toString(),name=name.trim());onPresets((presets+p).takeLast(100));state=p},enabled=name.isNotBlank()){Text(tr("Save","保存"))}
+            }
+            presets.firstOrNull{it.id==state.id}?.let{saved->Row{
+                TextButton({onPresets(presets.map{if(it.id==saved.id)it.copy(favorite=!it.favorite)else it})}){Text(if(saved.favorite) "★" else "☆")}
+                TextButton({onPresets(presets.filterNot{it.id==saved.id})}){Text(tr("Delete preset","删除预设"))}
+            }}
+        }
+    },confirmButton={TextButton({onApply(effect,composite)},enabled=!copyBusy){Text(tr("Apply","应用"))}},dismissButton={TextButton(onCancel,enabled=!copyBusy){Text(tr("Cancel","取消"))}})
 }

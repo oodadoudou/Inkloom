@@ -32,6 +32,12 @@ internal object RasterImageFilter {
         data class AdjustLineWidth(override val sigma: Float, val grow: Boolean) : Effect
         /** A bounded horizontal wave; unlike a mesh transform it does not alter layer structure. */
         data class Wave(override val sigma: Float, val wavelength: Float) : Effect
+        data class MotionBlur(override val sigma: Float,val angle: Float=0f) : Effect
+        data class RadialBlur(override val sigma: Float,val centerX: Float=.5f,val centerY: Float=.5f,val zoom:Boolean=false) : Effect
+        data class LensBlur(override val sigma: Float) : Effect
+        data class Mosaic(override val sigma: Float) : Effect
+        data class Noise(override val sigma: Float,val seed:Int=1,val monochrome:Boolean=true) : Effect
+        data class ChromaticAberration(override val sigma: Float,val angle:Float=0f) : Effect
     }
 
     fun apply(
@@ -40,9 +46,9 @@ internal object RasterImageFilter {
         selection: MaskTileSurfaceSnapshot? = null,
         cancelled: () -> Boolean = { false },
     ): PixelTileSurface {
-        require(source.pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888) {
-            "Image filters require an RGBA8 pixel layer"
-        }
+        if(source.pixelFormat.isHighPrecision || effect is Effect.MotionBlur || effect is Effect.RadialBlur ||
+            effect is Effect.LensBlur || effect is Effect.Mosaic || effect is Effect.Noise || effect is Effect.ChromaticAberration)
+            return FloatRasterImageFilter.apply(source,effect,selection,cancelled)
         require(selection == null || (selection.logicalWidth > 0 && selection.logicalHeight > 0)) {
             "Selection mask has invalid dimensions"
         }
@@ -66,6 +72,7 @@ internal object RasterImageFilter {
             is Effect.CleanLineArt -> 1
             is Effect.AdjustLineWidth -> effect.sigma.roundToInt().coerceIn(1, 3)
             is Effect.Wave -> effect.sigma.toInt() + 2
+            else -> error("Advanced filter must use float pipeline")
         }
 
         val result = PixelTileSurface(source.logicalWidth, source.logicalHeight, source.tileSize)
@@ -216,6 +223,7 @@ internal object RasterImageFilter {
                                     changed[channel] = (old[channel] + (sample - old[channel]) * weight).roundToInt()
                                 }
                             }
+                            else -> error("Advanced filter must use float pipeline")
                         }
                         for (channel in 1..3) changed[channel] = changed[channel].coerceAtMost(changed[0])
                         pixels[y * stride + x] = (changed[0] shl 24) or (changed[1] shl 16) or

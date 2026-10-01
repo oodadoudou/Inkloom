@@ -116,6 +116,7 @@ object AppSettingsBackupCodec {
         put("selectionShape", selectionShape.name); put("selectionBrushSize", selectionBrushSize); put("selectionThreshold", selectionThreshold); put("selectionMode", selectionMode.name); put("selectionFilter", selectionFilter.name); put("referenceTarget", referenceTarget.name); put("eyedropperReferenceTarget", eyedropperReferenceTarget.name); put("eyedropperIncludePaper", eyedropperIncludePaper)
         put("correctLineMode", correctLineMode.name); put("correctLineAmount", correctLineAmount)
         put("nonDestructiveEraser", nonDestructiveEraser)
+        put("rasterFilterPresets",json.parseToJsonElement(RasterFilterPresetsCodec.encode(rasterFilterPresets)))
         put("workspaceLayouts", json.parseToJsonElement(WorkspaceLayoutProfilesCodec.encode(workspaceLayouts)))
     }
 
@@ -185,6 +186,7 @@ object AppSettingsBackupCodec {
             selectionShape = enum("selectionShape", defaults.selectionShape), selectionBrushSize = float("selectionBrushSize", defaults.selectionBrushSize).coerceIn(4f, 300f), selectionThreshold = float("selectionThreshold", defaults.selectionThreshold).coerceIn(0f, 1f), selectionMode = enum("selectionMode", defaults.selectionMode), selectionFilter = enum("selectionFilter", defaults.selectionFilter), referenceTarget = enum("referenceTarget", defaults.referenceTarget), eyedropperReferenceTarget = enum("eyedropperReferenceTarget", defaults.eyedropperReferenceTarget), eyedropperIncludePaper = boolean("eyedropperIncludePaper", defaults.eyedropperIncludePaper),
             correctLineMode = enum("correctLineMode", defaults.correctLineMode), correctLineAmount = float("correctLineAmount", defaults.correctLineAmount).coerceIn(0f, 1f),
             nonDestructiveEraser = boolean("nonDestructiveEraser", defaults.nonDestructiveEraser),
+            rasterFilterPresets = RasterFilterPresetsCodec.decode(get("rasterFilterPresets")?.toString()),
             workspaceLayouts = WorkspaceLayoutProfilesCodec.decode(get("workspaceLayouts")?.toString()),
         )
     }

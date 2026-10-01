@@ -219,6 +219,7 @@ import app.inkloom.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -1949,6 +1950,12 @@ private fun EditorScreen(
     var activeLayerId by rememberSaveable(document.id, selectedPage.id) { mutableStateOf(LayerIds.INK) }
     var adjustmentDialogId by remember(document.id, selectedPage.id) { mutableStateOf<String?>(null) }
     var rasterFilterDialogOpen by remember(document.id, selectedPage.id) { mutableStateOf(false) }
+    var compositeFilterPreview by remember(document.id,selectedPage.id){mutableStateOf<android.graphics.Bitmap?>(null)}
+    var compositeFilterBusy by remember{mutableStateOf(false)}
+    var compositeFilterWorker by remember{mutableStateOf<kotlinx.coroutines.Job?>(null)}
+    var compositeFilterGeneration by remember{mutableIntStateOf(0)}
+    DisposableEffect(compositeFilterPreview){onDispose{compositeFilterPreview?.takeUnless{it.isRecycled}?.recycle()}}
+
     var editingMaskId by remember(document.id, selectedPage.id) { mutableStateOf<String?>(null) }
     val maskAssets = remember(context) { DocumentAssetService(context) }
     val maskFailurePrefix by rememberUpdatedState(tr("Could not edit mask", "无法编辑蒙版"))
@@ -4241,10 +4248,64 @@ private fun EditorScreen(
         )
     }
     if (rasterFilterDialogOpen) RasterFilterDialog(
-        onPreview = { effect -> canvasView?.onRasterFilterPreviewRequested?.invoke(effect) },
-        onApply = { canvasView?.onRasterFilterFinished?.invoke(true); rasterFilterDialogOpen = false },
-        onCancel = { canvasView?.onRasterFilterFinished?.invoke(false); rasterFilterDialogOpen = false },
+        presets=settings.rasterFilterPresets,onPresets={onSettingsChange(settings.copy(rasterFilterPresets=it))},
+        compositePreview=compositeFilterPreview,copyBusy=compositeFilterBusy,
+        onPreview={effect,copy ->
+            compositeFilterWorker?.cancel();val generation=++compositeFilterGeneration
+            compositeFilterBusy=false
+            if(!copy) {
+                compositeFilterPreview=null
+                canvasView?.onRasterFilterPreviewRequested?.invoke(effect)
+            } else {
+                canvasView?.onRasterFilterFinished?.invoke(false)
+                compositeFilterBusy=true
+                compositeFilterWorker=appearanceScope.launch {
+                    var bitmap:android.graphics.Bitmap?=null
+                    try {
+                        val view=canvasView ?: return@launch
+                        kotlinx.coroutines.withTimeout(15_000){while(view.hasPendingPaintPublicationForMerge() || view.selectionLayerTransferPending) kotlinx.coroutines.delay(8)}
+                        val before=currentAppearancePage
+                        val selection=view.selectionMaskSurfaceSnapshot()
+                        bitmap=withContext(Dispatchers.Default){
+                            val width=minOf(1024,PagePngExportSize.from(before).width)
+                            val height=(width*PageCropTransform.visibleHeight(before)/PageCropTransform.visibleWidth(before)).toInt().coerceAtLeast(1)
+                            val source=maskAssets.renderPageCompositeSurface(before,width,height)
+                            val filtered=app.inkloom.engine.v5.tools.RasterImageFilter.apply(source,effect,selection){!isActive}
+                            app.inkloom.engine.v5.android.PixelTileBitmapAdapter.render(filtered.snapshot())
+                        }
+                        if(generation==compositeFilterGeneration && rasterFilterDialogOpen){compositeFilterPreview=bitmap;bitmap=null}
+                    } catch(_:kotlinx.coroutines.CancellationException){} catch(failure:Throwable){Toast.makeText(context,failure.message?:"Preview failed",Toast.LENGTH_LONG).show()}
+                    finally{bitmap?.recycle();if(generation==compositeFilterGeneration)compositeFilterBusy=false}
+                }
+            }
+        },
+        onApply={effect,copy ->
+            if(!copy){canvasView?.onRasterFilterFinished?.invoke(true);rasterFilterDialogOpen=false}
+            else {
+                compositeFilterWorker?.cancel();++compositeFilterGeneration;compositeFilterBusy=true
+                appearanceScope.launch {
+                    var prepared:PreparedPageGeometry?=null;var published=false
+                    val view=canvasView
+                    try {
+                        requireNotNull(view)
+                        kotlinx.coroutines.withTimeout(15_000){while(view.hasPendingPaintPublicationForMerge() || view.selectionLayerTransferPending)kotlinx.coroutines.delay(8)}
+                        view.selectionLayerTransferPending=true
+                        val before=currentAppearancePage;val selection=view.selectionMaskSurfaceSnapshot()
+                        prepared=withContext(Dispatchers.Default){maskAssets.prepareFilteredVisibleCopy(before,effect,selection){!isActive}}
+                        val transaction=requireNotNull(prepared)
+                        check(onApplyPageGeometry(document.id,before.id,transaction.edit,false)){"Page changed during filter"}
+                        view.recordExternalEdit(undo={onApplyPageGeometry(document.id,before.id,transaction.edit,true)},
+                            redo={onApplyPageGeometry(document.id,before.id,transaction.edit,false)},dispose=transaction::close)
+                        activeLayerId=transaction.edit.after.layers.last().id
+                        published=true;rasterFilterDialogOpen=false;compositeFilterPreview=null
+                    } catch(failure:Throwable){Toast.makeText(context,failure.message?:"Filter failed",Toast.LENGTH_LONG).show()}
+                    finally{if(!published)prepared?.close();view?.selectionLayerTransferPending=false;compositeFilterBusy=false}
+                }
+            }
+        },
+        onCancel={compositeFilterWorker?.cancel();++compositeFilterGeneration;compositeFilterBusy=false;compositeFilterPreview=null;canvasView?.onRasterFilterFinished?.invoke(false);rasterFilterDialogOpen=false},
     )
+
     if (shapeInsertOpen) AlertDialog(
         onDismissRequest = { shapeInsertOpen = false },
         title = { Text(tr("Draw shape", "绘制形状")) },

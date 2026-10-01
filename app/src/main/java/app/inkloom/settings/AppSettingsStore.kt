@@ -169,6 +169,7 @@ data class AppSettings(
     val shortcutButtonBindings: List<ButtonShortcutBinding> = emptyList(),
     val shortcutBrushGroupTargets: ShortcutBrushGroupTargets = ShortcutBrushGroupTargets(),
     val toolboxQuickSlots: List<ToolboxQuickSlot> = ToolboxQuickSlots.normalize(emptyList()),
+    val rasterFilterPresets: List<RasterFilterPreset> = emptyList(),
     val workspaceLayouts: WorkspaceLayoutProfiles = WorkspaceLayoutProfiles(),
 )
 
@@ -392,6 +393,7 @@ class AppSettingsStore(context: Context) {
                 brush = preferences.getString("shortcutBrushGroup", "").orEmpty(),
             ).normalized(),
             toolboxQuickSlots = ToolboxQuickSlotCodec.decode(preferences.getString("toolboxQuickSlots", null)),
+            rasterFilterPresets = RasterFilterPresetsCodec.decode(preferences.getString("rasterFilterPresets",null)),
             workspaceLayouts = WorkspaceLayoutProfilesCodec.decode(preferences.getString("workspaceLayouts", null)),
         )
         val selected = loaded.withWorkspaceFor(orientation)
@@ -573,6 +575,7 @@ class AppSettingsStore(context: Context) {
             .putString("shortcutPencilGroup", persisted.shortcutBrushGroupTargets.pencil)
             .putString("shortcutBrushGroup", persisted.shortcutBrushGroupTargets.brush)
             .putString("toolboxQuickSlots", ToolboxQuickSlotCodec.encode(persisted.toolboxQuickSlots))
+            .putString("rasterFilterPresets",RasterFilterPresetsCodec.encode(persisted.rasterFilterPresets))
             .putString("workspaceLayouts", WorkspaceLayoutProfilesCodec.encode(persisted.workspaceLayouts))
             .putInt(STUDIO_WORKSPACE_VERSION_KEY, STUDIO_WORKSPACE_VERSION)
             .apply()

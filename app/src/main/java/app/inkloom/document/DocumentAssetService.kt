@@ -500,6 +500,16 @@ class DocumentAssetService(private val context: Context) {
         } finally { releaseAssetReservation(asset.path) }
     }
 
+    internal fun prepareFilteredVisibleCopy(page:InkPage,effect:app.inkloom.engine.v5.tools.RasterImageFilter.Effect,
+        selection:app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot?,cancelled:()->Boolean):PreparedPageGeometry {
+        val size=PagePngExportSize.from(page)
+        val source=renderPageCompositeSurface(page,size.width,size.height)
+        val filtered=app.inkloom.engine.v5.tools.RasterImageFilter.apply(source,effect,selection,cancelled)
+        if(cancelled())throw java.util.concurrent.CancellationException()
+        val ref=saveRasterTileSurface(filtered)
+        return PreparedPageGeometry(PageGeometryEdit(page,page.copy(layers=page.layers+InkLayer(name="Filtered visible copy",rasterTileSurface=ref)))) { releaseRasterTileReservation(ref) }
+    }
+
     fun prepareColorManagement(page: InkPage, settings: app.inkloom.color.PageColorManagement): PreparedPageGeometry {
         app.inkloom.color.IccColorPipeline(settings).close()
         if(settings.softProof) { require(settings.proofProfile!=null) { "Select a proof profile" }; app.inkloom.color.IccColorPipeline(settings,true).close() }
