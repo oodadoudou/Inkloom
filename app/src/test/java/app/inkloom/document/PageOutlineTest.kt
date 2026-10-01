@@ -4,6 +4,15 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PageOutlineTest {
+    @Test fun ancestorsFollowTheCurrentBranchAcrossCollapsedAndSiblingEntries() {
+        val pages = listOf(InkPage(id = "old"), InkPage(id = "old-child", outlineLevel = 1),
+            InkPage(id = "root", outlineCollapsed = true), InkPage(id = "branch", outlineLevel = 1, outlineCollapsed = true),
+            InkPage(id = "sibling", outlineLevel = 2), InkPage(id = "target", outlineLevel = 2))
+        assertEquals(listOf("root", "branch"), PageOutline.ancestors(pages, "target").map(InkPage::id))
+        assertEquals(emptyList<InkPage>(), PageOutline.ancestors(pages, "root"))
+        assertEquals(emptyList<InkPage>(), PageOutline.ancestors(pages, "missing"))
+    }
+
     @Test fun constrainsHierarchyToPreviousLevelPlusOne() {
         val pages = listOf(InkPage(id = "a"), InkPage(id = "b"), InkPage(id = "c"))
         val bIndented = PageOutline.changeLevel(pages, "b", 3)

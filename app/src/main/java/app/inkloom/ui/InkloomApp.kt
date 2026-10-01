@@ -4084,6 +4084,8 @@ private fun EditorScreen(
         val normalizedLink = LinkTarget.normalize(insertLinkUrl)
         val targetDocument = documents.firstOrNull { it.id == insertLinkDocumentId } ?: document
         val targetPage = targetDocument.pages.firstOrNull { it.id == insertLinkPageId } ?: targetDocument.pages.firstOrNull()
+        val linkPageState = rememberLazyListState()
+        RevealSelectedItem(linkPageState, targetDocument.id, targetPage?.id, targetDocument.pages.indexOfFirst { it.id == targetPage?.id })
         AlertDialog(
             onDismissRequest = { linkInsertOpen = false },
             title = { Text(tr("Insert link", "插入链接")) },
@@ -4106,14 +4108,14 @@ private fun EditorScreen(
                         }
                     }
                     Text(tr("Page", "页面"), color = MutedInk, fontSize = 11.sp)
-                    LazyColumn(Modifier.heightIn(max = 220.dp)) {
+                    LazyColumn(Modifier.heightIn(max = 220.dp).semantics { contentDescription = "Link target pages" }, state = linkPageState) {
                         items(targetDocument.pages, key = InkPage::id) { candidate ->
                             ListItem(
                                 headlineContent = { Text(candidate.title, maxLines = 1) },
                                 supportingContent = { Text(tr("Page ${targetDocument.pages.indexOf(candidate) + 1}", "第 ${targetDocument.pages.indexOf(candidate) + 1} 页"), color = MutedInk) },
                                 leadingContent = { if (candidate.bookmarked) Icon(Icons.Default.Bookmark, null) else Icon(Icons.Outlined.Description, null) },
-                                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { insertLinkPageId = candidate.id },
-                                colors = ListItemDefaults.colors(containerColor = if (candidate.id == targetPage?.id) Workspace else Color.Transparent),
+                                modifier = Modifier.clip(RoundedCornerShape(8.dp)).semantics { selected = candidate.id == targetPage?.id }.clickable { insertLinkPageId = candidate.id },
+                                colors = ListItemDefaults.colors(containerColor = if (candidate.id == targetPage?.id) SageContainer else Color.Transparent),
                             )
                         }
                     }
@@ -4193,12 +4195,19 @@ private fun EditorScreen(
         confirmButton = { TextButton(onClick = { bookmarksOpen = false }) { Text(tr("Done", "完成")) } },
     )
     if (outlineOpen) {
+        val outlineState = rememberLazyListState()
+        LaunchedEffect(document.id, selectedPage.id) {
+            PageOutline.ancestors(document.pages, selectedPage.id).filter(InkPage::outlineCollapsed)
+                .forEach { onTogglePageOutlineCollapsed(document.id, it.id) }
+        }
         val visibleOutlinePages = PageOutline.visiblePages(document.pages)
+        RevealSelectedItem(outlineState, document.id to visibleOutlinePages.map(InkPage::id), selectedPage.id,
+            visibleOutlinePages.indexOfFirst { it.id == selectedPage.id })
         AlertDialog(
             onDismissRequest = { outlineOpen = false },
             title = { Text(tr("Page outline", "页面大纲")) },
             text = {
-                LazyColumn(Modifier.widthIn(min = 360.dp, max = 560.dp).heightIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                LazyColumn(Modifier.widthIn(min = 360.dp, max = 560.dp).heightIn(max = 480.dp).semantics { contentDescription = "Page outline list" }, state = outlineState, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     items(visibleOutlinePages, key = { it.id }) { page ->
                         val index = document.pages.indexOf(page)
                         val hasChildren = PageOutline.hasChildren(document.pages, index)
@@ -4246,7 +4255,7 @@ private fun EditorScreen(
                                     }
                                 }
                             },
-                            modifier = Modifier.padding(start = (page.outlineLevel * 18).dp).clickable { selectPageWithViewport(page.id); outlineOpen = false },
+                            modifier = Modifier.padding(start = (page.outlineLevel * 18).dp).semantics { selected = page.id == selectedPage.id }.clickable { selectPageWithViewport(page.id); outlineOpen = false },
                             colors = ListItemDefaults.colors(containerColor = if (page.id == selectedPage.id) SageContainer else Color.Transparent),
                         )
                     }
@@ -4365,6 +4374,17 @@ private fun EditorScreen(
 }
 
 @Composable
+private fun PageInsertionIcon(after: Boolean, description: String) {
+    Box(Modifier.size(20.dp).semantics { contentDescription = description }) {
+        Icon(Icons.Outlined.NoteAdd, null, Modifier.size(16.dp).align(Alignment.Center))
+        Canvas(Modifier.fillMaxSize()) {
+            val y = if (after) size.height - 1.dp.toPx() else 1.dp.toPx()
+            drawLine(Ink, Offset(2.dp.toPx(), y), Offset(size.width - 2.dp.toPx(), y), 1.dp.toPx())
+        }
+    }
+}
+
+@Composable
 private fun PageRail(
     document: InkDocument,
     documents: List<InkDocument>,
@@ -4423,8 +4443,8 @@ private fun PageRail(
     Column(modifier) {
         Column(Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                IconButton(onClick = { onInsertNextTo(document.id, selectedPageId, false) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.KeyboardDoubleArrowUp, tr("Insert page before current", "在当前页前插入页面"), Modifier.size(18.dp)) }
-                IconButton(onClick = { onInsertNextTo(document.id, selectedPageId, true) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.KeyboardDoubleArrowDown, tr("Insert page after current", "在当前页后插入页面"), Modifier.size(18.dp)) }
+                IconButton(onClick = { onInsertNextTo(document.id, selectedPageId, false) }, modifier = Modifier.size(28.dp)) { PageInsertionIcon(false, tr("Insert page before current", "在当前页前插入页面")) }
+                IconButton(onClick = { onInsertNextTo(document.id, selectedPageId, true) }, modifier = Modifier.size(28.dp)) { PageInsertionIcon(true, tr("Insert page after current", "在当前页后插入页面")) }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 IconButton(onClick = onAppendFiles, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.NoteAdd, tr("Add PDF or image pages", "追加 PDF／图片页面"), Modifier.size(18.dp)) }

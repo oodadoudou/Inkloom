@@ -1,6 +1,22 @@
 package app.inkloom.document
 
 object PageOutline {
+    /** The preceding lower-level entries are the target's parents, regardless of visibility. */
+    fun ancestors(pages: List<InkPage>, pageId: String): List<InkPage> {
+        val index = pages.indexOfFirst { it.id == pageId }
+        if (index < 0) return emptyList()
+        val parents = mutableListOf<InkPage>()
+        var level = pages[index].outlineLevel
+        for (candidate in pages.take(index).asReversed()) {
+            if (candidate.outlineLevel < level) {
+                parents += candidate
+                level = candidate.outlineLevel
+            }
+            if (level == 0) break
+        }
+        return parents.asReversed()
+    }
+
     fun changeLevel(pages: List<InkPage>, pageId: String, delta: Int): List<InkPage> {
         val index = pages.indexOfFirst { it.id == pageId }
         if (index < 0) return pages

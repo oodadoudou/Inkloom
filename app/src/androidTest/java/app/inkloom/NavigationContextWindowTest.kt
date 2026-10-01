@@ -57,4 +57,37 @@ class NavigationContextWindowTest {
         roundTrip("Notebook grid")
     }
 
+    private fun openFixtureAtPage30() {
+        compose.onNode(hasSetTextAction()).performTextInput("Navigation fixture")
+        compose.onNodeWithContentDescription("Notebook Navigation fixture. Long press to move.").performClick()
+        compose.onNodeWithContentDescription("Page list").performScrollToIndex(29)
+        compose.onNodeWithContentDescription("Page 30. Long press to manage.").performClick()
+    }
+
+    @Test fun outlineOpensAtCurrentPageAndExpandsItsCollapsedParents() {
+        openFixtureAtPage30()
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithText("Page outline").performScrollTo().performClick()
+        compose.onNode(hasText("Review page 30") and isSelected()).assertIsDisplayed()
+        val document = FileDocumentStore(compose.activity.filesDir).get("nav-main")!!
+        assertFalse(document.pages[27].outlineCollapsed)
+        assertFalse(document.pages[28].outlineCollapsed)
+        compose.onNodeWithContentDescription("Page outline list").performScrollToIndex(0)
+        compose.onNodeWithText("Review page 1").assertIsDisplayed()
+    }
+
+    @Test fun linkTargetPickerReopensAtLastChosenPage() {
+        openFixtureAtPage30()
+        fun openLink() {
+            compose.onNodeWithContentDescription("More").performClick()
+            compose.onNodeWithText("Link").performClick()
+            compose.onNodeWithText("Notebook page").performClick()
+        }
+        openLink()
+        compose.onNodeWithContentDescription("Link target pages").performScrollToIndex(29)
+        compose.onNode(hasText("Review page 30") and hasAnyAncestor(isDialog())).performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        openLink()
+        compose.onNode(hasText("Review page 30") and isSelected() and hasAnyAncestor(isDialog())).assertIsDisplayed()
+    }
 }
