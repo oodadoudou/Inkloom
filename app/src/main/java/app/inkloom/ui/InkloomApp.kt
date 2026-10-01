@@ -3510,6 +3510,7 @@ private fun EditorScreen(
                 var navigatorWidth by remember { mutableIntStateOf(0) }
                 var navigatorHeight by remember { mutableIntStateOf(0) }
                 var pageJumpOpen by remember(document.id) { mutableStateOf(false) }
+                var navigatorBounds by remember { mutableStateOf(androidx.compose.ui.unit.IntRect.Zero) }
                 val navigatorDensity = LocalDensity.current
                 val navigatorMargin = with(navigatorDensity) { 14.dp.toPx() }
                 val navigatorTravelX = (with(navigatorDensity) { maxWidth.toPx() } - navigatorWidth - navigatorMargin * 2f).coerceAtLeast(0f)
@@ -3520,7 +3521,11 @@ private fun EditorScreen(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .offset { IntOffset((navigatorMargin + navigatorTravelX * navigatorX).roundToInt(), (navigatorMargin + navigatorTravelY * navigatorY).roundToInt()) }
-                        .onGloballyPositioned { navigatorWidth = it.size.width; navigatorHeight = it.size.height }
+                        .onGloballyPositioned {
+                            navigatorWidth = it.size.width; navigatorHeight = it.size.height
+                            val rect = it.boundsInWindow()
+                            navigatorBounds = androidx.compose.ui.unit.IntRect(rect.left.roundToInt(), rect.top.roundToInt(), rect.right.roundToInt(), rect.bottom.roundToInt())
+                        }
                         .pointerInput(navigatorTravelX, navigatorTravelY) {
                             detectDragGesturesAfterLongPress(
                                 onDragEnd = { navigatorPreferences.edit().putFloat("x", navigatorX).putFloat("y", navigatorY).apply() },
@@ -3591,27 +3596,8 @@ private fun EditorScreen(
                         }
                     }
                 }
-                if (pageJumpOpen) Dialog(onDismissRequest = { pageJumpOpen = false }) {
-                    val goPageDescription = tr("Go to page", "跳转到第")
-                    Surface(shape = RoundedCornerShape(16.dp), color = Paper, modifier = Modifier.widthIn(max = 360.dp)) {
-                        Column(Modifier.padding(12.dp)) {
-                            Text(tr("Go to page", "跳转页面"), Modifier.padding(8.dp), fontWeight = FontWeight.SemiBold, color = Ink)
-                            LazyColumn(Modifier.heightIn(max = 440.dp)) {
-                                items(document.pages) { page ->
-                                    val index = document.pages.indexOf(page)
-                                    Text(
-                                        "${index + 1}  ${page.title.ifBlank { tr("Page", "页面") }}",
-                                        Modifier.fillMaxWidth().semantics { contentDescription = "$goPageDescription ${index + 1}" }.clickable {
-                                            selectPageWithViewport(page.id)
-                                            pageJumpOpen = false
-                                        }.padding(horizontal = 12.dp, vertical = 12.dp),
-                                        color = if (page.id == selectedPage.id) Ink else MutedInk,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+                if (pageJumpOpen) PageJumpPopup(document.pages, selectedPage.id, navigatorBounds, LocalUiLanguage.current,
+                    onSelect = { selectPageWithViewport(it); pageJumpOpen = false }, onDismiss = { pageJumpOpen = false })
                 val dockVertical = settings.toolbarDock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT) || (settings.toolbarDock == ToolbarDock.FREE && settings.verticalToolbar)
                 var measuredToolbarWidth by remember(dockVertical) { mutableFloatStateOf(if (dockVertical) 88f else FloatingToolbarPlacement.LONG_EDGE_DP) }
                 var measuredToolbarHeight by remember(dockVertical) { mutableFloatStateOf(if (dockVertical) 600f else FloatingToolbarPlacement.SHORT_EDGE_DP) }
@@ -4538,12 +4524,23 @@ private fun PageRail(
 ) {
 
     val pageDensity = LocalDensity.current.density
-    val pageListState = rememberLazyListState()
-    LaunchedEffect(document.id, selectedPageId) {
-        val index = document.pages.indexOfFirst { it.id == selectedPageId }
-        if (index >= 0 && pageListState.layoutInfo.visibleItemsInfo.none { it.key == selectedPageId }) {
-            pageListState.scrollToItem(index)
+    var navigationTab by rememberSaveable(document.id) { mutableIntStateOf(0) }
+    var selectedTag by rememberSaveable(document.id) { mutableStateOf<String?>(null) }
+    var currentMetadataOpen by remember(document.id) { mutableStateOf(false) }
+    val tagGroups = remember(document.pages) { app.inkloom.document.PageTagIndex.groups(document.pages) }
+    val tagGroup = tagGroups.firstOrNull { it.name.equals(selectedTag, ignoreCase = true) }
+    val visiblePages = remember(document.pages, navigationTab, tagGroup) {
+        when (navigationTab) {
+            1 -> document.pages.filter { it.bookmarked }
+            2 -> if (tagGroup == null) emptyList() else document.pages.filter { it.id in tagGroup.pageIds }
+            else -> document.pages
         }
+    }
+    val pageListState = rememberLazyListState()
+    LaunchedEffect(document.id, selectedPageId, navigationTab, selectedTag, visiblePages.map { it.id }) {
+        val index = visiblePages.indexOfFirst { it.id == selectedPageId }
+        if (index >= 0 && pageListState.layoutInfo.visibleItemsInfo.none { it.key == selectedPageId }) pageListState.scrollToItem(index)
+        else if (navigationTab == 2 && tagGroup == null) pageListState.scrollToItem(0)
     }
     val measuredPageBounds = remember(document.id) { mutableMapOf<String, Rect>() }
     val pagePointerCoordinates = remember(document.id) { mutableMapOf<String, androidx.compose.ui.layout.LayoutCoordinates>() }
@@ -4556,6 +4553,39 @@ private fun PageRail(
     val currentSelectedPageIds by rememberUpdatedState(selectedPageIds)
     val pageManagementDescription = tr("Page management: ${selectedPageIds.size} selected", "页面管理：已选择 ${selectedPageIds.size} 页")
     Column(modifier) {
+        Row(Modifier.fillMaxWidth().height(42.dp), verticalAlignment = Alignment.CenterVertically) {
+            val labels = listOf(tr("Pages", "页面"), tr("Saved", "收藏"), tr("Tags", "标签"))
+            val descriptions = listOf(tr("Show all pages", "显示所有页面"), tr("Show bookmarked pages", "显示收藏页"), tr("Show page tag categories", "显示页面标签分类"))
+            val icons = listOf(Icons.Outlined.Description, Icons.Outlined.BookmarkBorder, Icons.Outlined.Label)
+            labels.forEachIndexed { index, label ->
+                Column(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(4.dp))
+                    .background(if (navigationTab == index) SageContainer else Color.Transparent)
+                    .clickable { navigationTab = index; managingPages = false; selectedPageIds = emptySet() }
+                    .semantics { contentDescription = descriptions[index]; selected = navigationTab == index },
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Icon(icons[index], null, Modifier.size(15.dp), tint = if (navigationTab == index) Ink else MutedInk)
+                    Text(label, fontSize = 10.sp, maxLines = 1, color = if (navigationTab == index) Ink else MutedInk)
+                }
+            }
+        }
+        HorizontalDivider(color = OutlineSoft)
+        if (navigationTab == 1) Row(Modifier.fillMaxWidth().height(36.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("${visiblePages.size}", Modifier.weight(1f).padding(start = 6.dp), fontSize = 11.sp, color = MutedInk)
+            val current = document.pages.firstOrNull { it.id == selectedPageId }
+            IconButton(onClick = { current?.let { onToggleBookmark(document.id, it.id) } }, Modifier.size(32.dp)) {
+                Icon(if (current?.bookmarked == true) Icons.Default.Bookmark else Icons.Outlined.BookmarkAdd,
+                    tr("Toggle current page bookmark", "切换当前页收藏"), Modifier.size(17.dp))
+            }
+        }
+        if (navigationTab == 2) Row(Modifier.fillMaxWidth().height(36.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (tagGroup != null) IconButton(onClick = { selectedTag = null }, Modifier.size(28.dp)) {
+                Icon(Icons.Outlined.ArrowBack, tr("Back to tag categories", "返回标签分类"), Modifier.size(16.dp))
+            }
+            Text(tagGroup?.name ?: tr("Categories", "分类"), Modifier.weight(1f).padding(start = 4.dp), fontSize = 11.sp, maxLines = 1, color = MutedInk)
+            IconButton(onClick = { currentMetadataOpen = true }, Modifier.size(30.dp)) {
+                Icon(Icons.Outlined.Label, tr("Edit current page tags", "编辑当前页标签"), Modifier.size(16.dp))
+            }
+        }
         Column(Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 IconButton(onClick = { onInsertNextTo(document.id, selectedPageId, false) }, modifier = Modifier.size(28.dp)) { PageInsertionIcon(false, tr("Insert page before current", "在当前页前插入页面")) }
@@ -4591,7 +4621,23 @@ private fun PageRail(
                 }
             }
         }
-        items(document.pages, key = { it.id }) { page ->
+        if (navigationTab == 2 && tagGroup == null) {
+            if (tagGroups.isEmpty()) item { Text(tr("No page tags", "还没有页面标签"), Modifier.padding(8.dp), color = MutedInk, fontSize = 11.sp) }
+            items(tagGroups, key = { "tag:${it.name.lowercase()}" }) { group ->
+                val description = tr("Page tag ${group.name}", "页面标签 ${group.name}")
+                Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clip(RoundedCornerShape(5.dp))
+                    .background(Workspace).clickable { selectedTag = group.name }
+                    .semantics { contentDescription = description }
+                    .padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(group.name, Modifier.weight(1f), color = Ink, fontSize = 12.sp, maxLines = 2)
+                    Text(group.pageIds.size.toString(), color = MutedInk, fontSize = 10.sp)
+                }
+            }
+        }
+        if (navigationTab == 1 && visiblePages.isEmpty()) item {
+            Text(tr("No bookmarked pages", "还没有收藏页"), Modifier.padding(8.dp), color = MutedInk, fontSize = 11.sp)
+        }
+        items(visiblePages, key = { it.id }) { page ->
             val pageIndex = document.pages.indexOf(page)
             val hasOutlineChildren = PageOutline.hasChildren(document.pages, pageIndex)
             var menu by remember { mutableStateOf(false) }
@@ -4605,8 +4651,6 @@ private fun PageRail(
             var cropOpen by remember { mutableStateOf(false) }
             var cropDraft by remember(page.crop) { mutableStateOf(page.crop) }
             var title by remember(page.title) { mutableStateOf(page.title) }
-            var customNumber by remember(page.customNumber) { mutableStateOf(page.customNumber.orEmpty()) }
-            var tags by remember(page.tags) { mutableStateOf(page.tags.joinToString(", ")) }
             var pageDragDistance by remember(page.id) { mutableFloatStateOf(0f) }
             var pageDragTravel by remember(page.id) { mutableFloatStateOf(0f) }
             var pageDragging by remember(page.id) { mutableStateOf(false) }
@@ -4750,7 +4794,8 @@ private fun PageRail(
                 }
             }
             if (renameOpen) AlertDialog(onDismissRequest = { renameOpen = false }, title = { Text(tr("Rename page", "重命名页面")) }, text = { OutlinedTextField(title, { title = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onRename(document.id, page.id, title); renameOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { renameOpen = false }) { Text(tr("Cancel", "取消")) } })
-            if (metadataOpen) AlertDialog(onDismissRequest = { metadataOpen = false }, title = { Text(tr("Page metadata", "页面信息")) }, text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { OutlinedTextField(customNumber, { customNumber = it }, label = { Text(tr("Custom page number", "自定义页码")) }, singleLine = true); OutlinedTextField(tags, { tags = it }, label = { Text(tr("Tags", "标签")) }, supportingText = { Text(tr("Separate tags with commas", "用逗号分隔标签")) }) } }, confirmButton = { TextButton(onClick = { onMetadata(document.id, page.id, customNumber, tags.split(',')); metadataOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { metadataOpen = false }) { Text(tr("Cancel", "取消")) } })
+            if (metadataOpen) PageMetadataDialog(page, LocalUiLanguage.current,
+                onSave = { number, changed -> onMetadata(document.id, page.id, number, changed) }, onDismiss = { metadataOpen = false })
             if (templateOpen) PageTemplatePickerDialog(
                 library = pageTemplates,
                 documentId = document.id,
@@ -4806,6 +4851,10 @@ private fun PageRail(
             )
         }
     }
+    }
+    if (currentMetadataOpen) document.pages.firstOrNull { it.id == selectedPageId }?.let { page ->
+        PageMetadataDialog(page, LocalUiLanguage.current,
+            onSave = { number, changed -> onMetadata(document.id, page.id, number, changed) }, onDismiss = { currentMetadataOpen = false })
     }
     if (addTemplateOpen) PageTemplatePickerDialog(
         library = pageTemplates,
