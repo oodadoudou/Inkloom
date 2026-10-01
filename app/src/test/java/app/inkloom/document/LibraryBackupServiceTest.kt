@@ -23,6 +23,25 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LibraryBackupServiceTest {
+    @Test fun folderTrashBatchRestoresWithoutJoiningAnotherLibraryBatch() {
+        val source=Files.createTempDirectory("folder-trash-source").toFile()
+        val target=Files.createTempDirectory("folder-trash-target").toFile()
+        try {
+            val folders=listOf(InkFolder(id="parent",name="Parent"),InkFolder(id="child",name="Child",parentId="parent"))
+            val notes=listOf(InkDocument(id="note",title="Note",folderId="child"),InkDocument(id="old-trash",title="Independent",folderId="child",trashedAt=1))
+            val trashed=LibraryFolderOperations.trashMany(folders,notes,setOf("parent"),100)!!
+            val bytes=ByteArrayOutputStream().also{LibraryBackupService(source).export(trashed.documents,trashed.folders,emptyList(),it)}.toByteArray()
+            val imported=LibraryBackupService(target).restore(ByteArrayInputStream(bytes))
+            val parent=imported.folders.single{it.name=="Parent"}
+            assertNotEquals(trashed.folders.first().trashBatchId,parent.trashBatchId)
+            assertEquals(parent.id,imported.folders.single{it.name=="Child"}.parentId)
+            val restored=LibraryFolderOperations.restore(imported.folders,imported.documents,parent.id,200)!!
+            assertTrue(restored.folders.all{it.trashedAt==null})
+            assertEquals(null,restored.documents.single{it.title=="Note"}.trashedAt)
+            assertEquals(1L,restored.documents.single{it.title=="Independent"}.trashedAt)
+        }finally{source.deleteRecursively();target.deleteRecursively()}
+    }
+
     @Test
     fun namedColorSetsLargerThanLegacyLimitSurviveActualZipExportAndRestore() {
         val sourceRoot = Files.createTempDirectory("inkloom-color-backup-source-").toFile()

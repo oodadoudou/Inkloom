@@ -57,6 +57,9 @@ class FileDocumentStore internal constructor(
         // deleteIfExists distinguishes an already absent checkpoint from denied access.
         // The durable delete must succeed before the current library forgets its record.
         try {
+            refreshExternalChanges()
+            // Flush pending ink for all notebooks before removing this checkpoint.
+            recover()
             java.nio.file.Files.deleteIfExists(documentFile(id).toPath())
         } catch (_: java.io.IOException) {
             return false

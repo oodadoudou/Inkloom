@@ -951,6 +951,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onRenameFolder = viewModel::renameFolder,
             onMoveToFolder = viewModel::moveToFolder,
             onMoveNotesToFolder = viewModel::moveNotesToFolder,
+            onRestoreFolder = viewModel::restoreFolder,
             onDeleteFolder = viewModel::deleteFolder,
             onMoveFolders = viewModel::moveFolders,
             onDeleteFolders = viewModel::deleteFolders,
@@ -1125,7 +1126,11 @@ fun InkloomApp(initialIntent: Intent?) {
 }
 
 @Composable
-private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkloom.document.ImagePaperDraft, onSaveImagePaper: (PageTemplate) -> PageTemplate, onCreateCustomTemplate: (String, Int, Int, PageBackground.Paper) -> PageTemplate?, documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long, String?) -> Boolean, onImportCover: (Uri, String, PageCrop) -> NotebookCoverTemplate, onDeleteCover: (String) -> Unit, onChangeCover: (String, CoverStyle, String?) -> Boolean, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onMoveToFolder: (String, String?) -> Unit, onMoveNotesToFolder: (Set<String>, String?) -> Boolean, onDeleteFolder: (String) -> Unit, onMoveFolders: (Set<String>, String?) -> Boolean, onDeleteFolders: (Set<String>) -> Boolean, onSettings: () -> Unit) {
+private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkloom.document.ImagePaperDraft, onSaveImagePaper: (PageTemplate) -> PageTemplate, onCreateCustomTemplate: (String, Int, Int, PageBackground.Paper) -> PageTemplate?, documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long, String?) -> Boolean, onImportCover: (Uri, String, PageCrop) -> NotebookCoverTemplate, onDeleteCover: (String) -> Unit, onChangeCover: (String, CoverStyle, String?) -> Boolean, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onMoveToFolder: (String, String?) -> Unit, onMoveNotesToFolder: (Set<String>, String?) -> Boolean, onRestoreFolder: (String) -> Boolean, onDeleteFolder: (String) -> Unit, onMoveFolders: (Set<String>, String?) -> Boolean, onDeleteFolders: (Set<String>) -> Boolean, onSettings: () -> Unit) {
+    val folderContext=LocalContext.current
+    val activeFolders=remember(folders){folders.filter{it.trashedAt==null}}
+    var compactFoldersOpen by remember{mutableStateOf(false)}
+
     var filter by rememberSaveable { mutableStateOf(LibraryFilter.ALL) }
     var search by rememberSaveable { mutableStateOf("") }
     var folderId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -1173,6 +1178,7 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
         newNoteTemplateId = saved.id
         customNoteTemplatesSelected = true
     } else null
+    LaunchedEffect(activeFolders,folderId){if(folderId!=null && activeFolders.none{it.id==folderId})folderId=null}
     val visible = remember(documents, filter, folderId, search) {
         LibraryDocumentQuery.visible(documents, filter, folderId, search)
     }
@@ -1219,7 +1225,7 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
         LibraryRail(
             filter,
             { filter = it; folderId = null },
-            folders,
+            activeFolders,
             folderId,
             { folderId = it; filter = LibraryFilter.ALL },
             onCreateFolder,
@@ -1236,28 +1242,35 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
             }
             Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = if (compact) 16.dp else 32.dp, vertical = 22.dp)) {
             if (compact) {
+                TextButton({compactFoldersOpen=true},modifier=Modifier.semantics{contentDescription="Manage folders"}){Icon(Icons.Outlined.FolderOpen,null);Spacer(Modifier.width(6.dp));Text(tr("Folders","文件夹"))}
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     item { FilterChip(selected = filter == LibraryFilter.ALL, onClick = { filter = LibraryFilter.ALL }, label = { Text(tr("Library", "资料库")) }) }
                     item { FilterChip(selected = filter == LibraryFilter.RECENT, onClick = { filter = LibraryFilter.RECENT }, label = { Text(tr("Recents", "最近使用")) }) }
                     item { FilterChip(selected = filter == LibraryFilter.FAVORITES, onClick = { filter = LibraryFilter.FAVORITES }, label = { Text(tr("Favorites", "收藏")) }) }
                     item { FilterChip(selected = filter == LibraryFilter.ARCHIVED, onClick = { filter = LibraryFilter.ARCHIVED }, label = { Text(tr("Archive", "归档")) }) }
                     item { FilterChip(selected = filter == LibraryFilter.TRASH, onClick = { filter = LibraryFilter.TRASH }, label = { Text(tr("Trash", "废纸篓")) }) }
+                    item { FilterChip(selected = filter == LibraryFilter.PDF, onClick = { filter = LibraryFilter.PDF }, label = { Text("PDF") }) }
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(tr("Your notebooks", "你的笔记本"), fontSize = 32.sp, color = Ink)
-                    Text(tr("Continue a note or start with a fresh page.", "继续书写，或从空白页开始。"), color = MutedInk)
+                    Text(tr("Your notebooks", "你的笔记本"), fontSize = if(compact) 22.sp else 32.sp, maxLines=1, overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis, color = Ink)
+                    if(!compact) Text(tr("Continue a note or start with a fresh page.", "继续书写，或从空白页开始。"), color = MutedInk)
                 }
                 IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, tr("Settings", "设置")) }
                 TextButton(onClick = { managingNotes = !managingNotes; selectedNoteIds = emptySet() }) {
                     Text(if (managingNotes) tr("Done", "完成") else tr("Select", "选择"))
                 }
-                Spacer(Modifier.width(4.dp))
-                OutlinedButton(onClick = onImport, shape = RoundedCornerShape(50)) { Icon(Icons.Outlined.FileDownload, null); Spacer(Modifier.width(8.dp)); Text(tr("Import", "导入")) }
-                Spacer(Modifier.width(10.dp))
-                Button(onClick = { newNoteCreateFailed = false; newNoteOpen = true }, shape = RoundedCornerShape(50)) {
-                    Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text(tr("New Note", "新建笔记"))
+                if(compact) {
+                    IconButton(onClick=onImport){Icon(Icons.Outlined.FileDownload,tr("Import","导入"))}
+                    IconButton(onClick={newNoteCreateFailed=false;newNoteOpen=true}){Icon(Icons.Default.Add,tr("New Note","新建笔记"))}
+                } else {
+                    Spacer(Modifier.width(4.dp))
+                    OutlinedButton(onClick = onImport, shape = RoundedCornerShape(50)) { Icon(Icons.Outlined.FileDownload, null); Spacer(Modifier.width(8.dp)); Text(tr("Import", "导入")) }
+                    Spacer(Modifier.width(10.dp))
+                    Button(onClick = { newNoteCreateFailed = false; newNoteOpen = true }, shape = RoundedCornerShape(50)) {
+                        Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text(tr("New Note", "新建笔记"))
+                    }
                 }
             }
             Spacer(Modifier.height(26.dp))
@@ -1272,12 +1285,14 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                     LibraryFilter.TRASH -> tr("Trash", "废纸篓")
                     LibraryFilter.PDF -> "PDF"
                 }, fontSize = 22.sp, modifier = Modifier.weight(1f))
+                if(!compact) {
                 FilterChip(selected = filter == LibraryFilter.ALL, onClick = { filter = LibraryFilter.ALL }, label = { Text(tr("All", "全部")) })
                 Spacer(Modifier.width(8.dp))
                 FilterChip(selected = filter == LibraryFilter.FAVORITES, onClick = { filter = LibraryFilter.FAVORITES }, label = { Text(tr("Favorites", "收藏")) })
                 Spacer(Modifier.width(8.dp))
                 FilterChip(selected = filter == LibraryFilter.PDF, onClick = { filter = LibraryFilter.PDF }, label = { Text("PDF") })
                 Spacer(Modifier.width(12.dp))
+                }
                 listOf(
                     Triple(LibraryLayout.GRID, Icons.Outlined.GridView, tr("Grid layout", "网格布局")),
                     Triple(LibraryLayout.LIST, Icons.Outlined.ViewList, tr("List layout", "列表布局")),
@@ -1292,6 +1307,18 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                 }
             }
             Spacer(Modifier.height(12.dp))
+            if(filter==LibraryFilter.TRASH) {
+                val trashedRoots=folders.filter{f->f.trashedAt!=null && folders.firstOrNull{it.id==f.parentId}?.trashBatchId!=f.trashBatchId}
+                if(trashedRoots.isNotEmpty()) {
+                    Text(tr("Folders in Trash","废纸篓中的文件夹"),style=MaterialTheme.typography.titleSmall)
+                    LazyColumn(Modifier.fillMaxWidth().heightIn(max=180.dp)){
+                        items(trashedRoots,key={it.id}){f->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
+                            Icon(Icons.Outlined.Folder,null);Text(f.name,Modifier.weight(1f).padding(horizontal=8.dp),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            TextButton({if(!onRestoreFolder(f.id))Toast.makeText(folderContext,libraryLanguage.text("Could not restore folder","无法恢复文件夹"),Toast.LENGTH_LONG).show()},modifier=Modifier.semantics{contentDescription="Restore folder ${f.name}"}){Text(tr("Restore","恢复"))}
+                        }}
+                    }
+                }
+            }
             if (managingNotes) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(tr("${selectedNoteIds.size} selected", "已选择 ${selectedNoteIds.size} 本"), Modifier.weight(1f))
@@ -1307,7 +1334,7 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
             }
             when (layout) {
                 LibraryLayout.LIST -> LazyColumn(state = noteListState, modifier = Modifier.semantics { contentDescription = "Notebook list" }, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(visible, key = { it.id }) { NotebookCard(it, Modifier.libraryDocumentDrag(it).fillMaxWidth().height(220.dp), { note -> if (managingNotes) selectedNoteIds = if (note.id in selectedNoteIds) selectedNoteIds - note.id else selectedNoteIds + note.id else onOpen(note) }, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder, selectionMode = managingNotes, selected = it.id in selectedNoteIds, onEditCover = { document ->
+                    items(visible, key = { it.id }) { NotebookCard(it, Modifier.libraryDocumentDrag(it).fillMaxWidth().height(220.dp), { note -> if (managingNotes) selectedNoteIds = if (note.id in selectedNoteIds) selectedNoteIds - note.id else selectedNoteIds + note.id else onOpen(note) }, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, activeFolders, onMoveToFolder, selectionMode = managingNotes, selected = it.id in selectedNoteIds, onEditCover = { document ->
                         editingCoverDocumentId = document.id
                         editingCoverStyle = document.coverStyle
                         editingCoverId = pageTemplates.customCovers.firstOrNull { it.assetPath == document.coverImagePath }?.id
@@ -1322,7 +1349,7 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                     verticalArrangement = Arrangement.spacedBy(if (layout == LibraryLayout.COMPACT_GRID) 10.dp else 16.dp),
                 ) {
                     items(visible, key = { it.id }) {
-                        NotebookCard(it, Modifier.libraryDocumentDrag(it).height(if (layout == LibraryLayout.COMPACT_GRID) 210.dp else 250.dp), { note -> if (managingNotes) selectedNoteIds = if (note.id in selectedNoteIds) selectedNoteIds - note.id else selectedNoteIds + note.id else onOpen(note) }, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder, selectionMode = managingNotes, selected = it.id in selectedNoteIds, onEditCover = { document ->
+                        NotebookCard(it, Modifier.libraryDocumentDrag(it).height(if (layout == LibraryLayout.COMPACT_GRID) 210.dp else 250.dp), { note -> if (managingNotes) selectedNoteIds = if (note.id in selectedNoteIds) selectedNoteIds - note.id else selectedNoteIds + note.id else onOpen(note) }, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, activeFolders, onMoveToFolder, selectionMode = managingNotes, selected = it.id in selectedNoteIds, onEditCover = { document ->
                             editingCoverDocumentId = document.id
                             editingCoverStyle = document.coverStyle
                             editingCoverId = pageTemplates.customCovers.firstOrNull { it.assetPath == document.coverImagePath }?.id
@@ -1334,6 +1361,16 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
         }
         }
     }
+    if(compactFoldersOpen) androidx.compose.ui.window.Dialog(onDismissRequest={compactFoldersOpen=false}) {
+        Surface(Modifier.widthIn(min=280.dp,max=420.dp).fillMaxHeight(.9f),shape=RoundedCornerShape(16.dp)) {
+            Column {
+                TextButton({compactFoldersOpen=false},Modifier.align(Alignment.End)){Text(tr("Done","完成"))}
+                LibraryRail(filter,{filter=it;folderId=null;compactFoldersOpen=false},activeFolders,folderId,
+                    {folderId=it;filter=LibraryFilter.ALL;compactFoldersOpen=false},onCreateFolder,onRenameFolder,onDeleteFolder,onMoveFolders,onDeleteFolders,
+                    {compactFoldersOpen=false;onSettings()},false,null,{_,_->},Modifier.fillMaxWidth().weight(1f))
+            }
+        }
+    }
     if (batchMoveOpen) AlertDialog(
         onDismissRequest = { batchMoveOpen = false },
         title = { Text(tr("Move selected notebooks", "移动所选笔记本")) },
@@ -1343,7 +1380,7 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
             item { ListItem(headlineContent = { Text(tr("Library root", "资料库根目录")) }, modifier = Modifier.clickable {
                 if (onMoveNotesToFolder(selectedNoteIds, null)) { selectedNoteIds = emptySet(); managingNotes = false; batchMoveOpen = false } else batchMoveError = true
             }) }
-            items(folders, key = { it.id }) { folder -> ListItem(headlineContent = { Text(folder.name) }, modifier = Modifier.clickable {
+            items(activeFolders, key = { it.id }) { folder -> ListItem(headlineContent = { Text(folder.name) }, modifier = Modifier.clickable {
                 if (onMoveNotesToFolder(selectedNoteIds, folder.id)) { selectedNoteIds = emptySet(); managingNotes = false; batchMoveOpen = false } else batchMoveError = true
             }) }
           }
@@ -1514,7 +1551,7 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
 }
 
 @Composable
-private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit, folders: List<InkFolder>, folderId: String?, onFolder: (String?) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onDeleteFolder: (String) -> Unit, onMoveFolders: (Set<String>, String?) -> Boolean, onDeleteFolders: (Set<String>) -> Boolean, onSettings: () -> Unit, draggingDocument: Boolean, dragPosition: Offset?, onFolderBounds: (String, Rect) -> Unit) {
+private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit, folders: List<InkFolder>, folderId: String?, onFolder: (String?) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onDeleteFolder: (String) -> Unit, onMoveFolders: (Set<String>, String?) -> Boolean, onDeleteFolders: (Set<String>) -> Boolean, onSettings: () -> Unit, draggingDocument: Boolean, dragPosition: Offset?, onFolderBounds: (String, Rect) -> Unit, modifier:Modifier=Modifier.width(198.dp)) {
     var newFolderOpen by remember { mutableStateOf(false) }
     var folderName by remember { mutableStateOf("") }
     var folderMenuId by remember { mutableStateOf<String?>(null) }
@@ -1528,7 +1565,7 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
     val folderRows = remember(folders) { libraryFolderRows(folders) }
     LaunchedEffect(folders) { selectedFolderIds = selectedFolderIds.intersect(folders.mapTo(hashSetOf(), InkFolder::id)) }
     val language = LocalUiLanguage.current
-    Column(Modifier.width(198.dp).fillMaxHeight().padding(16.dp)) {
+    Column(modifier.fillMaxHeight().padding(16.dp)) {
         BrandMark(tr("Library", "资料库"))
         Spacer(Modifier.height(34.dp))
         RailItem(Icons.Outlined.Book, tr("Library", "资料库"), filter == LibraryFilter.ALL) { onFilter(LibraryFilter.ALL) }
@@ -1573,7 +1610,7 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
                         IconButton(onClick = { folderMenuId = folder.id }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.MoreVert, tr("Folder actions", "文件夹操作"), modifier = Modifier.size(14.dp)) }
                         DropdownMenu(expanded = folderMenuId == folder.id, onDismissRequest = { folderMenuId = null }) {
                             DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { folderMenuId = null; renameFolderId = folder.id; renameFolderName = folder.name })
-                            DropdownMenuItem(text = { Text(tr("Delete folder", "删除文件夹")) }, onClick = { folderMenuId = null; onDeleteFolder(folder.id) })
+                            DropdownMenuItem(text = { Text(tr("Delete folder", "删除文件夹")) }, onClick = { folderMenuId=null;selectedFolderIds=setOf(folder.id);deleteFoldersOpen=true })
                         }
                     }
                 }
@@ -1604,7 +1641,7 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
         onDismissRequest = { deleteFoldersOpen = false },
         title = { Text(tr("Delete selected folders?", "删除所选文件夹？")) },
         text = { Column {
-            Text(tr("All nested folders will be removed. Their notebooks will stay in the Library root.", "所选文件夹及其子文件夹将被删除，其中的笔记本会保留在资料库根目录。"))
+            Text(tr("Folders and their active notebooks move to Trash together. Restore a folder to recover its hierarchy and contents.","文件夹及其中的笔记本一起移入废纸篓；恢复文件夹会还原层级与内容。"))
             if (folderActionError) Text(tr("Folders could not be deleted; nothing was changed.", "删除失败；未更改文件夹。"), color = MaterialTheme.colorScheme.error)
         } },
         confirmButton = { TextButton(modifier = Modifier.semantics { contentDescription = "Confirm delete selected folders" }, onClick = {

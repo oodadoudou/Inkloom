@@ -1074,6 +1074,7 @@ class DocumentAssetService(private val context: Context) {
                 createdAt = System.currentTimeMillis(),
                 updatedAt = System.currentTimeMillis(),
                 trashedAt = null,
+                folderTrashBatchId = null,
                 archivedAt = null,
                 pages = decoded.pages.map { page -> page.copy(
                     colorManagement = page.colorManagement.mapAssets(::retained),

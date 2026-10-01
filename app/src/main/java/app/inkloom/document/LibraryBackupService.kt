@@ -317,9 +317,11 @@ class LibraryBackupService(private val filesRoot: File) {
             val rootFolder = InkFolder(name = "Restored backup")
             val folderIds = manifest.folders.associate { it.id to UUID.randomUUID().toString() }
             val documentIds = manifest.documents.associate { it.id to UUID.randomUUID().toString() }
+            val trashBatches=(manifest.folders.mapNotNull{it.trashBatchId}+manifest.documents.mapNotNull{it.folderTrashBatchId}).distinct().associateWith{UUID.randomUUID().toString()}
             val restoredFolders = listOf(rootFolder) + manifest.folders.map { folder ->
                 folder.copy(
                     id = folderIds.getValue(folder.id),
+                    trashBatchId=folder.trashBatchId?.let(trashBatches::get),
                     parentId = folder.parentId?.let(folderIds::get) ?: rootFolder.id,
                 )
             }
@@ -342,8 +344,7 @@ class LibraryBackupService(private val filesRoot: File) {
                     folderId = document.folderId?.let(folderIds::get) ?: rootFolder.id,
                     createdAt = now,
                     updatedAt = now,
-                    trashedAt = null,
-                    archivedAt = null,
+                    folderTrashBatchId=document.folderTrashBatchId?.let(trashBatches::get),
                     pages = document.pages.map { page ->
                         page.copy(
                             colorManagement=page.colorManagement.mapAssets { retained(it,DOCUMENT_ASSETS)!! },

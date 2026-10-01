@@ -293,7 +293,8 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun toggleArchive(documentId: String) = update(documentId) { it.copy(archivedAt = if (it.archivedAt == null) System.currentTimeMillis() else null, updatedAt = System.currentTimeMillis()) }
     fun setDocumentTags(documentId: String, tags: List<String>) = update(documentId) { it.copy(tags = normalizeTags(tags), updatedAt = System.currentTimeMillis()) }
     fun trash(documentId: String) = update(documentId) { it.copy(trashedAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()) }
-    fun restore(documentId: String) = update(documentId) { it.copy(trashedAt = null, updatedAt = System.currentTimeMillis()) }
+    fun restore(documentId: String) = update(documentId) { document -> document.copy(trashedAt=null,folderTrashBatchId=null,
+        folderId=document.folderId?.takeIf{id->mutableState.value.folders.any{it.id==id && it.trashedAt==null}},updatedAt=System.currentTimeMillis()) }
     fun deletePermanently(documentId: String): Boolean {
         if (!store.deletePermanently(documentId)) return false
         notebookResumeStore.forget(documentId)
@@ -348,7 +349,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun deleteFolders(folderIds: Set<String>): Boolean {
         val originalFolders = mutableState.value.folders
         val originalDocuments = store.list()
-        val result = LibraryFolderOperations.removeMany(originalFolders, originalDocuments, folderIds) ?: return false
+        val result = LibraryFolderOperations.trashMany(originalFolders, originalDocuments, folderIds) ?: return false
         val changed = result.documents.mapIndexedNotNull { index, document ->
             originalDocuments[index].takeIf { it != document }?.let { old -> old to document }
         }
@@ -365,6 +366,16 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             false
         }
     }
+    fun restoreFolder(folderId:String):Boolean {
+        val oldFolders=mutableState.value.folders;val oldDocuments=store.list()
+        val restored=LibraryFolderOperations.restore(oldFolders,oldDocuments,folderId)?:return false
+        val saved=mutableListOf<InkDocument>()
+        return try {
+            restored.documents.zip(oldDocuments).filter{(next,old)->next!=old}.forEach{(next,old)->store.save(next);saved+=old}
+            saveFolders(restored.folders);refresh();true
+        }catch(_:Exception){saved.asReversed().forEach{runCatching{store.save(it)}};runCatching{saveFolders(oldFolders)};refresh();false}
+    }
+
     fun deleteFolder(folderId: String) {
         deleteFolders(setOf(folderId))
     }

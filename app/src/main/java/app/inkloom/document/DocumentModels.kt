@@ -21,6 +21,7 @@ data class InkDocument(
     val tags: List<String> = emptyList(),
     val archivedAt: Long? = null,
     val trashedAt: Long? = null,
+    val folderTrashBatchId: String? = null,
     val pages: List<InkPage> = listOf(InkPage()),
 )
 
@@ -613,4 +614,5 @@ data class ImageCrop(val left: Float = 0f, val top: Float = 0f, val right: Float
 data class PixelBounds(val x: Int, val y: Int, val width: Int, val height: Int)
 
 @Serializable
-data class InkFolder(val id: String = UUID.randomUUID().toString(), val name: String, val parentId: String? = null)
+data class InkFolder(val id: String = UUID.randomUUID().toString(), val name: String, val parentId: String? = null,
+    val trashedAt: Long? = null, val trashBatchId: String? = null)

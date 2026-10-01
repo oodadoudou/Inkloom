@@ -58,9 +58,14 @@ class LibraryFolderBatchWindowTest {
         compose.onNodeWithContentDescription("Delete selected folders").performClick()
         compose.onNodeWithText("Delete selected folders?").assertExists()
         compose.onNodeWithContentDescription("Confirm delete selected folders").performClick()
-        compose.waitUntil(5_000) { folders().none { it.id == source.id || it.id == destination.id } }
-        assertFalse(folders().any { it.id == source.id || it.id == destination.id })
-        assertTrue(folders().none { it.name == sourceName || it.name == destinationName })
+        compose.waitUntil(5_000) { folders().filter { it.id == source.id || it.id == destination.id }.all { it.trashedAt != null } }
+        assertTrue(folders().filter { it.id == source.id || it.id == destination.id }.all { it.trashedAt != null })
+        compose.onNodeWithText("Trash").performClick()
+        compose.onNodeWithContentDescription("Restore folder $destinationName").performClick()
+        compose.waitUntil(5_000) { folders().filter { it.id == source.id || it.id == destination.id }.all { it.trashedAt == null } }
+        assertEquals(destination.id, folders().single { it.id == source.id }.parentId)
+        compose.activityRule.scenario.recreate()
+        assertTrue(folders().filter { it.id == source.id || it.id == destination.id }.all { it.trashedAt == null })
     }
 
     private fun createFolder(name: String) {

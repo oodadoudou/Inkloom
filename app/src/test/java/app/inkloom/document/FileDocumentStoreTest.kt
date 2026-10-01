@@ -186,6 +186,20 @@ class FileDocumentStoreTest {
         }
     }
 
+    @Test fun permanentDeleteFlushesOtherNotebooksPendingInk() {
+        val root=Files.createTempDirectory("delete-shared-journal").toFile()
+        try{
+            val store=FileDocumentStore(root);val removed=InkDocument(title="Removed");val kept=InkDocument(title="Kept")
+            store.save(removed);store.save(kept)
+            val text=PageElement.Text(text="Unsaved checkpoint ink",x=.1f,y=.2f)
+            store.append(RecoveryJournalEntry.ElementUpserted(kept.id,kept.pages.single().id,text))
+            assertTrue(store.deletePermanently(removed.id))
+            val reopened=FileDocumentStore(root)
+            assertNull(reopened.get(removed.id));assertEquals(listOf(text),reopened.get(kept.id)!!.pages.single().elements)
+            assertEquals(0,reopened.recover())
+        }finally{root.deleteRecursively()}
+    }
+
     @Test fun deleteKeepsDocumentsSavedByAnotherLocalStore() {
         val root = Files.createTempDirectory("inkloom-delete-reader").toFile()
         try {

@@ -20,7 +20,7 @@ internal class DocumentAssetLifecycle(
         } } }
     }
 
-    private val pendingDocumentAssets = linkedSetOf<String>()
+    private val pendingDocumentAssets = mutableMapOf<String,Int>()
     // A content-addressed manifest may be reserved by more than one transaction.
     // Releasing one owner must not expose another owner's copy to collection.
     private val pendingRasterTileManifests = mutableMapOf<String, Int>()
@@ -38,7 +38,7 @@ internal class DocumentAssetLifecycle(
                 }
                 check(temporary.renameTo(target)) { "Could not retain $kind" }
             }
-            synchronized(lock) { pendingDocumentAssets += target.canonicalPath }
+            synchronized(lock) { val path=target.canonicalPath;pendingDocumentAssets[path]=(pendingDocumentAssets[path]?:0)+1 }
             return target.absolutePath
         } finally {
             temporary.delete()
@@ -80,7 +80,10 @@ internal class DocumentAssetLifecycle(
     fun releaseAssetReservation(path: String?) {
         if (path.isNullOrBlank()) return
         synchronized(lock) {
-            runCatching { File(path).canonicalPath }.getOrNull()?.let(pendingDocumentAssets::remove)
+            runCatching { File(path).canonicalPath }.getOrNull()?.let { key ->
+                val count=pendingDocumentAssets[key]?:return@let
+                if(count<=1)pendingDocumentAssets.remove(key)else pendingDocumentAssets[key]=count-1
+            }
         }
     }
 
@@ -103,7 +106,7 @@ internal class DocumentAssetLifecycle(
             directory,
             documents,
             pageTemplates,
-            pendingDocumentAssets.toSet() + historyAssets.keys,
+            pendingDocumentAssets.keys + historyAssets.keys,
         )
         val retainedManifests = documents.flatMap { document ->
             document.pages.flatMap { page ->
