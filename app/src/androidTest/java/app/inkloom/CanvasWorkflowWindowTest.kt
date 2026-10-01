@@ -63,6 +63,7 @@ class CanvasWorkflowWindowTest {
         tap("New Note"); tap("Create")
         val view = canvas()
         compose.onNodeWithContentDescription("More").performClick()
+        compose.onNodeWithContentDescription("Actions Canvas").performClick()
         compose.onNodeWithText("Canvas & resolution").performScrollTo().performClick()
         compose.onNodeWithText("Width").performTextReplacement("1800")
         compose.onNodeWithText("Height").performTextReplacement("2400")

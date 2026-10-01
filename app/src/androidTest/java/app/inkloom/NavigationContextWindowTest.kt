@@ -29,6 +29,7 @@ class NavigationContextWindowTest {
                 defaultInkLayers().last().copy(parentId = "nav-folder")) + (0..29).map { InkLayer(id = "nav-layer-$it", name = "Extra layer $it") }
             val pages = (1..32).map { n -> InkPage(id = "nav-page-$n", title = "Review page $n", layers = layers,
                 pdfTextBlocks = listOf(PdfTextBlock("needle needle", listOf(PdfTextBounds(.1f,.2f,.7f,.3f)))),
+                bookmarked = n == 30, tags = if (n in listOf(1, 30)) listOf("Study") else if (n == 28) listOf("Work") else emptyList(),
                 outlineLevel = when (n) { 29 -> 1; 30 -> 2; else -> 0 }, outlineCollapsed = n in 28..29) }
             store.save(InkDocument(id = "nav-main", title = "Navigation fixture", pages = pages, updatedAt = 1000))
             (0..23).forEach { n -> store.save(InkDocument(id = "nav-library-$n", title = "Context note $n", favorite = true, updatedAt = 2000L + n)) }
@@ -65,9 +66,64 @@ class NavigationContextWindowTest {
         compose.onNodeWithContentDescription("Page 30. Long press to manage.").performClick()
     }
 
+    @Test fun pageTabsFilterSavedPagesAndTagGroupsAndKeepCurrentPageInView() {
+        openFixtureAtPage30()
+        compose.onNodeWithContentDescription("Show bookmarked pages").performClick()
+        compose.onNode(hasContentDescription("Page 30. Long press to manage.") and isSelected()).assertIsDisplayed()
+        compose.onNodeWithContentDescription("Page 1. Long press to manage.").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Show page tag categories").performClick()
+        compose.onNodeWithContentDescription("Page tag Study").performClick()
+        compose.onNode(hasContentDescription("Page 30. Long press to manage.") and isSelected()).assertIsDisplayed()
+        compose.onNodeWithContentDescription("Page 1. Long press to manage.").performClick()
+        compose.onNodeWithText("1/32").assertExists()
+        compose.onNodeWithContentDescription("Back to tag categories").performClick()
+        compose.onNodeWithContentDescription("Page tag Work").performClick()
+        compose.onNodeWithContentDescription("Page 28. Long press to manage.").performClick()
+        compose.onNodeWithText("28/32").assertExists()
+        compose.onNodeWithContentDescription("Show all pages").performClick()
+        compose.onNode(hasContentDescription("Page 28. Long press to manage.") and isSelected()).assertIsDisplayed()
+    }
+
+    @Test fun jumpPopupIsAboveNavigatorAndInitiallyHighlightsPage30() {
+        openFixtureAtPage30()
+        compose.onNodeWithContentDescription("Jump to page").performClick()
+        compose.onNodeWithContentDescription("Go to page 30").assertIsSelected().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Go to page 1").assertDoesNotExist()
+        val popup = compose.onNodeWithContentDescription("Page jump panel").fetchSemanticsNode()
+        val navigator = compose.onNodeWithContentDescription("Drag page navigator").fetchSemanticsNode()
+        assertTrue("The popup stays just above the bottom navigator", popup.positionOnScreen.y + popup.size.height <= navigator.positionOnScreen.y)
+        compose.onNodeWithContentDescription("Go to page 31").performClick()
+        compose.onNodeWithText("31/32").assertExists()
+        compose.onNodeWithContentDescription("Jump to page").performClick()
+        compose.onNodeWithContentDescription("Go to page 31").assertIsSelected().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Close page jump").performClick()
+        compose.onNodeWithContentDescription("More").performClick()
+        compose.onNodeWithContentDescription("Go to page 1").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Actions Share").assertIsSelected()
+    }
+
+    @Test fun categorizedActionsKeepPreferencesAndSelectionConfigurationOutOfOtherMenus() {
+        openFixtureAtPage30()
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithContentDescription("Actions Notebook").performClick()
+        compose.onNodeWithText("Search this notebook").assertIsDisplayed()
+        compose.onNodeWithText("Notebook settings").assertDoesNotExist()
+        compose.onNodeWithText("Export shortcuts…").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Actions Canvas").performClick()
+        compose.onNodeWithText("Canvas & resolution").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Search this notebook").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Actions Views").performClick()
+        compose.onNodeWithText("Views…").assertIsDisplayed()
+        compose.onNodeWithText("Export shortcuts…").assertDoesNotExist()
+        compose.onNodeWithText("Done").performClick()
+        compose.onNodeWithContentDescription("Settings").performClick()
+        compose.onNodeWithContentDescription("Interface gray MEDIUM").assertIsDisplayed()
+    }
+
     @Test fun outlineOpensAtCurrentPageAndExpandsItsCollapsedParents() {
         openFixtureAtPage30()
         compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithContentDescription("Actions Notebook").performClick()
         compose.onNodeWithText("Page outline").performScrollTo().performClick()
         compose.onNode(hasText("Review page 30") and isSelected()).assertIsDisplayed()
         val document = FileDocumentStore(compose.activity.filesDir).get("nav-main")!!
@@ -80,6 +136,7 @@ class NavigationContextWindowTest {
     @Test fun searchNavigationVisitsEveryOccurrenceAndWrapsAcrossPages() {
         openFixtureAtPage30()
         compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithContentDescription("Actions Notebook").performClick()
         compose.onNodeWithText("Search this notebook").performScrollTo().performClick()
         compose.onNode(hasSetTextAction() and hasAnyAncestor(isDialog())).performTextReplacement("needle")
         compose.onAllNodesWithText("Review page 1").onFirst().performClick()
@@ -109,6 +166,7 @@ class NavigationContextWindowTest {
         openFixtureAtPage30()
         fun openLink() {
             compose.onNodeWithContentDescription("More").performClick()
+            compose.onNodeWithContentDescription("Actions Tools").performClick()
             compose.onNodeWithText("Link").performClick()
             compose.onNodeWithText("Notebook page").performClick()
         }

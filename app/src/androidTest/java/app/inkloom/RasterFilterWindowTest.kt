@@ -56,12 +56,14 @@ class RasterFilterWindowTest {
         val original = fingerprint(view)
 
         compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithContentDescription("Actions Canvas").performClick()
         compose.onNodeWithText("Image filter…").performClick()
         compose.waitUntil(15_000) { fingerprint(view) != original }
         compose.onNodeWithText("Cancel").performClick()
         compose.waitUntil(15_000) { fingerprint(view) == original }
 
         compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithContentDescription("Actions Canvas").performClick()
         compose.onNodeWithText("Image filter…").performClick()
         compose.waitUntil(15_000) { fingerprint(view) != original }
         val filtered = fingerprint(view)

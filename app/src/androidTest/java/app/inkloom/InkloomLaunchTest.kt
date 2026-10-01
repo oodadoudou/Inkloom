@@ -281,12 +281,14 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
 
         composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions Guides").performClick()
         composeRule.onNodeWithText("Show ruler").assertIsDisplayed().performClick()
         composeRule.waitUntil(5_000) {
             AppSettingsStore(composeRule.activity).load().rulerEnabled
         }
 
         composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions Guides").performClick()
         composeRule.onNodeWithText("Hide ruler").assertIsDisplayed()
 
         assertTrue(AppSettingsStore(composeRule.activity).load().rulerEnabled)
@@ -296,10 +298,12 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
 
         composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions Guides").performClick()
         composeRule.onNodeWithText("Show snap grid").performClick()
         composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().gridSnapEnabled }
 
         composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions Guides").performClick()
         composeRule.onNodeWithText("Show alignment guides").performScrollTo().performClick()
         composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().alignmentGuidesEnabled }
 
@@ -311,10 +315,12 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
 
         composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions Guides").performClick()
         composeRule.onNodeWithText("Isometric guide").performScrollTo().performClick()
         composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().specialRulerMode == SpecialRulerMode.ISOMETRIC }
 
         composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions Guides").performClick()
         composeRule.onNodeWithText("Drawing Assist").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Edit ruler").performScrollTo().assertIsDisplayed()
 
@@ -363,6 +369,7 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
 
         composeRule.onNodeWithContentDescription("Actions").performClick()
+        composeRule.onNodeWithContentDescription("Actions Views").performClick()
         composeRule.onNodeWithText("Drawing workspace").performClick()
         var restored = AppSettingsStore(composeRule.activity).load()
         assertEquals(false, (app.inkloom.settings.EditorPanel.PAGES in app.inkloom.settings.EditorWorkspaceStore(composeRule.activity).load().layout.open))
@@ -374,6 +381,7 @@ class InkloomLaunchTest {
         composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
 
         composeRule.onNodeWithContentDescription("Actions").performClick()
+        composeRule.onNodeWithContentDescription("Actions Views").performClick()
         composeRule.onNodeWithText("Reading workspace").performClick()
         restored = AppSettingsStore(composeRule.activity).load()
         assertEquals(true, (app.inkloom.settings.EditorPanel.PAGES in app.inkloom.settings.EditorWorkspaceStore(composeRule.activity).load().layout.open))
@@ -382,6 +390,7 @@ class InkloomLaunchTest {
         assertEquals(false, restored.showToolbar)
 
         composeRule.onNodeWithContentDescription("Actions").performClick()
+        composeRule.onNodeWithContentDescription("Actions Views").performClick()
         composeRule.onNodeWithText("Minimal workspace").assertDoesNotExist()
         composeRule.onNodeWithText("Drawing workspace").performClick()
         restored = AppSettingsStore(composeRule.activity).load()
@@ -391,6 +400,7 @@ class InkloomLaunchTest {
         assertEquals(true, restored.showToolbar)
 
         composeRule.onNodeWithContentDescription("Actions").performClick()
+        composeRule.onNodeWithContentDescription("Actions Views").performClick()
         assertEquals(0, composeRule.onAllNodesWithText("Save current workspace…").fetchSemanticsNodes().size)
         assertEquals(0, composeRule.onAllNodesWithText("Manage custom workspaces…").fetchSemanticsNodes().size)
         assertEquals(0, composeRule.onAllNodesWithText("Import workspace…").fetchSemanticsNodes().size)
@@ -424,7 +434,7 @@ class InkloomLaunchTest {
 
     @Test fun shortcutEditorExposesPortableToolboxProfiles() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
-        composeRule.onNodeWithText("Buttons").performClick()
+        composeRule.onNodeWithText("Shortcuts").performClick()
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNodeWithText("Search actions or keys").assertIsDisplayed()
         composeRule.onNodeWithText("Brush groups").assertIsDisplayed()
@@ -437,7 +447,7 @@ class InkloomLaunchTest {
 
     @Test fun shortcutEditorMapsCspRolesToRealBrushGroups() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
-        composeRule.onNodeWithText("Buttons").performClick()
+        composeRule.onNodeWithText("Shortcuts").performClick()
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(14)
         composeRule.onNodeWithText("BRUSH GROUP TARGETS").assertIsDisplayed()
@@ -449,7 +459,7 @@ class InkloomLaunchTest {
 
     @Test fun shortcutEditorConfiguresAnArbitraryGroupQuickSlot() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
-        composeRule.onNodeWithText("Buttons").performClick()
+        composeRule.onNodeWithText("Shortcuts").performClick()
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(14)
         composeRule.onNodeWithText("Configure 8 quick slots").performClick()
@@ -466,7 +476,7 @@ class InkloomLaunchTest {
 
     @Test fun shortcutEditorConfiguresRotaryBrushSizeControl() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
-        composeRule.onNodeWithText("Buttons").performClick()
+        composeRule.onNodeWithText("Shortcuts").performClick()
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(5)
         composeRule.onNodeWithContentDescription("Rotary / touch ring quick slot value").performClick()
@@ -480,6 +490,7 @@ class InkloomLaunchTest {
         val noteText = "Sticky canvas test"
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions Tools").performClick()
         composeRule.onNodeWithText("Note").performClick()
         composeRule.onNodeWithText("New sticky note").assertIsDisplayed()
         composeRule.onNode(hasSetTextAction()).performTextInput(noteText)
@@ -494,22 +505,25 @@ class InkloomLaunchTest {
     @Test fun editorExposesUnifiedPageAndPdfSearch() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Actions").performClick()
+        composeRule.onNodeWithContentDescription("Actions Notebook").performClick()
         composeRule.onNodeWithText("Search this notebook").performClick()
 
         composeRule.onNodeWithText("Page, handwriting, image, or PDF text").assertIsDisplayed()
         composeRule.onNodeWithText("Recognize ink").assertDoesNotExist()
-        composeRule.onNodeWithText("Recognize images").assertIsDisplayed()
+        composeRule.onNodeWithText("OCR current page").assertIsDisplayed()
         composeRule.onNodeWithText("Index the whole notebook").assertIsDisplayed()
     }
 
     @Test fun readingActionsExposeAppendSearchAndPageBookmarks() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Actions").performClick()
+        composeRule.onNodeWithContentDescription("Actions Notebook").performClick()
         composeRule.onNodeWithText("Add PDF or image pages").assertIsDisplayed()
         composeRule.onNodeWithText("Search this notebook").assertIsDisplayed()
         composeRule.onNodeWithText("Bookmark this page").performClick()
 
         composeRule.onNodeWithContentDescription("Actions").performClick()
+        composeRule.onNodeWithContentDescription("Actions Notebook").performClick()
         composeRule.onNodeWithText("Bookmarks").performClick()
         composeRule.onNodeWithContentDescription("Remove bookmark").assertIsDisplayed().performClick()
         composeRule.onNodeWithText("No bookmarked pages yet.").assertIsDisplayed()
@@ -518,6 +532,7 @@ class InkloomLaunchTest {
     @Test fun editorCreatesAnInternalNotebookPageLink() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions Tools").performClick()
         composeRule.onNodeWithText("Link").performClick()
         composeRule.onNodeWithText("Notebook page").assertIsDisplayed()
         composeRule.onNodeWithText("Notebook page").performClick()
@@ -530,6 +545,7 @@ class InkloomLaunchTest {
     @Test fun pageOutlineExposesEditingActions() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Actions").performClick()
+        composeRule.onNodeWithContentDescription("Actions Notebook").performClick()
         composeRule.onNodeWithText("Page outline").performClick()
         composeRule.onNodeWithContentDescription("Edit outline item").performClick()
 
@@ -730,6 +746,7 @@ class InkloomLaunchTest {
     @Test fun editorInsertsAValidatedLinkCard() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions Tools").performClick()
         composeRule.onNodeWithText("Link").performClick()
         composeRule.onNodeWithText("Insert link").assertIsDisplayed()
 
@@ -743,19 +760,17 @@ class InkloomLaunchTest {
 
     @Test fun floatingToolbarDragPersistsItsFreeCanvasPosition() {
         createNotebookAndOpenEditor()
-        val preferences = composeRule.activity.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
-        val beforeX = preferences.getFloat("toolbarOffsetXDp", 16f)
-        val beforeY = preferences.getFloat("toolbarOffsetYDp", 16f)
+        val store=app.inkloom.settings.EditorWorkspaceStore(composeRule.activity)
+        val before=requireNotNull(store.load().toolRail)
 
         composeRule.onAllNodesWithContentDescription("Drag toolbar").onFirst().performTouchInput {
             swipe(center, center + Offset(180f, 140f), durationMillis = 600)
         }
         composeRule.waitForIdle()
 
-        val afterX = preferences.getFloat("toolbarOffsetXDp", 16f)
-        val afterY = preferences.getFloat("toolbarOffsetYDp", 16f)
-        assertTrue("Toolbar drag should persist a new free position", afterX != beforeX || afterY != beforeY)
-        assertTrue(preferences.getString("toolbarDock", null) == "FREE")
+        val after=requireNotNull(store.load().toolRail)
+        assertTrue("Toolbar drag should persist a new free position", after.xDp!=before.xDp || after.yDp!=before.yDp)
+        assertEquals("FREE",after.dock)
     }
 
     @Test fun procreateSidebarKeepsBrushSizeAndOpacityImmediatelyAvailable() {
@@ -875,11 +890,11 @@ class InkloomLaunchTest {
         listOf("Freehand", "Rectangle", "Ellipse", "Automatic").forEach {
             composeRule.onNodeWithText(it).assertIsDisplayed()
         }
-        composeRule.onNodeWithText("More").performClick()
+        composeRule.onNodeWithContentDescription("Selection actions").performClick()
         composeRule.onNodeWithText("Brush selection").performClick()
         composeRule.waitForIdle()
         assertEquals(app.inkloom.settings.SelectionShape.BRUSH, findInkCanvasView()!!.selectionShape)
-        composeRule.onNodeWithText("More").performClick()
+        composeRule.onNodeWithContentDescription("Selection actions").performClick()
         composeRule.onNodeWithText("Selection settings").performClick()
         composeRule.onNodeWithText("Brush size  42 px").assertIsDisplayed()
         composeRule.onNodeWithText("Done").performClick()
@@ -1086,6 +1101,7 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
 
         composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions Tools").performClick()
         composeRule.onAllNodesWithText("Gradient").onLast().performClick()
         composeRule.waitForIdle()
         // This fixture starts with Pages open on the left, over the narrow tool dock.
@@ -1109,6 +1125,7 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
 
         composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions Tools").performClick()
         composeRule.onAllNodesWithText("Gradient").onLast().performClick()
         composeRule.waitForIdle()
 

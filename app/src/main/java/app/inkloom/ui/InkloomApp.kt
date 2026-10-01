@@ -1066,8 +1066,6 @@ fun InkloomApp(initialIntent: Intent?) {
             onOpenNotebook = viewModel::select,
             onSettings = { settingsOpen = true },
             onSettingsChange = ::updateSettings,
-            onExportShortcuts = { shortcutProfileExportPicker.launch("Inkloom-toolbox.${ShortcutProfileCodec.FILE_EXTENSION}") },
-            onImportShortcuts = { shortcutProfileImportPicker.launch(arrayOf(ShortcutProfileCodec.MIME_TYPE, "text/plain", "application/octet-stream")) },
         )
     }
     }
@@ -1084,8 +1082,6 @@ fun InkloomApp(initialIntent: Intent?) {
         confirmButton = { TextButton(onClick = { deletionFailed = false }) { Text(tr("OK", "确定")) } },
     )
     if (settingsOpen) SettingsDialog(
-        pagesOpen = EditorPanel.PAGES in panelState.layout.open,
-        onPagesVisibility = { panelState.show(EditorPanel.PAGES, it) },
         settings = settings,
         brushes = importedBrushes,
         brushGroups = brushGroups,
@@ -1851,8 +1847,6 @@ private fun EditorScreen(
     onOpenNotebook: (String) -> Unit,
     onSettings: () -> Unit,
     onSettingsChange: (AppSettings) -> Unit,
-    onExportShortcuts: () -> Unit,
-    onImportShortcuts: () -> Unit,
 ) {
     if (document == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }; return }
     val context = LocalContext.current
@@ -2063,7 +2057,7 @@ private fun EditorScreen(
     var rotateToolEnabled by remember { mutableStateOf(false) }
     var rotateToolHeld by remember { mutableStateOf(false) }
     fun exitCanvasNavigation() { handToolEnabled = false; handToolHeld = false; rotateToolEnabled = false; rotateToolHeld = false }
-    var exportMenu by remember { mutableStateOf(false) }
+    var commandSection by rememberSaveable { mutableIntStateOf(0) }
     var colorManagementOpen by remember { mutableStateOf(false) }
     var canvasSizeOpen by remember { mutableStateOf(false) }
     var canvasSizeBusy by remember { mutableStateOf(false) }
@@ -2469,77 +2463,8 @@ private fun EditorScreen(
             ProcreateTopButton(Icons.Outlined.Undo, tr("Undo", "撤销"), onClick = { canvasView?.undo() })
             ProcreateTopButton(Icons.Outlined.Redo, tr("Redo", "重做"), onClick = { canvasView?.redo() })
             Box {
-                ProcreateTopButton(Icons.Outlined.Build, tr("Actions", "操作"), selected = workspaceMenu, onClick = { workspaceMenu = true })
-                DropdownMenu(expanded = workspaceMenu, onDismissRequest = { workspaceMenu = false }, modifier = Modifier.width(280.dp)) {
-                    DropdownMenuItem(text = { Text(tr("Search this notebook", "搜索当前笔记")) }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, onClick = { workspaceMenu = false; searchOpen = true })
-                    DropdownMenuItem(text = { Text(tr("Add PDF or image pages", "追加 PDF／图片页面")) }, leadingIcon = { Icon(Icons.Outlined.NoteAdd, null) }, onClick = { workspaceMenu = false; onAppendPageFiles(document.id) })
-                    DropdownMenuItem(text = { Text(if (selectedPage.bookmarked) tr("Remove page bookmark", "取消本页书签") else tr("Bookmark this page", "收藏本页")) }, leadingIcon = { Icon(if (selectedPage.bookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder, null) }, onClick = { workspaceMenu = false; onToggleBookmark(document.id, selectedPage.id) })
-                    DropdownMenuItem(text = { Text(tr("Bookmarks", "书签")) }, leadingIcon = { Icon(Icons.Outlined.Bookmarks, null) }, onClick = { workspaceMenu = false; bookmarksOpen = true })
-                    DropdownMenuItem(text = { Text(tr("Notebook settings", "笔记设置")) }, leadingIcon = { Icon(Icons.Outlined.Settings, null) }, onClick = { workspaceMenu = false; onSettings() })
-                    DropdownMenuItem(text = { Text(tr("Page outline", "页面大纲")) }, leadingIcon = { Icon(Icons.Outlined.FormatListBulleted, null) }, onClick = { workspaceMenu = false; outlineOpen = true })
-                    DropdownMenuItem(text = { Text(tr("Export PDF", "导出 PDF")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { workspaceMenu = false; onExport() })
-                    DropdownMenuItem(text = { Text(tr("Image filter…", "图像滤镜…")) },
-                        leadingIcon = { Icon(Icons.Outlined.Tune, null) },
-                        onClick = { workspaceMenu = false; rasterFilterDialogOpen = true })
-                    HorizontalDivider()
-                    DropdownMenuItem(
-                        text = { Text(tr("Drawing workspace", "绘画工作区")) },
-                        leadingIcon = { Icon(Icons.Outlined.Palette, null) },
-                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.STUDIO) },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(tr("Reading workspace", "阅读工作区")) },
-                        leadingIcon = { Icon(Icons.Outlined.Visibility, null) },
-                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.READING) },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(tr("Views…", "视图…")) },
-                        leadingIcon = { Icon(Icons.Outlined.DashboardCustomize, null) },
-                        onClick = { workspaceMenu = false; viewManagerOpen = true },
-                    )
-                    HorizontalDivider()
-                    DropdownMenuItem(
-                        text = { Text(if (panelState.layout.locked) tr("Unlock layout", "解锁布局") else tr("Lock layout", "锁定布局")) },
-                        leadingIcon = { Icon(if (panelState.layout.locked) Icons.Outlined.Lock else Icons.Outlined.LockOpen, null) },
-                        onClick = { workspaceMenu = false; panelState.commit(panelState.layout.copy(locked = !panelState.layout.locked)) },
-                    )
-                    DropdownMenuItem(text = { Text(tr("Save panel layout…", "保存面板布局…")) },
-                        leadingIcon = { Icon(Icons.Outlined.Save, null) }, onClick = {
-                            workspaceMenu = false; renamingPanelLayout = null; panelLayoutName = ""; savePanelLayoutOpen = true
-                        })
-                    DropdownMenuItem(text = { Text(tr("Export workspace layout…", "导出工作区布局…")) },
-                        onClick = { workspaceMenu = false; workspaceLayoutExportPicker.launch("Inkloom-workspace.${WorkspaceLayoutCodec.FILE_EXTENSION}") })
-                    DropdownMenuItem(text = { Text(tr("Import workspace layout…", "导入工作区布局…")) },
-                        onClick = { workspaceMenu = false; workspaceLayoutImportPicker.launch(arrayOf(WorkspaceLayoutCodec.MIME_TYPE, "text/plain", "application/octet-stream")) })
-                    DropdownMenuItem(text = { Text(tr("Export shortcuts…", "导出快捷键…")) },
-                        onClick = { workspaceMenu = false; onExportShortcuts() })
-                    DropdownMenuItem(text = { Text(tr("Import shortcuts…", "导入快捷键…")) },
-                        onClick = { workspaceMenu = false; onImportShortcuts() })
-                    panelState.namedLayouts.entries.forEach { saved ->
-                        DropdownMenuItem(text = { Text(saved.name) },
-                            leadingIcon = { Icon(Icons.Outlined.DashboardCustomize, null) }, onClick = {
-                                workspaceMenu = false
-                                panelState.restoreNamedLayout(saved.name)?.let(::syncRestoredPanelSettings)
-                            })
-                    }
-                    if (panelState.namedLayouts.entries.isNotEmpty()) DropdownMenuItem(
-                        text = { Text(tr("Manage panel layouts…", "管理面板布局…")) },
-                        onClick = { workspaceMenu = false; managePanelLayoutsOpen = true },
-                    )
-                    HorizontalDivider()
-                    DropdownMenuItem(text = { Text(tr("Sub tools", "子工具")) },
-                        trailingIcon = { if (EditorPanel.SUBTOOLS in panelState.layout.open) Icon(Icons.Outlined.Check, null) },
-                        onClick = {
-                            workspaceMenu = false
-                            setManagedPanelVisible(EditorPanel.SUBTOOLS, EditorPanel.SUBTOOLS !in panelState.layout.open)
-                        })
-                    DropdownMenuItem(text = { Text(tr("Tool property", "工具属性")) },
-                        trailingIcon = { if (EditorPanel.PROPERTIES in panelState.layout.open) Icon(Icons.Outlined.Check, null) },
-                        onClick = {
-                            workspaceMenu = false
-                            setManagedPanelVisible(EditorPanel.PROPERTIES, EditorPanel.PROPERTIES !in panelState.layout.open)
-                        })
-                }
+                ProcreateTopButton(Icons.Outlined.Build, tr("Actions", "操作"), selected = workspaceMenu && commandSection != 5, onClick = { workspaceMenu = true })
+
             }
             ProcreateTopButton(Icons.Outlined.Settings, tr("Settings", "设置"), onClick = onSettings)
             ProcreateTopButton(Icons.Outlined.Gesture, tr("Selection", "选择"),
@@ -2677,36 +2602,35 @@ private fun EditorScreen(
 
             }
             Box {
-                ProcreateTopButton(Icons.Outlined.MoreHoriz, tr("More", "更多"), selected = exportMenu, onClick = { exportMenu = true })
-                DropdownMenu(expanded = exportMenu, onDismissRequest = { exportMenu = false }) {
-                    if (tool == EditorTool.SELECT) {
-                        SelectionShape.entries.forEach { shape ->
-                            DropdownMenuItem(
-                                text = { Text(when (shape) { SelectionShape.SMART_BORDER -> tr("Smart border", "智能边框"); SelectionShape.MAGIC_WAND -> tr("Magic wand", "魔棒"); SelectionShape.FREEFORM -> tr("Freeform", "自由形"); SelectionShape.RECTANGLE -> tr("Rectangle", "矩形"); SelectionShape.ELLIPSE -> tr("Ellipse", "椭圆"); SelectionShape.BRUSH -> tr("Selection brush", "选区画笔") }) },
-                                trailingIcon = { if (settings.selectionShape == shape) Icon(Icons.Outlined.Check, null) },
-                                onClick = { exportMenu = false; onSettingsChange(settings.copy(selectionShape = shape)) },
-                            )
-                        }
-                        if (settings.selectionShape == SelectionShape.BRUSH) DropdownMenuItem(
-                            text = {
-                                Column(Modifier.width(230.dp)) {
-                                    Text(tr("Selection brush size · ${settings.selectionBrushSize.toInt()}", "选区画笔大小 · ${settings.selectionBrushSize.toInt()}"), fontSize = 11.sp)
-                                    BrushParameterSlider(settings.selectionBrushSize, { onSettingsChange(settings.copy(selectionBrushSize = it)) }, valueRange = 4f..300f)
-                                }
-                            },
-                            onClick = {},
-                        )
-                        if (settings.selectionShape in setOf(SelectionShape.SMART_BORDER, SelectionShape.MAGIC_WAND)) DropdownMenuItem(
-                            text = {
-                                Column(Modifier.width(230.dp)) {
-                                    Text(tr("Recognition threshold · ${(settings.selectionThreshold * 100).toInt()}%", "识别阈值 · ${(settings.selectionThreshold * 100).toInt()}%"), fontSize = 11.sp)
-                                    BrushParameterSlider(settings.selectionThreshold, { onSettingsChange(settings.copy(selectionThreshold = it)) }, valueRange = 0f..1f)
-                                }
-                            },
-                            onClick = {},
-                        )
-                        HorizontalDivider()
-                    }
+                ProcreateTopButton(Icons.Outlined.MoreHoriz, tr("More", "更多"), selected = workspaceMenu && commandSection == 5, onClick = { commandSection = 5; workspaceMenu = true })
+
+            }
+        }
+
+        if (workspaceMenu) EditorActionsDialog(settings.language, commandSection, { commandSection = it }, { workspaceMenu = false }) {
+            when (commandSection) {
+                0 -> {
+                    DropdownMenuItem(text = { Text(tr("Search this notebook", "搜索当前笔记")) }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, onClick = { workspaceMenu = false; searchOpen = true })
+                    DropdownMenuItem(text = { Text(tr("Add PDF or image pages", "追加 PDF／图片页面")) }, leadingIcon = { Icon(Icons.Outlined.NoteAdd, null) }, onClick = { workspaceMenu = false; onAppendPageFiles(document.id) })
+                    DropdownMenuItem(text = { Text(if (selectedPage.bookmarked) tr("Remove page bookmark", "取消本页书签") else tr("Bookmark this page", "收藏本页")) }, leadingIcon = { Icon(if (selectedPage.bookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder, null) }, onClick = { workspaceMenu = false; onToggleBookmark(document.id, selectedPage.id) })
+                    DropdownMenuItem(text = { Text(tr("Bookmarks", "书签")) }, leadingIcon = { Icon(Icons.Outlined.Bookmarks, null) }, onClick = { workspaceMenu = false; bookmarksOpen = true })
+                    DropdownMenuItem(text = { Text(tr("Page outline", "页面大纲")) }, leadingIcon = { Icon(Icons.Outlined.FormatListBulleted, null) }, onClick = { workspaceMenu = false; outlineOpen = true })
+
+                }
+                1 -> {
+                    DropdownMenuItem(text = { Text(tr("Image filter…", "图像滤镜…")) },
+                        leadingIcon = { Icon(Icons.Outlined.Tune, null) },
+                        onClick = { workspaceMenu = false; rasterFilterDialogOpen = true })
+                    DropdownMenuItem(text = { Text(tr("Fit page", "适合页面")) }, leadingIcon = { Icon(Icons.Outlined.CenterFocusStrong, null) }, onClick = { workspaceMenu = false; fitPage() })
+                    DropdownMenuItem(text = { Text(tr("Actual size", "实际大小")) }, onClick = { workspaceMenu = false; actualSize() })
+                    DropdownMenuItem(text = { Text(tr("Fit width", "适合宽度")) }, onClick = { workspaceMenu = false; fitWidth() })
+                    DropdownMenuItem(text = { Text(tr("Reset rotation", "重置旋转")) }, onClick = { workspaceMenu = false; resetViewRotation() })
+                    HorizontalDivider()
+                    DropdownMenuItem(text = { Text(tr("Color management", "色彩管理")) }, onClick = { workspaceMenu=false;colorManagementOpen=true })
+                    DropdownMenuItem(text = { Text(tr("Canvas & resolution", "画布与分辨率")) }, onClick = { workspaceMenu = false; canvasSizeOpen = true })
+
+                }
+                2 -> {
                     listOf(
                         Triple(EditorTool.EYEDROPPER, Icons.Outlined.Colorize, tr("Eyedropper", "吸管")),
                         Triple(EditorTool.FILL, Icons.Outlined.FormatColorFill, tr("Fill", "填充")),
@@ -2720,9 +2644,9 @@ private fun EditorScreen(
                         Triple(EditorTool.LINK, Icons.Outlined.Link, tr("Link", "链接")),
                         Triple(EditorTool.IMAGE, Icons.Outlined.Image, tr("Image", "图片")),
                         Triple(EditorTool.LASER, Icons.Outlined.TrackChanges, tr("Laser pointer", "激光笔")),
-                    ).forEach { (chosen, icon, label) ->
-                        DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(icon, null) }, onClick = {
-                            exportMenu = false
+                    ).let { tools ->
+                        EditorToolActionGrid(tools) { chosen ->
+                            workspaceMenu = false
                             exitCanvasNavigation()
                             tool = chosen
                             canvasView?.tool = chosen
@@ -2737,31 +2661,34 @@ private fun EditorScreen(
                                 else -> Unit
                             }
                             syncCanvasInput(prepareAssets = activeBrush != null)
-                        })
+                        }
                     }
                     DropdownMenuItem(text = { Text(tr("Blend with current brush tip", "用当前笔尖混色")) },
                         leadingIcon = { Icon(Icons.Outlined.BlurOn, null) }, onClick = {
-                            exportMenu = false
+                            workspaceMenu = false
                             borrowCurrentTipForSmudge()
                         })
                     HorizontalDivider()
+
+                }
+                3 -> {
                     DropdownMenuItem(
                         text = { Text(tr(if (settings.rulerEnabled) "Hide ruler" else "Show ruler", if (settings.rulerEnabled) "隐藏直尺" else "显示直尺")) },
                         leadingIcon = { Icon(Icons.Outlined.Straighten, null) },
                         trailingIcon = { if (settings.rulerEnabled) Icon(Icons.Outlined.Check, null) },
-                        onClick = { exportMenu = false; onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) },
+                        onClick = { workspaceMenu = false; onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) },
                     )
                     DropdownMenuItem(
                         text = { Text(tr(if (settings.gridSnapEnabled) "Hide snap grid" else "Show snap grid", if (settings.gridSnapEnabled) "隐藏吸附网格" else "显示吸附网格")) },
                         leadingIcon = { Icon(Icons.Outlined.GridOn, null) },
                         trailingIcon = { if (settings.gridSnapEnabled) Icon(Icons.Outlined.Check, null) },
-                        onClick = { exportMenu = false; onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) },
+                        onClick = { workspaceMenu = false; onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) },
                     )
                     DropdownMenuItem(
                         text = { Text(tr(if (settings.alignmentGuidesEnabled) "Hide alignment guides" else "Show alignment guides", if (settings.alignmentGuidesEnabled) "隐藏对齐参考线" else "显示对齐参考线")) },
                         leadingIcon = { Icon(Icons.Outlined.AlignHorizontalCenter, null) },
                         trailingIcon = { if (settings.alignmentGuidesEnabled) Icon(Icons.Outlined.Check, null) },
-                        onClick = { exportMenu = false; onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) },
+                        onClick = { workspaceMenu = false; onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) },
                     )
                     HorizontalDivider()
                     Text(tr("Perspective guide", "透视辅助线"), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = MutedInk, fontSize = 11.sp)
@@ -2777,7 +2704,7 @@ private fun EditorScreen(
                             leadingIcon = { Icon(Icons.Outlined.ViewInAr, null) },
                             trailingIcon = { if (settings.perspectiveGuideMode == mode) Icon(Icons.Outlined.Check, null) },
                             onClick = {
-                                exportMenu = false
+                                workspaceMenu = false
                                 val guide = PerspectiveGuideState.defaultFor(mode)
                                 val points = guide.points
                                 onSettingsChange(settings.copy(
@@ -2799,12 +2726,12 @@ private fun EditorScreen(
                         DropdownMenuItem(
                             text = { Text(tr("Drawing Assist", "绘图辅助")) },
                             trailingIcon = { if (settings.perspectiveGuideAssisted) Icon(Icons.Outlined.Check, null) },
-                            onClick = { exportMenu = false; onSettingsChange(settings.copy(perspectiveGuideAssisted = !settings.perspectiveGuideAssisted)) },
+                            onClick = { workspaceMenu = false; onSettingsChange(settings.copy(perspectiveGuideAssisted = !settings.perspectiveGuideAssisted)) },
                         )
                         DropdownMenuItem(
                             text = { Text(tr("Edit vanishing points", "编辑消失点")) },
                             trailingIcon = { if (settings.perspectiveGuideEditing) Icon(Icons.Outlined.Check, null) },
-                            onClick = { exportMenu = false; onSettingsChange(settings.copy(perspectiveGuideEditing = !settings.perspectiveGuideEditing)) },
+                            onClick = { workspaceMenu = false; onSettingsChange(settings.copy(perspectiveGuideEditing = !settings.perspectiveGuideEditing)) },
                         )
                     }
                     HorizontalDivider()
@@ -2822,7 +2749,7 @@ private fun EditorScreen(
                             leadingIcon = { Icon(if (mode == SpecialRulerMode.CONCENTRIC) Icons.Outlined.RadioButtonUnchecked else Icons.Outlined.LineAxis, null) },
                             trailingIcon = { if (settings.specialRulerMode == mode) Icon(Icons.Outlined.Check, null) },
                             onClick = {
-                                exportMenu = false
+                                workspaceMenu = false
                                 onSettingsChange(settings.copy(
                                     specialRulerMode = mode,
                                     specialRulerEditing = mode != SpecialRulerMode.NONE,
@@ -2839,12 +2766,12 @@ private fun EditorScreen(
                         DropdownMenuItem(
                             text = { Text(tr("Drawing Assist", "绘图辅助")) },
                             trailingIcon = { if (settings.specialRulerAssisted) Icon(Icons.Outlined.Check, null) },
-                            onClick = { exportMenu = false; onSettingsChange(settings.copy(specialRulerAssisted = !settings.specialRulerAssisted)) },
+                            onClick = { workspaceMenu = false; onSettingsChange(settings.copy(specialRulerAssisted = !settings.specialRulerAssisted)) },
                         )
                         DropdownMenuItem(
                             text = { Text(tr("Edit ruler", "编辑尺子")) },
                             trailingIcon = { if (settings.specialRulerEditing) Icon(Icons.Outlined.Check, null) },
-                            onClick = { exportMenu = false; onSettingsChange(settings.copy(specialRulerEditing = !settings.specialRulerEditing)) },
+                            onClick = { workspaceMenu = false; onSettingsChange(settings.copy(specialRulerEditing = !settings.specialRulerEditing)) },
                         )
                         DropdownMenuItem(
                             text = {
@@ -2857,17 +2784,55 @@ private fun EditorScreen(
                         )
                     }
                     HorizontalDivider()
-                    DropdownMenuItem(text = { Text(tr("Fit page", "适合页面")) }, leadingIcon = { Icon(Icons.Outlined.CenterFocusStrong, null) }, onClick = { exportMenu = false; fitPage() })
-                    DropdownMenuItem(text = { Text(tr("Actual size", "实际大小")) }, onClick = { exportMenu = false; actualSize() })
-                    DropdownMenuItem(text = { Text(tr("Fit width", "适合宽度")) }, onClick = { exportMenu = false; fitWidth() })
-                    DropdownMenuItem(text = { Text(tr("Reset rotation", "重置旋转")) }, onClick = { exportMenu = false; resetViewRotation() })
+
+                }
+                4 -> {
+                    DropdownMenuItem(
+                        text = { Text(tr("Drawing workspace", "绘画工作区")) },
+                        leadingIcon = { Icon(Icons.Outlined.Palette, null) },
+                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.STUDIO) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(tr("Reading workspace", "阅读工作区")) },
+                        leadingIcon = { Icon(Icons.Outlined.Visibility, null) },
+                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.READING) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(tr("Views…", "视图…")) },
+                        leadingIcon = { Icon(Icons.Outlined.DashboardCustomize, null) },
+                        onClick = { workspaceMenu = false; viewManagerOpen = true },
+                    )
                     HorizontalDivider()
-                    document.pages.forEachIndexed { index, page -> DropdownMenuItem(text = { Text(tr("Go to page ${index + 1}", "前往第 ${index + 1} 页")) }, onClick = { exportMenu = false; selectPageWithViewport(page.id) }) }
-                    HorizontalDivider()
-                    DropdownMenuItem(text = { Text(tr("Color management", "色彩管理")) }, onClick = { exportMenu=false;colorManagementOpen=true })
-                    DropdownMenuItem(text = { Text(tr("Canvas & resolution", "画布与分辨率")) }, onClick = { exportMenu = false; canvasSizeOpen = true })
-                    DropdownMenuItem(text = { Text(tr("Export current page", "导出当前页")) }, onClick = { exportMenu = false; pageExportOpen = true })
-                    DropdownMenuItem(text = { Text(tr("Export editable Inkloom package", "导出可编辑 Inkloom 文件")) }, onClick = { exportMenu = false; onExportBundle() })
+                    DropdownMenuItem(
+                        text = { Text(if (panelState.layout.locked) tr("Unlock layout", "解锁布局") else tr("Lock layout", "锁定布局")) },
+                        leadingIcon = { Icon(if (panelState.layout.locked) Icons.Outlined.Lock else Icons.Outlined.LockOpen, null) },
+                        onClick = { workspaceMenu = false; panelState.commit(panelState.layout.copy(locked = !panelState.layout.locked)) },
+                    )
+                    DropdownMenuItem(text = { Text(tr("Save panel layout…", "保存面板布局…")) },
+                        leadingIcon = { Icon(Icons.Outlined.Save, null) }, onClick = {
+                            workspaceMenu = false; renamingPanelLayout = null; panelLayoutName = ""; savePanelLayoutOpen = true
+                        })
+                    DropdownMenuItem(text = { Text(tr("Export workspace layout…", "导出工作区布局…")) },
+                        onClick = { workspaceMenu = false; workspaceLayoutExportPicker.launch("Inkloom-workspace.${WorkspaceLayoutCodec.FILE_EXTENSION}") })
+                    DropdownMenuItem(text = { Text(tr("Import workspace layout…", "导入工作区布局…")) },
+                        onClick = { workspaceMenu = false; workspaceLayoutImportPicker.launch(arrayOf(WorkspaceLayoutCodec.MIME_TYPE, "text/plain", "application/octet-stream")) })
+                    panelState.namedLayouts.entries.forEach { saved ->
+                        DropdownMenuItem(text = { Text(saved.name) },
+                            leadingIcon = { Icon(Icons.Outlined.DashboardCustomize, null) }, onClick = {
+                                workspaceMenu = false
+                                panelState.restoreNamedLayout(saved.name)?.let(::syncRestoredPanelSettings)
+                            })
+                    }
+                    if (panelState.namedLayouts.entries.isNotEmpty()) DropdownMenuItem(
+                        text = { Text(tr("Manage panel layouts…", "管理面板布局…")) },
+                        onClick = { workspaceMenu = false; managePanelLayoutsOpen = true },
+                    )
+
+                }
+                5 -> {
+                    DropdownMenuItem(text = { Text(tr("Export PDF", "导出 PDF")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { workspaceMenu = false; onExport() })
+                    DropdownMenuItem(text = { Text(tr("Export current page", "导出当前页")) }, onClick = { workspaceMenu = false; pageExportOpen = true })
+                    DropdownMenuItem(text = { Text(tr("Export editable Inkloom package", "导出可编辑 Inkloom 文件")) }, onClick = { workspaceMenu = false; onExportBundle() })
                 }
             }
         }
@@ -3639,7 +3604,11 @@ private fun EditorScreen(
                     }
                     Box(preview.zIndex(4f).background(Ink))
                 }
-                if (settings.showToolbar) ToolDock(tool = tool, toolPaletteLayout = settings.toolPaletteLayout, onTool = { chosen ->
+                if (settings.showToolbar) ToolDock(tool = tool, toolPaletteLayout = settings.toolPaletteLayout, onTool = choose@ { chosen ->
+                    if (chosen == EditorTool.SELECT && tool == EditorTool.SELECT) {
+                        finishSelectionTool(deselect = true)
+                        return@choose
+                    }
                     exitCanvasNavigation()
                     if (chosen == EditorTool.SELECT) rememberSelectionReturnTarget()
                     if (chosen == EditorTool.EYEDROPPER && tool != EditorTool.EYEDROPPER) {
@@ -9232,8 +9201,6 @@ private fun BrushSettingSlider(label: String, value: Float, range: ClosedFloatin
 @Composable
 private fun SettingsDialog(
     settings: AppSettings,
-    pagesOpen: Boolean,
-    onPagesVisibility: (Boolean) -> Unit,
     brushes: List<ImportedBrush>,
     brushGroups: List<String>,
     onChange: (AppSettings) -> Unit,
@@ -9243,15 +9210,15 @@ private fun SettingsDialog(
     onImportShortcuts: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var settingsTab by rememberSaveable { mutableIntStateOf(1) }
+    var settingsTab by rememberSaveable { mutableIntStateOf(0) }
     var shortcutEditorOpen by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Done", "完成")) } },
-        title = { Text(tr("Inkloom Settings", "Inkloom 设置")) },
+        title = { Text(tr("Settings", "设置")) },
         text = {
             Column(Modifier.widthIn(min = 300.dp, max = 520.dp)) {
-                val tabs = listOf(tr("General", "通用"), tr("Gestures", "手势"), tr("Pressure", "压感"), tr("Buttons", "按键"), tr("Backup", "备份"))
+                val tabs = listOf(tr("General", "通用"), tr("Gestures", "手势"), tr("Pressure", "压感"), tr("Shortcuts", "快捷键"), tr("Backup", "备份"))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     items(tabs.size) { index ->
                         TextButton(onClick = { settingsTab = index }, modifier = Modifier.height(44.dp).background(

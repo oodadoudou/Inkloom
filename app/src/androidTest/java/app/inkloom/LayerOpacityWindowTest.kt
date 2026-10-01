@@ -13,6 +13,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasContentDescription
@@ -340,7 +341,10 @@ class LayerOpacityWindowTest {
             value.toString().forEach { digit -> instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_0 + digit.digitToInt()) }
             compose.waitForIdle()
         }
-        tap("Done")
+        // Use the dialog semantic coordinates: the active accessibility window can be the IME.
+        val done = compose.onNodeWithText("Done").assertIsDisplayed().fetchSemanticsNode()
+        tapAt(done.boundsInWindow.center + done.positionOnScreen - done.positionInWindow)
+        compose.waitForIdle()
         instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
         compose.waitForIdle()
     }
