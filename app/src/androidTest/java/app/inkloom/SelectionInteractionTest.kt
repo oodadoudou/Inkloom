@@ -31,6 +31,36 @@ class SelectionInteractionTest {
         return view to pixels
     }
 
+    @Test fun outsideDeletePreservesSelectionAndOtherLayersAndUndoRestoresInOneStep() {
+        instrumentation.runOnMainSync {
+            val (view, pixels) = fixture()
+            val other = PixelTileSurface(128, 128, 64)
+            pixels.beginWrite("three points").use {
+                it.setPixel(20, 20, Color.RED); it.setPixel(40, 40, Color.GREEN); it.setPixel(90, 90, Color.BLUE); it.commit().close()
+            }
+            other.beginWrite("other layer").use { it.setPixel(90, 90, Color.WHITE); it.commit().close() }
+            view.setRasterLayerSurfaces(mapOf(LayerIds.INK to pixels, "other" to other))
+            val mask = MaskTileSurface(128, 128, 64)
+            mask.beginWrite("selection").use { it.setAlpha(20, 20, 255); it.setAlpha(40, 40, 128); it.commit().close() }
+            view.replaceSelectionFromMask(mask.snapshot())
+            assertTrue(view.deleteOutsideSelection())
+            assertEquals(Color.RED, pixels.pixelAt(20, 20))
+            assertEquals(128, Color.alpha(pixels.pixelAt(40, 40)))
+            assertEquals(0, pixels.pixelAt(90, 90))
+            assertEquals(Color.WHITE, other.pixelAt(90, 90))
+            assertEquals(128, view.selectionMaskSurfaceSnapshot()!!.alphaAt(40, 40))
+            view.undo()
+            assertEquals(Color.GREEN, pixels.pixelAt(40, 40)); assertEquals(Color.BLUE, pixels.pixelAt(90, 90))
+            view.redo(); assertEquals(0, pixels.pixelAt(90, 90))
+            view.setProtectedLayerIds(setOf(LayerIds.INK))
+            assertFalse(view.deleteOutsideSelection())
+            view.setProtectedLayerIds(emptySet())
+            view.alphaLockedLayers = setOf(LayerIds.INK); assertFalse(view.deleteOutsideSelection())
+            view.alphaLockedLayers = emptySet()
+            view.clearSelection(); assertFalse(view.deleteOutsideSelection())
+        }
+    }
+
     @Test fun colorFillChangingColorResamplesOriginalSoftAlphaAndCancelUndoRestoreExactly() {
         instrumentation.runOnMainSync {
             val (view, pixels) = fixture()

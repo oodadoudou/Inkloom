@@ -3848,6 +3848,7 @@ private fun EditorScreen(
                     onCut = { canvasView?.requestSelectionLayerTransfer(true) },
                     onCopy = { canvasView?.requestSelectionLayerTransfer(false) },
                     onDelete = { canvasView?.deleteSelection() },
+                    onDeleteOutside = { canvasView?.deleteOutsideSelection() },
                     onSelectAll = { canvasView?.selectAllEditableStrokes() },
                     onClipboardCopy = { canvasView?.copySelectionToClipboard() },
                     onPaste = { canvasView?.pasteSelectionFromClipboard() },
@@ -10060,7 +10061,7 @@ private fun SelectionStudioPanel(
     interpolation: app.inkloom.engine.v5.tools.SelectionInterpolation,
     onInterpolation: (app.inkloom.engine.v5.tools.SelectionInterpolation) -> Unit,
     onDone: () -> Unit, onDeselect: () -> Unit, onInvert: () -> Unit,
-    onCut: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit,
+    onCut: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit, onDeleteOutside: () -> Unit,
     onSelectAll: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit,
     filter: SelectionFilter, onFilter: (SelectionFilter) -> Unit,
     onExpand: (Float) -> Unit, onShrink: (Float) -> Unit, onBorder: (Float) -> Unit,
@@ -10269,6 +10270,7 @@ private fun SelectionStudioPanel(
                         DropdownMenuItem(text = { Text(tr("Clear", "清除")) }, onClick = { settingsOpen = false; onClear() })
                         DropdownMenuItem(text = { Text(tr("Cut & Paste", "剪切并粘贴")) }, enabled = hasSelection, onClick = { settingsOpen = false; onCut() })
                         DropdownMenuItem(text = { Text(tr("Delete selected pixels", "删除所选像素")) }, enabled = hasSelection, onClick = { settingsOpen = false; onDelete() })
+                        DropdownMenuItem(text = { Text(tr("Clear outside selection", "删除选区外内容")) }, enabled = hasSelection, onClick = { settingsOpen = false; onDeleteOutside() })
                         DropdownMenuItem(text = { Text(tr("Select all", "全部选择")) }, onClick = { settingsOpen = false; onSelectAll() })
                         DropdownMenuItem(text = { Text(tr("Copy to clipboard", "复制到剪贴板")) }, enabled = hasSelection, onClick = { settingsOpen = false; onClipboardCopy() })
                         DropdownMenuItem(text = { Text(tr("Paste", "粘贴")) }, onClick = { settingsOpen = false; onPaste() })

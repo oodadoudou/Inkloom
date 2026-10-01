@@ -7364,6 +7364,47 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
+    /** Clears unselected pixels without altering the document selection or adding inverse history. */
+    fun deleteOutsideSelection(): Boolean {
+        if (selectionLayerTransferPending || rejectLayerContentEdit()) return false
+        if (hasActivePaintContact()) {
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                "请先抬笔，再删除选区外内容" else "Lift the pen before clearing outside the selection")
+            return false
+        }
+        if (activeLayerId in alphaLockedLayers) {
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                "请先关闭锁定透明度" else "Unlock transparency first")
+            return false
+        }
+        if (editingLayerMaskId != null || layerElementBitmaps[activeLayerId]?.hasContent == true) {
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                "请选择像素图层内容；此操作不修改蒙版或独立对象" else "Select raster layer content; this command does not modify masks or separate objects")
+            return false
+        }
+        commitSelectionContour()
+        finishSelectionColorFill(true)
+        finishSelectionTransform(true)
+        val selection = selectionMaskForRasterTools()?.takeUnless { it.isEmpty } ?: run {
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                "请先创建选区" else "Create a selection first")
+            return false
+        }
+        v5StrokeController.awaitIdle()
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
+        val edit = RasterSelectionContent.clear(surface, selection, outside = true) ?: return false
+        if (edit.record.changedTileCount == 0) {
+            edit.record.close()
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                "选区外没有可删除的像素" else "There are no pixels to clear outside the selection")
+            return false
+        }
+        val layerId = activeLayerId
+        recordRasterToolTransaction(layerId, surface, edit.record,
+            Rect(edit.dirtyBounds.left, edit.dirtyBounds.top, edit.dirtyBounds.right, edit.dirtyBounds.bottom))
+        return true
+    }
+
     private fun transformSelection(scale: Float, rotationDegrees: Float) {
         selectionCanvasTransform?.let { draft ->
             if (scale.isFinite() && scale > 0f && rotationDegrees.isFinite()) draft.replace(draft.pose.withPose(draft.pose.copy(

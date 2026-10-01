@@ -164,25 +164,44 @@ object RasterSelectionContent {
         } catch (failure: Throwable) { transaction.close(); throw failure }
     }
 
-    fun clear(surface: PixelTileSurface, selection: MaskTileSurfaceSnapshot): RasterSelectionEdit? {
-        val bounds = selectionBoundsInPixels(selection, surface.logicalWidth, surface.logicalHeight) ?: return null
+    fun clear(
+        surface: PixelTileSurface,
+        selection: MaskTileSurfaceSnapshot,
+        outside: Boolean = false,
+    ): RasterSelectionEdit? {
+        if (selection.isEmpty) return null
+        // Clearing outside must visit existing pixels, not materialize the page-sized inverse mask.
+        val occupied = if (outside) surface.snapshot().tileInfo.map { info ->
+            val left = info.key.column * surface.tileSize
+            val top = info.key.row * surface.tileSize
+            PixelRect(left, top, minOf(left + surface.tileSize, surface.logicalWidth),
+                minOf(top + surface.tileSize, surface.logicalHeight))
+        } else emptyList()
+        val bounds = if (outside) occupied.reduceOrNull(PixelRect::union)
+            else selectionBoundsInPixels(selection, surface.logicalWidth, surface.logicalHeight)
+        bounds ?: return null
+        val regions = if (outside) occupied else listOf(bounds)
         val transaction = surface.beginWrite("clear raster selection")
         try {
-            visitTiles(bounds, surface.tileSize) { key, tileBounds, localDirty ->
-                when (surface.pixelFormat) {
-                    PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> transaction.editTile(key, localDirty) { values, stride ->
-                        for (y in tileBounds.top until tileBounds.bottom) for (x in tileBounds.left until tileBounds.right) {
-                            val alpha = selectionAlphaAtPixel(selection, x, y, surface.logicalWidth, surface.logicalHeight)
-                            if (alpha != 0) values[(y - key.row * surface.tileSize) * stride + x - key.column * surface.tileSize] =
-                                scaleArgb(values[(y - key.row * surface.tileSize) * stride + x - key.column * surface.tileSize], 255 - alpha)
+            regions.forEach { region ->
+                visitTiles(region, surface.tileSize) { key, tileBounds, localDirty ->
+                    when (surface.pixelFormat) {
+                        PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> transaction.editTile(key, localDirty) { values, stride ->
+                            for (y in tileBounds.top until tileBounds.bottom) for (x in tileBounds.left until tileBounds.right) {
+                                val selected = selectionAlphaAtPixel(selection, x, y, surface.logicalWidth, surface.logicalHeight)
+                                val alpha = if (outside) 255 - selected else selected
+                                if (alpha != 0) values[(y - key.row * surface.tileSize) * stride + x - key.column * surface.tileSize] =
+                                    scaleArgb(values[(y - key.row * surface.tileSize) * stride + x - key.column * surface.tileSize], 255 - alpha)
+                            }
                         }
-                    }
-                    PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 -> transaction.editTileF16(key, localDirty) { values, stride ->
-                        for (y in tileBounds.top until tileBounds.bottom) for (x in tileBounds.left until tileBounds.right) {
-                            val alpha = selectionAlphaAtPixel(selection, x, y, surface.logicalWidth, surface.logicalHeight)
-                            if (alpha != 0) {
-                                val index = (y - key.row * surface.tileSize) * stride + x - key.column * surface.tileSize
-                                values[index] = scaleF16(values[index], (255 - alpha) / 255f)
+                        PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 -> transaction.editTileF16(key, localDirty) { values, stride ->
+                            for (y in tileBounds.top until tileBounds.bottom) for (x in tileBounds.left until tileBounds.right) {
+                                val selected = selectionAlphaAtPixel(selection, x, y, surface.logicalWidth, surface.logicalHeight)
+                                val alpha = if (outside) 255 - selected else selected
+                                if (alpha != 0) {
+                                    val index = (y - key.row * surface.tileSize) * stride + x - key.column * surface.tileSize
+                                    values[index] = scaleF16(values[index], (255 - alpha) / 255f)
+                                }
                             }
                         }
                     }

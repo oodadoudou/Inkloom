@@ -5,6 +5,56 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RasterSelectionContentTest {
+    @Test fun outsideClearKeepsSoftSelectionAndExtendedColorWithOneTransaction() {
+        for (format in PixelTileFormat.entries) {
+            val pixels = PixelTileSurface(128, 128, 64, pixelFormat = format)
+            pixels.beginWrite("content").use { write ->
+                if (format == PixelTileFormat.PREMULTIPLIED_SRGB_8888) {
+                    write.setPixel(20, 20, 0x80800000.toInt())
+                    write.setPixel(90, 90, 0xFF0000FF.toInt())
+                } else {
+                    write.setLinearPixel(20, 20, LinearRgba(2f, .25f, .5f, .8f))
+                    write.setLinearPixel(90, 90, LinearRgba(0f, 0f, 1f, 1f))
+                }
+                write.commit().close()
+            }
+            val before = pixels.snapshot()
+            val selection = MaskTileSurface(128, 128, 64)
+            selection.beginWrite("soft selection").use { it.setAlpha(20, 20, 128); it.commit().close() }
+            val edit = requireNotNull(RasterSelectionContent.clear(pixels, selection.snapshot(), outside = true))
+            assertEquals(2, edit.record.changedTileCount)
+            if (format == PixelTileFormat.PREMULTIPLIED_SRGB_8888) {
+                assertEquals(0x40400000, pixels.pixelAt(20, 20))
+                assertEquals(0, pixels.pixelAt(90, 90))
+            } else {
+                assertEquals(2f * .8f * 128f / 255f, pixels.linearPixelAt(20, 20).red, .005f)
+                assertEquals(.8f * 128f / 255f, pixels.linearPixelAt(20, 20).alpha, .003f)
+                assertEquals(0f, pixels.linearPixelAt(90, 90).alpha, .001f)
+            }
+            pixels.apply(edit.record, PixelTileSurface.HistoryDirection.UNDO)
+            assertEquals(before.pixelAt(20, 20), pixels.pixelAt(20, 20))
+            assertEquals(before.pixelAt(90, 90), pixels.pixelAt(90, 90))
+            pixels.apply(edit.record, PixelTileSurface.HistoryDirection.REDO)
+            assertEquals(0, pixels.pixelAt(90, 90))
+            assertEquals(128, selection.alphaAt(20, 20))
+            edit.record.close()
+        }
+    }
+
+    @Test fun outsideClearOnlyTouchesOccupiedTilesEvenAcrossSparse8KPage() {
+        val pixels = PixelTileSurface(8192, 8192, 64)
+        pixels.beginWrite("distant pixels").use { it.setPixel(20, 20, -1); it.setPixel(8000, 8000, -1); it.commit().close() }
+        val selection = MaskTileSurface(8192, 8192, 64)
+        selection.beginWrite("keep point").use { it.setAlpha(20, 20, 255); it.commit().close() }
+        val edit = requireNotNull(RasterSelectionContent.clear(pixels, selection.snapshot(), outside = true))
+        assertEquals(-1, pixels.pixelAt(20, 20))
+        assertEquals(0, pixels.pixelAt(8000, 8000))
+        assertEquals(1, edit.record.changedTileCount)
+        assertEquals(1, pixels.tileCount)
+        edit.record.close()
+        assertEquals(null, RasterSelectionContent.clear(pixels, MaskTileSurface(8192, 8192, 64).snapshot(), outside = true))
+    }
+
     @Test fun fillUnderpaintClosesAntialiasHaloAndIsErasableAndUndoable() {
         val pixels = PixelTileSurface(128, 64, tileSize = 64)
         pixels.beginWrite("antialiased line").use { write ->

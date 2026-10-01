@@ -50,6 +50,35 @@ class SelectionWindowRegressionTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    @Test fun outsideDeleteUsesActualMenuAndUndoAndReopenPreserveKeptContent() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        stroke(pagePoint(view, .25f, .3f), pagePoint(view, .35f, .3f))
+        stroke(pagePoint(view, .7f, .7f), pagePoint(view, .8f, .7f))
+        tap("Selection"); tap("Rectangle selection")
+        stroke(pagePoint(view, .2f, .2f), pagePoint(view, .4f, .4f))
+        compose.waitForIdle()
+        val before = requireNotNull(view.activeRasterSnapshotForTest())
+        val x = (before.logicalWidth * .75f).toInt(); val y = (before.logicalHeight * .7f).toInt()
+        val outside = before.pixelAt(x, y)
+        assertTrue(outside ushr 24 > 0)
+        tap("Selection actions"); tap("Clear outside selection")
+        compose.waitUntil(10_000) { view.activeRasterSnapshotForTest()?.pixelAt(x, y) == 0 }
+        assertTrue(view.hasActiveSelection())
+        tapAt(toolbarCenter("Undo")); compose.waitForIdle()
+        compose.waitUntil(10_000) { view.activeRasterSnapshotForTest()?.pixelAt(x, y) == outside }
+        tapAt(toolbarCenter("Redo")); compose.waitForIdle()
+        compose.waitUntil(10_000) { view.activeRasterSnapshotForTest()?.pixelAt(x, y) == 0 }
+        tap("Exit selection tool")
+        tap("Gallery")
+        tap("Untitled Note")
+        val reopened = canvas()
+        compose.waitUntil(15_000) { reopened.activeRasterSnapshotForTest() != null }
+        val saved = reopened.activeRasterSnapshotForTest()!!
+        assertEquals(0, saved.pixelAt(x, y))
+        assertTrue(saved.pixelAt((saved.logicalWidth * .3f).toInt(), (saved.logicalHeight * .3f).toInt()) ushr 24 > 0)
+    }
+
     @Test fun lightFingerAndPenTapsKeepSelectionModesAndHighlightsInSync() {
         tap("New Note"); tap("Create"); tap("Selection")
         val view = canvas()
