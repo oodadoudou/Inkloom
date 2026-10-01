@@ -19,6 +19,7 @@ data class BrushUsageState(
     val smudgeUsesPaintTip: Boolean = false,
     val scrollPositions: Map<String, BrushLibraryScrollPosition> = emptyMap(),
     val categoryScroll: BrushLibraryScrollPosition = BrushLibraryScrollPosition(),
+    val lastViewedBrushId: String? = null,
 ) {
     fun toggleCategoryPin(category: String, id: String): BrushUsageState {
         if (id.isBlank()) return this

@@ -44,13 +44,15 @@ class BrushUsageStateTest {
         val state = BrushUsageState(category = "CSP/Ink", scrollPositions = mapOf(
             "list:CSP/Ink" to BrushLibraryScrollPosition(25, 37),
             "grid:CSP/Ink" to BrushLibraryScrollPosition(12, 9)),
-            categoryScroll = BrushLibraryScrollPosition(7, 11))
+            categoryScroll = BrushLibraryScrollPosition(7, 11), lastViewedBrushId = "paint")
         val restored = Json.decodeFromString<BrushUsageState>(Json.encodeToString(state))
         assertEquals(state, restored)
         val after = restored.used("eraser", true).used("paint", false).pin("paint")
         assertEquals(state.category, after.category)
         assertEquals(state.scrollPositions, after.scrollPositions)
         assertEquals(state.categoryScroll, after.categoryScroll)
+        assertEquals("paint", after.lastViewedBrushId)
+        assertNull(Json.decodeFromString<BrushUsageState>("{\"category\":\"Pencil\"}").lastViewedBrushId)
     }
 
     @Test fun `tool return choices remain independent even for pinned factory brushes`() {

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
@@ -23,6 +24,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,35 +65,45 @@ internal fun WorkspaceSubtoolsPanel(
         if (brushTool) brushes.filter { !it.hidden && BrushRoleClassifier.editorTool(it) == tool }
         else emptyList()
     }
+    val listState = key(tool) { rememberLazyListState() }
+    val selectedVariant = when (tool) {
+        EditorTool.SELECT -> settings.selectionShape.name to settings.selectionShape.ordinal
+        EditorTool.FILL -> settings.fillSubTool.name to settings.fillSubTool.ordinal
+        EditorTool.GRADIENT -> settings.gradientKind.name to settings.gradientKind.ordinal
+        EditorTool.CORRECT_LINE -> settings.correctLineMode.name to settings.correctLineMode.ordinal
+        else -> selectedBrushId to variants.indexOfFirst { it.id == selectedBrushId }
+    }
+    RevealSelectedItem(listState, tool, selectedVariant.first, selectedVariant.second)
     Column(modifier.fillMaxSize().background(Paper)) {
         HorizontalDivider(color = Color(0xFF595959))
-        LazyColumn(contentPadding = PaddingValues(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LazyColumn(state = listState, modifier = Modifier.semantics { contentDescription = language.text("Subtool list", "子工具列表") }, contentPadding = PaddingValues(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             if (brushTool) {
                 items(variants, key = ImportedBrush::id) { brush ->
-                    val selected = brush.id == selectedBrushId
-                    Row(Modifier.fillMaxWidth().background(if (selected) Color(0xFF5A5A5A) else Color.Transparent,
+                    val isSelected = brush.id == selectedBrushId
+                    Row(Modifier.fillMaxWidth().semantics { selected = isSelected }.background(if (isSelected) Color(0xFF5A5A5A) else Color.Transparent,
                         RoundedCornerShape(5.dp)).clickable { onBrush(brush) }.padding(horizontal = 7.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         BrushStrokePreview(brush, language, Modifier.size(width = 74.dp, height = 27.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(brush.name, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                            fontSize = 12.sp, lineHeight = 15.sp, color = if (selected) Ink else MutedInk)
+                            modifier = Modifier.weight(1f), fontSize = 12.sp, lineHeight = 15.sp, color = if (isSelected) Ink else MutedInk)
+                        if (isSelected) Icon(Icons.Outlined.Check, null, Modifier.size(16.dp), tint = Ink)
                     }
                 }
             } else if (tool == EditorTool.SELECT) {
-                items(SelectionShape.entries) { shape ->
+                items(SelectionShape.entries, key = { it.name }) { shape ->
                     WorkspaceSubtoolRow(selectionShapeLabel(shape, settings), shape == settings.selectionShape) { onSelectionShape(shape) }
                 }
             } else if (tool == EditorTool.FILL) {
-                items(FillSubTool.entries) { subtool ->
+                items(FillSubTool.entries, key = { it.name }) { subtool ->
                     WorkspaceSubtoolRow(fillSubtoolLabel(subtool, settings), subtool == settings.fillSubTool) { onFillSubTool(subtool) }
                 }
             } else if (tool == EditorTool.GRADIENT) {
-                items(GradientKind.entries) { kind ->
+                items(GradientKind.entries, key = { it.name }) { kind ->
                     WorkspaceSubtoolRow(gradientKindLabel(kind, settings), kind == settings.gradientKind) { onGradientKind(kind) }
                 }
             } else if (tool == EditorTool.CORRECT_LINE) {
-                items(CorrectLineMode.entries) { mode ->
+                items(CorrectLineMode.entries, key = { it.name }) { mode ->
                     WorkspaceSubtoolRow(correctLineModeLabel(mode, settings), mode == settings.correctLineMode) { onCorrectLineMode(mode) }
                 }
             } else {
@@ -106,7 +118,7 @@ internal fun WorkspaceSubtoolsPanel(
 
 @Composable
 private fun WorkspaceSubtoolRow(label: String, selected: Boolean, onClick: () -> Unit) {
-    Text(label, Modifier.fillMaxWidth().background(if (selected) Color(0xFF5A5A5A) else Color.Transparent,
+    Text(label, Modifier.fillMaxWidth().semantics { this.selected = selected }.background(if (selected) Color(0xFF5A5A5A) else Color.Transparent,
         RoundedCornerShape(5.dp)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 10.dp),
         color = if (selected) Ink else MutedInk, fontSize = 12.sp)
 }

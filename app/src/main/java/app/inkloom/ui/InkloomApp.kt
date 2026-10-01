@@ -7929,9 +7929,12 @@ private fun ProcreateBrushLibrary(
     val allCategories = listOf(recentCategory, tr("All", "全部")) + categoriesInsideSystemRoots + standaloneImportedCategories + ungroupedLabel
     val activeInventoryBrush = (systemBrushes + usableImportedBrushes).firstOrNull { it.id == selectedBrushId }
     val activeGroup = activeInventoryBrush?.groupName?.ifBlank { ungroupedLabel } ?: requestedGroup
-    // Browsing location belongs to the library, independently of the current drawing tool.
+    // Preserve browsing unless the active brush was changed outside this library while closed.
+    val revealActiveOnOpen = remember { usage.category == null ||
+        (usage.lastViewedBrushId != null && usage.lastViewedBrushId != selectedBrushId) }
     var selectedCategory by remember {
-        mutableStateOf(usage.category?.takeIf { it in allCategories } ?: activeGroup?.takeIf { it in allCategories } ?: systemCategories.first())
+        mutableStateOf((if (revealActiveOnOpen) activeGroup?.takeIf { it in allCategories } else null)
+            ?: usage.category?.takeIf { it in allCategories } ?: activeGroup?.takeIf { it in allCategories } ?: systemCategories.first())
     }
     var pendingCategoryReveal by remember { mutableStateOf<String?>(null) }
     val categoryListState = rememberLazyListState(usage.categoryScroll.index.coerceAtLeast(0), usage.categoryScroll.offset.coerceAtLeast(0))
@@ -8092,7 +8095,7 @@ private fun ProcreateBrushLibrary(
         collapsedGroupPaths = collapsedGroupPaths - generateSequence(BrushGroupOperations.parent(created), BrushGroupOperations::parent).toSet()
         pendingCategoryReveal = null
     }
-    var revealedCategory by remember { mutableStateOf(selectedCategory) }
+    var revealedCategory by remember { mutableStateOf(if (revealActiveOnOpen) null else selectedCategory) }
     LaunchedEffect(selectedCategory, allCategories) {
         if (revealedCategory != selectedCategory) {
             if (draggingBrush == null) allCategories.distinct().indexOf(selectedCategory).takeIf { it >= 0 }?.let { categoryListState.animateScrollToItem(it) }
@@ -8151,6 +8154,9 @@ private fun ProcreateBrushLibrary(
         val saved = usage.scrollPositions[gridKey]
         androidx.compose.foundation.lazy.grid.LazyGridState(saved?.index?.coerceAtLeast(0) ?: 0, saved?.offset?.coerceAtLeast(0) ?: 0)
     }
+    val activeBrushIndex = displayed.indexOfFirst { it.id == selectedBrushId }
+    if (gridLayout) RevealSelectedItem(presetGridState, Unit, selectedBrushId, activeBrushIndex, enabled = revealActiveOnOpen)
+    else RevealSelectedItem(presetListState, Unit, selectedBrushId, activeBrushIndex, enabled = revealActiveOnOpen)
     LaunchedEffect(draggingBrush?.id, gridLayout, selectedCategory) {
         if (draggingBrush == null) return@LaunchedEffect
         while (true) {
@@ -8169,11 +8175,13 @@ private fun ProcreateBrushLibrary(
         }
     }
     val currentUsage by rememberUpdatedState(usage)
+    val currentViewedBrush by rememberUpdatedState(selectedBrushId)
     val currentOnUsage by rememberUpdatedState(onUsage)
     DisposableEffect(selectedCategory, presetListState, presetGridState) {
         onDispose {
             currentOnUsage(currentUsage.copy(
                 category = selectedCategory,
+                lastViewedBrushId = currentViewedBrush,
                 scrollPositions = currentUsage.scrollPositions + mapOf(
                     listKey to app.inkloom.settings.BrushLibraryScrollPosition(presetListState.firstVisibleItemIndex, presetListState.firstVisibleItemScrollOffset),
                     gridKey to app.inkloom.settings.BrushLibraryScrollPosition(presetGridState.firstVisibleItemIndex, presetGridState.firstVisibleItemScrollOffset),

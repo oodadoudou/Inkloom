@@ -13,6 +13,10 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -398,6 +402,29 @@ class BrushMasterSettingsWindowTest {
         assertEquals(before,after)
         tap("Close brushes panel");tap("Brushes")
         assertEquals(before,records.map { bounds("Brush preset ${it.name}") })
+    }
+
+    @Test fun brushLibraryRevealsBrushChosenInSubtoolsWhileItWasClosed() {
+        openPencil()
+        val records = (0..39).map { i ->
+            app.inkloom.brushpresetv5.BrushPresetV5Import.createUserRecord(app.inkloom.model.ImportedBrush(
+                id = "external-$i", name = "External $i", format = app.inkloom.model.BrushFormat.INKLOOM,
+                compatibility = app.inkloom.model.Compatibility.COMPLETE, sizeBytes = 0,
+                report = emptyList(), groupName = "External group"))
+        }
+        BrushMetadataStore(context).save(records)
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        tap("Brush category Imported")
+        compose.onNodeWithContentDescription("Brush presets").performScrollToIndex(5)
+        tap("Close brushes panel")
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithText("Sub tools").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Subtool list").performScrollToNode(hasText("External 38"))
+        compose.onNodeWithText("External 38").performClick()
+        tap("Brushes")
+        compose.onNodeWithContentDescription("Brush preset External 38").assertIsDisplayed()
+        tap("Close brushes panel")
+        assertEquals("External group", app.inkloom.settings.BrushUsageStore(context).load().category)
     }
 
     @Test fun reopeningBrushesRestoresBrowsedCategoryAndScrollInsteadOfSelectedBrush() {
