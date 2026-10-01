@@ -20,6 +20,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -73,6 +76,7 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.boundsInRoot
@@ -3812,7 +3816,7 @@ private fun EditorScreen(
                     maskVisibility = settings.selectionMaskVisibility,
                     onMaskVisibility = { onSettingsChange(settings.copy(selectionMaskVisibility = it)) },
                     onShape = { shape -> canvasView?.beginSelectionInput(shape); onSettingsChange(settings.copy(selectionShape = shape)) },
-                    onMode = { mode -> canvasView?.selectionMode = mode; canvasView?.commitSelectionContour(); onSettingsChange(settings.copy(selectionMode = mode)) },
+                    onMode = { mode -> canvasView?.beginSelectionMode(mode); onSettingsChange(settings.copy(selectionMode = mode)) },
                     onClear = { canvasView?.clearSelection() },
                     colorFill = selectionColorFill,
                     onColorFill = { if (canvasView?.setSelectionColorFill(!selectionColorFill) == true) selectionColorFill = !selectionColorFill },
@@ -10203,7 +10207,7 @@ private fun SelectionStudioPanel(
                             dragX=next.xDp;dragY=next.yDp
                         }
                     },tint=MutedInk)
-                Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()).selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
                 listOf(SelectionShape.MAGIC_WAND, SelectionShape.FREEFORM, SelectionShape.RECTANGLE, SelectionShape.ELLIPSE).forEach { option ->
                     val label = when (option) {
                         SelectionShape.MAGIC_WAND -> tr("Automatic", "自动")
@@ -10212,10 +10216,15 @@ private fun SelectionStudioPanel(
                         else -> tr("Ellipse", "椭圆")
                     }
                     val selectionDescription = tr("$label selection", "${label}选区")
-                    TextButton(onClick = { onShape(option) },
-                        modifier = Modifier.widthIn(min = 72.dp).height(48.dp).semantics { contentDescription = selectionDescription },
-                        colors = ButtonDefaults.textButtonColors(containerColor = if (shape == option) SageContainer else Color.Transparent, contentColor = if (shape == option) Ink else MutedInk)) {
-                        Text(label, fontSize = 13.sp)
+                    Box(Modifier.widthIn(min = 72.dp).height(48.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (shape == option) SageContainer else Color.Transparent)
+                        .selectable(selected = shape == option, role = Role.RadioButton,
+                            interactionSource = remember { MutableInteractionSource() }, indication = null,
+                            onClick = { onShape(option) })
+                        .semantics { contentDescription = selectionDescription }.padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.Center) {
+                        Text(label, fontSize = 13.sp, color = if (shape == option) Ink else MutedInk)
                     }
                 }
                 }
@@ -10280,8 +10289,13 @@ private fun SelectionStudioPanel(
 @Composable
 private fun SelectionStudioAction(icon: ImageVector, label: String, selected: Boolean = false,
     enabled: Boolean = true, onClick: () -> Unit) {
-    Column(Modifier.widthIn(min = 58.dp).heightIn(min = 48.dp).background(if (selected) SageContainer else Color.Transparent, RoundedCornerShape(6.dp)).clickable(enabled = enabled, onClick = onClick)
-        .semantics { contentDescription = label }.padding(horizontal = 8.dp, vertical = 3.dp),
+    // Keep the persistent selection highlight stable under taps and pen hover. A second
+    // pressed ripple looked like the mode was repeatedly deselecting and reselecting.
+    Column(Modifier.widthIn(min = 58.dp).heightIn(min = 48.dp)
+        .clip(RoundedCornerShape(6.dp)).background(if (selected) SageContainer else Color.Transparent)
+        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null,
+            enabled = enabled, onClick = onClick)
+        .semantics { contentDescription = label; this.selected = selected }.padding(horizontal = 8.dp, vertical = 3.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         val tint = if (!enabled) MutedInk.copy(alpha = .4f) else if (selected) Ink else MutedInk
         Icon(icon, null, Modifier.size(22.dp), tint = tint)
@@ -10303,7 +10317,7 @@ private fun SelectionLauncherButton(icon: ImageVector, description: String, onCl
         IconButton(
             onClick = onClick,
             modifier = Modifier
-                .size(32.dp)
+                .size(40.dp)
                 .semantics { contentDescription = description }
                 .pointerInput(tooltipState) {
                     awaitPointerEventScope {

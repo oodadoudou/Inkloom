@@ -9,6 +9,9 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.performTextReplacement
@@ -46,6 +49,59 @@ class SelectionWindowRegressionTest {
         }
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
+
+    @Test fun lightFingerAndPenTapsKeepSelectionModesAndHighlightsInSync() {
+        tap("New Note"); tap("Create"); tap("Selection")
+        val view = canvas()
+        val shapes = listOf("Rectangle selection" to app.inkloom.settings.SelectionShape.RECTANGLE,
+            "Ellipse selection" to app.inkloom.settings.SelectionShape.ELLIPSE,
+            "Freehand selection" to app.inkloom.settings.SelectionShape.FREEFORM)
+        for (type in listOf(MotionEvent.TOOL_TYPE_FINGER, MotionEvent.TOOL_TYPE_STYLUS)) {
+            repeat(3) {
+                shapes.forEach { (label, shape) ->
+                    val point = center(label)
+                    val time = SystemClock.uptimeMillis()
+                    event(MotionEvent.ACTION_DOWN, point, time, type)
+                    event(MotionEvent.ACTION_MOVE, point + Offset(3f, 2f), time, type)
+                    event(MotionEvent.ACTION_UP, point + Offset(3f, 2f), time, type)
+                    compose.waitForIdle()
+                    assertEquals(shape, view.selectionShape)
+                    compose.onNodeWithContentDescription(label).assertIsSelected()
+                    shapes.filter { it.first != label }.forEach { (other, _) ->
+                        compose.onNodeWithContentDescription(other).assertIsNotSelected()
+                    }
+                }
+                for ((label, mode) in listOf("Remove" to app.inkloom.settings.SelectionMode.SUBTRACT,
+                    "Add" to app.inkloom.settings.SelectionMode.ADD)) {
+                    val point = center(label)
+                    val time = SystemClock.uptimeMillis()
+                    event(MotionEvent.ACTION_DOWN, point, time, type)
+                    event(MotionEvent.ACTION_UP, point, time, type)
+                    compose.waitForIdle()
+                    assertEquals(mode, view.selectionMode)
+                    compose.onNodeWithContentDescription(label).assertIsSelected()
+                }
+            }
+        }
+    }
+
+    @Test fun changingModeCommitsUnclosedPolygonUsingItsPreviousOperation() {
+        tap("New Note"); tap("Create"); tap("Selection"); tap("Rectangle selection")
+        val view = canvas()
+        stroke(pagePoint(view, .2f, .3f), pagePoint(view, .6f, .6f))
+        tap("Freehand selection"); tap("Remove")
+        listOf(.3f to .35f, .5f to .35f, .4f to .5f).forEach { (x, y) ->
+            tapAt(pagePoint(view, x, y)); SystemClock.sleep(120)
+        }
+        tap("Add")
+        val mask = requireNotNull(view.selectionMaskSurfaceSnapshot())
+        assertEquals("The previous Remove contour must cut a hole", 0,
+            mask.alphaAt((mask.logicalWidth * .4f).toInt(), (mask.logicalHeight * .4f).toInt()))
+        assertTrue("Existing selection outside the hole is preserved",
+            mask.alphaAt((mask.logicalWidth * .25f).toInt(), (mask.logicalHeight * .4f).toInt()) > 0)
+        assertEquals(app.inkloom.settings.SelectionMode.ADD, view.selectionMode)
+        compose.onNodeWithContentDescription("Add").assertIsSelected()
+    }
 
     @Test fun stylusHoverThenLauncherXActuallyDeselects() = checkDeselect("Selection")
 

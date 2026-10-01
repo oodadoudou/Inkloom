@@ -7206,6 +7206,13 @@ class InkCanvasView(context: Context) : View(context) {
         invalidate()
     }
 
+    /** Finish the open contour with its original operation before changing the next operation. */
+    fun beginSelectionMode(mode: SelectionMode) {
+        commitSelectionContour()
+        selectionMode = mode
+        invalidate()
+    }
+
     /** Leaving Selection applies its transform draft and preserves the selection mask for paint. */
     fun cancelSelectionInput() {
         finishSelectionTransform(apply = true)
