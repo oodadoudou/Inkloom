@@ -3849,6 +3849,8 @@ private fun EditorScreen(
                     onCopy = { canvasView?.requestSelectionLayerTransfer(false) },
                     onDelete = { canvasView?.deleteSelection() },
                     onDeleteOutside = { canvasView?.deleteOutsideSelection() },
+                    strokeColor = brushColor, strokeOpacity = brushOpacity,
+                    onStroke = { width, placement, color, opacity -> canvasView?.strokeSelection(width, placement, color, opacity) == true },
                     onSelectAll = { canvasView?.selectAllEditableStrokes() },
                     onClipboardCopy = { canvasView?.copySelectionToClipboard() },
                     onPaste = { canvasView?.pasteSelectionFromClipboard() },
@@ -5179,6 +5181,31 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
     }
     fun installFillCommit(view: InkCanvasView) {
         view.onSparseFillCommitted = { mask, color, opacity, edge -> view.paintFillIntoActiveRaster(mask, color, opacity, edge) }
+        view.onSelectionStrokeRequested = request@{ request ->
+            if (view.selectionLayerTransferPending) return@request
+            val layerId = view.activeLayerId
+            view.selectionLayerTransferPending = true
+            gradientCommitScope.launch {
+                try {
+                    kotlinx.coroutines.withTimeout(15_000) {
+                        while (view.hasPendingPaintPublicationForMerge() || pendingRasterSaves.get() > 0) kotlinx.coroutines.delay(8)
+                    }
+                    val coverage = withContext(Dispatchers.Default) {
+                        app.inkloom.engine.v5.selection.SelectionStrokeMask.create(request.selection,
+                            request.rasterWidth, request.rasterHeight, request.widthPixels, request.placement,
+                            cancelled = { !isActive })
+                    }
+                    if (view.isBoundToSelectionPage(documentId, page.id) && view.activeLayerId == layerId) {
+                        view.paintFillIntoActiveRaster(coverage.snapshot(), request.colorArgb.toUInt().toLong(), request.opacity, 0)
+                    }
+                } catch (_: kotlinx.coroutines.CancellationException) {
+                    // Page disposal owns cancellation; no pixels/history have been published yet.
+                } catch (error: Exception) {
+                    android.util.Log.e("InkloomSelection", "Could not stroke selection", error)
+                    Toast.makeText(context, settings.language.text("Could not stroke the selection", "无法为选区描边"), Toast.LENGTH_SHORT).show()
+                } finally { view.selectionLayerTransferPending = false }
+            }
+        }
     }
     val selectionTransferFailure = tr("Could not transfer the selected pixels to a new layer", "无法将所选像素转移到新图层")
     val selectionLayerName = tr("From selection", "来自选区")
@@ -10062,6 +10089,8 @@ private fun SelectionStudioPanel(
     onInterpolation: (app.inkloom.engine.v5.tools.SelectionInterpolation) -> Unit,
     onDone: () -> Unit, onDeselect: () -> Unit, onInvert: () -> Unit,
     onCut: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit, onDeleteOutside: () -> Unit,
+    strokeColor: Int, strokeOpacity: Float,
+    onStroke: (Float, app.inkloom.engine.v5.selection.SelectionStrokePlacement, Int, Float) -> Boolean,
     onSelectAll: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit,
     filter: SelectionFilter, onFilter: (SelectionFilter) -> Unit,
     onExpand: (Float) -> Unit, onShrink: (Float) -> Unit, onBorder: (Float) -> Unit,
@@ -10075,6 +10104,10 @@ private fun SelectionStudioPanel(
     var launcherSettingsOpen by remember { mutableStateOf(false) }
     var featherOpen by remember { mutableStateOf(false) }
     var colorRangeOpen by remember { mutableStateOf(false) }
+    var strokeOpen by remember { mutableStateOf(false) }
+    if (strokeOpen) SelectionStrokeDialog(strokeColor, strokeOpacity, LocalUiLanguage.current,
+        onApply = { width, placement, color, opacity -> if (onStroke(width, placement, color, opacity)) strokeOpen = false },
+        onDismiss = { strokeOpen = false })
     var colorRangeTolerance by rememberSaveable { mutableFloatStateOf(.18f) }
     var colorRangeAlpha by rememberSaveable { mutableStateOf(false) }
     var amount by rememberSaveable { mutableFloatStateOf(8f) }
@@ -10275,6 +10308,7 @@ private fun SelectionStudioPanel(
                         DropdownMenuItem(text = { Text(tr("Copy to clipboard", "复制到剪贴板")) }, enabled = hasSelection, onClick = { settingsOpen = false; onClipboardCopy() })
                         DropdownMenuItem(text = { Text(tr("Paste", "粘贴")) }, onClick = { settingsOpen = false; onPaste() })
                         DropdownMenuItem(text = { Text(tr("Fill selection", "填充选区")) }, enabled = hasSelection, onClick = { settingsOpen = false; onFill() })
+                        DropdownMenuItem(text = { Text(tr("Stroke selection…", "选区描边…")) }, enabled = hasSelection, onClick = { settingsOpen = false; strokeOpen = true })
                         DropdownMenuItem(text = { Text(tr("Quick mask", "快速蒙版")) }, trailingIcon = { if (quickMask) Icon(Icons.Outlined.Check, null) }, onClick = { settingsOpen = false; onQuickMask() })
                         HorizontalDivider()
                         DropdownMenuItem(text = { Text(tr("New selection", "新建选区")) }, onClick = { settingsOpen = false; onMode(SelectionMode.REPLACE) })

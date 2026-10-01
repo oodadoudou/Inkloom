@@ -124,7 +124,7 @@ object RasterSelectionContent {
         }
         val transaction = surface.beginWrite("fill raster region")
         try {
-            visitTiles(bounds, surface.tileSize) { key, tileBounds, localDirty ->
+            visitSelectionTiles(mask, bounds, surface.logicalWidth, surface.logicalHeight, surface.tileSize, radius) { key, tileBounds, localDirty ->
                 when (surface.pixelFormat) {
                     PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> transaction.editTile(key, localDirty) { values, stride ->
                         for (y in tileBounds.top until tileBounds.bottom) for (x in tileBounds.left until tileBounds.right) {
@@ -311,6 +311,33 @@ object RasterSelectionContent {
             ((x + .5f) * selection.logicalWidth / width).toInt().coerceIn(0, selection.logicalWidth - 1),
             ((y + .5f) * selection.logicalHeight / height).toInt().coerceIn(0, selection.logicalHeight - 1),
         )
+
+    /** A mask's occupied islands determine fill work; its bounding box can span an empty 8K page. */
+    private inline fun visitSelectionTiles(
+        mask: MaskTileSurfaceSnapshot, bounds: PixelRect, width: Int, height: Int, tileSize: Int, halo: Int,
+        block: (PixelTileKey, PixelRect, PixelRect) -> Unit,
+    ) {
+        if (mask.defaultAlpha != 0) {
+            visitTiles(bounds, tileSize, block)
+            return
+        }
+        val visited = hashSetOf<PixelTileKey>()
+        for (info in mask.tileInfo) {
+            val left = kotlin.math.floor(info.key.column * mask.tileSize.toDouble() * width / mask.logicalWidth).toInt() - halo
+            val top = kotlin.math.floor(info.key.row * mask.tileSize.toDouble() * height / mask.logicalHeight).toInt() - halo
+            val right = kotlin.math.ceil(minOf((info.key.column + 1) * mask.tileSize, mask.logicalWidth).toDouble() * width / mask.logicalWidth).toInt() + halo
+            val bottom = kotlin.math.ceil(minOf((info.key.row + 1) * mask.tileSize, mask.logicalHeight).toDouble() * height / mask.logicalHeight).toInt() + halo
+            val island = PixelRect(left, top, right, bottom).intersect(bounds)
+            if (island.isEmpty) continue
+            visitTiles(island, tileSize) { key, _, _ ->
+                if (visited.add(key)) {
+                    val tx = key.column * tileSize; val ty = key.row * tileSize
+                    val tileBounds = PixelRect(tx, ty, tx + tileSize, ty + tileSize).intersect(bounds)
+                    block(key, tileBounds, PixelRect(tileBounds.left - tx, tileBounds.top - ty, tileBounds.right - tx, tileBounds.bottom - ty))
+                }
+            }
+        }
+    }
 
     private inline fun visitTiles(bounds: PixelRect, tileSize: Int, block: (PixelTileKey, PixelRect, PixelRect) -> Unit) {
         for (row in bounds.top / tileSize..(bounds.bottom - 1) / tileSize) {

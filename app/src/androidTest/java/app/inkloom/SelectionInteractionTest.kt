@@ -31,6 +31,33 @@ class SelectionInteractionTest {
         return view to pixels
     }
 
+    @Test fun selectionStrokeUsesFillHistoryPreservesMaskAndHonorsProtectedTargets() {
+        instrumentation.runOnMainSync {
+            val (view, pixels) = fixture()
+            val mask = MaskTileSurface(128, 128, 64)
+            mask.beginWrite("rectangle").use { it.composeAlpha(PixelRect(20, 20, 80, 80), ByteArray(60 * 60) { 255.toByte() }, mode = MaskComposeMode.REPLACE); it.commit().close() }
+            view.replaceSelectionFromMask(mask.snapshot())
+            view.onSelectionStrokeRequested = { request ->
+                val coverage = app.inkloom.engine.v5.selection.SelectionStrokeMask.create(request.selection,
+                    request.rasterWidth, request.rasterHeight, request.widthPixels, request.placement)
+                assertTrue(view.paintFillIntoActiveRaster(coverage.snapshot(), request.colorArgb.toUInt().toLong(), request.opacity, 0))
+            }
+            assertTrue(view.strokeSelection(2f, app.inkloom.engine.v5.selection.SelectionStrokePlacement.OUTSIDE, Color.RED, .5f))
+            assertEquals(127, pixels.pixelAt(19, 40) ushr 24)
+            assertEquals(0, pixels.pixelAt(40, 40))
+            assertEquals(255, view.selectionMaskSurfaceSnapshot()!!.alphaAt(40, 40))
+            view.undo(); assertEquals(0, pixels.pixelAt(19, 40))
+            view.redo(); assertEquals(127, pixels.pixelAt(19, 40) ushr 24)
+            view.setProtectedLayerIds(setOf(LayerIds.INK)); assertFalse(view.strokeSelection(2f, app.inkloom.engine.v5.selection.SelectionStrokePlacement.CENTER))
+            view.setProtectedLayerIds(emptySet())
+            view.selectionLayerTransferPending = true; assertFalse(view.strokeSelection(2f, app.inkloom.engine.v5.selection.SelectionStrokePlacement.CENTER))
+            view.selectionLayerTransferPending = false
+            assertFalse(view.strokeSelection(Float.NaN, app.inkloom.engine.v5.selection.SelectionStrokePlacement.CENTER))
+            assertFalse(view.strokeSelection(2f, app.inkloom.engine.v5.selection.SelectionStrokePlacement.CENTER, Color.TRANSPARENT))
+            view.clearSelection(); assertFalse(view.strokeSelection(2f, app.inkloom.engine.v5.selection.SelectionStrokePlacement.CENTER))
+        }
+    }
+
     @Test fun outsideDeletePreservesSelectionAndOtherLayersAndUndoRestoresInOneStep() {
         instrumentation.runOnMainSync {
             val (view, pixels) = fixture()

@@ -15,6 +15,7 @@ import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
@@ -50,6 +51,52 @@ class SelectionWindowRegressionTest {
         }
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
+
+    @Test fun strokeDialogCancelApplyColorUndoAndReopenKeepSelectionAndPixels() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        stroke(pagePoint(view, .3f, .3f), pagePoint(view, .4f, .3f))
+        compose.waitUntil(15_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 && !view.hasPendingPaintPublicationForMerge() }
+        val source = view.activeRasterSnapshotForTest()!!
+        val bounds = PixelRect(0, 0, source.logicalWidth, source.logicalHeight)
+        val original = source.copyPremultipliedPixels(bounds)
+        tap("Selection"); tap("Rectangle selection")
+        stroke(pagePoint(view, .2f, .2f), pagePoint(view, .5f, .5f))
+        val selection = requireNotNull(view.selectionMaskSurfaceSnapshot())
+        val maskBounds = PixelRect(0, 0, selection.logicalWidth, selection.logicalHeight)
+        val originalMask = selection.copyAlpha(maskBounds)
+        tap("Selection actions"); tap("Stroke selection…")
+        compose.onNodeWithContentDescription("Stroke width").performTextReplacement("8")
+        compose.onNodeWithContentDescription("Stroke width").performImeAction()
+        SystemClock.sleep(350); compose.waitForIdle()
+        tap("Stroke outside"); tap("Cancel stroke")
+        org.junit.Assert.assertArrayEquals(original, view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(bounds))
+        org.junit.Assert.assertArrayEquals(originalMask, view.selectionMaskSurfaceSnapshot()!!.copyAlpha(maskBounds))
+        tap("Selection actions"); tap("Stroke selection…")
+        compose.onNodeWithContentDescription("Stroke width").performTextReplacement("8")
+        compose.onNodeWithContentDescription("Stroke width").performImeAction()
+        SystemClock.sleep(350); compose.waitForIdle()
+        tap("Stroke outside"); tap("Stroke color")
+        compose.onNodeWithContentDescription("Hex color").performScrollTo()
+        compose.onNodeWithContentDescription("Hex color").performTextReplacement("#FF0000")
+        compose.onNodeWithContentDescription("Hex color").performImeAction()
+        SystemClock.sleep(350); compose.waitForIdle()
+        tap("Apply color"); tap("Apply stroke")
+        compose.waitUntil(20_000) {
+            !view.selectionLayerTransferPending && !view.hasPendingPaintPublicationForMerge() &&
+                view.activeRasterSnapshotForTest()?.copyPremultipliedPixels(bounds)?.contentEquals(original) == false
+        }
+        val outlined = view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(bounds)
+        assertTrue(outlined.any { it ushr 24 > 0 && (it ushr 16 and 255) > 0 && (it and 255) == 0 })
+        org.junit.Assert.assertArrayEquals(originalMask, view.selectionMaskSurfaceSnapshot()!!.copyAlpha(maskBounds))
+        tapAt(toolbarCenter("Undo"))
+        compose.waitUntil(15_000) { view.activeRasterSnapshotForTest()?.copyPremultipliedPixels(bounds)?.contentEquals(original) == true }
+        tapAt(toolbarCenter("Redo"))
+        compose.waitUntil(15_000) { view.activeRasterSnapshotForTest()?.copyPremultipliedPixels(bounds)?.contentEquals(outlined) == true }
+        tap("Exit selection tool"); tap("Gallery"); tap("Untitled Note")
+        val reopened = canvas()
+        compose.waitUntil(15_000) { reopened.activeRasterSnapshotForTest()?.copyPremultipliedPixels(bounds)?.contentEquals(outlined) == true }
+    }
 
     @Test fun outsideDeleteUsesActualMenuAndUndoAndReopenPreserveKeptContent() {
         tap("New Note"); tap("Create")
@@ -94,8 +141,12 @@ class SelectionWindowRegressionTest {
         val reopened = canvas()
         // A newly bound canvas has a non-null empty placeholder before persisted tiles arrive.
         // Wait for the full pixel payload, rather than treating that placeholder as loaded content.
-        compose.waitUntil(15_000) {
+        try { compose.waitUntil(15_000) {
             reopened.activeRasterSnapshotForTest()?.copyPremultipliedPixels(bounds)?.contentEquals(expected) == true
+        } } catch (failure: Throwable) {
+            val actual = reopened.activeRasterSnapshotForTest()?.copyPremultipliedPixels(bounds)
+            val differences = expected.indices.filter { actual?.getOrNull(it) != expected[it] }
+            throw AssertionError("Reload differs at ${differences.size} pixels: " + differences.take(8).joinToString { "$it:${expected[it].toUInt().toString(16)}->${actual?.getOrNull(it)?.toUInt()?.toString(16)}" }, failure)
         }
         val saved = reopened.activeRasterSnapshotForTest()!!
         assertEquals(0, saved.pixelAt(x, y))
@@ -258,6 +309,7 @@ class SelectionWindowRegressionTest {
         compose.waitForIdle()
         assertEquals(app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR, view.selectionInterpolation)
         tap("Selection actions")
+        compose.onNode(hasText("Selection settings")).performScrollTo()
         tap("Selection settings")
         compose.onNode(hasText("Bicubic")).performScrollTo()
         tap("Bicubic")
@@ -747,7 +799,7 @@ class SelectionWindowRegressionTest {
     private fun center(label: String): Offset {
         compose.waitForIdle()
         var result: Offset? = null
-        compose.waitUntil(5_000) {
+        try { compose.waitUntil(5_000) {
             if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.clearCache()
             fun visit(node: android.view.accessibility.AccessibilityNodeInfo?) {
                 if (node == null) return
@@ -759,6 +811,15 @@ class SelectionWindowRegressionTest {
             }
             visit(instrumentation.uiAutomation.rootInActiveWindow)
             result != null
+        } } catch (failure: Throwable) {
+            val labels = mutableListOf<String>()
+            fun summarize(node: android.view.accessibility.AccessibilityNodeInfo?) {
+                if (node == null) return
+                (node.text ?: node.contentDescription)?.let { labels += it.toString() }
+                repeat(node.childCount) { summarize(node.getChild(it)) }
+            }
+            summarize(instrumentation.uiAutomation.rootInActiveWindow)
+            throw AssertionError("Missing $label. Active window: $labels", failure)
         }
         return requireNotNull(result)
     }

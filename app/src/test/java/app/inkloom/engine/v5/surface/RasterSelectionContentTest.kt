@@ -5,6 +5,46 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RasterSelectionContentTest {
+    @Test fun strokeFillKeepsSelectionAndHdrInteriorAndUndoesAsOneEdit() {
+        val selection = MaskTileSurface(128, 128, 64)
+        selection.beginWrite("rectangle").use { it.composeAlpha(PixelRect(20, 20, 90, 90), ByteArray(70 * 70) { 255.toByte() }, mode = MaskComposeMode.REPLACE); it.commit().close() }
+        val outline = app.inkloom.engine.v5.selection.SelectionStrokeMask.create(selection.snapshot(), 128, 128,
+            2f, app.inkloom.engine.v5.selection.SelectionStrokePlacement.OUTSIDE)
+        for (format in PixelTileFormat.entries) {
+            val pixels = PixelTileSurface(128, 128, 64, pixelFormat = format)
+            pixels.beginWrite("existing HDR interior").use {
+                if (format == PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16) it.setLinearPixel(40, 40, LinearRgba(2f, .5f, .2f, .7f))
+                else it.setPixel(40, 40, 0xFF0000FF.toInt())
+                it.commit().close()
+            }
+            val original = pixels.snapshot()
+            val edit = requireNotNull(RasterSelectionContent.fill(pixels, outline.snapshot(), 0x80FF0000.toInt(), .5f))
+            assertEquals(64, pixels.pixelAt(19, 40) ushr 24)
+            assertEquals(original.pixelAt(40, 40), pixels.pixelAt(40, 40))
+            if (format == PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16)
+                assertEquals(original.copyPremultipliedF16(PixelRect(40, 40, 41, 41))[0], pixels.snapshot().copyPremultipliedF16(PixelRect(40, 40, 41, 41))[0])
+            assertEquals(255, selection.alphaAt(40, 40)); assertEquals(0, selection.alphaAt(19, 40))
+            pixels.apply(edit.record, PixelTileSurface.HistoryDirection.UNDO)
+            assertEquals(0, pixels.pixelAt(19, 40))
+            assertEquals(original.pixelAt(40, 40), pixels.pixelAt(40, 40))
+            pixels.apply(edit.record, PixelTileSurface.HistoryDirection.REDO)
+            assertEquals(64, pixels.pixelAt(19, 40) ushr 24)
+            edit.record.close()
+        }
+    }
+
+    @Test fun disconnectedSparseFillScalesMaskCoordinatesWithoutFillingGap() {
+        val pixels = PixelTileSurface(8192, 8192, 64)
+        val mask = MaskTileSurface(4096, 4096, 64)
+        mask.beginWrite("islands").use { it.setAlpha(10, 10, 255); it.setAlpha(4000, 4000, 128); it.commit().close() }
+        val edit = requireNotNull(RasterSelectionContent.fill(pixels, mask.snapshot(), 0xFFFF0000.toInt(), 1f))
+        assertEquals(0xFFFF0000.toInt(), pixels.pixelAt(20, 20))
+        assertEquals(128, pixels.pixelAt(8000, 8000) ushr 24)
+        assertEquals(0, pixels.pixelAt(4096, 4096))
+        assertEquals(2, pixels.tileCount); assertEquals(2, edit.record.changedTileCount)
+        edit.record.close()
+    }
+
     @Test fun outsideClearKeepsSoftSelectionAndExtendedColorWithOneTransaction() {
         for (format in PixelTileFormat.entries) {
             val pixels = PixelTileSurface(128, 128, 64, pixelFormat = format)

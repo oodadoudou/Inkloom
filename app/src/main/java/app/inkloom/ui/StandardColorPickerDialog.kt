@@ -1,6 +1,10 @@
 package app.inkloom.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
@@ -19,6 +23,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import app.inkloom.settings.UiLanguage
 import app.inkloom.settings.text
@@ -52,10 +58,11 @@ internal fun StandardColorPickerDialog(
     fun update(color: Int) { draft = color; hex = StandardColorHex.format(color) }
     AlertDialog(
         onDismissRequest = { close(onDismiss) },
-        modifier = Modifier.widthIn(max = 390.dp),
+        modifier = Modifier.widthIn(max = 390.dp).imePadding(),
+        properties = DialogProperties(decorFitsSystemWindows = false),
         title = { Text(tr("Choose color", "选择颜色")) },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 CspColorPanel(
                     color = draft,
                     onColorPreview = ::update,
@@ -75,7 +82,8 @@ internal fun StandardColorPickerDialog(
                     modifier = Modifier.semantics { contentDescription = tr("Hex color", "十六进制颜色") },
                     label = { Text(tr("Hex · RGB or ARGB", "十六进制 · RGB 或 ARGB")) },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { close {} }),
                 )
             }
         },

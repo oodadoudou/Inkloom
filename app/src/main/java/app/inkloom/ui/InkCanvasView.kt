@@ -6905,6 +6905,30 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
+    internal var onSelectionStrokeRequested: ((SelectionStrokeRequest) -> Unit)? = null
+
+    /** The worker creates coverage; the existing raster fill owner commits one paint history item. */
+    fun strokeSelection(widthPixels: Float, placement: app.inkloom.engine.v5.selection.SelectionStrokePlacement,
+        colorArgb: Int = inkColor, opacity: Float = inkOpacity): Boolean {
+        if (selectionLayerTransferPending || hasActivePaintContact() || rejectLayerContentEdit()) return false
+        if (!widthPixels.isFinite() || widthPixels <= 0f || widthPixels > 256f ||
+            !opacity.isFinite() || opacity <= 0f || opacity > 1f || colorArgb ushr 24 == 0) return false
+        if (editingLayerMaskId != null || rasterTileSurfaceFor(activeLayerId) == null) {
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                "请选择像素图层内容，再为选区描边" else "Select raster layer content before stroking a selection")
+            return false
+        }
+        commitSelectionContour()
+        finishSelectionColorFill(true)
+        finishSelectionTransform(true)
+        val selection = selectionMaskForRasterTools()?.takeUnless { it.isEmpty } ?: return false
+        val callback = onSelectionStrokeRequested ?: return false
+        val raster = rasterTileSurfaceFor(activeLayerId) ?: return false
+        callback(SelectionStrokeRequest(selection, raster.logicalWidth, raster.logicalHeight,
+            widthPixels, placement, colorArgb, opacity))
+        return true
+    }
+
     fun fillSelection(): Boolean {
         finishSelectionTransform(apply = true)
         val mask = selectionMaskForRasterTools() ?: return false
