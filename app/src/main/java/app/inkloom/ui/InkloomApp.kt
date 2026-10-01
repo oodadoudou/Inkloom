@@ -2462,10 +2462,6 @@ private fun EditorScreen(
             }
             ProcreateTopButton(Icons.Outlined.Undo, tr("Undo", "撤销"), onClick = { canvasView?.undo() })
             ProcreateTopButton(Icons.Outlined.Redo, tr("Redo", "重做"), onClick = { canvasView?.redo() })
-            Box {
-                ProcreateTopButton(Icons.Outlined.Build, tr("Actions", "操作"), selected = workspaceMenu && commandSection != 5, onClick = { workspaceMenu = true })
-
-            }
             ProcreateTopButton(Icons.Outlined.Settings, tr("Settings", "设置"), onClick = onSettings)
             ProcreateTopButton(Icons.Outlined.Gesture, tr("Selection", "选择"),
                 selected = tool == EditorTool.SELECT || selectionActive,
@@ -2601,10 +2597,8 @@ private fun EditorScreen(
                 }
 
             }
-            Box {
-                ProcreateTopButton(Icons.Outlined.MoreHoriz, tr("More", "更多"), selected = workspaceMenu && commandSection == 5, onClick = { commandSection = 5; workspaceMenu = true })
-
-            }
+            ProcreateTopButton(Icons.Outlined.MoreHoriz, tr("Actions", "操作"),
+                selected = workspaceMenu, onClick = { workspaceMenu = true })
         }
 
         if (workspaceMenu) EditorActionsDialog(settings.language, commandSection, { commandSection = it }, { workspaceMenu = false }) {

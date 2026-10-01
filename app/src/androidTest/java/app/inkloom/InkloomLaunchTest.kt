@@ -280,14 +280,14 @@ class InkloomLaunchTest {
     @Test fun rulerIsReachableFromCompactToolbarAndPersists() {
         createNotebookAndOpenEditor()
 
-        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithContentDescription("Actions Guides").performClick()
         composeRule.onNodeWithText("Show ruler").assertIsDisplayed().performClick()
         composeRule.waitUntil(5_000) {
             AppSettingsStore(composeRule.activity).load().rulerEnabled
         }
 
-        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithContentDescription("Actions Guides").performClick()
         composeRule.onNodeWithText("Hide ruler").assertIsDisplayed()
 
@@ -297,12 +297,12 @@ class InkloomLaunchTest {
     @Test fun snapGridAndAlignmentGuidesAreReachableFromCompactToolbar() {
         createNotebookAndOpenEditor()
 
-        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithContentDescription("Actions Guides").performClick()
         composeRule.onNodeWithText("Show snap grid").performClick()
         composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().gridSnapEnabled }
 
-        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithContentDescription("Actions Guides").performClick()
         composeRule.onNodeWithText("Show alignment guides").performScrollTo().performClick()
         composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().alignmentGuidesEnabled }
@@ -314,12 +314,12 @@ class InkloomLaunchTest {
     @Test fun specialRulersAreReachableAndPersistFromTheCanvasMenu() {
         createNotebookAndOpenEditor()
 
-        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithContentDescription("Actions Guides").performClick()
         composeRule.onNodeWithText("Isometric guide").performScrollTo().performClick()
         composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().specialRulerMode == SpecialRulerMode.ISOMETRIC }
 
-        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithContentDescription("Actions Guides").performClick()
         composeRule.onNodeWithText("Drawing Assist").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Edit ruler").performScrollTo().assertIsDisplayed()
@@ -488,7 +488,7 @@ class InkloomLaunchTest {
     @Test fun stickyNoteDoubleTapOpensTheUnifiedObjectEditor() {
         val noteText = "Sticky canvas test"
         createNotebookAndOpenEditor()
-        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithContentDescription("Actions Tools").performClick()
         composeRule.onNodeWithText("Note").performClick()
         composeRule.onNodeWithText("New sticky note").assertIsDisplayed()
@@ -530,7 +530,7 @@ class InkloomLaunchTest {
 
     @Test fun editorCreatesAnInternalNotebookPageLink() {
         createNotebookAndOpenEditor()
-        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithContentDescription("Actions Tools").performClick()
         composeRule.onNodeWithText("Link").performClick()
         composeRule.onNodeWithText("Notebook page").assertIsDisplayed()
@@ -744,7 +744,7 @@ class InkloomLaunchTest {
 
     @Test fun editorInsertsAValidatedLinkCard() {
         createNotebookAndOpenEditor()
-        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithContentDescription("Actions Tools").performClick()
         composeRule.onNodeWithText("Link").performClick()
         composeRule.onNodeWithText("Insert link").assertIsDisplayed()
@@ -1099,7 +1099,7 @@ class InkloomLaunchTest {
     @Test fun gradientToolControlsExposeProfessionalOptionsAndPersist() {
         createNotebookAndOpenEditor()
 
-        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithContentDescription("Actions Tools").performClick()
         composeRule.onAllNodesWithText("Gradient").onLast().performClick()
         composeRule.waitForIdle()
@@ -1123,7 +1123,7 @@ class InkloomLaunchTest {
     @Test fun gradientHandlesRemainEditableAfterCommit() {
         createNotebookAndOpenEditor()
 
-        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithContentDescription("Actions Tools").performClick()
         composeRule.onAllNodesWithText("Gradient").onLast().performClick()
         composeRule.waitForIdle()

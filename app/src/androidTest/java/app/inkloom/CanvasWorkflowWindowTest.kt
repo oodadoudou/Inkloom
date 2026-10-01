@@ -62,7 +62,7 @@ class CanvasWorkflowWindowTest {
     @Test fun canvasSizeDialogAppliesAndUndoesNativeDimensions() {
         tap("New Note"); tap("Create")
         val view = canvas()
-        compose.onNodeWithContentDescription("More").performClick()
+        compose.onNodeWithContentDescription("Actions").performClick()
         compose.onNodeWithContentDescription("Actions Canvas").performClick()
         compose.onNodeWithText("Canvas & resolution").performScrollTo().performClick()
         compose.onNodeWithText("Width").performTextReplacement("1800")

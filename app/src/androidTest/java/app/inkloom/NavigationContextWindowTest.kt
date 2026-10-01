@@ -97,8 +97,22 @@ class NavigationContextWindowTest {
         compose.onNodeWithContentDescription("Jump to page").performClick()
         compose.onNodeWithContentDescription("Go to page 31").assertIsSelected().assertIsDisplayed()
         compose.onNodeWithContentDescription("Close page jump").performClick()
-        compose.onNodeWithContentDescription("More").performClick()
+        compose.onNodeWithContentDescription("Actions").performClick()
         compose.onNodeWithContentDescription("Go to page 1").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Actions Notebook").assertIsSelected()
+    }
+
+    @Test fun actionsHasOneEntryOnTheRightAndRemembersItsCategory() {
+        openFixtureAtPage30()
+        compose.onAllNodesWithContentDescription("Actions").assertCountEquals(1)
+        compose.onNodeWithContentDescription("More").assertDoesNotExist()
+        val actions = compose.onNodeWithContentDescription("Actions").fetchSemanticsNode().boundsInRoot
+        val colors = compose.onNodeWithContentDescription("Colors").fetchSemanticsNode().boundsInRoot
+        assertTrue("Actions remains to the right of Colors", actions.left >= colors.right)
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithContentDescription("Actions Share").performClick()
+        compose.onNodeWithText("Done").performClick()
+        compose.onNodeWithContentDescription("Actions").performClick()
         compose.onNodeWithContentDescription("Actions Share").assertIsSelected()
     }
 
@@ -165,7 +179,7 @@ class NavigationContextWindowTest {
     @Test fun linkTargetPickerReopensAtLastChosenPage() {
         openFixtureAtPage30()
         fun openLink() {
-            compose.onNodeWithContentDescription("More").performClick()
+            compose.onNodeWithContentDescription("Actions").performClick()
             compose.onNodeWithContentDescription("Actions Tools").performClick()
             compose.onNodeWithText("Link").performClick()
             compose.onNodeWithText("Notebook page").performClick()
