@@ -1948,6 +1948,9 @@ private fun EditorScreen(
     var selectionFeather by remember { mutableFloatStateOf(0f) }
     var selectionColorFill by remember(selectedPage.id) { mutableStateOf(false) }
     var quickMaskActive by remember(selectedPage.id) { mutableStateOf(false) }
+    LaunchedEffect(tool, selectedPage.id) {
+        if (tool != EditorTool.SELECT) { quickMaskActive = false; canvasView?.quickMaskActive = false }
+    }
     SideEffect { canvasView?.onSelectionThresholdChanged = { value -> onSettingsChange(settings.copy(selectionThreshold = value)) } }
     var savedSelectionsOpen by remember(selectedPage.id) { mutableStateOf(false) }
     val trSelectionName = tr("Selection", "选区")
@@ -2244,6 +2247,8 @@ private fun EditorScreen(
         syncCanvasInput(prepareAssets = target.brush != null)
     }
     fun finishSelectionTool(deselect: Boolean) {
+        quickMaskActive = false
+        canvasView?.quickMaskActive = false
         if (!deselect) canvasView?.commitSelectionContour()
         canvasView?.cancelSelectionInput()
         if (deselect) {
@@ -3687,7 +3692,7 @@ private fun EditorScreen(
                         else -> Unit
                     }
                     syncCanvasInput(prepareAssets = activeBrush != null)
-                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, onScale = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, resizeElement(it, 1.15f)) } } ?: canvasView?.scaleSelection(1.15f) }, onRotate = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, rotateElement(it, 15f)) } } ?: canvasView?.rotateSelection(15f) }, onCopy = { selectedElementId?.let { onDuplicateElement(document.id, selectedPage.id, it) } ?: canvasView?.copySelection() }, onCut = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.cutSelectionToClipboard() != true) Toast.makeText(context, selectBeforeCutMessage, Toast.LENGTH_SHORT).show() }, onClipboardCopy = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.copySelectionToClipboard() != true) Toast.makeText(context, selectBeforeCopyMessage, Toast.LENGTH_SHORT).show() }, onPaste = { selectedElementId = null; if (canvasView?.pasteSelectionFromClipboard() != true) Toast.makeText(context, noInkClipboardMessage, Toast.LENGTH_SHORT).show() }, onDelete = { selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection() }, onSelectAll = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.selectAllEditableStrokes() }, onInvertSelection = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.invertSelection() }, onDeselect = { finishSelectionTool(deselect = true) }, onFreeTransform = { tool = EditorTool.SELECT; canvasView?.enterFreeTransform() }, selectionShape = settings.selectionShape, selectionMode = settings.selectionMode, selectionFilter = settings.selectionFilter, onSelectionShape = { shape -> canvasView?.beginSelectionInput(shape); onSettingsChange(settings.copy(selectionShape = shape)) }, onSelectionMode = { onSettingsChange(settings.copy(selectionMode = it)) }, onSelectionFilter = { onSettingsChange(settings.copy(selectionFilter = it)) }, referenceTarget = settings.referenceTarget, onReferenceTarget = { onSettingsChange(settings.copy(referenceTarget = it)) }, correctLineMode = settings.correctLineMode, correctLineAmount = settings.correctLineAmount, onCorrectLineMode = { onSettingsChange(settings.copy(correctLineMode = it)) }, onCorrectLineAmount = { onSettingsChange(settings.copy(correctLineAmount = it.coerceIn(0f, 1f))) }, eraserPreset = settings.eraserPreset, onEraserPreset = { preset -> onSettingsChange(settings.copy(eraserPreset = preset, nonDestructiveEraser = preset.usesMask)) }, rulerEnabled = settings.rulerEnabled, rulerSnapDegrees = settings.rulerSnapDegrees, onToggleRuler = { onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) }, onRulerSnap = { onSettingsChange(settings.copy(rulerSnapDegrees = it)) }, onResetRuler = { onSettingsChange(settings.copy(rulerCenterX = .5f, rulerCenterY = .5f, rulerAngleDegrees = 0f)) }, gridSnapEnabled = settings.gridSnapEnabled, gridSpacing = settings.gridSpacing, alignmentGuidesEnabled = settings.alignmentGuidesEnabled, onToggleGridSnap = { onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) }, onGridSpacing = { onSettingsChange(settings.copy(gridSpacing = it)) }, onToggleAlignmentGuides = { onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) }, onResetAlignmentGuides = { onSettingsChange(settings.copy(verticalGuideX = .5f, horizontalGuideY = .5f)) }, onDragStart = {
+                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, referenceTarget = settings.referenceTarget, onReferenceTarget = { onSettingsChange(settings.copy(referenceTarget = it)) }, correctLineMode = settings.correctLineMode, correctLineAmount = settings.correctLineAmount, onCorrectLineMode = { onSettingsChange(settings.copy(correctLineMode = it)) }, onCorrectLineAmount = { onSettingsChange(settings.copy(correctLineAmount = it.coerceIn(0f, 1f))) }, eraserPreset = settings.eraserPreset, onEraserPreset = { preset -> onSettingsChange(settings.copy(eraserPreset = preset, nonDestructiveEraser = preset.usesMask)) }, rulerEnabled = settings.rulerEnabled, rulerSnapDegrees = settings.rulerSnapDegrees, onToggleRuler = { onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) }, onRulerSnap = { onSettingsChange(settings.copy(rulerSnapDegrees = it)) }, onResetRuler = { onSettingsChange(settings.copy(rulerCenterX = .5f, rulerCenterY = .5f, rulerAngleDegrees = 0f)) }, gridSnapEnabled = settings.gridSnapEnabled, gridSpacing = settings.gridSpacing, alignmentGuidesEnabled = settings.alignmentGuidesEnabled, onToggleGridSnap = { onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) }, onGridSpacing = { onSettingsChange(settings.copy(gridSpacing = it)) }, onToggleAlignmentGuides = { onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) }, onResetAlignmentGuides = { onSettingsChange(settings.copy(verticalGuideX = .5f, horizontalGuideY = .5f)) }, onDragStart = {
                     toolbarDragOrigin = Triple(settings.toolbarDock, toolbarX, toolbarY)
                     toolbarDragTravel = 0f
                     if (settings.toolbarDock == ToolbarDock.FREE) {
@@ -3870,6 +3875,11 @@ private fun EditorScreen(
                     onCut = { canvasView?.requestSelectionLayerTransfer(true) },
                     onCopy = { canvasView?.requestSelectionLayerTransfer(false) },
                     onDelete = { canvasView?.deleteSelection() },
+                    onSelectAll = { canvasView?.selectAllEditableStrokes() },
+                    onClipboardCopy = { canvasView?.copySelectionToClipboard() },
+                    onPaste = { canvasView?.pasteSelectionFromClipboard() },
+                    filter = settings.selectionFilter,
+                    onFilter = { onSettingsChange(settings.copy(selectionFilter = it)) },
                     onExpand = { canvasView?.expandSelection(it) },
                     onShrink = { canvasView?.shrinkSelection(it) },
                     onBorder = { canvasView?.borderSelection(it) },
@@ -6502,7 +6512,7 @@ private fun ProcreateTopButton(
 }
 
 @Composable
-private fun ToolDock(tool: EditorTool, toolPaletteLayout: String, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDragStart: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, onDragCancel: () -> Unit, layoutLocked: Boolean, vertical: Boolean, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit, liquifyControls: @Composable ColumnScope.() -> Unit, modifier: Modifier = Modifier) {
+private fun ToolDock(tool: EditorTool, toolPaletteLayout: String, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDragStart: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, onDragCancel: () -> Unit, layoutLocked: Boolean, vertical: Boolean, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit, liquifyControls: @Composable ColumnScope.() -> Unit, modifier: Modifier = Modifier) {
     var moreToolsOpen by remember { mutableStateOf(false) }
     var controlsOpen by remember { mutableStateOf(false) }
     val currentDragStart by rememberUpdatedState(onDragStart)
@@ -6533,23 +6543,6 @@ private fun ToolDock(tool: EditorTool, toolPaletteLayout: String, onTool: (Edito
                 onTool = onTool,
                 onUndo = onUndo,
                 onRedo = onRedo,
-                onScale = onScale,
-                onRotate = onRotate,
-                onCopy = onCopy,
-                onCut = onCut,
-                onClipboardCopy = onClipboardCopy,
-                onPaste = onPaste,
-                onDelete = onDelete,
-                onSelectAll = onSelectAll,
-                onInvertSelection = onInvertSelection,
-                onDeselect = onDeselect,
-                onFreeTransform = onFreeTransform,
-                selectionShape = selectionShape,
-                selectionMode = selectionMode,
-                selectionFilter = selectionFilter,
-                onSelectionShape = onSelectionShape,
-                onSelectionMode = onSelectionMode,
-                onSelectionFilter = onSelectionFilter,
                 referenceTarget = referenceTarget,
                 onReferenceTarget = onReferenceTarget,
                 correctLineMode = correctLineMode,
@@ -6682,7 +6675,7 @@ private fun ProcreateSidebar(
 }
 
 @Composable
-private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit, liquifyControls: @Composable ColumnScope.() -> Unit) {
+private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit, liquifyControls: @Composable ColumnScope.() -> Unit) {
     val dragToolbarDescription = tr("Drag toolbar", "拖动工具栏")
     var toolLibraryLayout by rememberSaveable { mutableStateOf(ToolLibraryLayout.LIST) }
     var toolLibrarySort by rememberSaveable { mutableStateOf(ToolLibrarySort.DEFAULT) }
@@ -6815,7 +6808,7 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
             )
         }
     }
-    Box {
+    if (tool != EditorTool.SELECT) Box {
         CompactToolbarIconButton(onClick = { onControlsOpen(true) }, description = tr("Tool controls", "工具参数")) { Icon(Icons.Outlined.Tune, null, Modifier.size(20.dp)) }
         DropdownMenu(expanded = controlsOpen, onDismissRequest = { onControlsOpen(false) }, modifier = Modifier.widthIn(min = 300.dp, max = 360.dp)) {
             Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -6869,36 +6862,7 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
                     Text(tr("Drag either blue line with one finger. Pen strokes and shape points snap when they start nearby.", "用单指拖动任一蓝色参考线；笔迹落点和形状端点靠近时会自动吸附。"), color = MutedInk, fontSize = 10.sp)
                     OutlinedButton(onClick = onResetAlignmentGuides, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(6.dp)); Text(tr("Center alignment guides", "参考线居中")) }
                 }
-                if (tool == EditorTool.SELECT) {
-                    Text(tr("Selection", "选择"), color = MutedInk, fontSize = 12.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        SelectionShape.entries.forEach { shape -> FilterChip(selected = selectionShape == shape, onClick = { onSelectionShape(shape) }, label = { Text(when (shape) { SelectionShape.SMART_BORDER -> tr("Smart", "智能"); SelectionShape.MAGIC_WAND -> tr("Wand", "魔棒"); SelectionShape.FREEFORM -> tr("Freeform", "自由套索"); SelectionShape.RECTANGLE -> tr("Rectangle", "矩形"); SelectionShape.ELLIPSE -> tr("Ellipse", "椭圆"); SelectionShape.BRUSH -> tr("Brush", "画笔") }, fontSize = 10.sp) }) }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        SelectionMode.entries.forEach { mode -> FilterChip(selected = selectionMode == mode, onClick = { onSelectionMode(mode) }, label = { Text(when (mode) { SelectionMode.REPLACE -> tr("New", "新建"); SelectionMode.ADD -> tr("Add", "添加"); SelectionMode.SUBTRACT -> tr("Subtract", "减去"); SelectionMode.INTERSECT -> tr("Intersect", "交集") }, fontSize = 10.sp) }) }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        SelectionFilter.entries.forEach { filter -> FilterChip(selected = selectionFilter == filter, onClick = { onSelectionFilter(filter) }, label = { Text(when (filter) { SelectionFilter.ALL -> tr("All", "全部"); SelectionFilter.ACTIVE_LAYER -> tr("Layer", "图层"); SelectionFilter.CURRENT_BRUSH -> tr("Brush", "笔刷"); SelectionFilter.CURRENT_COLOR -> tr("Color", "颜色") }, fontSize = 10.sp) }) }
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        CompactToolbarIconButton(onScale, tr("Scale selection", "缩放所选内容")) { Icon(Icons.Outlined.ZoomOutMap, null) }
-                        CompactToolbarIconButton(onRotate, tr("Rotate selection", "旋转所选内容")) { Icon(Icons.Outlined.RotateRight, null) }
-                        CompactToolbarIconButton(onCopy, tr("Duplicate selection", "复制所选内容")) { Icon(Icons.Outlined.ControlPointDuplicate, null) }
-                        CompactToolbarIconButton(onDelete, tr("Delete selection", "删除所选内容")) { Icon(Icons.Outlined.Delete, null) }
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        CompactToolbarIconButton(onCut, tr("Cut ink selection", "剪切所选墨迹")) { Icon(Icons.Outlined.ContentCut, null) }
-                        CompactToolbarIconButton(onClipboardCopy, tr("Copy ink selection to clipboard", "复制所选墨迹到剪贴板")) { Icon(Icons.Outlined.ContentCopy, null) }
-                        CompactToolbarIconButton(onPaste, tr("Paste ink selection", "粘贴所选墨迹")) { Icon(Icons.Outlined.ContentPaste, null) }
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        TextButton(onClick = onSelectAll) { Text(tr("All", "全选"), fontSize = 10.sp) }
-                        TextButton(onClick = onInvertSelection) { Text(tr("Invert", "反选"), fontSize = 10.sp) }
-                        TextButton(onClick = onDeselect) { Text(tr("Deselect", "取消选区"), fontSize = 10.sp) }
-                        TextButton(onClick = onFreeTransform) { Text(tr("Transform", "自由变换"), fontSize = 10.sp) }
-                    }
-                }
-                if (tool in setOf(EditorTool.SELECT, EditorTool.FILL)) {
+                if (tool == EditorTool.FILL) {
                     Text(tr("Reference", "参照范围"), color = MutedInk, fontSize = 12.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                         ReferenceTarget.entries.forEach { target ->
@@ -10108,6 +10072,8 @@ private fun SelectionStudioPanel(
     onInterpolation: (app.inkloom.engine.v5.tools.SelectionInterpolation) -> Unit,
     onDone: () -> Unit, onDeselect: () -> Unit, onInvert: () -> Unit,
     onCut: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit,
+    onSelectAll: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit,
+    filter: SelectionFilter, onFilter: (SelectionFilter) -> Unit,
     onExpand: (Float) -> Unit, onShrink: (Float) -> Unit, onBorder: (Float) -> Unit,
     onFeather: (Float) -> Unit, onBeginFeather: () -> Boolean, onFinishFeather: (Boolean) -> Unit,
     onFill: () -> Unit, onTransform: () -> Unit,
@@ -10168,6 +10134,8 @@ private fun SelectionStudioPanel(
                             if (shape in setOf(SelectionShape.MAGIC_WAND, SelectionShape.SMART_BORDER)) {
                                 Text("${tr("Threshold", "阈值")}  ${(threshold * 100).toInt()}%")
                                 BrushParameterSlider(threshold, onThreshold, valueRange = 0f..1f)
+                            }
+                            run {
                                 Text(tr("Reference", "参照"))
                                 ReferenceTarget.entries.forEach { target ->
                                     TextButton(onClick = { onReferenceTarget(target) }, colors = ButtonDefaults.textButtonColors(containerColor = if (referenceTarget == target) SageContainer else Color.Transparent, contentColor = if (referenceTarget == target) Ink else MutedInk)) {
@@ -10177,6 +10145,19 @@ private fun SelectionStudioPanel(
                                             ReferenceTarget.REFERENCE_LAYERS -> tr("Reference layers", "参考图层")
                                         })
                                     }
+                                }
+                            }
+                            Text(tr("Select from", "选择范围"), fontSize = 12.sp)
+                            SelectionFilter.entries.forEach { option ->
+                                val label = when (option) {
+                                    SelectionFilter.ALL -> tr("All", "全部")
+                                    SelectionFilter.ACTIVE_LAYER -> tr("Current layer", "当前图层")
+                                    SelectionFilter.CURRENT_BRUSH -> tr("Current brush", "当前笔刷")
+                                    SelectionFilter.CURRENT_COLOR -> tr("Current color", "当前颜色")
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    RadioButton(selected = filter == option, onClick = { onFilter(option) })
+                                    TextButton(onClick = { onFilter(option) }) { Text(label) }
                                 }
                             }
                             Text("${tr("Mask visibility", "蒙版可见度")}  ${(maskVisibility * 100).toInt()}%", fontSize = 12.sp)
@@ -10245,11 +10226,11 @@ private fun SelectionStudioPanel(
     val desiredY=if(dragY>=0f) dragY else containerHeight-measuredHeight-4f
     val bounded=FloatingToolbarPlacement.clamp(desiredX,desiredY,containerWidth,containerHeight,false,measuredWidth,measuredHeight)
     Surface(Modifier.offset { IntOffset((bounded.xDp*density).roundToInt(),(bounded.yDp*density).roundToInt()) }
-        .widthIn(max = 640.dp).onGloballyPositioned {
+        .width(minOf(640.dp, maxWidth)).onGloballyPositioned {
             measuredWidth=it.size.width/density;measuredHeight=it.size.height/density
         }.semantics { contentDescription = studioDescription }, shape = RoundedCornerShape(14.dp), color = Paper, shadowElevation = 3.dp) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.DragIndicator,tr("Move selection studio", "移动选区面板"),
                     Modifier.size(30.dp).padding(4.dp).pointerInput(containerWidth,containerHeight,measuredWidth,measuredHeight) {
                         detectDragGestures(onDragStart={dragX=bounded.xDp;dragY=bounded.yDp},
@@ -10260,6 +10241,7 @@ private fun SelectionStudioPanel(
                             dragX=next.xDp;dragY=next.yDp
                         }
                     },tint=MutedInk)
+                Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 listOf(SelectionShape.MAGIC_WAND, SelectionShape.FREEFORM, SelectionShape.RECTANGLE, SelectionShape.ELLIPSE).forEach { option ->
                     val label = when (option) {
                         SelectionShape.MAGIC_WAND -> tr("Automatic", "自动")
@@ -10274,35 +10256,46 @@ private fun SelectionStudioPanel(
                         Text(label, fontSize = 13.sp)
                     }
                 }
-                Spacer(Modifier.width(12.dp))
+                }
                 SelectionLauncherButton(Icons.Outlined.Check, tr("Exit selection tool", "退出选区工具"), onDone)
                 SelectionLauncherButton(Icons.Outlined.Close, tr("Deselect and exit", "取消选区并退出"), onDeselect)
-                TextButton(onClick = { onLauncherVisible(!launcherVisible) }) {
-                    Text(if (launcherVisible) tr("Hide actions", "隐藏操作") else tr("Show actions", "显示操作"), fontSize = 11.sp)
-                }
-                IconButton(onClick = { launcherSettingsOpen = true }) { Icon(Icons.Outlined.Tune, tr("Arrange selection shortcuts", "排列选区快捷操作")) }
                 Box {
-                    SelectionStudioAction(Icons.Outlined.MoreHoriz, tr("More", "更多")) { settingsOpen = true }
+                    SelectionLauncherButton(Icons.Outlined.MoreHoriz, tr("Selection actions", "选区操作")) { settingsOpen = true }
                     DropdownMenu(settingsOpen, { settingsOpen = false }) {
-                        DropdownMenuItem(text = { Text(tr("Free transform", "自由变换")) }, onClick = { settingsOpen = false; onTransform() })
-                        DropdownMenuItem(text = { Text(tr("Invert", "反选")) }, enabled = hasSelection, onClick = { settingsOpen = false; onInvert() })
+                        if (!launcherVisible) {
+                            DropdownMenuItem(text = { Text(tr("Add", "添加")) }, onClick = { settingsOpen = false; onMode(SelectionMode.ADD) })
+                            DropdownMenuItem(text = { Text(tr("Remove", "移除")) }, onClick = { settingsOpen = false; onMode(SelectionMode.SUBTRACT) })
+                            DropdownMenuItem(text = { Text(tr("Invert", "反选")) }, enabled = hasSelection, onClick = { settingsOpen = false; onInvert() })
+                            DropdownMenuItem(text = { Text(tr("Copy & Paste", "复制并粘贴")) }, enabled = hasSelection, onClick = { settingsOpen = false; onCopy() })
+                            DropdownMenuItem(text = { Text(tr("Feather", "羽化")) }, enabled = hasSelection, onClick = { settingsOpen = false; featherOpen = onBeginFeather() })
+                            DropdownMenuItem(text = { Text(tr("Save & Load", "保存与载入")) }, onClick = { settingsOpen = false; onSaveLoad() })
+                            DropdownMenuItem(text = { Text(tr("Color Fill", "颜色填充")) }, onClick = { settingsOpen = false; onColorFill() })
+                            DropdownMenuItem(text = { Text(tr("Transform", "变换")) }, enabled = hasSelection, onClick = { settingsOpen = false; onTransform() })
+                        }
                         DropdownMenuItem(text = { Text(tr("Clear", "清除")) }, onClick = { settingsOpen = false; onClear() })
                         DropdownMenuItem(text = { Text(tr("Cut & Paste", "剪切并粘贴")) }, enabled = hasSelection, onClick = { settingsOpen = false; onCut() })
                         DropdownMenuItem(text = { Text(tr("Delete selected pixels", "删除所选像素")) }, enabled = hasSelection, onClick = { settingsOpen = false; onDelete() })
+                        DropdownMenuItem(text = { Text(tr("Select all", "全部选择")) }, onClick = { settingsOpen = false; onSelectAll() })
+                        DropdownMenuItem(text = { Text(tr("Copy to clipboard", "复制到剪贴板")) }, enabled = hasSelection, onClick = { settingsOpen = false; onClipboardCopy() })
+                        DropdownMenuItem(text = { Text(tr("Paste", "粘贴")) }, onClick = { settingsOpen = false; onPaste() })
                         DropdownMenuItem(text = { Text(tr("Fill selection", "填充选区")) }, enabled = hasSelection, onClick = { settingsOpen = false; onFill() })
+                        DropdownMenuItem(text = { Text(tr("Quick mask", "快速蒙版")) }, trailingIcon = { if (quickMask) Icon(Icons.Outlined.Check, null) }, onClick = { settingsOpen = false; onQuickMask() })
+                        HorizontalDivider()
                         DropdownMenuItem(text = { Text(tr("New selection", "新建选区")) }, onClick = { settingsOpen = false; onMode(SelectionMode.REPLACE) })
                         DropdownMenuItem(text = { Text(tr("Intersect", "交集")) }, onClick = { settingsOpen = false; onMode(SelectionMode.INTERSECT) })
                         DropdownMenuItem(text = { Text(tr("Brush selection", "画笔选区")) }, onClick = { settingsOpen = false; onShape(SelectionShape.BRUSH) })
                         DropdownMenuItem(text = { Text(tr("Smart border selection", "智能边界选区")) }, onClick = { settingsOpen = false; onShape(SelectionShape.SMART_BORDER) })
                         DropdownMenuItem(text = { Text(tr("Color range…", "色域选择…")) }, onClick = { settingsOpen = false; colorRangeOpen = true })
                         DropdownMenuItem(text = { Text(tr("Selection settings", "选区设置")) }, onClick = { settingsOpen = false; optionsOpen = true })
+                        DropdownMenuItem(text = { Text(if (launcherVisible) tr("Hide actions", "隐藏操作") else tr("Show actions", "显示操作")) }, onClick = { settingsOpen = false; onLauncherVisible(!launcherVisible) })
+                        DropdownMenuItem(text = { Text(tr("Arrange selection shortcuts", "排列选区快捷操作")) }, onClick = { settingsOpen = false; launcherSettingsOpen = true })
                     }
                 }
             }
             if (launcherVisible) {
                 HorizontalDivider(Modifier.widthIn(max = 880.dp), color = OutlineSoft)
                 Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                    launcherOrder.forEach { action -> when (action) {
+                    launcherOrder.filterNot { it in setOf(SelectionLauncherAction.QUICK_MASK, SelectionLauncherAction.CLEAR, SelectionLauncherAction.FILL) }.forEach { action -> when (action) {
                         SelectionLauncherAction.ADD -> SelectionStudioAction(Icons.Outlined.Add, tr("Add", "添加"), selected = mode == SelectionMode.ADD) { onMode(SelectionMode.ADD) }
                         SelectionLauncherAction.SUBTRACT -> SelectionStudioAction(Icons.Outlined.Remove, tr("Remove", "移除"), selected = mode == SelectionMode.SUBTRACT) { onMode(SelectionMode.SUBTRACT) }
                         SelectionLauncherAction.INVERT -> SelectionStudioAction(Icons.Outlined.Flip, tr("Invert", "反选"), enabled = hasSelection, onClick = onInvert)

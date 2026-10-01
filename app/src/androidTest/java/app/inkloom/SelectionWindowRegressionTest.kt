@@ -12,6 +12,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
@@ -67,6 +68,47 @@ class SelectionWindowRegressionTest {
         compose.waitUntil(10_000) { view.activeRasterSnapshotForTest()?.revision != before }
     }
 
+    @Test fun selectionExitControlsStayFixedWhileModesScrollAndToolbarSelectionTogglesOff() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        tap("Selection"); tap("Rectangle selection")
+        stroke(pagePoint(view, .2f, .3f), pagePoint(view, .6f, .6f))
+        compose.waitForIdle()
+        assertTrue(view.hasActiveSelection())
+        val confirm = center("Exit selection tool")
+        val dismiss = center("Deselect and exit")
+        // Scroll only the mode strip, leaving exit controls stationary.
+        val mode = center("Rectangle selection")
+        stroke(mode, Offset(mode.x - 180f, mode.y))
+        compose.waitForIdle()
+        assertEquals(confirm, center("Exit selection tool"))
+        assertEquals(dismiss, center("Deselect and exit"))
+        tap("Exit selection tool")
+        assertEquals(EditorTool.PEN, view.tool)
+        assertTrue("Commit and exit retains the selection for painting", view.hasActiveSelection())
+        tapAt(toolbarCenter("Selection")); compose.waitForIdle()
+        org.junit.Assert.assertFalse(view.hasActiveSelection())
+        tap("Select"); assertEquals(EditorTool.SELECT, view.tool)
+        tap("Select"); assertEquals(EditorTool.PEN, view.tool)
+    }
+
+    @Test fun exitingQuickMaskRestoresDrawingToolAndRemovesItsEditingOverlay() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        tap("Selection"); tap("Selection actions"); tap("Quick mask")
+        assertTrue(view.quickMaskActive)
+        assertEquals(EditorTool.SELECT, view.tool)
+        tap("Exit selection tool")
+        assertEquals(EditorTool.PEN, view.tool)
+        org.junit.Assert.assertFalse(view.quickMaskActive)
+        tap("Selection"); tap("Selection actions"); tap("Quick mask")
+        assertTrue(view.quickMaskActive)
+        tap("Brushes")
+        compose.waitForIdle()
+        assertEquals(EditorTool.PEN, view.tool)
+        org.junit.Assert.assertFalse(view.quickMaskActive)
+    }
+
     @Test fun featherPreviewCancelApplyUndoAndDeselectUndoAreReversible() {
         tap("New Note"); tap("Create")
         val view = canvas()
@@ -107,8 +149,9 @@ class SelectionWindowRegressionTest {
         stroke(pagePoint(view, .2f, .3f), pagePoint(view, .6f, .6f))
         compose.waitForIdle()
         assertEquals(app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR, view.selectionInterpolation)
-        tap("More")
+        tap("Selection actions")
         tap("Selection settings")
+        compose.onNode(hasText("Bicubic")).performScrollTo()
         tap("Bicubic")
         compose.waitUntil(5_000) { view.selectionInterpolation == app.inkloom.engine.v5.tools.SelectionInterpolation.BICUBIC }
         instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
@@ -334,7 +377,7 @@ class SelectionWindowRegressionTest {
         tapAt(pagePoint(view, .2f, .6f)); tapAt(pagePoint(view, .2f, .3f))
         compose.waitForIdle()
         assertTrue(view.hasActiveSelection())
-        tap("Clear")
+        tap("Selection actions"); tap("Clear")
         org.junit.Assert.assertFalse(view.hasActiveSelection())
         tapAt(pagePoint(view, .3f, .3f)); tapAt(pagePoint(view, .7f, .3f)); tapAt(pagePoint(view, .5f, .5f))
         tap("Add")
@@ -359,11 +402,11 @@ class SelectionWindowRegressionTest {
         val doneAfterSave = center("Done")
         assertEquals("Saving must not move the footer under the user's finger", doneBeforeSave.y, doneAfterSave.y, 1f)
         tap("Done")
-        tap("Clear")
+        tap("Selection actions"); tap("Clear")
         org.junit.Assert.assertFalse(view.hasActiveSelection())
         tapAt(toolbarCenter("Undo")); compose.waitForIdle()
         assertEquals(original, view.selectionMaskSurfaceSnapshot()!!.nonZeroBounds())
-        tap("Clear")
+        tap("Selection actions"); tap("Clear")
         compose.activityRule.scenario.recreate(); compose.waitForIdle()
         view = canvas()
         if (view.tool != EditorTool.SELECT) tap("Selection")
@@ -410,7 +453,7 @@ class SelectionWindowRegressionTest {
         assertEquals(targetId, view.activeLayerId)
         org.junit.Assert.assertArrayEquals(original, pixels())
         tapAt(toolbarCenter("Undo")); compose.waitForIdle()
-        tap("More"); tap("Cut & Paste")
+        tap("Selection actions"); tap("Cut & Paste")
         compose.waitUntil(15_000) { !view.selectionLayerTransferPending && view.activeLayerId != sourceId }
         assertNotEquals(targetId, view.activeLayerId)
         org.junit.Assert.assertArrayEquals(original, pixels())
