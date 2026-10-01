@@ -6752,7 +6752,7 @@ class InkCanvasView(context: Context) : View(context) {
         mode: app.inkloom.engine.v5.surface.MaskComposeMode = app.inkloom.engine.v5.surface.MaskComposeMode.REPLACE,
     ): Boolean {
         val state = documentSelectionState ?: return false
-        if (width <= 0 || height <= 0 || layerIds.isEmpty()) return false
+        if (width <= 0 || height <= 0) return false
         commitSelectionContour()
         if (mode != app.inkloom.engine.v5.surface.MaskComposeMode.REPLACE && !hasActiveSelection()) {
             onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)

@@ -524,6 +524,42 @@ class SelectionWindowRegressionTest {
         org.junit.Assert.assertFalse(view.hasActiveSelection())
     }
 
+    @Test fun folderAndMultipleLayerSelectionsIncludeAllChildrenAndExcludePaper() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        fun ink(y: Float) {
+            stroke(pagePoint(view, .3f, y), pagePoint(view, .5f, y))
+            compose.waitUntil(10_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 }
+        }
+        ink(.25f)
+        tap("Layers"); tap("Add layer group"); tap("Add layer"); tap("Close layers panel")
+        ink(.5f)
+        tap("Layers"); tap("Add layer"); tap("Close layers panel")
+        ink(.75f)
+        fun create(name: String) {
+            tap("Layers"); tap("Layer actions $name"); tap("Select contents"); tap("Create selection")
+            compose.waitForIdle()
+        }
+        create("Layer 1"); val first = view.selectionMaskSurfaceSnapshot()!!
+        create("Layer 2"); val second = view.selectionMaskSurfaceSnapshot()!!
+        create("Notes"); val outside = view.selectionMaskSurfaceSnapshot()!!
+        create("Folder 1")
+        val grouped = app.inkloom.engine.v5.selection.SavedSelectionComposition.apply(first, second, app.inkloom.engine.v5.surface.MaskComposeMode.ADD)
+        val area = app.inkloom.engine.v5.surface.PixelRect(0, 0, first.logicalWidth, first.logicalHeight)
+        org.junit.Assert.assertArrayEquals(grouped.copyAlpha(area), view.selectionMaskSurfaceSnapshot()!!.copyAlpha(area))
+        tap("Layers"); tap("Secondary selection Notes")
+        tap("Layer actions Folder 1"); tap("Select contents"); tap("Create selection"); compose.waitForIdle()
+        val all = app.inkloom.engine.v5.selection.SavedSelectionComposition.apply(grouped, outside, app.inkloom.engine.v5.surface.MaskComposeMode.ADD)
+        org.junit.Assert.assertArrayEquals(all.copyAlpha(area), view.selectionMaskSurfaceSnapshot()!!.copyAlpha(area))
+        assertEquals(0, view.selectionMaskSurfaceSnapshot()!!.alphaAt(0, 0))
+        tap("Layers"); tap("Select layer Notes"); tap("Add layer group")
+        val previous = view.selectionMaskSurfaceSnapshot()!!
+        tap("Layer actions Folder 2"); tap("Select contents"); tap("Create selection"); compose.waitForIdle()
+        org.junit.Assert.assertFalse(view.hasActiveSelection())
+        tapAt(toolbarCenter("Undo")); compose.waitForIdle()
+        org.junit.Assert.assertArrayEquals(previous.copyAlpha(area), view.selectionMaskSurfaceSnapshot()!!.copyAlpha(area))
+    }
+
     @Test fun copyAndCutPasteCreateNewLayersAtTheOriginalPositionAndUndoTogether() {
         tap("New Note"); tap("Create")
         val view = canvas()
