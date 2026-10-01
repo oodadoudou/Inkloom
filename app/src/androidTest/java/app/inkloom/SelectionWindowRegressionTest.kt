@@ -478,11 +478,49 @@ class SelectionWindowRegressionTest {
         compose.waitUntil(10_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 }
         tap("Layers")
         tap("Layer actions Notes")
-        tap("Select contents")
+        tap("Select contents"); tap("Create selection")
         compose.waitUntil(5_000) { view.hasActiveSelection() }
         val mask = view.selectionMaskSurfaceSnapshot()!!
         assertTrue(mask.nonZeroBounds()!!.width < mask.logicalWidth * .3f)
         tap("Selection")
+        org.junit.Assert.assertFalse(view.hasActiveSelection())
+    }
+
+    @Test fun layerContentsMenuCombinesDisjointLayersAndEmptyIntersectionUndoes() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        stroke(pagePoint(view, .25f, .3f), pagePoint(view, .4f, .3f))
+        compose.waitUntil(10_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 }
+        tap("Layers"); tap("Add layer"); tap("Close layers panel")
+        stroke(pagePoint(view, .65f, .7f), pagePoint(view, .8f, .7f))
+        compose.waitUntil(10_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 }
+        fun select(name: String, command: String) {
+            tap("Layers"); tap("Layer actions $name"); tap("Select contents"); tap(command)
+            compose.waitForIdle()
+        }
+        select("Layer 1", "Create selection")
+        val second = view.selectionMaskSurfaceSnapshot()!!
+        select("Notes", "Create selection")
+        val first = view.selectionMaskSurfaceSnapshot()!!
+        val area = app.inkloom.engine.v5.surface.PixelRect(0, 0, first.logicalWidth, first.logicalHeight)
+        fun assertMask(expected: app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot) {
+            org.junit.Assert.assertArrayEquals(expected.copyAlpha(area), view.selectionMaskSurfaceSnapshot()!!.copyAlpha(area))
+        }
+        select("Layer 1", "Add to selection")
+        val both = app.inkloom.engine.v5.selection.SavedSelectionComposition.apply(first, second, app.inkloom.engine.v5.surface.MaskComposeMode.ADD)
+        assertMask(both)
+        select("Layer 1", "Subtract from selection")
+        // Antialiased edges remain partially selected after subtracting their soft alpha.
+        val subtracted = app.inkloom.engine.v5.selection.SavedSelectionComposition.apply(both, second, app.inkloom.engine.v5.surface.MaskComposeMode.SUBTRACT)
+        assertMask(subtracted)
+        select("Layer 1", "Intersect selection")
+        val intersected = app.inkloom.engine.v5.selection.SavedSelectionComposition.apply(subtracted, second, app.inkloom.engine.v5.surface.MaskComposeMode.INTERSECT)
+        assertMask(intersected)
+        tap("Layers"); tap("Add layer"); tap("Close layers panel")
+        select("Layer 2", "Intersect selection")
+        org.junit.Assert.assertFalse(view.hasActiveSelection())
+        tapAt(toolbarCenter("Undo")); compose.waitForIdle(); assertMask(intersected)
+        tapAt(toolbarCenter("Redo")); compose.waitForIdle()
         org.junit.Assert.assertFalse(view.hasActiveSelection())
     }
 

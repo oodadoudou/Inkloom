@@ -69,6 +69,65 @@ class SelectionInteractionTest {
         }
     }
 
+    @Test fun layerContentsComposeAllModesAndEmptyIntersectionHasOneUndo() {
+        instrumentation.runOnMainSync {
+            val (view, pixels) = fixture()
+            val other = PixelTileSurface(128, 128, 64)
+            pixels.beginWrite("first").use { it.setPixel(40, 40, Color.BLACK); it.commit().close() }
+            other.beginWrite("second").use { it.setPixel(90, 90, Color.RED); it.commit().close() }
+            view.setRasterLayerSurfaces(mapOf(LayerIds.INK to pixels, "second" to other))
+            assertFalse(view.selectLayerContents("second", MaskComposeMode.ADD))
+            assertTrue(view.selectLayerContents(LayerIds.INK))
+            assertTrue(view.selectLayerContents("second", MaskComposeMode.ADD))
+            assertEquals(255, view.selectionMaskSurfaceSnapshot()!!.alphaAt(40, 40))
+            assertEquals(255, view.selectionMaskSurfaceSnapshot()!!.alphaAt(90, 90))
+            assertTrue(view.selectLayerContents("second", MaskComposeMode.SUBTRACT))
+            assertEquals(0, view.selectionMaskSurfaceSnapshot()!!.alphaAt(90, 90))
+            assertTrue(view.selectLayerContents("second", MaskComposeMode.INTERSECT))
+            assertFalse(view.hasActiveSelection())
+            view.undo(); assertEquals(255, view.selectionMaskSurfaceSnapshot()!!.alphaAt(40, 40))
+            view.redo(); assertFalse(view.hasActiveSelection())
+            assertTrue(view.selectLayerContents(setOf(LayerIds.INK, "second")))
+            assertEquals(255, view.selectionMaskSurfaceSnapshot()!!.alphaAt(40, 40))
+            assertEquals(255, view.selectionMaskSurfaceSnapshot()!!.alphaAt(90, 90))
+            assertTrue(view.selectLayerContents("empty"))
+            assertFalse(view.hasActiveSelection())
+            view.undo(); assertEquals(255, view.selectionMaskSurfaceSnapshot()!!.alphaAt(90, 90))
+        }
+    }
+
+    @Test fun emptySavedSelectionIntersectionCanBeUndoneAndRedone() {
+        instrumentation.runOnMainSync {
+            val (view, _) = fixture()
+            val a = MaskTileSurface(128, 128, 64)
+            val b = MaskTileSurface(128, 128, 64)
+            a.beginWrite("a").use { it.setAlpha(1, 1, 128); it.commit().close() }
+            b.beginWrite("b").use { it.setAlpha(100, 100, 255); it.commit().close() }
+            view.replaceSelectionFromMask(a.snapshot())
+            assertTrue(view.loadSavedSelection(b.snapshot(), MaskComposeMode.INTERSECT))
+            assertFalse(view.hasActiveSelection())
+            view.undo(); assertEquals(128, view.selectionMaskSurfaceSnapshot()!!.alphaAt(1, 1))
+            view.redo(); assertFalse(view.hasActiveSelection())
+        }
+    }
+
+    @Test fun sparse8kLayerSamplingDoesNotVisitBlankPageTilesAndIncludesEdgeAlpha() {
+        instrumentation.runOnMainSync {
+            var draws = 0
+            val mask = app.inkloom.ui.LayerContentsSelection.sample(8192, 8192,
+                listOf(PixelRect(8000, 8000, 8010, 8010), PixelRect(8180, 8180, 8192, 8192))) { canvas ->
+                draws++
+                canvas.drawRect(8000f, 8000f, 8010f, 8010f, android.graphics.Paint().apply { color = 0x80000000.toInt() })
+                canvas.drawRect(8180f, 8180f, 8192f, 8192f, android.graphics.Paint().apply { color = Color.BLACK })
+            }
+            assertEquals(1, draws)
+            assertEquals(128, mask.alphaAt(8001, 8001))
+            assertEquals(255, mask.alphaAt(8191, 8191))
+            assertEquals(0, mask.alphaAt(4000, 4000))
+            assertEquals(2, mask.tileCount) // Sampling blocks are 256 px; persistent mask tiles are 128 px.
+        }
+    }
+
     @Test fun retainedObjectsHaveAnExplicitTransferRejectionInsteadOfPartialCopy() {
         instrumentation.runOnMainSync {
             val (view, pixels) = fixture()

@@ -221,6 +221,7 @@ import app.inkloom.settings.SelectionShape
 import app.inkloom.settings.ReferenceTarget
 import java.util.concurrent.Executors
 import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.atan2
 import kotlin.math.hypot
 import kotlin.math.cos
@@ -6741,32 +6742,61 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun selectionMaskSurfaceSnapshot(): MaskTileSurfaceSnapshot? = selectionMaskForRasterTools()
 
-    fun selectLayerContents(layerId: String): Boolean {
+    fun selectLayerContents(
+        layerId: String,
+        mode: app.inkloom.engine.v5.surface.MaskComposeMode = app.inkloom.engine.v5.surface.MaskComposeMode.REPLACE,
+    ): Boolean = selectLayerContents(setOf(layerId), mode)
+
+    fun selectLayerContents(
+        layerIds: Set<String>,
+        mode: app.inkloom.engine.v5.surface.MaskComposeMode = app.inkloom.engine.v5.surface.MaskComposeMode.REPLACE,
+    ): Boolean {
         val state = documentSelectionState ?: return false
-        if (width <= 0 || height <= 0) return false
-        v5StrokeController.awaitIdle()
-        val bitmap = Bitmap.createBitmap(state.logicalWidth, state.logicalHeight, Bitmap.Config.ARGB_8888)
-        val mask = MaskTileSurface(state.logicalWidth, state.logicalHeight)
-        try {
-            val canvas = Canvas(bitmap)
-            canvas.scale(state.logicalWidth.toFloat() / width, state.logicalHeight.toFloat() / height)
-            drawV5RawLayerContent(canvas, layerId, includeElements = true)
-            val row = IntArray(state.logicalWidth)
-            val alpha = ByteArray(state.logicalWidth)
-            mask.beginWrite("select layer contents").use { write ->
-                for (y in 0 until state.logicalHeight) {
-                    bitmap.getPixels(row, 0, row.size, 0, y, row.size, 1)
-                    row.indices.forEach { alpha[it] = (row[it] ushr 24).toByte() }
-                    write.replaceAlpha(PixelRect(0, y, row.size, y + 1), alpha)
-                }
-                write.commit().close()
-            }
-        } finally { bitmap.recycle() }
-        if (mask.snapshot().isEmpty) {
-            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "此图层没有可选取的内容" else "This layer has no selectable content")
+        if (width <= 0 || height <= 0 || layerIds.isEmpty()) return false
+        commitSelectionContour()
+        if (mode != app.inkloom.engine.v5.surface.MaskComposeMode.REPLACE && !hasActiveSelection()) {
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                "请先创建选区" else "Create a selection first")
             return false
         }
-        return loadSavedSelection(mask.snapshot())
+        finishSelectionTransform(apply = true)
+        v5StrokeController.awaitIdle()
+        val regions = mutableListOf<PixelRect>()
+        fun include(surface: PixelTileSurfaceSnapshot?) {
+            surface ?: return
+            surface.tileInfo.forEach { tile ->
+                val left = tile.key.column * surface.tileSize
+                val top = tile.key.row * surface.tileSize
+                regions += PixelRect(
+                    floor(left.toDouble() * state.logicalWidth / surface.logicalWidth).toInt(),
+                    floor(top.toDouble() * state.logicalHeight / surface.logicalHeight).toInt(),
+                    ceil(minOf(left + surface.tileSize, surface.logicalWidth).toDouble() * state.logicalWidth / surface.logicalWidth).toInt(),
+                    ceil(minOf(top + surface.tileSize, surface.logicalHeight).toDouble() * state.logicalHeight / surface.logicalHeight).toInt(),
+                )
+            }
+        }
+        layerIds.forEach { layerId ->
+            include(rasterLayerTileSurfaces[layerId]?.snapshot())
+            val elements = if (mixedElementOverrides.containsKey(layerId)) mixedElementOverrides[layerId] else layerElementBitmaps[layerId]
+            include(elements?.baseSurface); include(elements?.additionsSurface)
+            listOf(elements?.base to elements?.baseSurface, elements?.additions to elements?.additionsSurface).forEach { (bitmap, surface) ->
+                if (surface == null && bitmap != null && !bitmap.isRecycled) {
+                    NativeRasterOps.alphaBounds(bitmap)?.let { bounds ->
+                        regions += PixelRect(
+                            floor(bounds.left.toDouble() * state.logicalWidth / bitmap.width).toInt(),
+                            floor(bounds.top.toDouble() * state.logicalHeight / bitmap.height).toInt(),
+                            ceil(bounds.right.toDouble() * state.logicalWidth / bitmap.width).toInt(),
+                            ceil(bounds.bottom.toDouble() * state.logicalHeight / bitmap.height).toInt(),
+                        )
+                    }
+                }
+            }
+        }
+        val mask = LayerContentsSelection.sample(state.logicalWidth, state.logicalHeight, regions) { canvas ->
+            canvas.scale(state.logicalWidth.toFloat() / width, state.logicalHeight.toFloat() / height)
+            layerIds.forEach { drawV5RawLayerContent(canvas, it, includeElements = true) }
+        }
+        return loadSavedSelection(mask, mode)
     }
 
     fun loadSavedSelection(
@@ -6780,7 +6810,9 @@ class InkCanvasView(context: Context) : View(context) {
         val radius = selectionFeatherPixels
         val base = selectionFeatherBase
         val next = app.inkloom.engine.v5.selection.SavedSelectionComposition.apply(before, snapshot, mode)
-        if (!replaceSelectionFromMask(next)) return false
+        // An empty intersection is a successful edit too. The replacement helper reports
+        // whether content remains, not whether the command was applied.
+        replaceSelectionFromMask(next)
         recordSelectionHistory(state, before, radius, base)
         return true
     }

@@ -2373,14 +2373,20 @@ private fun EditorScreen(
             }
         }
     }
-    fun selectLayerContents(layerId: String) {
+    fun selectLayerContents(layerId: String, mode: app.inkloom.engine.v5.surface.MaskComposeMode) {
         exitCanvasNavigation()
         rememberSelectionReturnTarget()
+        val ids = if (layerId == activeLayerId || layerId in secondaryLayers)
+            secondaryLayers + activeLayerId + layerId else setOf(layerId)
         activeLayerId = layerId
         tool = EditorTool.SELECT
         syncCanvasInput()
         canvasView?.selectLayerContent(layerId)
-        canvasView?.selectLayerContents(layerId)
+        val contentIds = ids.flatMap { id ->
+            val layer = selectedPage.layers.firstOrNull { it.id == id }
+            if (layer?.role == LayerRole.FOLDER) selectedPage.layers.filter { LayerHierarchy.ancestors(selectedPage.layers, it).any { parent -> parent.id == id } }.map { it.id } else listOf(id)
+        }.filterTo(linkedSetOf()) { id -> selectedPage.layers.any { it.id == id && it.isPaintSurfaceLayer() } }
+        canvasView?.selectLayerContents(contentIds, mode)
         setLayersPanelOpen(false)
     }
     var panelsHiddenByShortcut by remember { mutableStateOf(false) }
@@ -3952,6 +3958,7 @@ private fun EditorScreen(
                 onColor = ::changeBrushColor,
                 onSelect = ::selectLayerTarget,
                 onSelectContents = ::selectLayerContents,
+                hasSelection = selectionActive,
                 onAdd = { createLayer(folder = false) },
                 onAddFolder = { createLayer(folder = true) },
                 onAddAdjustment = ::createAdjustmentLayer,
@@ -7294,7 +7301,8 @@ private fun LayerPanel(
     onClose: () -> Unit,
     onColor: (Int) -> Unit,
     onSelect: (String) -> Unit,
-    onSelectContents: (String) -> Unit,
+    onSelectContents: (String, app.inkloom.engine.v5.surface.MaskComposeMode) -> Unit,
+    hasSelection: Boolean,
     onAdd: () -> Unit,
     onAddFolder: () -> Unit,
     onAddAdjustment: (LayerAdjustmentKind) -> Unit,
@@ -7341,6 +7349,7 @@ private fun LayerPanel(
             onClose = onClose,
             onSelect = onSelect,
             onSelectContents = onSelectContents,
+            hasSelection = hasSelection,
             onAdd = onAdd,
             onAddFolder = onAddFolder,
             onAddAdjustment = onAddAdjustment,
@@ -7402,7 +7411,8 @@ private fun PaintingLayerPanel(
     secondaryBrushColor: Int,
     onClose: () -> Unit,
     onSelect: (String) -> Unit,
-    onSelectContents: (String) -> Unit,
+    onSelectContents: (String, app.inkloom.engine.v5.surface.MaskComposeMode) -> Unit,
+    hasSelection: Boolean,
     onAdd: () -> Unit,
     onAddFolder: () -> Unit,
     onAddAdjustment: (LayerAdjustmentKind) -> Unit,
@@ -7605,6 +7615,7 @@ private fun PaintingLayerPanel(
                 items(filteredLayers, key = { it.id }) { layer ->
                     var menu by remember { mutableStateOf(false) }
                     var maskMenu by remember { mutableStateOf(false) }
+                    var contentsMenu by remember { mutableStateOf(false) }
                     var paletteColorMenu by remember { mutableStateOf(false) }
                     DisposableEffect(layer.id) { onDispose { drag.rows.remove(layer.id) } }
                     val folderTargets = LayerHierarchy.availableFolders(page.layers, layer.id)
@@ -7743,6 +7754,18 @@ private fun PaintingLayerPanel(
                                     )
                                 }
                             }
+                            DropdownMenu(contentsMenu, { contentsMenu = false }) {
+                                listOf(
+                                    app.inkloom.engine.v5.surface.MaskComposeMode.REPLACE to tr("Create selection", "创建选区"),
+                                    app.inkloom.engine.v5.surface.MaskComposeMode.ADD to tr("Add to selection", "添加到选区"),
+                                    app.inkloom.engine.v5.surface.MaskComposeMode.SUBTRACT to tr("Subtract from selection", "从选区减去"),
+                                    app.inkloom.engine.v5.surface.MaskComposeMode.INTERSECT to tr("Intersect selection", "与选区相交"),
+                                ).forEach { (mode, label) ->
+                                    DropdownMenuItem(text = { Text(label) },
+                                        enabled = mode == app.inkloom.engine.v5.surface.MaskComposeMode.REPLACE || hasSelection,
+                                        onClick = { contentsMenu = false; onSelectContents(layer.id, mode) })
+                                }
+                            }
                             DropdownMenu(menu, { menu = false }) {
                                 DropdownMenuItem(text = { Text(if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) }, onClick = { menu = false; onLock(layer.id) })
                                 if (layer.role == LayerRole.ADJUSTMENT) DropdownMenuItem(text = { Text(tr("Edit adjustment", "编辑调整参数")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditAdjustment(layer.id) })
@@ -7751,7 +7774,7 @@ private fun PaintingLayerPanel(
                                 if (layer.isPaintSurfaceLayer()) DropdownMenuItem(text = { Text(if (layer.reference) tr("Unset reference layer", "取消参考图层") else tr("Set as reference layer", "设为参考图层")) }, onClick = { menu = false; onToggleReference(layer.id) })
                                 if (layer.isPaintSurfaceLayer()) DropdownMenuItem(text = { Text(if (layer.draft) tr("Unset draft layer", "取消草稿图层") else tr("Set as draft layer", "设为草稿图层")) }, onClick = { menu = false; onToggleDraft(layer.id) })
                                 if (layer.isPaintSurfaceLayer()) DropdownMenuItem(text = { Text(if (layer.drawingAssist) tr("Turn off Drawing Assist", "关闭绘图辅助") else tr("Turn on Drawing Assist", "开启绘图辅助")) }, onClick = { menu = false; onToggleDrawingAssist(layer.id) })
-                                if (layer.isPaintSurfaceLayer()) DropdownMenuItem(text = { Text(tr("Select contents", "选取内容")) }, onClick = { menu = false; onSelectContents(layer.id) })
+                                if (layer.isPaintSurfaceLayer() || layer.role == LayerRole.FOLDER) DropdownMenuItem(text = { Text(tr("Select contents", "选取内容")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; contentsMenu = true })
                                 if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Mask", "蒙版")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; maskMenu = true })
                                 DropdownMenuItem(text = { Text(tr("Palette color", "图层颜色标签")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; paletteColorMenu = true })
                                 if (layer.isPaintSurfaceLayer()) DropdownMenuItem(
