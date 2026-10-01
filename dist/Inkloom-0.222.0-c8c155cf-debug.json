@@ -1,0 +1,21 @@
+{
+  "version": "0.222.0",
+  "versionCode": 222,
+  "variant": "debug",
+  "commit": "c8c155cfa35073fd0027082a4c7df37f5b744654",
+  "sha256": "637b579bd0ad0ceb22fbc84f1b66c1a81de41dcd641182503c22831ce4f03cb4",
+  "bytes": 103517337,
+  "generatedUtc": "2026-10-01T14:42:15.880610+00:00",
+  "verification": {
+    "JVM": "PASS 989 tests, 0 failures, 8 skipped",
+    "Android15Targeted": "PASS 59 unique tests across final targeted runs: SelectionInteractionTest, SelectionWindowRegressionTest, LayerOrderWindowTest, CanvasWorkflowWindowTest, AdjustmentControlsWindowTest, AdjustmentLayerRenderingTest, LassoSelectionModesTest. Native stylus/touch window gestures, multi-layer/group content selection, sparse 8K sampling, empty-result undo, channel/point/gradient editing, masks and canvas/export agreement.",
+    "Android15Full": "NOT CLAIMED: no new full-suite run; historical full-suite failures were not re-audited.",
+    "lint": "PASS 0 errors, 114 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS emulator installation, versionCode 222, cold startup, actual curve editor visual inspection; crash buffer empty",
+    "DriveDesktop": "PASS all four files SHA-256 verified in local sync folder; cloud transfer managed by Drive Desktop, cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING",
+  "evidenceRoot": "app/build/test-results and app/build/outputs/androidTest-results/connected/debug"
+}
