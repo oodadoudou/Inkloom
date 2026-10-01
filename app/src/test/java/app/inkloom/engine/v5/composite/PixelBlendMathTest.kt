@@ -71,6 +71,33 @@ class PixelBlendMathTest {
         assertEquals(lum(source), lum(luminosity), .0001f)
     }
 
+    @Test fun sdrGlowKeepsUnclippedLightUntilAfterAlphaInterpolation() {
+        val backdrop = PremultipliedRgba(.8f, .8f, .8f, 1f)
+        val source = PremultipliedRgba(.16f, .16f, .16f, .2f)
+        assertColor(PixelBlendMath.composite(source, backdrop, PixelBlendMode.ADD, bounded = true), .84f, .84f, .84f, 1f)
+        assertColor(PixelBlendMath.composite(source, backdrop, PixelBlendMode.ADD_GLOW, bounded = true), .96f, .96f, .96f, 1f)
+        assertColor(PixelBlendMath.composite(source, backdrop, PixelBlendMode.COLOR_DODGE, bounded = true), .84f, .84f, .84f, 1f)
+        assertColor(PixelBlendMath.composite(source, backdrop, PixelBlendMode.GLOW_DODGE, bounded = true), 1.44f, 1.44f, 1.44f, 1f)
+    }
+
+    @Test fun extendedContrastAndArithmeticModesMatchKnownColors() {
+        val b = PremultipliedRgba(.2f, .4f, .8f, 1f)
+        val s = PremultipliedRgba(.25f, .5f, .75f, 1f)
+        assertColor(PixelBlendMath.composite(s, b, PixelBlendMode.SUBTRACT, bounded = true), 0f, 0f, .05f, 1f)
+        assertColor(PixelBlendMath.composite(s, b, PixelBlendMode.VIVID_LIGHT), 0f, .4f, 1f, 1f)
+        assertColor(PixelBlendMath.composite(s, b, PixelBlendMode.LINEAR_LIGHT, bounded = true), 0f, .4f, 1f, 1f)
+        assertColor(PixelBlendMath.composite(s, b, PixelBlendMode.PIN_LIGHT), .2f, .4f, .8f, 1f)
+        assertColor(PixelBlendMath.composite(s, b, PixelBlendMode.HARD_MIX), 0f, 0f, 1f, 1f)
+        assertColor(PixelBlendMath.composite(s, b, PixelBlendMode.DIVIDE), .8f, .8f, 1f, 1f)
+    }
+
+    @Test fun darkerAndLighterColorChooseOneWholeRgbTriplet() {
+        val b = PremultipliedRgba(.1f, .8f, .1f, 1f)
+        val s = PremultipliedRgba(.8f, .1f, .8f, 1f)
+        assertColor(PixelBlendMath.composite(s, b, PixelBlendMode.DARKER_COLOR), .8f, .1f, .8f, 1f)
+        assertColor(PixelBlendMath.composite(s, b, PixelBlendMode.LIGHTER_COLOR), .1f, .8f, .1f, 1f)
+    }
+
     private fun assertColor(
         actual: PremultipliedRgba,
         red: Float,

@@ -3,6 +3,7 @@ package app.inkloom
 import android.graphics.BlendMode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.LayerBlendMode
+import app.inkloom.document.requiresPixelCompositor
 import app.inkloom.document.toBlendMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -11,10 +12,11 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class LayerBlendModeTest {
-    @Test fun everyBlendModeMapsToAnAndroidBlendMode() {
+    @Test fun platformModesMapAndSoftwareModesRejectInexactFallback() {
         LayerBlendMode.entries.forEach { mode ->
-            val mapped = mode.toBlendMode()
-            assertNotNull("Blend mode $mode must map to a non-null Android BlendMode", mapped)
+            if (mode.requiresPixelCompositor) {
+                org.junit.Assert.assertTrue(runCatching { mode.toBlendMode() }.isFailure)
+            } else assertNotNull(mode.toBlendMode())
         }
     }
 

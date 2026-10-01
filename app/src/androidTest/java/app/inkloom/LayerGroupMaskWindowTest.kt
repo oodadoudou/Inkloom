@@ -51,6 +51,22 @@ class LayerGroupMaskWindowTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    @Test fun propertiesAndCommandPlacementPersistWithoutLosingTheLayerList() {
+        tap("New Note"); tap("Create"); tap("Layers")
+        tap("Layer list display"); tap("Show properties bar"); tap("Show command bar")
+        tap("Commands at bottom"); compose.onNodeWithContentDescription("Layer list display").performClick()
+        compose.onNodeWithContentDescription("Layer properties").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Add layer").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Layer list").assertExists()
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        val settings = app.inkloom.settings.AppSettingsStore(instrumentation.targetContext).load()
+        assertTrue(!settings.layerShowProperties && !settings.layerShowCommands && settings.layerCommandsAtBottom)
+        tap("Layer list display"); tap("Show properties bar"); tap("Show command bar")
+        compose.onNodeWithContentDescription("Layer list display").performClick()
+        compose.onNodeWithContentDescription("Layer properties").assertExists()
+        compose.onNodeWithContentDescription("Add layer").assertExists()
+    }
+
     @Test fun dualLayerListsAndDisplayChoicesPersistFromTheRealPanel() {
         tap("New Note"); tap("Create"); tap("Layers")
         val store = app.inkloom.settings.AppSettingsStore(instrumentation.targetContext)

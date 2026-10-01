@@ -935,7 +935,7 @@ class DocumentAssetService(private val context: Context) {
         fun drawLeaf(layer: InkLayer, lowerNode: LayerCompositingNode?) {
             val layerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 alpha = (layer.opacity.coerceIn(0f, 1f) * 255f).toInt().coerceIn(0, 255)
-                blendMode = layer.blendMode.toBlendMode()
+                blendMode = if (applyLayerEffects) layer.blendMode.toBlendMode() else android.graphics.BlendMode.SRC_OVER
                 colorFilter = layer.colorReplacement?.toColorFilter()
             }
             // A transparent layer would hide a destination-dependent brush mode from the page.
@@ -1152,7 +1152,7 @@ class DocumentAssetService(private val context: Context) {
             } else {
                 val save = canvas.saveLayer(null, Paint().apply {
                     alpha = (layer.opacity.coerceIn(0f, 1f) * 255f).toInt()
-                    blendMode = layer.blendMode.toBlendMode()
+                    blendMode = if (applyLayerEffects) layer.blendMode.toBlendMode() else android.graphics.BlendMode.SRC_OVER
                 })
                 drawSiblings(node.children)
                 layer.mask?.takeIf { it.enabled }?.surface?.let { reference ->
@@ -1194,11 +1194,12 @@ class DocumentAssetService(private val context: Context) {
             it.role == LayerRole.ADJUSTMENT && it.visible && it.adjustment != null
         }
         val hasElements = projectedPage.elements.any { element -> visibleLayers.any { it.id == element.layerId } }
-        if (hasElements && !through && !hasAdjustments) return false
+        val customBlend = projectedPage.layers.any { it.blendMode.requiresPixelCompositor }
+        if (hasElements && !through && !hasAdjustments && !customBlend) return false
         val rasterLayers = visibleLayers.filter { layer ->
             layer.isPaintSurfaceLayer() && layer.rasterTileSurface != null
         }
-        if (rasterLayers.isEmpty() && (!hasElements || (!through && !hasAdjustments))) return false
+        if (rasterLayers.isEmpty() && (!hasElements || (!through && !hasAdjustments && !customBlend))) return false
         if (rasterLayers.any { it.mask?.enabled == true && it.mask.surface == null }) return false
 
         val surfaces = rasterLayers.map { layer ->

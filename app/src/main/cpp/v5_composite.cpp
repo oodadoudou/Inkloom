@@ -10,6 +10,7 @@
 namespace {
 
 constexpr float kAlphaEpsilon = 1.0e-7f;
+bool supported_mode(int mode) { return (mode >= 0 && mode <= 13) || (mode >= 18 && mode <= 27); }
 
 struct PremultipliedColor {
     float red;
@@ -65,6 +66,14 @@ float blend_channel(float backdrop, float source, int mode) {
         case 11: return hard_light(backdrop, source);
         case 12: return std::abs(backdrop - source);
         case 13: return backdrop + source - 2.0f * backdrop * source;
+        case 18: return backdrop - source;
+        case 19: return backdrop <= 0.0f ? 0.0f : source >= 1.0f ? 1.0f : std::min(65504.0f, backdrop / std::max(kAlphaEpsilon, 1.0f - source));
+        case 20: return backdrop + source;
+        case 21: return source < 0.5f ? blend_channel(backdrop, 2.0f * source, 3) : blend_channel(backdrop, 2.0f * source - 1.0f, 7);
+        case 22: return backdrop + 2.0f * source - 1.0f;
+        case 23: return source < 0.5f ? std::min(backdrop, 2.0f * source) : std::max(backdrop, 2.0f * source - 1.0f);
+        case 24: return backdrop + source < 1.0f ? 0.0f : 1.0f;
+        case 27: return backdrop <= 0.0f ? 0.0f : std::min(1.0f, backdrop / std::max(kAlphaEpsilon, source));
         default: return source;
     }
 }
@@ -73,7 +82,7 @@ PremultipliedColor composite(
     const PremultipliedColor& source,
     const PremultipliedColor& destination,
     int mode,
-    float opacity) {
+    float opacity, bool bounded = false) {
     const float layer_opacity = clamp01(opacity);
     const float raw_source_alpha = clamp01(source.alpha);
     const float source_alpha = raw_source_alpha * layer_opacity;
@@ -86,19 +95,26 @@ PremultipliedColor composite(
     const float destination_red = straight(destination.red, destination_alpha);
     const float destination_green = straight(destination.green, destination_alpha);
     const float destination_blue = straight(destination.blue, destination_alpha);
+    const float source_lum = 0.3f * source_red + 0.59f * source_green + 0.11f * source_blue;
+    const float dest_lum = 0.3f * destination_red + 0.59f * destination_green + 0.11f * destination_blue;
+    const bool source_wins = mode == 25 ? source_lum < dest_lum : source_lum > dest_lum;
+    auto blend = [&](float b, float s) {
+        float result = mode == 25 || mode == 26 ? (source_wins ? s : b) : blend_channel(b, s, mode);
+        return bounded && mode != 19 && mode != 20 ? clamp01(result) : result;
+    };
     const float source_only = 1.0f - destination_alpha;
     const float destination_only = 1.0f - source_alpha;
     const float overlap = source_alpha * destination_alpha;
     return {
         finite_or_zero(source.red) * layer_opacity * source_only +
             finite_or_zero(destination.red) * destination_only +
-            blend_channel(destination_red, source_red, mode) * overlap,
+            blend(destination_red, source_red) * overlap,
         finite_or_zero(source.green) * layer_opacity * source_only +
             finite_or_zero(destination.green) * destination_only +
-            blend_channel(destination_green, source_green, mode) * overlap,
+            blend(destination_green, source_green) * overlap,
         finite_or_zero(source.blue) * layer_opacity * source_only +
             finite_or_zero(destination.blue) * destination_only +
-            blend_channel(destination_blue, source_blue, mode) * overlap,
+            blend(destination_blue, source_blue) * overlap,
         std::clamp(source_alpha + destination_alpha * (1.0f - source_alpha), 0.0f, 1.0f),
     };
 }
@@ -235,7 +251,7 @@ bool valid_request(
     int mode) {
     if (source == nullptr || destination == nullptr || env->IsSameObject(source, destination) ||
         stride <= 0 || left < 0 || top < 0 || right <= left || bottom <= top || right > stride ||
-        mode < 0 || mode > 13) return false;
+        !supported_mode(mode)) return false;
     const jsize source_size = env->GetArrayLength(source);
     const jsize destination_size = env->GetArrayLength(destination);
     const std::int64_t required = static_cast<std::int64_t>(bottom) * stride;
@@ -286,7 +302,7 @@ jboolean composite_array(
             const auto source_color = unpack(static_cast<std::make_unsigned_t<Element>>(source[index]));
             if (source_color.alpha <= 0.0f) continue;
             const auto destination_color = unpack(static_cast<std::make_unsigned_t<Element>>(destination[index]));
-            destination[index] = static_cast<Element>(pack(composite(source_color, destination_color, mode, opacity)));
+            destination[index] = static_cast<Element>(pack(composite(source_color, destination_color, mode, opacity, std::is_same_v<Element, jint>)));
         }
     }
     if constexpr (std::is_same_v<JArray, jintArray>) {
@@ -326,7 +342,7 @@ void composite_flat_layers(
                 const auto destination_color =
                     unpack(static_cast<std::make_unsigned_t<Element>>(destination[index]));
                 destination[index] = static_cast<Element>(
-                    pack(composite(source_color, destination_color, mode, opacity)));
+                    pack(composite(source_color, destination_color, mode, opacity, std::is_same_v<Element, jint>)));
             }
         }
     }
@@ -364,7 +380,7 @@ void composite_flat_rgba8_layers(
                         unpack_rgba8(source_pixel),
                         unpack_rgba8(static_cast<std::uint32_t>(destination[index])),
                         mode,
-                        opacity)));
+                        opacity, true)));
                 }
             }
         }
@@ -402,7 +418,7 @@ void composite_flat_layers_with_coverage(
                 const auto destination_color =
                     unpack(static_cast<std::make_unsigned_t<Element>>(destination[index]));
                 destination[index] = static_cast<Element>(
-                    pack(composite(source_color, destination_color, mode, pixel_opacity)));
+                    pack(composite(source_color, destination_color, mode, pixel_opacity, std::is_same_v<Element, jint>)));
             }
         }
     }
@@ -444,7 +460,7 @@ void composite_flat_rgba8_layers_with_coverage(
                         unpack_rgba8(source_pixel),
                         unpack_rgba8(static_cast<std::uint32_t>(destination[index])),
                         mode,
-                        pixel_opacity)));
+                        pixel_opacity, true)));
                 }
             }
         }
@@ -515,7 +531,7 @@ Java_app_inkloom_engine_v5_composite_NativeCompositeOps_nativeCompositeRgba8Laye
     env->GetIntArrayRegion(modes, 0, layer_count, mode_values.data());
     env->GetFloatArrayRegion(opacities, 0, layer_count, opacity_values.data());
     if (env->ExceptionCheck() ||
-        std::any_of(mode_values.begin(), mode_values.end(), [](jint mode) { return mode < 0 || mode > 13; })) {
+        std::any_of(mode_values.begin(), mode_values.end(), [](jint mode) { return !supported_mode(mode); })) {
         return JNI_FALSE;
     }
     auto* source_values = env->GetIntArrayElements(sources, nullptr);
@@ -559,7 +575,7 @@ Java_app_inkloom_engine_v5_composite_NativeCompositeOps_nativeCompositeF16Layers
     env->GetIntArrayRegion(modes, 0, layer_count, mode_values.data());
     env->GetFloatArrayRegion(opacities, 0, layer_count, opacity_values.data());
     if (env->ExceptionCheck() ||
-        std::any_of(mode_values.begin(), mode_values.end(), [](jint mode) { return mode < 0 || mode > 13; })) {
+        std::any_of(mode_values.begin(), mode_values.end(), [](jint mode) { return !supported_mode(mode); })) {
         return JNI_FALSE;
     }
     auto* source_values = env->GetLongArrayElements(sources, nullptr);
@@ -606,7 +622,7 @@ Java_app_inkloom_engine_v5_composite_NativeCompositeOps_nativeCompositeRgba8Laye
     env->GetIntArrayRegion(modes, 0, layer_count, mode_values.data());
     env->GetFloatArrayRegion(opacities, 0, layer_count, opacity_values.data());
     if (env->ExceptionCheck() ||
-        std::any_of(mode_values.begin(), mode_values.end(), [](jint mode) { return mode < 0 || mode > 13; })) return JNI_FALSE;
+        std::any_of(mode_values.begin(), mode_values.end(), [](jint mode) { return !supported_mode(mode); })) return JNI_FALSE;
     auto* source_values = env->GetIntArrayElements(sources, nullptr);
     auto* coverage_values = env->GetByteArrayElements(coverage, nullptr);
     auto* destination_values = env->GetIntArrayElements(destination, nullptr);
@@ -653,7 +669,7 @@ Java_app_inkloom_engine_v5_composite_NativeCompositeOps_nativeCompositeF16Layers
     env->GetIntArrayRegion(modes, 0, layer_count, mode_values.data());
     env->GetFloatArrayRegion(opacities, 0, layer_count, opacity_values.data());
     if (env->ExceptionCheck() ||
-        std::any_of(mode_values.begin(), mode_values.end(), [](jint mode) { return mode < 0 || mode > 13; })) return JNI_FALSE;
+        std::any_of(mode_values.begin(), mode_values.end(), [](jint mode) { return !supported_mode(mode); })) return JNI_FALSE;
     auto* source_values = env->GetLongArrayElements(sources, nullptr);
     auto* coverage_values = env->GetByteArrayElements(coverage, nullptr);
     auto* destination_values = env->GetLongArrayElements(destination, nullptr);

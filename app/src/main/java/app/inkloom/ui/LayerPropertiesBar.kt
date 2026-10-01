@@ -32,10 +32,10 @@ import kotlin.math.roundToInt
 /** Only executable modes belong here. Grouping is presentation, never a rendering fallback. */
 internal val layerBlendGroups = listOf(
     listOf(LayerBlendMode.NORMAL),
-    listOf(LayerBlendMode.DARKEN, LayerBlendMode.MULTIPLY, LayerBlendMode.COLOR_BURN),
-    listOf(LayerBlendMode.LIGHTEN, LayerBlendMode.SCREEN, LayerBlendMode.COLOR_DODGE, LayerBlendMode.ADD),
-    listOf(LayerBlendMode.OVERLAY, LayerBlendMode.SOFT_LIGHT, LayerBlendMode.HARD_LIGHT),
-    listOf(LayerBlendMode.DIFFERENCE, LayerBlendMode.EXCLUSION),
+    listOf(LayerBlendMode.DARKEN, LayerBlendMode.MULTIPLY, LayerBlendMode.COLOR_BURN, LayerBlendMode.LINEAR_BURN, LayerBlendMode.SUBTRACT),
+    listOf(LayerBlendMode.LIGHTEN, LayerBlendMode.SCREEN, LayerBlendMode.COLOR_DODGE, LayerBlendMode.GLOW_DODGE, LayerBlendMode.ADD, LayerBlendMode.ADD_GLOW),
+    listOf(LayerBlendMode.OVERLAY, LayerBlendMode.SOFT_LIGHT, LayerBlendMode.HARD_LIGHT, LayerBlendMode.VIVID_LIGHT, LayerBlendMode.LINEAR_LIGHT, LayerBlendMode.PIN_LIGHT, LayerBlendMode.HARD_MIX),
+    listOf(LayerBlendMode.DIFFERENCE, LayerBlendMode.EXCLUSION, LayerBlendMode.DARKER_COLOR, LayerBlendMode.LIGHTER_COLOR, LayerBlendMode.DIVIDE),
     listOf(LayerBlendMode.HUE, LayerBlendMode.SATURATION, LayerBlendMode.COLOR, LayerBlendMode.LUMINOSITY),
 )
 

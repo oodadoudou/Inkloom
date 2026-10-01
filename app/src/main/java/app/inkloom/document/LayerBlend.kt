@@ -23,6 +23,17 @@ fun LayerBlendMode.toBlendMode(): BlendMode = when (this) {
     LayerBlendMode.SATURATION -> BlendMode.SATURATION
     LayerBlendMode.COLOR -> BlendMode.COLOR
     LayerBlendMode.LUMINOSITY -> BlendMode.LUMINOSITY
+    LayerBlendMode.LINEAR_BURN -> error("LINEAR_BURN requires the pixel compositor")
+    LayerBlendMode.SUBTRACT -> error("SUBTRACT requires the pixel compositor")
+    LayerBlendMode.GLOW_DODGE -> error("GLOW_DODGE requires the pixel compositor")
+    LayerBlendMode.ADD_GLOW -> error("ADD_GLOW requires the pixel compositor")
+    LayerBlendMode.VIVID_LIGHT -> error("VIVID_LIGHT requires the pixel compositor")
+    LayerBlendMode.LINEAR_LIGHT -> error("LINEAR_LIGHT requires the pixel compositor")
+    LayerBlendMode.PIN_LIGHT -> error("PIN_LIGHT requires the pixel compositor")
+    LayerBlendMode.HARD_MIX -> error("HARD_MIX requires the pixel compositor")
+    LayerBlendMode.DARKER_COLOR -> error("DARKER_COLOR requires the pixel compositor")
+    LayerBlendMode.LIGHTER_COLOR -> error("LIGHTER_COLOR requires the pixel compositor")
+    LayerBlendMode.DIVIDE -> error("DIVIDE requires the pixel compositor")
 }
 
 /** Platform-independent V5 mapping shared by live projection and export. */
@@ -44,4 +55,20 @@ fun LayerBlendMode.toPixelBlendMode(): PixelBlendMode = when (this) {
     LayerBlendMode.SATURATION -> PixelBlendMode.SATURATION
     LayerBlendMode.COLOR -> PixelBlendMode.COLOR
     LayerBlendMode.LUMINOSITY -> PixelBlendMode.LUMINOSITY
+    LayerBlendMode.LINEAR_BURN -> PixelBlendMode.LINEAR_BURN
+    LayerBlendMode.SUBTRACT -> PixelBlendMode.SUBTRACT
+    LayerBlendMode.GLOW_DODGE -> PixelBlendMode.GLOW_DODGE
+    LayerBlendMode.ADD_GLOW -> PixelBlendMode.ADD_GLOW
+    LayerBlendMode.VIVID_LIGHT -> PixelBlendMode.VIVID_LIGHT
+    LayerBlendMode.LINEAR_LIGHT -> PixelBlendMode.LINEAR_LIGHT
+    LayerBlendMode.PIN_LIGHT -> PixelBlendMode.PIN_LIGHT
+    LayerBlendMode.HARD_MIX -> PixelBlendMode.HARD_MIX
+    LayerBlendMode.DARKER_COLOR -> PixelBlendMode.DARKER_COLOR
+    LayerBlendMode.LIGHTER_COLOR -> PixelBlendMode.LIGHTER_COLOR
+    LayerBlendMode.DIVIDE -> PixelBlendMode.DIVIDE
 }
+
+/** These modes have no exact Skia saveLayer equivalent. */
+val LayerBlendMode.requiresPixelCompositor: Boolean get() = this in setOf(
+    LayerBlendMode.LINEAR_BURN, LayerBlendMode.SUBTRACT, LayerBlendMode.GLOW_DODGE, LayerBlendMode.ADD_GLOW, LayerBlendMode.VIVID_LIGHT, LayerBlendMode.LINEAR_LIGHT, LayerBlendMode.PIN_LIGHT, LayerBlendMode.HARD_MIX, LayerBlendMode.DARKER_COLOR, LayerBlendMode.LIGHTER_COLOR, LayerBlendMode.DIVIDE
+)

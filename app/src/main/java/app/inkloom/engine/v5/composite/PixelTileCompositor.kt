@@ -144,6 +144,7 @@ object PixelTileCompositor {
                             mode = mode,
                             opacity = pixelOpacity,
                             output = scratch,
+                            bounded = true,
                         )
                         destination[index] = packRgba8(scratch)
                     }

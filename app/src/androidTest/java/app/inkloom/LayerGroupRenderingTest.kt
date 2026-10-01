@@ -14,6 +14,37 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class LayerGroupRenderingTest {
+    @Test fun extendedModesMatchLiveAndExportForRetainedObjectsAndMaskedGroups() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val assets = DocumentAssetService(instrumentation.targetContext)
+        for (mode in LayerBlendMode.entries.filter { it.requiresPixelCompositor }) {
+            val bottom = InkLayer(id = "bottom", name = "Bottom")
+            val group = InkLayer(id = "group", name = "Group", role = LayerRole.FOLDER,
+                opacity = .5f, blendMode = mode)
+            val top = InkLayer(id = "top", name = "Top", parentId = group.id)
+            fun shape(id: String, color: Long) = PageElement.Shape(x = 0f, y = 0f, width = 64f, height = 64f,
+                layerId = id, kind = ShapeKind.RECTANGLE, colorArgb = color, fillArgb = color, strokeWidth = 0f)
+            val page = InkPage(width = 64f, height = 64f, layers = listOf(bottom, group, top),
+                elements = listOf(shape(bottom.id, 0xff668899), shape(top.id, 0xff99bb33)))
+            val exported = assets.renderPageBitmap(page, 64)
+            try { instrumentation.runOnMainSync {
+                val bitmaps = listOf(bottom, top).associate { it.id to app.inkloom.ui.LayerElementBitmaps(assets.renderElementLayerBitmap(page, it.id, 64), null) }
+                val view = InkCanvasView(instrumentation.targetContext).apply {
+                    layout(0, 0, 64, 64); pagePaperColor = Color.WHITE
+                    setDocumentLayers(page.layers); layerOrder = listOf(bottom.id, top.id)
+                    layerOpacities = page.layers.associate { it.id to it.opacity }
+                    layerBlendModes = page.layers.associate { it.id to it.blendMode }
+                    setLayerElementBitmaps(bitmaps)
+                }
+                val live = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
+                try {
+                    view.draw(Canvas(live))
+                    assertEquals("$mode must use exact projection with retained objects", exported.getPixel(32, 32), live.getPixel(32, 32))
+                } finally { live.recycle(); bitmaps.values.forEach { it.base?.recycle() } }
+            } } finally { exported.recycle() }
+        }
+    }
+
     @Test fun groupMaskOpacityAndIsolationMatchCanvasAndExportForNestedRasterLayers() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val assets = DocumentAssetService(instrumentation.targetContext)

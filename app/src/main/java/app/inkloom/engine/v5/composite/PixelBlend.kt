@@ -25,6 +25,16 @@ enum class PixelBlendMode {
     SATURATION,
     COLOR,
     LUMINOSITY,
+    SUBTRACT,
+    GLOW_DODGE,
+    ADD_GLOW,
+    VIVID_LIGHT,
+    LINEAR_LIGHT,
+    PIN_LIGHT,
+    HARD_MIX,
+    DARKER_COLOR,
+    LIGHTER_COLOR,
+    DIVIDE,
 }
 
 /** Premultiplied color in the surface's declared working space. */
@@ -47,6 +57,7 @@ object PixelBlendMath {
         destination: PremultipliedRgba,
         mode: PixelBlendMode,
         opacity: Float = 1f,
+        bounded: Boolean = false,
     ): PremultipliedRgba {
         val output = FloatArray(4)
         compositeInto(
@@ -61,6 +72,7 @@ object PixelBlendMath {
             mode,
             opacity,
             output,
+            bounded,
         )
         return PremultipliedRgba(output[0], output[1], output[2], output[3])
     }
@@ -78,6 +90,7 @@ object PixelBlendMath {
         mode: PixelBlendMode,
         opacity: Float,
         output: FloatArray,
+        bounded: Boolean = false,
     ) {
         require(output.size >= 4) { "Composite output needs four channels" }
         val layerOpacity = finite(opacity).coerceIn(0f, 1f)
@@ -110,6 +123,11 @@ object PixelBlendMath {
             output,
         )
 
+        if (bounded && mode != PixelBlendMode.ADD_GLOW && mode != PixelBlendMode.GLOW_DODGE) {
+            output[0] = output[0].coerceIn(0f, 1f)
+            output[1] = output[1].coerceIn(0f, 1f)
+            output[2] = output[2].coerceIn(0f, 1f)
+        }
         val sourceRedEffective = finite(sourceRedPremultiplied) * sourceScale
         val sourceGreenEffective = finite(sourceGreenPremultiplied) * sourceScale
         val sourceBlueEffective = finite(sourceBluePremultiplied) * sourceScale
@@ -135,6 +153,15 @@ object PixelBlendMath {
         mode: PixelBlendMode,
         output: FloatArray,
     ) {
+        if (mode == PixelBlendMode.DARKER_COLOR || mode == PixelBlendMode.LIGHTER_COLOR) {
+            val bLum = .3f * backdropRed + .59f * backdropGreen + .11f * backdropBlue
+            val sLum = .3f * sourceRed + .59f * sourceGreen + .11f * sourceBlue
+            val sourceWins = if (mode == PixelBlendMode.DARKER_COLOR) sLum < bLum else sLum > bLum
+            output[0] = if (sourceWins) sourceRed else backdropRed
+            output[1] = if (sourceWins) sourceGreen else backdropGreen
+            output[2] = if (sourceWins) sourceBlue else backdropBlue
+            return
+        }
         if (mode in NON_SEPARABLE_MODES) {
             val result = nonSeparable(
                 Rgb(backdropRed, backdropGreen, backdropBlue),
@@ -160,7 +187,15 @@ object PixelBlendMath {
         PixelBlendMode.LIGHTEN -> max(backdrop, source)
         PixelBlendMode.SCREEN -> backdrop + source - backdrop * source
         PixelBlendMode.COLOR_DODGE -> colorDodge(backdrop, source)
-        PixelBlendMode.ADD -> backdrop + source
+        PixelBlendMode.ADD, PixelBlendMode.ADD_GLOW -> backdrop + source
+        PixelBlendMode.SUBTRACT -> backdrop - source
+        PixelBlendMode.GLOW_DODGE -> when { backdrop <= 0f -> 0f; source >= 1f -> 1f; else -> min(65504f, backdrop / max(ALPHA_EPSILON, 1f - source)) }
+        PixelBlendMode.VIVID_LIGHT -> if (source < .5f) colorBurn(backdrop, 2f * source) else colorDodge(backdrop, 2f * source - 1f)
+        PixelBlendMode.LINEAR_LIGHT -> backdrop + 2f * source - 1f
+        PixelBlendMode.PIN_LIGHT -> if (source < .5f) min(backdrop, 2f * source) else max(backdrop, 2f * source - 1f)
+        PixelBlendMode.HARD_MIX -> if (backdrop + source < 1f) 0f else 1f
+        PixelBlendMode.DIVIDE -> if (backdrop <= 0f) 0f else min(1f, backdrop / max(ALPHA_EPSILON, source))
+        PixelBlendMode.DARKER_COLOR, PixelBlendMode.LIGHTER_COLOR -> error("Whole-color mode routed to separable function")
         PixelBlendMode.OVERLAY -> hardLight(source, backdrop)
         PixelBlendMode.SOFT_LIGHT -> softLight(backdrop, source)
         PixelBlendMode.HARD_LIGHT -> hardLight(backdrop, source)

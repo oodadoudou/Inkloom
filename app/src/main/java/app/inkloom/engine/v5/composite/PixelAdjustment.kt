@@ -302,7 +302,7 @@ internal class PixelAdjustmentProjectionCache(
         mode: PixelBlendMode, scratch: FloatArray): FloatArray {
         if (mode == PixelBlendMode.NORMAL) return adjusted
         PixelBlendMath.compositeInto(adjusted[0], adjusted[1], adjusted[2], 1f,
-            red, green, blue, 1f, mode, 1f, scratch)
+            red, green, blue, 1f, mode, 1f, scratch, format == PixelTileFormat.PREMULTIPLIED_SRGB_8888)
         return scratch
     }
     private fun maskWeight(mask: MaskTileSurfaceSnapshot?, x: Int, y: Int): Float = mask?.let {

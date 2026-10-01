@@ -82,6 +82,9 @@ data class AppSettings(
     val layerRowDensity: LayerRowDensity = LayerRowDensity.COMFORTABLE,
     val layerShowThumbnails: Boolean = true,
     val layerShowDetails: Boolean = true,
+    val layerShowProperties: Boolean = true,
+    val layerShowCommands: Boolean = true,
+    val layerCommandsAtBottom: Boolean = false,
     val showToolbar: Boolean = true,
     val toolbarOffsetXDp: Float = 16f,
     val toolbarOffsetYDp: Float = 16f,
@@ -295,6 +298,9 @@ class AppSettingsStore(context: Context) {
             layerRowDensity = enumValue(preferences.getString("layerRowDensity", null), LayerRowDensity.COMFORTABLE),
             layerShowThumbnails = preferences.getBoolean("layerShowThumbnails", true),
             layerShowDetails = preferences.getBoolean("layerShowDetails", true),
+            layerShowProperties = preferences.getBoolean("layerShowProperties", true),
+            layerShowCommands = preferences.getBoolean("layerShowCommands", true),
+            layerCommandsAtBottom = preferences.getBoolean("layerCommandsAtBottom", false),
             showToolbar = preferences.getBoolean("showToolbar", true),
             toolbarOffsetXDp = preferences.getFloat("toolbarOffsetXDp", 16f).coerceIn(-1200f, 1200f),
             toolbarOffsetYDp = preferences.getFloat("toolbarOffsetYDp", 16f).coerceIn(-1200f, 1200f),
@@ -479,6 +485,9 @@ class AppSettingsStore(context: Context) {
             .putString("layerRowDensity", persisted.layerRowDensity.name)
             .putBoolean("layerShowThumbnails", persisted.layerShowThumbnails)
             .putBoolean("layerShowDetails", persisted.layerShowDetails)
+            .putBoolean("layerShowProperties", persisted.layerShowProperties)
+            .putBoolean("layerShowCommands", persisted.layerShowCommands)
+            .putBoolean("layerCommandsAtBottom", persisted.layerCommandsAtBottom)
             .putBoolean("showToolbar", persisted.showToolbar)
             .putFloat("toolbarOffsetXDp", persisted.toolbarOffsetXDp)
             .putFloat("toolbarOffsetYDp", persisted.toolbarOffsetYDp)

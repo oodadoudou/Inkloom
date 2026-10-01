@@ -53,7 +53,7 @@ class NativePixelCompositeParityTest {
     @Test fun nativeRgba8SeparableModesMatchKotlinReferenceWithinOneByte() {
         val sourcePixel = 0x80604020.toInt()
         val destinationPixel = 0xc0204080.toInt()
-        PixelBlendMode.entries.take(14).forEach { mode ->
+        PixelBlendMode.entries.forEach { mode ->
             val source = rgba8Surface(sourcePixel)
             val destination = rgba8Surface(destinationPixel)
             PixelTileCompositor.composite(source.snapshot(), destination, mode, opacity = .73f).close()
@@ -62,11 +62,12 @@ class NativePixelCompositeParityTest {
                 unpackRgba8(destinationPixel),
                 mode,
                 .73f,
+                bounded = true,
             )
             val actual = unpackRgba8(destination.pixelAt(3, 4))
-            assertEquals("$mode red", expected.red, actual.red, 1.1f / 255f)
-            assertEquals("$mode green", expected.green, actual.green, 1.1f / 255f)
-            assertEquals("$mode blue", expected.blue, actual.blue, 1.1f / 255f)
+            assertEquals("$mode red", expected.red.coerceIn(0f, expected.alpha), actual.red, 1.1f / 255f)
+            assertEquals("$mode green", expected.green.coerceIn(0f, expected.alpha), actual.green, 1.1f / 255f)
+            assertEquals("$mode blue", expected.blue.coerceIn(0f, expected.alpha), actual.blue, 1.1f / 255f)
             assertEquals("$mode alpha", expected.alpha, actual.alpha, 1.1f / 255f)
         }
     }
@@ -74,7 +75,7 @@ class NativePixelCompositeParityTest {
     @Test fun nativeF16SeparableModesMatchKotlinReferenceWithoutClampingHdr() {
         val sourceStraight = LinearRgba(1.4f, -.1f, .6f, .6f)
         val destinationStraight = LinearRgba(.8f, .3f, 1.2f, .75f)
-        PixelBlendMode.entries.take(14).forEach { mode ->
+        PixelBlendMode.entries.forEach { mode ->
             val source = f16Surface(sourceStraight)
             val destination = f16Surface(destinationStraight)
             PixelTileCompositor.composite(source.snapshot(), destination, mode, opacity = .8f).close()

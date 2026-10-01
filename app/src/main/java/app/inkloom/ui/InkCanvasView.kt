@@ -157,6 +157,7 @@ import app.inkloom.document.toColorFilter
 import app.inkloom.document.LayerMask
 import app.inkloom.document.expressed
 import app.inkloom.document.toBlendMode
+import app.inkloom.document.requiresPixelCompositor
 import app.inkloom.document.toPixelBlendMode
 import app.inkloom.document.LaserTrail
 import app.inkloom.document.PaperPattern
@@ -2046,17 +2047,18 @@ class InkCanvasView(context: Context) : View(context) {
             it.role == app.inkloom.document.LayerRole.ADJUSTMENT && it.visible && it.adjustment != null
         } == true
         val hasElements = layerElementBitmaps.isNotEmpty() || mixedElementOverrides.values.any { it != null }
-        if (hasElements && !through && !hasAdjustments) return false
-        if (rasterLayerTileSurfaces.isEmpty() && (!hasElements || (!through && !hasAdjustments))) return false
+        val customBlend = layerBlendModes.values.any { it.requiresPixelCompositor }
+        if (hasElements && !through && !hasAdjustments && !customBlend) return false
+        if (rasterLayerTileSurfaces.isEmpty() && (!hasElements || (!through && !hasAdjustments && !customBlend))) return false
         if (layerMasks.any { (layerId, mask) ->
                 layerId in rasterLayerTileSurfaces && mask.enabled && layerMaskSurfaces[layerId] == null
             }) return false
 
-        val contentIds = rasterLayerTileSurfaces.keys + if (through || hasAdjustments)
+        val contentIds = rasterLayerTileSurfaces.keys + if (through || hasAdjustments || customBlend)
             (layerElementBitmaps.keys + mixedElementOverrides.keys) else emptySet()
         val orderedIds = (layerOrder.filter(contentIds::contains) + contentIds.filterNot(layerOrder::contains)).distinct()
         if (orderedIds.isEmpty()) return false
-        val directSourceOverStack = !hasAdjustments && boundDocumentLayers?.none { it.role == app.inkloom.document.LayerRole.FOLDER } != false && orderedIds.all { layerId ->
+        val directSourceOverStack = !hasElements && !hasAdjustments && boundDocumentLayers?.none { it.role == app.inkloom.document.LayerRole.FOLDER } != false && orderedIds.all { layerId ->
             (layerOpacities[layerId] ?: 1f) >= .999f &&
                 (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL) == LayerBlendMode.NORMAL &&
                 layerColorReplacements[layerId] == null &&

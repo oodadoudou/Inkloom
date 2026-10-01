@@ -7391,6 +7391,15 @@ private fun PaintingLayerPanel(
                             leadingIcon = { Checkbox(settings.layerShowDetails, null) },
                             onClick = { onSettingsChange(settings.copy(layerShowDetails = !settings.layerShowDetails)) },
                         )
+                        DropdownMenuItem(text = { Text(tr("Show properties bar", "显示属性栏")) },
+                            leadingIcon = { Checkbox(settings.layerShowProperties, null) },
+                            onClick = { onSettingsChange(settings.copy(layerShowProperties = !settings.layerShowProperties)) })
+                        DropdownMenuItem(text = { Text(tr("Show command bar", "显示命令栏")) },
+                            leadingIcon = { Checkbox(settings.layerShowCommands, null) },
+                            onClick = { onSettingsChange(settings.copy(layerShowCommands = !settings.layerShowCommands)) })
+                        DropdownMenuItem(text = { Text(tr("Commands at bottom", "命令栏置于底部")) },
+                            leadingIcon = { Checkbox(settings.layerCommandsAtBottom, null) },
+                            onClick = { onSettingsChange(settings.copy(layerCommandsAtBottom = !settings.layerCommandsAtBottom)) })
                         HorizontalDivider()
                         LayerRowDensity.entries.forEach { density ->
                             DropdownMenuItem(
@@ -7427,18 +7436,19 @@ private fun PaintingLayerPanel(
                 }
             }
             val propertyLayer = page.layers.firstOrNull { it.id == activeLayerId }
-            LayerPropertiesBar(propertyLayer,
+            if (settings.layerShowProperties) LayerPropertiesBar(propertyLayer,
                 editable = propertyLayer != null && propertyLayer.role != LayerRole.BACKGROUND &&
                     !LayerHierarchy.effectiveLocked(page.layers, propertyLayer),
                 language = LocalUiLanguage.current,
                 onOpacity = { onOpacity(activeLayerId, it) },
                 onMode = { onBlendMode(activeLayerId, it) }, onThrough = { onThrough(activeLayerId) })
-            LayerQuickActions(propertyLayer, page.layers, LocalUiLanguage.current, onAdd, onAddFolder, onAddAdjustment,
+            val commands: @Composable () -> Unit = { LayerQuickActions(propertyLayer, page.layers, LocalUiLanguage.current, onAdd, onAddFolder, onAddAdjustment,
                 onLock = { onLock(activeLayerId) }, onAlphaLock = { onToggleAlphaLock(activeLayerId) },
                 onClip = { onToggleClippedToBelow(activeLayerId) }, onReference = { onToggleReference(activeLayerId) },
                 onDraft = { onToggleDraft(activeLayerId) }, onMask = { onMaskCommand(activeLayerId, it) },
                 onDuplicate = { onDuplicate(activeLayerId) }, onMerge = { onMergeDown(activeLayerId) },
-                onDelete = { onDelete(activeLayerId) })
+                onDelete = { onDelete(activeLayerId) }) }
+            if (settings.layerShowCommands && !settings.layerCommandsAtBottom) commands()
             HorizontalDivider(color = OutlineSoft)
             if (searchOpen) OutlinedTextField(
                 value = layerSearch,
@@ -7685,6 +7695,10 @@ private fun PaintingLayerPanel(
                 }
             } else {
                 renderLayerList(Modifier.weight(1f), primaryListState, primaryDrag, layerListDescription)
+            }
+            if (settings.layerShowCommands && settings.layerCommandsAtBottom) {
+                HorizontalDivider(color = OutlineSoft)
+                commands()
             }
         }
     }
