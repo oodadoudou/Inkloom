@@ -45,4 +45,5 @@ class PreparedPageGeometry(val edit: PageGeometryEdit, private val release: () -
     override fun close() = release()
 }
 
-data class PageRasterExportOptions(val width: Int? = null, val height: Int? = null, val includeBackground: Boolean = true)
+data class PageRasterExportOptions(val width: Int? = null, val height: Int? = null, val includeBackground: Boolean = true,
+    val format: RasterFileFormat = RasterFileFormat.PNG, val quality: Int = 95)

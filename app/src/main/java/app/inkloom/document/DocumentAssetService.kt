@@ -164,6 +164,7 @@ class DocumentAssetService(private val context: Context) {
         val source = when {
             mime == "application/pdf" || name.endsWith(".pdf", ignoreCase = true) ->
                 importPdf(uri, name, indexText = true, onProgress = onProgress, checkCancelled = checkCancelled)
+            name.substringAfterLast('.').lowercase() in setOf("psd", "ora", "tif", "tiff", "zip") -> importArtwork(uri, name).also { onProgress(1, 1) }
             mime.startsWith("image/") || name.substringAfterLast('.', "").lowercase() in setOf("png", "jpg", "jpeg", "webp", "heic", "heif", "bmp", "gif") -> {
                 checkCancelled()
                 importImage(uri, name).also { onProgress(1, 1) }
@@ -398,6 +399,9 @@ class DocumentAssetService(private val context: Context) {
             canvas.drawText(text.take(MAX_PDF_TEXT_CHARACTERS_PER_PAGE), left, baseline, paint)
         }
     }
+
+    fun exportPageRaster(page: InkPage, uri: Uri, options: PageRasterExportOptions) = RasterFormatService(context, this).export(page, uri, options)
+    fun importArtwork(uri: Uri, name: String): InkDocument = RasterFormatService(context, this).import(uri, name)
 
     fun exportPagePng(page: InkPage, uri: Uri, options: PageRasterExportOptions = PageRasterExportOptions()) {
         val authored = PagePngExportSize.from(page)

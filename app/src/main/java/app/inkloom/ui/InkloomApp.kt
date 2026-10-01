@@ -688,6 +688,12 @@ fun InkloomApp(initialIntent: Intent?) {
                     }
                     return@runCatching
                 }
+                name.substringAfterLast('.').lowercase() in setOf("psd", "ora", "tif", "tiff", "zip") -> {
+                    viewModel.importArtworkAsync(uri, name) { result ->
+                        result.onSuccess { destination = AppDestination.EDITOR }.onFailure { importError = it.message }
+                    }
+                    return@runCatching
+                }
                 else -> viewModel.importImage(uri, name)
             }
             destination = AppDestination.EDITOR
@@ -697,7 +703,7 @@ fun InkloomApp(initialIntent: Intent?) {
         if (uri != null) runCatching { viewModel.exportCurrent(uri) }.onFailure { importError = it.message }
     }
     var pendingRasterExport by remember { mutableStateOf(PageRasterExportOptions()) }
-    val imageExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
+    val imageExportPicker = rememberLauncherForActivityResult(RasterExportContract()) { uri ->
         if (uri != null) viewModel.exportCurrentPage(uri, pendingRasterExport) { result -> result.onFailure { importError = it.message } }
     }
     val bundleExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) runCatching { viewModel.exportCurrentBundle(uri) }.onFailure { importError = it.message } }
@@ -813,7 +819,7 @@ fun InkloomApp(initialIntent: Intent?) {
     }
     fun launchAppendPageFiles(documentId: String) {
         pendingAppendDocumentId = documentId
-        appendPageFilesPicker.launch(arrayOf("application/pdf", "image/*"))
+        appendPageFilesPicker.launch(arrayOf("application/pdf", "image/*", "application/zip", "image/vnd.adobe.photoshop", "image/openraster"))
     }
     var pendingPageScan by remember { mutableStateOf<Pair<Uri, java.io.File>?>(null) }
     val pageScanLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { captured ->
@@ -1070,7 +1076,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onInsertImage = { pageImagePicker.launch(arrayOf("image/*")) },
             onScanImage = ::launchPageScanner,
             onExport = { exportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}.pdf") },
-            onExportPage = { options -> pendingRasterExport = options; imageExportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}-page.png") },
+            onExportPage = { options -> pendingRasterExport = options; imageExportPicker.launch(RasterExportDestination("${viewModel.currentDocument()?.title ?: "Inkloom"}-page.${options.format.extension}", options.format.mime)) },
             onExportBundle = { bundleExportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}.inkloom.zip") },
             assets = viewModel.assets,
             selectionRuntime = viewModel.selectionRuntime,
@@ -2866,7 +2872,7 @@ private fun EditorScreen(
                     document.pages.forEachIndexed { index, page -> DropdownMenuItem(text = { Text(tr("Go to page ${index + 1}", "前往第 ${index + 1} 页")) }, onClick = { exportMenu = false; selectPageWithViewport(page.id) }) }
                     HorizontalDivider()
                     DropdownMenuItem(text = { Text(tr("Canvas & resolution", "画布与分辨率")) }, onClick = { exportMenu = false; canvasSizeOpen = true })
-                    DropdownMenuItem(text = { Text(tr("Export current page PNG", "将当前页导出为 PNG")) }, onClick = { exportMenu = false; pageExportOpen = true })
+                    DropdownMenuItem(text = { Text(tr("Export current page", "导出当前页")) }, onClick = { exportMenu = false; pageExportOpen = true })
                     DropdownMenuItem(text = { Text(tr("Export editable Inkloom package", "导出可编辑 Inkloom 文件")) }, onClick = { exportMenu = false; onExportBundle() })
                 }
             }

@@ -70,6 +70,8 @@ internal fun PageRasterExportDialog(page: InkPage, language: UiLanguage, onDismi
     var width by remember { mutableStateOf(PageCropTransform.visibleWidth(page).toInt().toString()) }
     var height by remember { mutableStateOf(PageCropTransform.visibleHeight(page).toInt().toString()) }
     var background by remember { mutableStateOf(true) }
+    var format by remember { mutableStateOf(RasterFileFormat.PNG) }
+    var formatMenu by remember { mutableStateOf(false) }
     val w = width.toIntOrNull(); val h = height.toIntOrNull()
     AlertDialog(onDismissRequest = onDismiss, title = { Text(tr("Export page", "导出页面")) }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -77,9 +79,17 @@ internal fun PageRasterExportDialog(page: InkPage, language: UiLanguage, onDismi
                 OutlinedTextField(width, { width = it.filter(Char::isDigit).take(4) }, Modifier.weight(1f), label = { Text(tr("Width (px)", "宽度（px）")) })
                 OutlinedTextField(height, { height = it.filter(Char::isDigit).take(4) }, Modifier.weight(1f), label = { Text(tr("Height (px)", "高度（px）")) })
             }
-            Row { Checkbox(background, { background = it }); Text(tr("Include paper", "包含纸张背景")) }
+            Box {
+                TextButton({ formatMenu = true }) { Text(format.label) }
+                DropdownMenu(formatMenu, { formatMenu = false }) { RasterFileFormat.entries.forEach { next ->
+                    DropdownMenuItem(text = { Text(next.label) }, onClick = { format = next; formatMenu = false })
+                } }
+            }
+            if (format == RasterFileFormat.JPEG) Text(tr("JPEG has no transparency; paper is included. Up to 16 MP.", "JPEG 不含透明度，将包含纸张；最大 1600 万像素。"), style = MaterialTheme.typography.bodySmall)
+            if (format in setOf(RasterFileFormat.PSD, RasterFileFormat.OPEN_RASTER, RasterFileFormat.LAYERED_PNG)) Text(tr("Objects export as raster layers. Unsupported layer features report an error.", "对象导出为像素图层。未支持的图层特性会提示原因。"), style = MaterialTheme.typography.bodySmall)
+            Row { Checkbox(background, { background = it }, enabled = format != RasterFileFormat.JPEG); Text(tr("Include paper", "包含纸张背景")) }
         }
     }, confirmButton = { TextButton(enabled = w != null && h != null && w in 1..8192 && h in 1..8192,
-        onClick = { if (w != null && h != null) onExport(PageRasterExportOptions(w, h, background)) }) { Text(tr("Export", "导出")) } },
+        onClick = { if (w != null && h != null) onExport(PageRasterExportOptions(w, h, background, format)) }) { Text(tr("Export", "导出")) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) } })
 }

@@ -180,6 +180,22 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         }
     }
     fun cancelPdfImport() { if (mutablePdfImportProgress.value?.committing != true) pdfImportJob?.cancel(CancellationException("PDF import cancelled")) }
+    fun importArtworkAsync(uri: Uri, title: String, onComplete: (Result<InkDocument>) -> Unit) {
+        if (pdfImportJob?.isActive == true) return
+        mutablePdfImportProgress.value = PdfImportProgress(0, 0)
+        pdfImportJob = viewModelScope.launch {
+            val result = runCatching { withContext(Dispatchers.IO) {
+                val document = assets.importArtwork(uri, title)
+                coroutineContext.ensureActive()
+                store.save(document)
+                document
+            } }
+            result.getOrNull()?.let { refresh(); select(it.id) }
+            mutablePdfImportProgress.value = null
+            onComplete(result)
+        }
+    }
+
     fun importImage(uri: Uri, title: String) = assets.importImage(uri, title).also { store.save(it); refresh(); select(it.id) }
     fun appendFilesAsync(documentId: String, files: List<Pair<Uri, String>>, onComplete: (Result<Int>) -> Unit) {
         if (files.isEmpty()) return
@@ -741,7 +757,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { assets.exportPagePng(page, uri, options) } }
+            val result = withContext(Dispatchers.IO) { runCatching { assets.exportPageRaster(page, uri, options) } }
             onComplete(result)
         }
     }
