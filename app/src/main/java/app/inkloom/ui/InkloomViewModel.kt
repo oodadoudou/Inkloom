@@ -663,14 +663,6 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         page.copy(layers = page.layers.map { if (it.id == layerId && it.isPaintSurfaceLayer()) it.copy(clippedToBelow = !it.clippedToBelow) else it })
     }
 
-    fun toggleLayerReference(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
-        page.copy(layers = page.layers.map { if (it.id == layerId && it.role != LayerRole.BACKGROUND) it.copy(reference = !it.reference) else it })
-    }
-
-    fun toggleLayerDraft(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
-        page.copy(layers = page.layers.map { if (it.id == layerId && it.role != LayerRole.BACKGROUND) it.copy(draft = !it.draft) else it })
-    }
-
     fun toggleLayerDrawingAssist(documentId: String, pageId: String, layerId: String, guide: app.inkloom.document.LayerDrawingGuide) = updatePage(documentId, pageId) { page ->
         page.copy(layers = page.layers.map { layer ->
             if (layer.id != layerId || !layer.isPaintSurfaceLayer()) layer

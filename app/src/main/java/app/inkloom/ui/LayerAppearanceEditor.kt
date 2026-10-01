@@ -80,6 +80,15 @@ internal class LayerAppearanceEditor(
         rejectedGesture = false
     }
 
+    fun toggleReferenceFlag(layerId: String, flag: app.inkloom.document.LayerReferenceFlag) {
+        if (closed || finishing || preview != null) { rejected(); return }
+        if (begin(layerId) { layer ->
+                val before = if (flag == app.inkloom.document.LayerReferenceFlag.REFERENCE) layer.reference else layer.draft
+                app.inkloom.document.LayerReferenceFlagEdit(layerId, flag, before, !before)
+            }) commit()
+        rejectedGesture = false
+    }
+
     fun setPaletteColor(layerId: String, color: LayerPaletteColor) {
         if (closed || finishing || preview != null) { rejected(); return }
         if (begin(layerId, allowBackground = true, allowLocked = true) {

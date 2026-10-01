@@ -1031,8 +1031,6 @@ fun InkloomApp(initialIntent: Intent?) {
                     Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                 }
             },
-            onToggleLayerReference = viewModel::toggleLayerReference,
-            onToggleLayerDraft = viewModel::toggleLayerDraft,
             onToggleLayerDrawingAssist = viewModel::toggleLayerDrawingAssist,
             onUpdateLayerDrawingGuide = viewModel::updateLayerDrawingGuide,
             onToggleLayerFolderCollapsed = viewModel::toggleLayerFolderCollapsed,
@@ -1819,8 +1817,6 @@ private fun EditorScreen(
     onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit,
     onToggleLayerAlphaLock: (String, String, String) -> Unit,
     onToggleLayerClippedToBelow: (String, String, String) -> Unit,
-    onToggleLayerReference: (String, String, String) -> Unit,
-    onToggleLayerDraft: (String, String, String) -> Unit,
     onToggleLayerDrawingAssist: (String, String, String, LayerDrawingGuide) -> Unit,
     onUpdateLayerDrawingGuide: (String, String, String, LayerDrawingGuide) -> Unit,
     onToggleLayerFolderCollapsed: (String, String, String) -> Unit,
@@ -3981,8 +3977,8 @@ private fun EditorScreen(
                 onLayerColor = appearanceEditor::setColorReplacement,
                 onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
-                onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
-                onToggleDraft = { onToggleLayerDraft(document.id, selectedPage.id, it) },
+                onToggleReference = { appearanceEditor.toggleReferenceFlag(it, app.inkloom.document.LayerReferenceFlag.REFERENCE) },
+                onToggleDraft = { appearanceEditor.toggleReferenceFlag(it, app.inkloom.document.LayerReferenceFlag.DRAFT) },
                 onToggleDrawingAssist = { onToggleLayerDrawingAssist(document.id, selectedPage.id, it, settings.toLayerDrawingGuide()) },
                 onMaskCommand = ::performLayerMaskCommand,
                 onMaskExpression = maskEditor::setExpression,
@@ -6885,7 +6881,7 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
                             )
                         }
                     }
-                    Text(tr("Draft layers are excluded. If no reference layer is marked, the current layer is used.", "草稿图层会被排除；若未标记参考图层，则使用当前图层。"), color = MutedInk, fontSize = 9.sp)
+                    Text(tr("Configure draft exclusion in Tool property. If no eligible reference layer is marked, the current layer is used.", "在工具属性中设置是否排除草稿；若没有可用参考图层，则使用当前图层。"), color = MutedInk, fontSize = 9.sp)
                 }
                 if (tool == EditorTool.CORRECT_LINE) {
                     Text(tr("Correct line", "线条修正"), color = MutedInk, fontSize = 12.sp)

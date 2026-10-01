@@ -169,3 +169,22 @@ data class LayerColorReplacementEdit(
         })
     }
 }
+
+/** A flag patch changes only its own metadata, preserving later pixels and sibling edits. */
+enum class LayerReferenceFlag { REFERENCE, DRAFT }
+
+data class LayerReferenceFlagEdit(
+    override val layerId: String, val flag: LayerReferenceFlag,
+    val before: Boolean, val after: Boolean,
+) : LayerAppearanceEdit {
+    override val isNoOp: Boolean get() = before == after
+    override fun apply(page: InkPage, undo: Boolean): InkPage? {
+        val layer = page.layers.firstOrNull { it.id == layerId && it.role != LayerRole.BACKGROUND } ?: return null
+        val current = if (flag == LayerReferenceFlag.REFERENCE) layer.reference else layer.draft
+        if (current != if (undo) after else before) return null
+        val value = if (undo) before else after
+        return page.copy(layers = page.layers.map {
+            if (it.id != layerId) it else if (flag == LayerReferenceFlag.REFERENCE) it.copy(reference = value) else it.copy(draft = value)
+        })
+    }
+}

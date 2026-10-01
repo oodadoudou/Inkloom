@@ -37,6 +37,19 @@ class LayerHierarchyTest {
         assertFalse(LayerHierarchy.effectiveDraft(listOf(nested.copy(parentId = nested.id)), nested))
     }
 
+    @Test fun referenceHistoryOnlyPatchesOwnFlagAndRejectsStaleState() {
+        val page = InkPage(layers = listOf(folder, child))
+        val edit = LayerReferenceFlagEdit(folder.id, LayerReferenceFlag.DRAFT, false, true)
+        val marked = requireNotNull(edit.apply(page))
+        assertTrue(LayerHierarchy.effectiveDraft(marked.layers, child))
+        val later = marked.copy(layers = marked.layers.map { if (it.id == child.id) it.copy(name = "Later edit") else it })
+        val undo = requireNotNull(edit.apply(later, true))
+        assertEquals("Later edit", undo.layers.single { it.id == child.id }.name)
+        assertFalse(undo.layers.single { it.id == folder.id }.draft)
+        org.junit.Assert.assertNull(edit.apply(marked))
+        org.junit.Assert.assertNull(edit.apply(page, true))
+    }
+
     @Test fun panelOrderNestsChildrenAndHonorsCollapsedFolders() {
         val other = InkLayer(id = "other", name = "Top")
         assertEquals(listOf("other", "folder", "child"), LayerHierarchy.panelOrder(listOf(folder, child, other)).map(InkLayer::id))

@@ -93,7 +93,14 @@ class LayerOrderWindowTest {
 
     @Test fun folderReferenceAndDraftButtonsPersistAndChildrenInheritWithoutOwnFlags() {
         tap("New Note"); tap("Create"); canvas(); tap("Layers"); tap("Add layer group")
-        tap("Toggle reference"); tap("Toggle draft"); tap("Add layer")
+        tap("Toggle reference")
+        compose.waitUntil(5_000) { model().currentPage()!!.layers.single { it.name == "Folder 1" }.reference }
+        tap("Toggle draft")
+        compose.waitUntil(5_000) { model().currentPage()!!.layers.single { it.name == "Folder 1" }.draft }
+        history(); compose.waitUntil(5_000) { !model().currentPage()!!.layers.single { it.name == "Folder 1" }.draft }
+        assertTrue(model().currentPage()!!.layers.single { it.name == "Folder 1" }.reference)
+        history(true); compose.waitUntil(5_000) { model().currentPage()!!.layers.single { it.name == "Folder 1" }.draft }
+        tap("Add layer")
         fun page() = requireNotNull(model().currentPage())
         compose.waitUntil(5_000) {
             page().layers.single { it.name == "Folder 1" }.let { it.reference && it.draft }
@@ -105,7 +112,9 @@ class LayerOrderWindowTest {
         compose.activityRule.scenario.recreate(); compose.waitForIdle()
         val reopened = page().layers.single { it.id == child.id }
         assertTrue(app.inkloom.document.LayerHierarchy.effectiveDraft(page().layers, reopened))
-        tap("Select layer Folder 1"); tap("Toggle reference"); tap("Toggle draft")
+        tap("Select layer Folder 1"); tap("Toggle reference")
+        compose.waitUntil(5_000) { !page().layers.single { it.name == "Folder 1" }.reference }
+        tap("Toggle draft")
         compose.waitUntil(5_000) { page().layers.single { it.name == "Folder 1" }.let { !it.reference && !it.draft } }
         org.junit.Assert.assertFalse(app.inkloom.document.LayerHierarchy.effectiveReference(page().layers, reopened))
         org.junit.Assert.assertFalse(app.inkloom.document.LayerHierarchy.effectiveDraft(page().layers, reopened))
