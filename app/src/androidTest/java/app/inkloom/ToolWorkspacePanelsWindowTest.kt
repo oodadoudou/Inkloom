@@ -50,7 +50,7 @@ class ToolWorkspacePanelsWindowTest {
         compose.onNodeWithText("Create").performClick()
         compose.onNodeWithContentDescription("Actions").performClick()
         compose.onNodeWithText("Sub tools").performScrollTo().performClick()
-        assertTrue(EditorPanel.SUBTOOLS in EditorPanelState(compose.activity, AppSettings()).layout.open)
+        assertTrue(EditorPanel.SUBTOOLS in EditorPanelState(compose.activity).layout.open)
         compose.onNodeWithContentDescription("Selection").performClick()
         compose.onNodeWithText("Magic wand").performClick()
         compose.waitForIdle()
@@ -81,11 +81,11 @@ class ToolWorkspacePanelsWindowTest {
         compose.onNodeWithContentDescription("Actions").performClick()
         compose.onNodeWithText("Sub tools").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Brushes").performClick()
-        val focused = EditorPanelState(compose.activity, AppSettings()).layout
+        val focused = EditorPanelState(compose.activity).layout
         assertTrue(EditorPanel.BRUSHES in focused.open)
         assertTrue(EditorPanel.SUBTOOLS in focused.open)
         compose.onNodeWithContentDescription("Brushes").performClick()
-        val closed = EditorPanelState(compose.activity, AppSettings()).layout
+        val closed = EditorPanelState(compose.activity).layout
         assertTrue(EditorPanel.BRUSHES !in closed.open)
         assertTrue(EditorPanel.SUBTOOLS in closed.open)
     }

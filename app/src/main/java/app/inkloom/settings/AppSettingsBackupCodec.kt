@@ -57,7 +57,8 @@ object AppSettingsBackupCodec {
         val colorSets = root["colorSetLibrary"]?.let { ColorSetLibraryCodec.decode(it.toString()) }
         val workspace = root["panelWorkspace"]?.let {
             json.decodeFromJsonElement(PanelWorkspaceBackup.serializer(), it).also(PanelWorkspaceBackup::validate)
-        }
+        } ?: root.getValue("settings").jsonObject.takeIf { settings -> settings.keys.any { it in LegacyWorkspaceImport.panelKeys } }
+            ?.let(LegacyWorkspaceImport::fromSettings)
         AppPreferencesBackup(
             base.copy(
                 shortcutBindings = profile.bindings,
@@ -73,23 +74,13 @@ object AppSettingsBackupCodec {
     }
 
     private fun AppSettings.toJson() = buildJsonObject {
-        put("language", language.name); put("fingerDrawing", fingerDrawing)
-        put("showPageRail", showPageRail); put("showBrushPanel", showBrushPanel); put("showLayerPanel", showLayerPanel); put("showToolbar", showToolbar)
+        put("language", language.name); put("fingerDrawing", fingerDrawing); put("showToolbar", showToolbar)
         put("fillSensitivity", fillSensitivity); put("fillCloseGapPixels", fillCloseGapPixels); put("fillAreaScalingPixels", fillAreaScalingPixels); put("fillTargetMode", fillTargetMode.name); put("fillTargetColor", fillTargetColor); put("fillExpansionShape", fillExpansionShape.name); put("fillAntiAlias", fillAntiAlias); put("fillSubTool", fillSubTool.name)
         put("gradientKind", gradientKind.name); put("gradientEdgeMode", gradientEdgeMode.name); put("gradientReverse", gradientReverse); put("gradientDither", gradientDither)
         put("gradientEllipseRatio", gradientEllipseRatio); put("gradientAngleSnapEnabled", gradientAngleSnapEnabled); put("gradientAngleSnapDegrees", gradientAngleSnapDegrees); put("gradientStops", app.inkloom.document.GradientStopCodec.encode(gradientStops))
         put("gradientPresets", json.parseToJsonElement(GradientPresetLibraryCodec.encode(gradientPresets).toString(Charsets.UTF_8)))
         put("liquifyStrengthScale", liquifyStrengthScale); put("liquifyDistortion", liquifyDistortion); put("liquifyMomentum", liquifyMomentum)
-        put("pagePanelDock", pagePanelDock.name); put("brushPanelDock", brushPanelDock.name); put("layerPanelDock", layerPanelDock.name)
-        put("pagePanelMode", pagePanelMode.name); put("brushPanelMode", brushPanelMode.name); put("layerPanelMode", layerPanelMode.name)
-        put("pagePanelLocked", pagePanelLocked); put("brushPanelLocked", brushPanelLocked); put("layerPanelLocked", layerPanelLocked)
-        put("leftDockStacked", leftDockStacked); put("rightDockStacked", rightDockStacked); put("bottomDockStacked", bottomDockStacked); put("freeDockStacked", freeDockStacked)
-        put("leftDockActivePanel", leftDockActivePanel.name); put("rightDockActivePanel", rightDockActivePanel.name); put("bottomDockActivePanel", bottomDockActivePanel.name); put("freeDockActivePanel", freeDockActivePanel.name)
-        put("panelTabOrder", WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(panelTabOrder)))
-        put("pagePanelXDp", pagePanelXDp); put("pagePanelYDp", pagePanelYDp); put("pagePanelWidthDp", pagePanelWidthDp); put("pagePanelHeightDp", pagePanelHeightDp)
-        put("brushGridLayout", brushGridLayout)
-        put("brushPanelXDp", brushPanelXDp); put("brushPanelYDp", brushPanelYDp); put("brushPanelWidthDp", brushPanelWidthDp); put("brushCategoryWidthDp",brushCategoryWidthDp); put("brushPanelHeightDp", brushPanelHeightDp)
-        put("layerPanelXDp", layerPanelXDp); put("layerPanelYDp", layerPanelYDp); put("layerPanelWidthDp", layerPanelWidthDp); put("layerPanelHeightDp", layerPanelHeightDp)
+        put("brushGridLayout", brushGridLayout); put("brushCategoryWidthDp",brushCategoryWidthDp);
         put("layerPanelDualList", layerPanelDualList); put("layerPanelSplitFraction", layerPanelSplitFraction); put("layerRowDensity", layerRowDensity.name)
         put("layerShowThumbnails", layerShowThumbnails); put("layerShowDetails", layerShowDetails)
         put("layerShowProperties", layerShowProperties); put("layerShowCommands", layerShowCommands); put("layerCommandsAtBottom", layerCommandsAtBottom)
@@ -117,7 +108,6 @@ object AppSettingsBackupCodec {
         put("correctLineMode", correctLineMode.name); put("correctLineAmount", correctLineAmount)
         put("nonDestructiveEraser", nonDestructiveEraser)
         put("rasterFilterPresets",json.parseToJsonElement(RasterFilterPresetsCodec.encode(rasterFilterPresets)))
-        put("workspaceLayouts", json.parseToJsonElement(WorkspaceLayoutProfilesCodec.encode(workspaceLayouts)))
     }
 
     private fun JsonObject.toSettings(): AppSettings {
@@ -133,22 +123,22 @@ object AppSettingsBackupCodec {
             liquifyDistortion = float("liquifyDistortion", defaults.liquifyDistortion).coerceIn(0f, 1f),
             liquifyMomentum = float("liquifyMomentum", defaults.liquifyMomentum).coerceIn(0f, 1f),
             language = enum("language", defaults.language), fingerDrawing = boolean("fingerDrawing", defaults.fingerDrawing),
-            showPageRail = boolean("showPageRail", defaults.showPageRail), showBrushPanel = boolean("showBrushPanel", defaults.showBrushPanel),
-            showLayerPanel = boolean("showLayerPanel", defaults.showLayerPanel), showToolbar = boolean("showToolbar", defaults.showToolbar),
-            pagePanelDock = enum("pagePanelDock", defaults.pagePanelDock), brushPanelDock = enum("brushPanelDock", defaults.brushPanelDock), layerPanelDock = enum("layerPanelDock", defaults.layerPanelDock),
-            pagePanelMode = enum("pagePanelMode", defaults.pagePanelMode), brushPanelMode = enum("brushPanelMode", defaults.brushPanelMode), layerPanelMode = enum("layerPanelMode", defaults.layerPanelMode),
-            pagePanelLocked = boolean("pagePanelLocked", defaults.pagePanelLocked), brushPanelLocked = boolean("brushPanelLocked", defaults.brushPanelLocked), layerPanelLocked = boolean("layerPanelLocked", defaults.layerPanelLocked),
-            leftDockStacked = boolean("leftDockStacked", defaults.leftDockStacked), rightDockStacked = boolean("rightDockStacked", defaults.rightDockStacked), bottomDockStacked = boolean("bottomDockStacked", defaults.bottomDockStacked), freeDockStacked = boolean("freeDockStacked", defaults.freeDockStacked),
-            leftDockActivePanel = enum("leftDockActivePanel", defaults.leftDockActivePanel), rightDockActivePanel = enum("rightDockActivePanel", defaults.rightDockActivePanel), bottomDockActivePanel = enum("bottomDockActivePanel", defaults.bottomDockActivePanel), freeDockActivePanel = enum("freeDockActivePanel", defaults.freeDockActivePanel),
-            panelTabOrder = WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(text("panelTabOrder").ifBlank { defaults.panelTabOrder })),
-            pagePanelXDp = float("pagePanelXDp", defaults.pagePanelXDp).coerceIn(-2400f, 2400f), pagePanelYDp = float("pagePanelYDp", defaults.pagePanelYDp).coerceIn(-2400f, 2400f),
-            pagePanelWidthDp = float("pagePanelWidthDp", defaults.pagePanelWidthDp).coerceIn(80f, 1200f), pagePanelHeightDp = float("pagePanelHeightDp", defaults.pagePanelHeightDp).coerceIn(120f, 1600f),
-            brushPanelXDp = float("brushPanelXDp", defaults.brushPanelXDp).coerceIn(-2400f, 2400f), brushPanelYDp = float("brushPanelYDp", defaults.brushPanelYDp).coerceIn(-2400f, 2400f),
+
+             showToolbar = boolean("showToolbar", defaults.showToolbar),
+
+
+
+
+
+
+
+
+
             brushGridLayout = boolean("brushGridLayout", defaults.brushGridLayout),
             brushCategoryWidthDp = float("brushCategoryWidthDp",defaults.brushCategoryWidthDp).coerceIn(56f,360f),
-            brushPanelWidthDp = float("brushPanelWidthDp", defaults.brushPanelWidthDp).coerceIn(80f, 1200f), brushPanelHeightDp = float("brushPanelHeightDp", defaults.brushPanelHeightDp).coerceIn(120f, 1600f),
-            layerPanelXDp = float("layerPanelXDp", defaults.layerPanelXDp).coerceIn(-2400f, 2400f), layerPanelYDp = float("layerPanelYDp", defaults.layerPanelYDp).coerceIn(-2400f, 2400f),
-            layerPanelWidthDp = float("layerPanelWidthDp", defaults.layerPanelWidthDp).coerceIn(80f, 1200f), layerPanelHeightDp = float("layerPanelHeightDp", defaults.layerPanelHeightDp).coerceIn(120f, 1600f),
+
+
+
             layerPanelDualList = boolean("layerPanelDualList", defaults.layerPanelDualList), layerPanelSplitFraction = float("layerPanelSplitFraction", defaults.layerPanelSplitFraction).coerceIn(.2f, .8f),
             layerRowDensity = enum("layerRowDensity", defaults.layerRowDensity), layerShowThumbnails = boolean("layerShowThumbnails", defaults.layerShowThumbnails), layerShowDetails = boolean("layerShowDetails", defaults.layerShowDetails),
             layerShowProperties = boolean("layerShowProperties", defaults.layerShowProperties), layerShowCommands = boolean("layerShowCommands", defaults.layerShowCommands), layerCommandsAtBottom = boolean("layerCommandsAtBottom", defaults.layerCommandsAtBottom),
@@ -187,7 +177,7 @@ object AppSettingsBackupCodec {
             correctLineMode = enum("correctLineMode", defaults.correctLineMode), correctLineAmount = float("correctLineAmount", defaults.correctLineAmount).coerceIn(0f, 1f),
             nonDestructiveEraser = boolean("nonDestructiveEraser", defaults.nonDestructiveEraser),
             rasterFilterPresets = RasterFilterPresetsCodec.decode(get("rasterFilterPresets")?.toString()),
-            workspaceLayouts = WorkspaceLayoutProfilesCodec.decode(get("workspaceLayouts")?.toString()),
+
         )
     }
 

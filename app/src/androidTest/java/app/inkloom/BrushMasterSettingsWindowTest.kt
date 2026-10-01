@@ -357,7 +357,7 @@ class BrushMasterSettingsWindowTest {
     }
 
     private fun brushPanelWidthDp(): Float {
-        val layout = app.inkloom.ui.EditorPanelState(context, app.inkloom.settings.AppSettingsStore(context).load()).layout
+        val layout = app.inkloom.ui.EditorPanelState(context).layout
         return layout.floating.first { root ->
             app.inkloom.settings.EditorPanel.BRUSHES in app.inkloom.settings.EditorPanelLayouts.members(root.node)
         }.rect.width

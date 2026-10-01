@@ -29,7 +29,7 @@ class NamedPanelLayoutWindowTest {
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
     @Test fun workspaceBackupRestoresPersistentDockTreeAndNamedLayouts() {
-        val state = EditorPanelState(compose.activity, AppSettings())
+        val state = EditorPanelState(compose.activity)
         val start = state.layout.copy(open = setOf(EditorPanel.LAYERS))
         val dock = app.inkloom.settings.EditorPanelLayouts.move(start, "layers", null,
             app.inkloom.settings.PanelDropTarget("canvas", app.inkloom.settings.PanelEdge.RIGHT), start.floating[2].rect)
@@ -43,14 +43,14 @@ class NamedPanelLayoutWindowTest {
             state.deleteNamedLayout("Docked drawing")
             state.restoreBackup(requireNotNull(app.inkloom.settings.AppSettingsBackupCodec.decode(bytes).getOrThrow().panelWorkspace))
         }
-        val reopened = EditorPanelState(compose.activity, AppSettings())
+        val reopened = EditorPanelState(compose.activity)
         org.junit.Assert.assertEquals(dock.copy(locked = true), reopened.layout)
         org.junit.Assert.assertEquals(state.namedLayouts, reopened.namedLayouts)
         assertTrue(reopened.namedLayouts.entries.any { it.name == "Docked drawing" })
     }
 
     @Test fun portableWorkspaceFileRestoresGeometryAndNamedLayouts() {
-        val state = EditorPanelState(compose.activity, AppSettings())
+        val state = EditorPanelState(compose.activity)
         val original = state.layout.copy(
             floating = state.layout.floating.mapIndexed { index, root ->
                 if (index == 0) root.copy(rect = app.inkloom.settings.PanelRect(51f, 18f, 187f, 446f)) else root
@@ -68,7 +68,7 @@ class NamedPanelLayoutWindowTest {
         compose.runOnIdle {
             state.restoreBackup(imported.workspace.copy(namedLayouts = app.inkloom.settings.WorkspaceLayoutCodec.mergeNamedLayouts(state.namedLayouts, imported.workspace.namedLayouts)))
         }
-        val reopened = EditorPanelState(compose.activity, AppSettings())
+        val reopened = EditorPanelState(compose.activity)
         org.junit.Assert.assertEquals(original, reopened.layout)
         assertTrue(reopened.namedLayouts.entries.any { it.name == "Sketch" })
     }
@@ -79,7 +79,7 @@ class NamedPanelLayoutWindowTest {
         compose.onNodeWithContentDescription("Layers").performClick()
         compose.onNodeWithContentDescription("Actions").performClick()
         compose.onNodeWithText("Lock layout").performClick()
-        assertTrue(EditorPanelState(compose.activity, AppSettings()).layout.locked)
+        assertTrue(EditorPanelState(compose.activity).layout.locked)
         compose.onNodeWithContentDescription("Resize layers panel · bottom edge").assertDoesNotExist()
         compose.onNodeWithContentDescription("Close layers panel").assertExists()
         compose.onNodeWithContentDescription("Actions").performClick()
@@ -88,10 +88,10 @@ class NamedPanelLayoutWindowTest {
         compose.onNodeWithText("Save").performClick()
         compose.onNodeWithContentDescription("Actions").performClick()
         compose.onNodeWithText("Unlock layout").performClick()
-        org.junit.Assert.assertFalse(EditorPanelState(compose.activity, AppSettings()).layout.locked)
+        org.junit.Assert.assertFalse(EditorPanelState(compose.activity).layout.locked)
         compose.onNodeWithContentDescription("Actions").performClick()
         compose.onNodeWithText("Locked drawing").performScrollTo().performClick()
-        assertTrue(EditorPanelState(compose.activity, AppSettings()).layout.locked)
+        assertTrue(EditorPanelState(compose.activity).layout.locked)
     }
 
     @Test fun saveCloseAndRestoreNamedLayoutThroughActionsMenu() {
@@ -103,15 +103,15 @@ class NamedPanelLayoutWindowTest {
         compose.onNodeWithText("Save panel layout…").performClick()
         compose.onNode(hasSetTextAction()).performTextInput("Drawing layers")
         compose.onNodeWithText("Save").performClick()
-        assertTrue(EditorPanel.LAYERS in EditorPanelState(compose.activity, AppSettings()).namedLayouts.entries.single { it.name == "Drawing layers" }.layout.open)
+        assertTrue(EditorPanel.LAYERS in EditorPanelState(compose.activity).namedLayouts.entries.single { it.name == "Drawing layers" }.layout.open)
         compose.onNodeWithContentDescription("Close layers panel").performClick()
         compose.onNodeWithContentDescription("Close layers panel").assertDoesNotExist()
         compose.onNodeWithContentDescription("Actions").performClick()
         compose.onNodeWithText("Drawing layers").performScrollTo().performClick()
-        val restoredSnapshot = EditorPanelState(compose.activity, AppSettings())
+        val restoredSnapshot = EditorPanelState(compose.activity)
         assertTrue(EditorPanel.LAYERS in restoredSnapshot.layout.open)
         compose.onNodeWithContentDescription("Close layers panel").assertExists()
-        val restored = EditorPanelState(compose.activity, AppSettings())
+        val restored = EditorPanelState(compose.activity)
         assertTrue(EditorPanel.LAYERS in restored.layout.open)
         assertTrue(restored.namedLayouts.entries.any { it.name == "Drawing layers" })
     }
@@ -119,22 +119,22 @@ class NamedPanelLayoutWindowTest {
     @Test fun windowManagerRestoresNearbyWithoutResettingItsTabGroup() {
         compose.onNodeWithText("New Note").performClick()
         compose.onNodeWithText("Create").performClick()
-        val before = EditorPanelState(compose.activity, AppSettings()).layout
+        val before = EditorPanelState(compose.activity).layout
         compose.onNodeWithContentDescription("Actions").performClick()
         compose.onNodeWithText("Views…").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Show Nearby view").performScrollTo().performClick()
-        assertTrue(EditorPanel.NEARBY in EditorPanelState(compose.activity, AppSettings()).layout.open)
+        assertTrue(EditorPanel.NEARBY in EditorPanelState(compose.activity).layout.open)
         compose.onNodeWithContentDescription("Hide Nearby view").assertExists()
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
             .executeShellCommand("screencap -p /data/local/tmp/inkloom-window-manager.png").close()
         compose.onNodeWithText("Done").performClick()
         compose.onNodeWithContentDescription("Close nearby panel").assertExists()
         compose.onNodeWithContentDescription("Close nearby panel").performClick()
-        assertTrue(EditorPanel.NEARBY !in EditorPanelState(compose.activity, AppSettings()).layout.open)
+        assertTrue(EditorPanel.NEARBY !in EditorPanelState(compose.activity).layout.open)
         compose.onNodeWithContentDescription("Actions").performClick()
         compose.onNodeWithText("Views…").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Show Nearby view").performScrollTo().performClick()
-        val restored = EditorPanelState(compose.activity, AppSettings()).layout
+        val restored = EditorPanelState(compose.activity).layout
         assertTrue(EditorPanel.NEARBY in restored.open)
         org.junit.Assert.assertEquals(before.floating.associate { it.node.id to it.rect }, restored.floating.associate { it.node.id to it.rect })
         org.junit.Assert.assertEquals(before.floating.flatMap { app.inkloom.settings.EditorPanelLayouts.members(it.node) },
@@ -152,12 +152,12 @@ class NamedPanelLayoutWindowTest {
         compose.onNodeWithContentDescription("Show Pages view").performScrollTo().performClick()
         compose.waitForIdle()
         val settings = app.inkloom.settings.AppSettingsStore(compose.activity).load()
-        assertTrue(settings.showLayerPanel)
-        assertTrue(settings.showPageRail)
-        assertTrue(EditorPanelState(compose.activity, AppSettings()).layout.locked)
+        assertTrue(EditorPanel.LAYERS in EditorPanelState(compose.activity).layout.open)
+        assertTrue(EditorPanel.PAGES in EditorPanelState(compose.activity).layout.open)
+        assertTrue(EditorPanelState(compose.activity).layout.locked)
         compose.onNodeWithContentDescription("Hide Layers view").performScrollTo().performClick()
         compose.waitForIdle()
-        org.junit.Assert.assertFalse(app.inkloom.settings.AppSettingsStore(compose.activity).load().showLayerPanel)
+        org.junit.Assert.assertFalse((EditorPanel.LAYERS in EditorPanelState(compose.activity).layout.open))
     }
 
     @Test fun workspaceAndShortcutFilesAreReachableFromTheEditorActionsMenu() {

@@ -283,6 +283,8 @@ class DocumentAssetService(private val context: Context) {
 
     fun retainHistoryAssets(paths: List<String>): () -> Unit = assetLifecycle.retainHistoryAssets(paths)
 
+    internal fun saveMigratedFillImage(bytes: ByteArray): String = assetLifecycle.saveBytes(bytes, "png")
+
     fun releaseAssetReservation(path: String?) = assetLifecycle.releaseAssetReservation(path)
 
     fun releaseRasterTileReservation(reference: RasterTileSurfaceRef?) =

@@ -26,7 +26,7 @@ class EditorPanelsWindowTest {
     @Test fun closingOneTabKeepsTheOtherPaletteInItsGroup() {
         lateinit var state: EditorPanelState
         compose.runOnUiThread {
-            state=EditorPanelState(compose.activity,AppSettings())
+            state=EditorPanelState(compose.activity)
             state.layout=EditorPanelLayout(open=setOf(EditorPanel.LAYERS,EditorPanel.PROPERTIES))
             compose.activity.setContent { MaterialTheme {
                 EditorPanels(state,{},canvas={ Text("Canvas") },content={ Text("Body ${it.name}") })
@@ -42,7 +42,7 @@ class EditorPanelsWindowTest {
     @Test fun dragDockSplitCloseAndReopenKeepOneOwnerAndPosition() {
         lateinit var state:EditorPanelState
         compose.runOnUiThread {
-            state=EditorPanelState(compose.activity,AppSettings())
+            state=EditorPanelState(compose.activity)
             state.layout=EditorPanelLayout(open=EditorPanel.entries.toSet(),floating=EditorPanelLayout().floating.map { root ->
                 root.copy(rect=when(root.node.id) {
                     "pages"->PanelRect(20f,20f,180f,300f)
@@ -83,7 +83,7 @@ class EditorPanelsWindowTest {
         val all=EditorPanelLayouts.members(state.layout.dock)+state.layout.floating.flatMap { EditorPanelLayouts.members(it.node) }
         assertEquals(EditorPanel.entries.size,all.size);assertEquals(EditorPanel.entries.size,all.toSet().size)
         compose.runOnUiThread { state.commit(state.layout) }
-        assertEquals(state.layout,EditorPanelState(compose.activity,AppSettings()).layout)
+        assertEquals(state.layout,EditorPanelState(compose.activity).layout)
         val detachedBrushId = state.layout.floating.last().node.id
         val brush = point(hasContentDescription("Move panel group") and
             hasAnyAncestor(hasTestTag("editor-panel-$detachedBrushId")))
@@ -106,7 +106,7 @@ class EditorPanelsWindowTest {
         start = EditorPanelLayouts.move(start, "layers", null,
             PanelDropTarget("brushes", PanelEdge.BOTTOM), PanelRect(600f, 100f, 280f, 340f))
         compose.runOnUiThread {
-            state = EditorPanelState(compose.activity, AppSettings()); state.layout = start
+            state = EditorPanelState(compose.activity); state.layout = start
             compose.activity.setContent { MaterialTheme { ResizeHost(state) } }
         }
         compose.waitForIdle()
@@ -153,7 +153,7 @@ class EditorPanelsWindowTest {
             if (EditorPanel.BRUSHES in EditorPanelLayouts.members(root.node)) PanelRect(20f, 40f, 280f, 300f)
             else PanelRect(320f, 40f, 280f, 300f)) })
         compose.runOnUiThread {
-            state = EditorPanelState(compose.activity, AppSettings()); state.layout = start
+            state = EditorPanelState(compose.activity); state.layout = start
             compose.activity.setContent { MaterialTheme { ResizeHost(state) } }
         }
         compose.waitForIdle()
@@ -175,7 +175,7 @@ class EditorPanelsWindowTest {
     @Test fun floatingPanelsResizeAllEdgesAndCornersWithoutDroppingMotion() {
         lateinit var state: EditorPanelState
         compose.runOnUiThread {
-            state = EditorPanelState(compose.activity, AppSettings())
+            state = EditorPanelState(compose.activity)
             compose.activity.setContent { MaterialTheme {
                 ResizeHost(state)
             } }
@@ -193,7 +193,7 @@ class EditorPanelsWindowTest {
                 val r = state.layout.floating.first { it.node.id == id }.rect
                 assertEquals("$panel $grip width", 380f + if (grip.x != 0) 45f else 0f, r.width, 2f)
                 assertEquals("$panel $grip height", 360f + if (grip.y != 0) 40f else 0f, r.height, 2f)
-                assertEquals(state.layout, EditorPanelState(compose.activity, AppSettings()).layout)
+                assertEquals(state.layout, EditorPanelState(compose.activity).layout)
                 compose.runOnUiThread { state.show(panel, false); state.show(panel, true) }
                 assertEquals(r, state.layout.floating.first { it.node.id == id }.rect)
             }
@@ -206,7 +206,7 @@ class EditorPanelsWindowTest {
             if(it.node.id=="layers") it.copy(rect=PanelRect(100f,100f,380f,360f)) else it
         }) }
         compose.runOnUiThread {
-            state=EditorPanelState(compose.activity,AppSettings());state.layout=original
+            state=EditorPanelState(compose.activity);state.layout=original
             compose.activity.setContent { MaterialTheme { ResizeHost(state) } }
         }
         compose.waitForIdle()
@@ -234,7 +234,7 @@ class EditorPanelsWindowTest {
             it.copy(rect = PanelRect(100f, 100f, 380f, 360f))
         }) }
         compose.runOnUiThread {
-            state = EditorPanelState(compose.activity, AppSettings()); state.commit(original)
+            state = EditorPanelState(compose.activity); state.commit(original)
             compose.activity.setContent { MaterialTheme {
                 ResizeHost(state)
             } }
@@ -242,7 +242,7 @@ class EditorPanelsWindowTest {
         val a = point("Resize layers panel · bottom edge")
         drag(a, a + Offset(0f, 100f), cancel = true)
         assertEquals(original, state.layout)
-        assertEquals(original, EditorPanelState(compose.activity, AppSettings()).layout)
+        assertEquals(original, EditorPanelState(compose.activity).layout)
         compose.runOnUiThread { state.commit(original.copy(locked = true)) }; compose.waitForIdle()
         compose.onNodeWithContentDescription("Resize layers panel · bottom edge").assertDoesNotExist()
         val before = state.layout
@@ -259,7 +259,7 @@ class EditorPanelsWindowTest {
     @Test fun everyDockSideResizesBothAxesAndKeepsThePanelDocked() {
         lateinit var state: EditorPanelState
         compose.runOnUiThread {
-            state = EditorPanelState(compose.activity, AppSettings())
+            state = EditorPanelState(compose.activity)
             compose.activity.setContent { MaterialTheme {
                 ResizeHost(state)
             } }
@@ -303,7 +303,7 @@ class EditorPanelsWindowTest {
         val original = EditorPanelLayout(open = setOf(EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY))
             .let { l -> l.copy(floating = l.floating.map { it.copy(rect = PanelRect(100f, 100f, 240f, 340f)) }) }
         compose.runOnUiThread {
-            state = EditorPanelState(compose.activity, AppSettings()); state.layout = original
+            state = EditorPanelState(compose.activity); state.layout = original
             compose.activity.setContent { MaterialTheme { ResizeHost(state) } }
         }
         compose.onNodeWithContentDescription("Drag nearby panel").performScrollTo()
@@ -322,7 +322,7 @@ class EditorPanelsWindowTest {
         val original = EditorPanelLayout(open = setOf(EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY))
             .let { layout -> layout.copy(floating = layout.floating.map { it.copy(rect = PanelRect(100f, 100f, 240f, 340f)) }) }
         compose.runOnUiThread {
-            state = EditorPanelState(compose.activity, AppSettings()); state.layout = original
+            state = EditorPanelState(compose.activity); state.layout = original
             compose.activity.setContent { MaterialTheme { ResizeHost(state) } }
         }
         val before = state.layout
@@ -339,7 +339,7 @@ class EditorPanelsWindowTest {
         initial = EditorPanelLayouts.move(initial, "layers", null, PanelDropTarget("canvas", PanelEdge.RIGHT), PanelRect(0f,0f,300f,400f))
         initial = EditorPanelLayouts.move(initial, "pages", null, PanelDropTarget("layers", PanelEdge.BOTTOM), PanelRect(0f,0f,200f,200f))
         compose.runOnUiThread {
-            state = EditorPanelState(compose.activity, AppSettings()); state.commit(initial)
+            state = EditorPanelState(compose.activity); state.commit(initial)
             compose.activity.setContent { MaterialTheme { ResizeHost(state) } }
         }
         val density = compose.activity.resources.displayMetrics.density

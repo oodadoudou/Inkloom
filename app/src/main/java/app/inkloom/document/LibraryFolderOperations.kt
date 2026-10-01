@@ -103,18 +103,4 @@ object LibraryFolderOperations {
         })
     }
 
-    fun remove(folders: List<InkFolder>, documents: List<InkDocument>, folderId: String): Removal {
-        return removeMany(folders, documents, setOf(folderId)) ?: Removal(folders, documents)
-    }
-
-    fun removeMany(folders: List<InkFolder>, documents: List<InkDocument>, folderIds: Set<String>): Removal? {
-        if (folderIds.isEmpty() || folders.count { it.id in folderIds } != folderIds.size) return null
-        val removedIds = descendants(folders, folderIds)
-        return Removal(
-            folders = folders.filterNot { it.id in removedIds },
-            documents = documents.map { document ->
-                if (document.folderId in removedIds) document.copy(folderId = null, updatedAt = System.currentTimeMillis()) else document
-            },
-        )
-    }
 }

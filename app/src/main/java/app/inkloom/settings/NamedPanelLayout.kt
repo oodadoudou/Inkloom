@@ -52,8 +52,20 @@ data class NamedPanelLayouts(val entries: List<NamedPanelLayout> = emptyList()) 
 
 /** The same layout tree is used for current state, named layouts and library backup. */
 @Serializable
-data class PanelWorkspaceBackup(val layout: EditorPanelLayout, val namedLayouts: NamedPanelLayouts) {
+data class PanelWorkspaceBackup(
+    val layout: EditorPanelLayout,
+    val namedLayouts: NamedPanelLayouts,
+    val toolRail: ToolRailLayout? = null,
+    val orientationLayouts: Map<String, NamedPanelLayout> = emptyMap(),
+    val activeOrientation: String? = null,
+) {
     fun validate() {
+        require(orientationLayouts.size <= 2 && orientationLayouts.keys.all { it == "LANDSCAPE" || it == "PORTRAIT" }) { "Invalid orientation layouts" }
+        require(activeOrientation == null || activeOrientation == "LANDSCAPE" || activeOrientation == "PORTRAIT")
+        (orientationLayouts.values + listOfNotNull(toolRail?.let { NamedPanelLayout("Current", layout, it) })).forEach { saved ->
+            require(EditorPanelLayouts.isValid(saved.layout))
+            saved.toolRail?.let { rail -> require(rail.xDp.isFinite() && rail.yDp.isFinite() && ToolbarDock.entries.any { it.name == rail.dock }) }
+        }
         require(EditorPanelLayouts.isValid(layout)) { "Invalid current panel layout" }
         require(namedLayouts.entries.size <= 20) { "Too many named panel layouts" }
         require(namedLayouts.entries.map { it.name.lowercase(java.util.Locale.ROOT) }.distinct().size == namedLayouts.entries.size) {

@@ -44,51 +44,23 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import app.inkloom.settings.*
 import app.inkloom.ui.theme.*
-import kotlinx.serialization.json.Json
 
-internal class EditorPanelState(context: Context, settings: AppSettings) {
-    private val preferences = context.getSharedPreferences("inkloom_editor_panels", Context.MODE_PRIVATE)
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
-    var layout by mutableStateOf(runCatching {
-        val raw = preferences.getString("layout", null) ?: error("New layout")
-        require(raw.length < 64*1024)
-        val decoded = json.decodeFromString<EditorPanelLayout>(raw)
-        require(EditorPanelLayouts.isValid(decoded))
-        decoded
-    }.getOrElse {
-        EditorPanelLayout().let { defaults -> defaults.copy(floating = defaults.floating.map { root ->
-            val rect = when(root.node.id) {
-                "pages" -> PanelRect(settings.pagePanelXDp,settings.pagePanelYDp,settings.pagePanelWidthDp,settings.pagePanelHeightDp)
-                "brushes" -> PanelRect(settings.brushPanelXDp,settings.brushPanelYDp,settings.brushPanelWidthDp,settings.brushPanelHeightDp)
-                "layers" -> PanelRect(settings.layerPanelXDp,settings.layerPanelYDp,settings.layerPanelWidthDp,settings.layerPanelHeightDp)
-                else -> root.rect
-            }
-            root.copy(rect=rect)
-        }).copy(open = buildSet {
-            if (settings.showPageRail) add(EditorPanel.PAGES)
-            if (settings.showBrushPanel) add(EditorPanel.BRUSHES)
-            if (settings.showLayerPanel) add(EditorPanel.LAYERS)
-        }) }
-    })
-    var namedLayouts by mutableStateOf(runCatching {
-        val raw = preferences.getString("named_layouts", null) ?: return@runCatching NamedPanelLayouts()
-        require(raw.length < 1024*1024)
-        val decoded = json.decodeFromString<NamedPanelLayouts>(raw)
-        decoded.copy(entries = decoded.entries.filter { EditorPanelLayouts.isValid(it.layout) }.takeLast(20))
-    }.getOrDefault(NamedPanelLayouts()))
+internal class EditorPanelState(context: Context) {
+    private val store = EditorWorkspaceStore(context)
+    private val initial = store.load()
+    var layout by mutableStateOf(initial.layout)
+    var namedLayouts by mutableStateOf(initial.namedLayouts)
         private set
 
     private fun updateNamedLayouts(next: NamedPanelLayouts) {
         if (next == namedLayouts) return
-        namedLayouts = next
-        preferences.edit().putString("named_layouts", json.encodeToString(NamedPanelLayouts.serializer(), next)).apply()
+        namedLayouts = store.updateNamedLayouts(next).namedLayouts
     }
-
-    fun backup() = PanelWorkspaceBackup(layout, namedLayouts)
+    fun backup() = store.load()
     fun restoreBackup(backup: PanelWorkspaceBackup) {
-        backup.validate()
-        commit(backup.layout)
-        updateNamedLayouts(backup.namedLayouts)
+        val restored = store.restore(backup)
+        layout = restored.layout
+        namedLayouts = restored.namedLayouts
     }
 
     fun saveNamedLayout(name: String, settings: AppSettings) =
@@ -101,8 +73,7 @@ internal class EditorPanelState(context: Context, settings: AppSettings) {
         return saved
     }
     fun commit(next: EditorPanelLayout) {
-        layout=next
-        preferences.edit().putString("layout",json.encodeToString(EditorPanelLayout.serializer(),next)).apply()
+        layout = store.updateLayout(next).layout
     }
     var activeTabId: String? = null
     fun raise(rootId: String, tabId: String) {
@@ -161,9 +132,9 @@ internal class EditorPanelState(context: Context, settings: AppSettings) {
 }
 
 @Composable
-internal fun rememberEditorPanelState(settings: AppSettings): EditorPanelState {
+internal fun rememberEditorPanelState(): EditorPanelState {
     val context=LocalContext.current.applicationContext
-    return remember(context) { EditorPanelState(context,settings) }
+    return remember(context) { EditorPanelState(context) }
 }
 
 private data class PanelDrag(

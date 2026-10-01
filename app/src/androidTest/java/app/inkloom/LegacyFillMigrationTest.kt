@@ -108,11 +108,33 @@ class LegacyFillMigrationTest {
         var saved: InkDocument? = null
         assertTrue(LegacyFillMigration(assets).migrate(InkDocument(title = "Ordered", pages = listOf(page))) { saved = it } is LegacyFillMigration.Result.Executed)
         assertEquals(listOf(image), requireNotNull(saved).pages.single().elements)
-        val result = LegacyFillMigration(assets).migrate(InkDocument(title = "Mixed", pages = listOf(page.copy(elements = listOf(image, fill))))) {
-            fail("A mixed stack must not silently change order")
-        }
-        assertTrue(result is LegacyFillMigration.Result.Rejected)
+        val result = LegacyFillMigration(assets).migrate(InkDocument(title = "Mixed", pages = listOf(page.copy(elements = listOf(image, fill))))) { saved=it }
+        assertTrue(result is LegacyFillMigration.Result.Executed)
+        val elements=saved!!.pages.single().elements
+        assertEquals(image,elements[0]);assertEquals(fill.id,elements[1].id)
+        assertTrue(elements[1] is PageElement.Image)
+        assertEquals(fill.opacity,elements[1].opacity);assertEquals(fill.rotationDegrees,elements[1].rotationDegrees)
         assets.releaseAssetReservation(path)
+    }
+
+    @Test fun interleavedFillAndObjectAlphaLockKeepPixelsAndIdentity() {
+        val path=assets.saveFillMask(MaskTileSurface(64,64,initialDefaultAlpha=128).snapshot())
+        val shape=PageElement.Shape(x=.2f,y=.2f,width=32f,height=32f,fillArgb=0xff00ff00,strokeWidth=0f)
+        val fill=PageElement.Fill(id="alpha-identity",x=0f,y=0f,width=64f,height=64f,opacity=.6f,colorArgb=0x99ff3300,maskAssetPath=path)
+        val layer=InkLayer(id=fill.layerId,name="Locked",alphaLock=true,alphaLockBaseContentIds=listOf(shape.id,fill.id))
+        val page=InkPage(width=64f,height=64f,layers=listOf(layer),elements=listOf(shape,fill))
+        var migrated:InkDocument?=null
+        try {
+            assertTrue(LegacyFillMigration(assets).migrate(InkDocument(title="Interleaved",pages=listOf(page))) { migrated=it } is LegacyFillMigration.Result.Executed)
+            val afterPage=migrated!!.pages.single()
+            assertEquals(page.layers,afterPage.layers);assertEquals(page.elements.map{it.id},afterPage.elements.map{it.id})
+            assertEquals(shape,afterPage.elements.first());assertTrue(afterPage.elements.last() is PageElement.Image)
+            val before=assets.renderPageBitmap(page,64);val after=assets.renderPageBitmap(afterPage,64)
+            try {
+                for(y in 0 until 64)for(x in 0 until 64)for(shift in listOf(0,8,16,24))
+                    assertTrue("Pixel ($x,$y) channel $shift",kotlin.math.abs((before.getPixel(x,y) ushr shift and 255)-(after.getPixel(x,y) ushr shift and 255))<=2)
+            }finally{before.recycle();after.recycle()}
+        }finally{assets.releaseAssetReservation(path)}
     }
 
     @Test fun failedCheckpointLeavesTheOriginalReferenceAndFillUntouched() {

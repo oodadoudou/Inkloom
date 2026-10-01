@@ -27,20 +27,6 @@ class LibraryFolderOperationsTest {
         assertNotEquals(document.updatedAt, moved.updatedAt)
     }
 
-    @Test fun deletingAParentRemovesChildrenAndUnassignsTheirDocuments() {
-        val root = InkFolder(id = "root", name = "Root")
-        val child = InkFolder(id = "child", name = "Child", parentId = root.id)
-        val outside = InkFolder(id = "outside", name = "Outside")
-        val nestedDocument = InkDocument(id = "nested", title = "Nested", folderId = child.id)
-        val outsideDocument = InkDocument(id = "outside-note", title = "Outside", folderId = outside.id)
-
-        val result = LibraryFolderOperations.remove(listOf(root, child, outside), listOf(nestedDocument, outsideDocument), root.id)
-
-        assertEquals(listOf(outside), result.folders)
-        assertEquals(null, result.documents.first { it.id == nestedDocument.id }.folderId)
-        assertEquals(outside.id, result.documents.first { it.id == outsideDocument.id }.folderId)
-    }
-
     @Test fun batchMoveValidatesAllNotesBeforeChangingAny() {
         val folder = InkFolder(id = "target", name = "Target")
         val notes = listOf(InkDocument(id = "a", title = "A"), InkDocument(id = "b", title = "B"), InkDocument(id = "c", title = "C"))
@@ -69,20 +55,4 @@ class LibraryFolderOperationsTest {
         assertNull(LibraryFolderOperations.moveFolders(folders + InkFolder(id = "collision", name = "Art", parentId = "target"), setOf("a"), "target"))
     }
 
-    @Test fun removingNestedFoldersPreservesAllNotebooksAtLibraryRoot() {
-        val folders = listOf(
-            InkFolder(id = "root", name = "Root"),
-            InkFolder(id = "child", name = "Child", parentId = "root"),
-            InkFolder(id = "grandchild", name = "Grandchild", parentId = "child"),
-            InkFolder(id = "other", name = "Other"),
-        )
-        val notes = listOf(
-            InkDocument(id = "deep", title = "Deep", folderId = "grandchild"),
-            InkDocument(id = "safe", title = "Safe", folderId = "other"),
-        )
-        val removed = LibraryFolderOperations.removeMany(folders, notes, setOf("root"))!!
-        assertEquals(listOf(folders.last()), removed.folders)
-        assertNull(removed.documents.first().folderId)
-        assertEquals("other", removed.documents.last().folderId)
-    }
 }

@@ -57,7 +57,6 @@ import app.inkloom.settings.ShortcutCategory
 import app.inkloom.settings.ToolboxAxis
 import app.inkloom.settings.ToolboxAxisMode
 import app.inkloom.settings.ToolboxQuickSlotKind
-import app.inkloom.settings.WorkspacePanelDock
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -98,7 +97,7 @@ class InkloomLaunchTest {
                     .putString("persistentDrawingTool", "PEN")
                     .putString("persistentBrushPresetId", "system-g-pen")
                     .putString("pagePanelDock", "LEFT")
-                    .putString("brushPanelDock", "RIGHT")
+                    .putString("brushPanelDock", "FREE")
                     .putString("layerPanelDock", "RIGHT")
                     .putString("toolbarDock", "LEFT")
                     .putFloat("toolbarOffsetXDp", 16f)
@@ -337,7 +336,7 @@ class InkloomLaunchTest {
             }
             composeRule.waitUntil(10_000) { composeRule.onAllNodesWithContentDescription("Actions").fetchSemanticsNodes().any { it.boundsInRoot.width > 0f } }
             composeRule.onNodeWithContentDescription("Actions").assertIsDisplayed()
-            assertEquals(false, AppSettingsStore(composeRule.activity).load().showPageRail)
+            assertEquals(false, (app.inkloom.settings.EditorPanel.PAGES in app.inkloom.settings.EditorWorkspaceStore(composeRule.activity).load().layout.open))
 
             composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             composeRule.waitUntil(10_000) {
@@ -345,7 +344,7 @@ class InkloomLaunchTest {
             }
             composeRule.waitUntil(10_000) { composeRule.onAllNodesWithContentDescription("Actions").fetchSemanticsNodes().any { it.boundsInRoot.width > 0f } }
             composeRule.onNodeWithContentDescription("Actions").assertIsDisplayed()
-            assertEquals(false, AppSettingsStore(composeRule.activity).load().showPageRail)
+            assertEquals(false, (app.inkloom.settings.EditorPanel.PAGES in app.inkloom.settings.EditorWorkspaceStore(composeRule.activity).load().layout.open))
         } finally {
             composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         }
@@ -366,9 +365,9 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithText("Drawing workspace").performClick()
         var restored = AppSettingsStore(composeRule.activity).load()
-        assertEquals(false, restored.showPageRail)
-        assertEquals(false, restored.showBrushPanel)
-        assertEquals(false, restored.showLayerPanel)
+        assertEquals(false, (app.inkloom.settings.EditorPanel.PAGES in app.inkloom.settings.EditorWorkspaceStore(composeRule.activity).load().layout.open))
+        assertEquals(false, (app.inkloom.settings.EditorPanel.BRUSHES in app.inkloom.settings.EditorWorkspaceStore(composeRule.activity).load().layout.open))
+        assertEquals(false, (app.inkloom.settings.EditorPanel.LAYERS in app.inkloom.settings.EditorWorkspaceStore(composeRule.activity).load().layout.open))
         composeRule.onNodeWithContentDescription("Brushes").performClick()
         composeRule.onNodeWithContentDescription("Close brushes panel").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Layers").performClick()
@@ -377,18 +376,18 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithText("Reading workspace").performClick()
         restored = AppSettingsStore(composeRule.activity).load()
-        assertEquals(true, restored.showPageRail)
-        assertEquals(false, restored.showBrushPanel)
-        assertEquals(false, restored.showLayerPanel)
+        assertEquals(true, (app.inkloom.settings.EditorPanel.PAGES in app.inkloom.settings.EditorWorkspaceStore(composeRule.activity).load().layout.open))
+        assertEquals(false, (app.inkloom.settings.EditorPanel.BRUSHES in app.inkloom.settings.EditorWorkspaceStore(composeRule.activity).load().layout.open))
+        assertEquals(false, (app.inkloom.settings.EditorPanel.LAYERS in app.inkloom.settings.EditorWorkspaceStore(composeRule.activity).load().layout.open))
         assertEquals(false, restored.showToolbar)
 
         composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithText("Minimal workspace").assertDoesNotExist()
         composeRule.onNodeWithText("Drawing workspace").performClick()
         restored = AppSettingsStore(composeRule.activity).load()
-        assertEquals(false, restored.showPageRail)
-        assertEquals(false, restored.showBrushPanel)
-        assertEquals(false, restored.showLayerPanel)
+        assertEquals(false, (app.inkloom.settings.EditorPanel.PAGES in app.inkloom.settings.EditorWorkspaceStore(composeRule.activity).load().layout.open))
+        assertEquals(false, (app.inkloom.settings.EditorPanel.BRUSHES in app.inkloom.settings.EditorWorkspaceStore(composeRule.activity).load().layout.open))
+        assertEquals(false, (app.inkloom.settings.EditorPanel.LAYERS in app.inkloom.settings.EditorWorkspaceStore(composeRule.activity).load().layout.open))
         assertEquals(true, restored.showToolbar)
 
         composeRule.onNodeWithContentDescription("Actions").performClick()
@@ -810,17 +809,23 @@ class InkloomLaunchTest {
 
     @Test fun brushPanelCanFloatMoveResizeAndReopenInPlace() {
         createNotebookAndOpenEditor()
-        val preferences = composeRule.activity.getSharedPreferences("inkloom_editor_panels", android.content.Context.MODE_PRIVATE)
         fun brushRect(): app.inkloom.settings.PanelRect {
-            val raw = requireNotNull(preferences.getString("layout", null))
-            val layout = kotlinx.serialization.json.Json.decodeFromString(app.inkloom.settings.EditorPanelLayout.serializer(), raw)
+            val layout = app.inkloom.settings.EditorWorkspaceStore(composeRule.activity).load().layout
             return layout.floating.first { app.inkloom.settings.EditorPanel.BRUSHES in app.inkloom.settings.EditorPanelLayouts.members(it.node) }.rect
         }
         composeRule.onNodeWithContentDescription("Brushes").performClick()
         val before = brushRect()
-        composeRule.onNodeWithContentDescription("Drag brushes panel").assertIsDisplayed().performTouchInput {
-            swipe(center, center + Offset(-120f, 90f), durationMillis = 500)
-        }
+        composeRule.onNode(androidx.compose.ui.test.hasContentDescription("Move panel group") and
+            androidx.compose.ui.test.hasAnyAncestor(androidx.compose.ui.test.hasTestTag("editor-panel-brushes")))
+            .assertIsDisplayed().performTouchInput {
+                swipe(center, center + Offset(-120f, 90f), durationMillis = 500)
+            }
+        composeRule.waitForIdle()
+        val floated = brushRect()
+        assertTrue("Group drag must preserve the hidden Subtools tab", app.inkloom.settings.EditorWorkspaceStore(composeRule.activity).load().layout.floating.any {
+            app.inkloom.settings.EditorPanel.BRUSHES in app.inkloom.settings.EditorPanelLayouts.members(it.node) &&
+                app.inkloom.settings.EditorPanel.SUBTOOLS in app.inkloom.settings.EditorPanelLayouts.members(it.node)
+        })
         composeRule.onNodeWithContentDescription("Resize brushes panel · left edge").assertIsDisplayed().performTouchInput {
             swipe(center, center + Offset(-36f, 0f), durationMillis = 350)
         }
@@ -828,7 +833,7 @@ class InkloomLaunchTest {
         composeRule.waitForIdle()
         val adjusted = brushRect()
         assertTrue(adjusted.x != before.x)
-        assertTrue(adjusted.width > before.width)
+        assertTrue(adjusted.width > floated.width)
         composeRule.onNodeWithContentDescription("Close brushes panel").performClick()
         composeRule.onNodeWithContentDescription("Brushes").performClick()
         composeRule.onNodeWithContentDescription("Resize brushes panel · left edge").assertIsDisplayed()
@@ -839,7 +844,7 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
         val preferences = composeRule.activity.getSharedPreferences("inkloom_editor_panels", android.content.Context.MODE_PRIVATE)
         fun width(): Float {
-            val layout = kotlinx.serialization.json.Json.decodeFromString(app.inkloom.settings.EditorPanelLayout.serializer(), requireNotNull(preferences.getString("layout", null)))
+            val layout = app.inkloom.settings.EditorWorkspaceStore(composeRule.activity).load().layout
             return layout.floating.first { app.inkloom.settings.EditorPanel.BRUSHES in app.inkloom.settings.EditorPanelLayouts.members(it.node) }.rect.width
         }
         composeRule.onNodeWithContentDescription("Brushes").performClick()

@@ -42,41 +42,8 @@ data class AppSettings(
     val liquifyStrengthScale: Float = 1f,
     val liquifyDistortion: Float = 0f,
     val liquifyMomentum: Float = 0f,
-    val showPageRail: Boolean = false,
-    val showBrushPanel: Boolean = false,
-    val showLayerPanel: Boolean = false,
-    val pagePanelDock: WorkspacePanelDock = WorkspacePanelDock.FREE,
-    val brushPanelDock: WorkspacePanelDock = WorkspacePanelDock.FREE,
-    val layerPanelDock: WorkspacePanelDock = WorkspacePanelDock.FREE,
-    val pagePanelMode: WorkspacePanelMode = WorkspacePanelMode.EXPANDED,
-    val brushPanelMode: WorkspacePanelMode = WorkspacePanelMode.EXPANDED,
-    val layerPanelMode: WorkspacePanelMode = WorkspacePanelMode.EXPANDED,
-    val pagePanelLocked: Boolean = false,
-    val brushPanelLocked: Boolean = false,
-    val layerPanelLocked: Boolean = false,
-    val leftDockStacked: Boolean = false,
-    val rightDockStacked: Boolean = false,
-    val bottomDockStacked: Boolean = false,
-    val freeDockStacked: Boolean = false,
-    val leftDockActivePanel: WorkspacePanelKind = WorkspacePanelKind.PAGES,
-    val rightDockActivePanel: WorkspacePanelKind = WorkspacePanelKind.BRUSHES,
-    val bottomDockActivePanel: WorkspacePanelKind = WorkspacePanelKind.PAGES,
-    val freeDockActivePanel: WorkspacePanelKind = WorkspacePanelKind.BRUSHES,
-    val panelTabOrder: String = "PAGES,BRUSHES,LAYERS",
-    val pagePanelXDp: Float = 88f,
-    val pagePanelYDp: Float = 18f,
-    val pagePanelWidthDp: Float = 176f,
-    val pagePanelHeightDp: Float = 620f,
-    val brushPanelXDp: Float = 1180f,
-    val brushPanelYDp: Float = 18f,
-    val brushPanelWidthDp: Float = 340f,
     val brushCategoryWidthDp: Float = 120f,
     val brushGridLayout: Boolean = false,
-    val brushPanelHeightDp: Float = 620f,
-    val layerPanelXDp: Float = 1440f,
-    val layerPanelYDp: Float = 18f,
-    val layerPanelWidthDp: Float = 270f,
-    val layerPanelHeightDp: Float = 620f,
     val layerPanelDualList: Boolean = false,
     val layerPanelSplitFraction: Float = .5f,
     val layerRowDensity: LayerRowDensity = LayerRowDensity.COMFORTABLE,
@@ -170,7 +137,6 @@ data class AppSettings(
     val shortcutBrushGroupTargets: ShortcutBrushGroupTargets = ShortcutBrushGroupTargets(),
     val toolboxQuickSlots: List<ToolboxQuickSlot> = ToolboxQuickSlots.normalize(emptyList()),
     val rasterFilterPresets: List<RasterFilterPreset> = emptyList(),
-    val workspaceLayouts: WorkspaceLayoutProfiles = WorkspaceLayoutProfiles(),
 )
 
 enum class LibraryLayout { GRID, LIST, COMPACT_GRID }
@@ -188,8 +154,6 @@ enum class StylusButtonAction {
 }
 
 enum class ToolbarDock { FREE, TOP, BOTTOM, LEFT, RIGHT }
-enum class WorkspacePanelDock { LEFT, FREE, RIGHT, BOTTOM }
-enum class WorkspacePanelMode { EXPANDED, COLLAPSED, ICON_ONLY }
 enum class SelectionShape { FREEFORM, RECTANGLE, ELLIPSE, BRUSH, SMART_BORDER, MAGIC_WAND }
 enum class SelectionMode { REPLACE, ADD, SUBTRACT, INTERSECT }
 enum class SelectionFilter { ALL, ACTIVE_LAYER, CURRENT_BRUSH, CURRENT_COLOR }
@@ -199,30 +163,20 @@ enum class FillExpansionShape { ROUND, RECTANGLE }
 
 class AppSettingsStore(context: Context) {
     private companion object {
-        const val STUDIO_WORKSPACE_VERSION_KEY = "studioWorkspaceVersion"
-        const val STUDIO_WORKSPACE_VERSION = 2
         const val INPUT_GESTURES_VERSION_KEY = "inputGesturesVersion"
         const val INPUT_GESTURES_VERSION = 3
     }
 
     private val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
     private val systemLanguage = UiLanguage.fromLanguageTag(context.resources.configuration.locales[0]?.toLanguageTag())
-    private val orientation = WorkspaceOrientation.from(context.resources.configuration)
+    private val workspace = EditorWorkspaceStore(context)
+    private var lastToolRail: ToolRailLayout? = null
 
     fun load(): AppSettings {
-        // Upgrade former defaults once. After this, every resize (even back to an old
-        // default width) is retained; opening settings must never reset a custom size.
-        if (!preferences.getBoolean("compactPanelDefaultsApplied", false)) {
-            preferences.edit {
-                for ((key, previous, compact) in listOf(
-                    Triple("pagePanelWidthDp", setOf(224f, 300f), 176f),
-                    Triple("brushPanelWidthDp", setOf(620f), 340f),
-                    Triple("layerPanelWidthDp", setOf(420f), 270f),
-                )) {
-                    if (!preferences.contains(key) || preferences.getFloat(key, compact) in previous) putFloat(key, compact)
-                }
-                putBoolean("compactPanelDefaultsApplied", true)
-            }
+        if (preferences.getInt("shortcutDefaultsMigrationVersion",0) < 1) {
+            val bindings=ShortcutBindingCodec.decode(preferences.getString("shortcutBindings",null))
+            check(preferences.edit().putString("shortcutBindings",ShortcutBindingCodec.encode(LegacyShortcutImport.migrateLegacyDefaults(bindings)))
+                .putInt("shortcutDefaultsMigrationVersion",1).commit()) { "Could not migrate shortcuts" }
         }
         val savedInputVersion = preferences.getInt(INPUT_GESTURES_VERSION_KEY, 0)
         val migrateCanvasRotation = savedInputVersion < 2
@@ -256,44 +210,8 @@ class AppSettingsStore(context: Context) {
             liquifyStrengthScale = preferences.getFloat("liquifyStrengthScale", 1f).takeIf(Float::isFinite)?.coerceIn(0f, 2f) ?: 1f,
             liquifyDistortion = preferences.getFloat("liquifyDistortion", 0f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f,
             liquifyMomentum = preferences.getFloat("liquifyMomentum", 0f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f,
-            showPageRail = preferences.getBoolean("showPageRail", false),
-            showBrushPanel = preferences.getBoolean("showBrushPanel", false),
-            showLayerPanel = preferences.getBoolean("showLayerPanel", false),
-            pagePanelDock = enumValue(preferences.getString("pagePanelDock", null), WorkspacePanelDock.FREE),
-            brushPanelDock = enumValue(preferences.getString("brushPanelDock", null), WorkspacePanelDock.FREE),
-            layerPanelDock = enumValue(preferences.getString("layerPanelDock", null), WorkspacePanelDock.FREE),
-            pagePanelMode = enumValue(preferences.getString("pagePanelMode", null), WorkspacePanelMode.EXPANDED),
-            brushPanelMode = enumValue(preferences.getString("brushPanelMode", null), WorkspacePanelMode.EXPANDED),
-            layerPanelMode = enumValue(preferences.getString("layerPanelMode", null), WorkspacePanelMode.EXPANDED),
-            pagePanelLocked = preferences.getBoolean("pagePanelLocked", false),
-            brushPanelLocked = preferences.getBoolean("brushPanelLocked", false),
-            layerPanelLocked = preferences.getBoolean("layerPanelLocked", false),
-            leftDockStacked = preferences.getBoolean("leftDockStacked", false),
-            rightDockStacked = preferences.getBoolean("rightDockStacked", false),
-            bottomDockStacked = preferences.getBoolean("bottomDockStacked", false),
-            freeDockStacked = preferences.getBoolean("freeDockStacked", false),
-            leftDockActivePanel = enumValue(preferences.getString("leftDockActivePanel", null), WorkspacePanelKind.PAGES),
-            rightDockActivePanel = enumValue(preferences.getString("rightDockActivePanel", null), WorkspacePanelKind.BRUSHES),
-            bottomDockActivePanel = enumValue(preferences.getString("bottomDockActivePanel", null), WorkspacePanelKind.PAGES),
-            freeDockActivePanel = enumValue(preferences.getString("freeDockActivePanel", null), WorkspacePanelKind.BRUSHES),
-            panelTabOrder = WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(preferences.getString("panelTabOrder", null).orEmpty())),
-            pagePanelXDp = preferences.getFloat("pagePanelXDp", 88f).let { saved ->
-                // The former 18dp default covered Procreate-style size/opacity handles.
-                if (saved == 18f) 88f else saved
-            }.coerceIn(-2400f, 2400f),
-            pagePanelYDp = preferences.getFloat("pagePanelYDp", 18f).coerceIn(-2400f, 2400f),
-            pagePanelWidthDp = preferences.getFloat("pagePanelWidthDp", 176f).coerceIn(80f, 1200f),
-            pagePanelHeightDp = preferences.getFloat("pagePanelHeightDp", 620f).coerceIn(120f, 1600f),
-            brushPanelXDp = preferences.getFloat("brushPanelXDp", 1180f).coerceIn(-2400f, 2400f),
-            brushPanelYDp = preferences.getFloat("brushPanelYDp", 18f).coerceIn(-2400f, 2400f),
             brushGridLayout = preferences.getBoolean("brushGridLayout", false),
-            brushPanelWidthDp = preferences.getFloat("brushPanelWidthDp", 340f).coerceIn(80f, 1200f),
             brushCategoryWidthDp = preferences.getFloat("brushCategoryWidthDp",120f).takeIf(Float::isFinite)?.coerceIn(56f,360f) ?: 120f,
-            brushPanelHeightDp = preferences.getFloat("brushPanelHeightDp", 620f).coerceIn(120f, 1600f),
-            layerPanelXDp = preferences.getFloat("layerPanelXDp", 1440f).coerceIn(-2400f, 2400f),
-            layerPanelYDp = preferences.getFloat("layerPanelYDp", 18f).coerceIn(-2400f, 2400f),
-            layerPanelWidthDp = preferences.getFloat("layerPanelWidthDp", 270f).coerceIn(80f, 1200f),
-            layerPanelHeightDp = preferences.getFloat("layerPanelHeightDp", 620f).coerceIn(120f, 1600f),
             layerPanelDualList = preferences.getBoolean("layerPanelDualList", false),
             layerPanelSplitFraction = preferences.getFloat("layerPanelSplitFraction", .5f).takeIf(Float::isFinite)?.coerceIn(.2f, .8f) ?: .5f,
             layerRowDensity = enumValue(preferences.getString("layerRowDensity", null), LayerRowDensity.COMFORTABLE),
@@ -302,16 +220,10 @@ class AppSettingsStore(context: Context) {
             layerShowProperties = preferences.getBoolean("layerShowProperties", true),
             layerShowCommands = preferences.getBoolean("layerShowCommands", true),
             layerCommandsAtBottom = preferences.getBoolean("layerCommandsAtBottom", false),
-            showToolbar = preferences.getBoolean("showToolbar", true),
-            toolbarOffsetXDp = preferences.getFloat("toolbarOffsetXDp", 16f).coerceIn(-1200f, 1200f),
-            toolbarOffsetYDp = preferences.getFloat("toolbarOffsetYDp", 16f).coerceIn(-1200f, 1200f),
             selectionStudioXDp = preferences.getFloat("selectionStudioXDp", -1f).takeIf(Float::isFinite)?.coerceIn(-1f, 2400f) ?: -1f,
             selectionStudioYDp = preferences.getFloat("selectionStudioYDp", -1f).takeIf(Float::isFinite)?.coerceIn(-1f, 2400f) ?: -1f,
             selectionLauncherVisible = preferences.getBoolean("selectionLauncherVisible", true),
             selectionLauncherOrder = SelectionLauncherLayout.encode(SelectionLauncherLayout.decode(preferences.getString("selectionLauncherOrder", null))),
-            verticalToolbar = preferences.getBoolean("verticalToolbar", true),
-            toolbarDock = enumValue(preferences.getString("toolbarDock", null), ToolbarDock.LEFT),
-            toolPaletteLayout = ToolPaletteLayout.encode(ToolPaletteLayout.decode(preferences.getString("toolPaletteLayout", null))),
             singleFingerDoubleTapUndo = preferences.getBoolean("singleFingerDoubleTapUndo", true),
             twoFingerDoubleTapUndo = preferences.getBoolean("twoFingerDoubleTapUndo", true),
             threeFingerTapRedo = preferences.getBoolean("threeFingerTapRedo", true),
@@ -394,9 +306,9 @@ class AppSettingsStore(context: Context) {
             ).normalized(),
             toolboxQuickSlots = ToolboxQuickSlotCodec.decode(preferences.getString("toolboxQuickSlots", null)),
             rasterFilterPresets = RasterFilterPresetsCodec.decode(preferences.getString("rasterFilterPresets",null)),
-            workspaceLayouts = WorkspaceLayoutProfilesCodec.decode(preferences.getString("workspaceLayouts", null)),
         )
-        val selected = loaded.withWorkspaceFor(orientation)
+        val selected = workspace.load().toolRail?.applyTo(loaded) ?: loaded
+        lastToolRail = ToolRailLayout.capture(selected)
         if (savedInputVersion < INPUT_GESTURES_VERSION) preferences.edit {
             if (migrateCanvasRotation) putBoolean("twoFingerRotation", true)
             putInt(INPUT_GESTURES_VERSION_KEY, INPUT_GESTURES_VERSION)
@@ -409,21 +321,18 @@ class AppSettingsStore(context: Context) {
             remove("postCorrectionAdjustBySpeed")
             remove("postCorrectionAdjustByScale")
         }
-        if (preferences.getInt(STUDIO_WORKSPACE_VERSION_KEY, 0) < STUDIO_WORKSPACE_VERSION) {
-            return save(BuiltInWorkspaces.unified(selected))
-        }
-        if (selected.workspaceLayouts != loaded.workspaceLayouts) {
-            preferences.edit { putString("workspaceLayouts", WorkspaceLayoutProfilesCodec.encode(selected.workspaceLayouts)) }
-        }
         return selected
     }
 
     fun save(value: AppSettings): AppSettings {
-        val persisted = value.recordWorkspaceFor(orientation)
+        val persisted = value
+        val rail = ToolRailLayout.capture(value)
+        if (rail != lastToolRail) { workspace.updateToolRail(rail); lastToolRail = rail }
         preferences.edit()
             .putString("language", persisted.language.name)
             .putString("libraryLayout", persisted.libraryLayout.name)
             .putInt(INPUT_GESTURES_VERSION_KEY, INPUT_GESTURES_VERSION)
+            .putInt("shortcutDefaultsMigrationVersion", 1)
             .putBoolean("fingerDrawing", persisted.fingerDrawing)
             .putBoolean("drawAndHoldEnabled", persisted.drawAndHoldEnabled)
             .putLong("drawAndHoldDelayMillis", persisted.drawAndHoldDelayMillis.coerceIn(300L, 1500L))
@@ -447,41 +356,8 @@ class AppSettingsStore(context: Context) {
             .putFloat("liquifyStrengthScale", persisted.liquifyStrengthScale.coerceIn(0f, 2f))
             .putFloat("liquifyDistortion", persisted.liquifyDistortion.coerceIn(0f, 1f))
             .putFloat("liquifyMomentum", persisted.liquifyMomentum.coerceIn(0f, 1f))
-            .putBoolean("showPageRail", persisted.showPageRail)
-            .putBoolean("showBrushPanel", persisted.showBrushPanel)
-            .putBoolean("showLayerPanel", persisted.showLayerPanel)
-            .putString("pagePanelDock", persisted.pagePanelDock.name)
-            .putString("brushPanelDock", persisted.brushPanelDock.name)
-            .putString("layerPanelDock", persisted.layerPanelDock.name)
-            .putString("pagePanelMode", persisted.pagePanelMode.name)
-            .putString("brushPanelMode", persisted.brushPanelMode.name)
-            .putString("layerPanelMode", persisted.layerPanelMode.name)
-            .putBoolean("pagePanelLocked", persisted.pagePanelLocked)
-            .putBoolean("brushPanelLocked", persisted.brushPanelLocked)
-            .putBoolean("layerPanelLocked", persisted.layerPanelLocked)
-            .putBoolean("leftDockStacked", persisted.leftDockStacked)
-            .putBoolean("rightDockStacked", persisted.rightDockStacked)
-            .putBoolean("bottomDockStacked", persisted.bottomDockStacked)
-            .putBoolean("freeDockStacked", persisted.freeDockStacked)
-            .putString("leftDockActivePanel", persisted.leftDockActivePanel.name)
-            .putString("rightDockActivePanel", persisted.rightDockActivePanel.name)
-            .putString("bottomDockActivePanel", persisted.bottomDockActivePanel.name)
-            .putString("freeDockActivePanel", persisted.freeDockActivePanel.name)
-            .putString("panelTabOrder", WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(persisted.panelTabOrder)))
-            .putFloat("pagePanelXDp", persisted.pagePanelXDp)
-            .putFloat("pagePanelYDp", persisted.pagePanelYDp)
-            .putFloat("pagePanelWidthDp", persisted.pagePanelWidthDp)
-            .putFloat("pagePanelHeightDp", persisted.pagePanelHeightDp)
-            .putFloat("brushPanelXDp", persisted.brushPanelXDp)
-            .putFloat("brushPanelYDp", persisted.brushPanelYDp)
             .putBoolean("brushGridLayout", persisted.brushGridLayout)
-            .putFloat("brushPanelWidthDp", persisted.brushPanelWidthDp)
             .putFloat("brushCategoryWidthDp", persisted.brushCategoryWidthDp.takeIf(Float::isFinite)?.coerceIn(56f,360f) ?: 120f)
-            .putFloat("brushPanelHeightDp", persisted.brushPanelHeightDp)
-            .putFloat("layerPanelXDp", persisted.layerPanelXDp)
-            .putFloat("layerPanelYDp", persisted.layerPanelYDp)
-            .putFloat("layerPanelWidthDp", persisted.layerPanelWidthDp)
-            .putFloat("layerPanelHeightDp", persisted.layerPanelHeightDp)
             .putBoolean("layerPanelDualList", persisted.layerPanelDualList)
             .putFloat("layerPanelSplitFraction", persisted.layerPanelSplitFraction.takeIf(Float::isFinite)?.coerceIn(.2f, .8f) ?: .5f)
             .putString("layerRowDensity", persisted.layerRowDensity.name)
@@ -490,16 +366,10 @@ class AppSettingsStore(context: Context) {
             .putBoolean("layerShowProperties", persisted.layerShowProperties)
             .putBoolean("layerShowCommands", persisted.layerShowCommands)
             .putBoolean("layerCommandsAtBottom", persisted.layerCommandsAtBottom)
-            .putBoolean("showToolbar", persisted.showToolbar)
-            .putFloat("toolbarOffsetXDp", persisted.toolbarOffsetXDp)
-            .putFloat("toolbarOffsetYDp", persisted.toolbarOffsetYDp)
             .putFloat("selectionStudioXDp", persisted.selectionStudioXDp.takeIf(Float::isFinite)?.coerceIn(-1f, 2400f) ?: -1f)
             .putFloat("selectionStudioYDp", persisted.selectionStudioYDp.takeIf(Float::isFinite)?.coerceIn(-1f, 2400f) ?: -1f)
             .putBoolean("selectionLauncherVisible", persisted.selectionLauncherVisible)
             .putString("selectionLauncherOrder", SelectionLauncherLayout.encode(SelectionLauncherLayout.decode(persisted.selectionLauncherOrder)))
-            .putBoolean("verticalToolbar", persisted.verticalToolbar)
-            .putString("toolbarDock", persisted.toolbarDock.name)
-            .putString("toolPaletteLayout", ToolPaletteLayout.encode(ToolPaletteLayout.decode(persisted.toolPaletteLayout)))
             .putBoolean("singleFingerDoubleTapUndo", persisted.singleFingerDoubleTapUndo)
             .putBoolean("twoFingerDoubleTapUndo", persisted.twoFingerDoubleTapUndo)
             .putBoolean("threeFingerTapRedo", persisted.threeFingerTapRedo)
@@ -576,8 +446,6 @@ class AppSettingsStore(context: Context) {
             .putString("shortcutBrushGroup", persisted.shortcutBrushGroupTargets.brush)
             .putString("toolboxQuickSlots", ToolboxQuickSlotCodec.encode(persisted.toolboxQuickSlots))
             .putString("rasterFilterPresets",RasterFilterPresetsCodec.encode(persisted.rasterFilterPresets))
-            .putString("workspaceLayouts", WorkspaceLayoutProfilesCodec.encode(persisted.workspaceLayouts))
-            .putInt(STUDIO_WORKSPACE_VERSION_KEY, STUDIO_WORKSPACE_VERSION)
             .apply()
         return persisted
     }
@@ -630,7 +498,7 @@ object ShortcutBindingCodec {
                 }
             }.getOrNull()
         }
-        return decoded.takeIf(List<ShortcutBinding>::isNotEmpty)?.let(CspShortcutResolver::migrateLegacyDefaults) ?: CspShortcutResolver.defaultBindings
+        return decoded.takeIf(List<ShortcutBinding>::isNotEmpty) ?: CspShortcutResolver.defaultBindings
     }
 
     private fun encodeText(value: String?): String = value?.toByteArray(Charsets.UTF_8)?.let { java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(it) }.orEmpty()

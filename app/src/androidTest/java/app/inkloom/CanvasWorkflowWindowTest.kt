@@ -134,7 +134,7 @@ class CanvasWorkflowWindowTest {
         val erased = inkCount()
         assertTrue("Eraser must remove ink", erased < before / 2)
         compose.waitUntil(5_000) {
-            app.inkloom.ui.EditorPanelState(instrumentation.targetContext, app.inkloom.settings.AppSettings())
+            app.inkloom.ui.EditorPanelState(instrumentation.targetContext)
                 .layout.open.none { it == app.inkloom.settings.EditorPanel.BRUSHES }
         }
         tapAt(centerTopmost("Brushes")); compose.waitForIdle()

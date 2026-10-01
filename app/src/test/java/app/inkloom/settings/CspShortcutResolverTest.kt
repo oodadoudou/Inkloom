@@ -172,37 +172,37 @@ class CspShortcutResolverTest {
                 else -> binding
             }
         }
-        assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(oldDefaults))
+        assertEquals(CspShortcutResolver.defaultBindings, LegacyShortcutImport.migrateLegacyDefaults(oldDefaults))
 
         val customized = oldDefaults.map { binding ->
             if (binding.action == ShortcutAction.TOGGLE_ERASER) binding.copy(chord = ShortcutChord(KeyEvent.KEYCODE_R)) else binding
         }
-        assertEquals(customized, CspShortcutResolver.migrateLegacyDefaults(customized))
+        assertEquals(customized, LegacyShortcutImport.migrateLegacyDefaults(customized))
     }
 
     @Test fun migratesExactWorkspaceDefaultsToClipboardDefaultsWithoutChangingCustomBindings() {
         val actionsAddedLater = setOf(ShortcutAction.CUT_SELECTION, ShortcutAction.COPY_SELECTION, ShortcutAction.PASTE_SELECTION, ShortcutAction.DELETE_SELECTION, ShortcutAction.SHAPE_TOOL, ShortcutAction.TEXT_TOOL, ShortcutAction.HAND_TOOL, ShortcutAction.ROTATE_VIEW_TOOL, ShortcutAction.ACTUAL_SIZE, ShortcutAction.EYEDROPPER_TOOL)
         val formerDefaults = defaultsBeforeAdditionalAliases().filterNot { it.action in actionsAddedLater }
-        assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
+        assertEquals(CspShortcutResolver.defaultBindings, LegacyShortcutImport.migrateLegacyDefaults(formerDefaults))
 
         val customized = formerDefaults.map { if (it.action == ShortcutAction.TOGGLE_ERASER) it.copy(chord = ShortcutChord(KeyEvent.KEYCODE_R)) else it }
-        assertEquals(customized, CspShortcutResolver.migrateLegacyDefaults(customized))
+        assertEquals(customized, LegacyShortcutImport.migrateLegacyDefaults(customized))
     }
 
     @Test fun migratesTheFormerClipboardDefaultsToTheExpandedToolDefaults() {
         val toolActions = setOf(ShortcutAction.SHAPE_TOOL, ShortcutAction.TEXT_TOOL, ShortcutAction.HAND_TOOL, ShortcutAction.ROTATE_VIEW_TOOL, ShortcutAction.ACTUAL_SIZE, ShortcutAction.EYEDROPPER_TOOL)
         val formerDefaults = defaultsBeforeAdditionalAliases().filterNot { it.action in toolActions }
 
-        assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
+        assertEquals(CspShortcutResolver.defaultBindings, LegacyShortcutImport.migrateLegacyDefaults(formerDefaults))
 
         val customized = formerDefaults.map { if (it.action == ShortcutAction.TOGGLE_ERASER) it.copy(chord = ShortcutChord(KeyEvent.KEYCODE_R)) else it }
-        assertEquals(customized, CspShortcutResolver.migrateLegacyDefaults(customized))
+        assertEquals(customized, LegacyShortcutImport.migrateLegacyDefaults(customized))
     }
 
     @Test fun migratesThePreviousCompleteDefaultsToIncludeActualSize() {
         val formerDefaults = defaultsBeforeAdditionalAliases().filterNot { it.action in setOf(ShortcutAction.ACTUAL_SIZE, ShortcutAction.EYEDROPPER_TOOL) }
 
-        assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
+        assertEquals(CspShortcutResolver.defaultBindings, LegacyShortcutImport.migrateLegacyDefaults(formerDefaults))
     }
 
     @Test fun migratesThePreviousCompleteDefaultsToIncludeTheEyedropper() {
@@ -210,25 +210,25 @@ class CspShortcutResolverTest {
             binding in additionalAliases() || binding.action == ShortcutAction.EYEDROPPER_TOOL
         }
 
-        assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
+        assertEquals(CspShortcutResolver.defaultBindings, LegacyShortcutImport.migrateLegacyDefaults(formerDefaults))
     }
 
     @Test fun migratesThePreviousCompleteDefaultsToTheExpandedCspCommandSet() {
         val formerDefaults = defaultsBeforeCurrentCspCommands()
 
-        assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
+        assertEquals(CspShortcutResolver.defaultBindings, LegacyShortcutImport.migrateLegacyDefaults(formerDefaults))
 
         val customized = formerDefaults.map { if (it.action == ShortcutAction.BRUSH_GROUP) it.copy(chord = ShortcutChord(KeyEvent.KEYCODE_F12)) else it }
-        assertEquals(customized, CspShortcutResolver.migrateLegacyDefaults(customized))
+        assertEquals(customized, LegacyShortcutImport.migrateLegacyDefaults(customized))
     }
 
     @Test fun migratesPreviousDefaultsToOfficialCspCanvasSnapShortcutsWithoutTouchingCustomProfiles() {
         val snapActions = setOf(ShortcutAction.TOGGLE_RULER, ShortcutAction.TOGGLE_ALIGNMENT_GUIDES, ShortcutAction.TOGGLE_GRID_SNAP)
         val formerDefaults = CspShortcutResolver.defaultBindings.filterNot { it.action in snapActions }
-        assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
+        assertEquals(CspShortcutResolver.defaultBindings, LegacyShortcutImport.migrateLegacyDefaults(formerDefaults))
 
         val customized = formerDefaults.map { if (it.action == ShortcutAction.BRUSH_GROUP) it.copy(chord = ShortcutChord(KeyEvent.KEYCODE_F12)) else it }
-        assertEquals(customized, CspShortcutResolver.migrateLegacyDefaults(customized))
+        assertEquals(customized, LegacyShortcutImport.migrateLegacyDefaults(customized))
     }
 
     private fun resolve(keyCode: Int, ctrl: Boolean = false, alt: Boolean = false, shift: Boolean = false) =

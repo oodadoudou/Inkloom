@@ -196,24 +196,13 @@ import app.inkloom.settings.ToolboxQuickSlotKind
 import app.inkloom.settings.ToolboxQuickSlots
 import app.inkloom.settings.ToolPaletteEntry
 import app.inkloom.settings.ToolPaletteLayout
-import app.inkloom.settings.applyToolboxWorkspace
-import app.inkloom.settings.captureToolboxWorkspace
 import app.inkloom.settings.UiLanguage
-import app.inkloom.settings.WorkspacePanelDock
 import app.inkloom.settings.EditorPanel
 import app.inkloom.settings.EditorPanelLayout
 import app.inkloom.settings.EditorPanelLayouts
 import app.inkloom.settings.PanelDropTarget
 import app.inkloom.settings.PanelEdge
 import app.inkloom.settings.PanelRect
-import app.inkloom.settings.WorkspacePanelDocking
-import app.inkloom.settings.WorkspacePanelGrouping
-import app.inkloom.settings.WorkspacePanelKind
-import app.inkloom.settings.WorkspacePanelMode
-import app.inkloom.settings.WorkspacePanelTabs
-import app.inkloom.settings.WorkspacePanelBounds
-import app.inkloom.settings.WorkspacePanelPlacement
-import app.inkloom.settings.WorkspaceOrientation
 import app.inkloom.settings.text
 import app.inkloom.ui.theme.*
 import kotlinx.coroutines.Dispatchers
@@ -480,12 +469,12 @@ fun InkloomApp(initialIntent: Intent?) {
     val settingsStore = remember { AppSettingsStore(context) }
     val colorPaletteStore = remember { ColorSetLibraryStore(context) }
     var settings by remember { mutableStateOf(settingsStore.load()) }
-    val panelState = rememberEditorPanelState(settings)
-    // The persisted setting is the single source of truth. Keeping a second mutable flag here
-    // allowed workspace changes and the toolbar click to observe different open states in the
-    // same frame, so a click could close an invisible panel instead of opening Brushes.
-    val brushesOpen = settings.showBrushPanel
+    val panelState = rememberEditorPanelState()
     fun updateSettings(value: AppSettings) { settings = settingsStore.save(value) }
+    LaunchedEffect(Unit) {
+        if(app.inkloom.settings.EditorWorkspaceStore(context).takeRecoveryNotice()) Toast.makeText(context,
+            settings.language.text("The workspace was recovered. The damaged layout was preserved for recovery.","工作区已恢复；损坏的布局数据已保留以供恢复。"),Toast.LENGTH_LONG).show()
+    }
     var importedBrushes by remember { mutableStateOf(brushStore.load()) }
     var brushGroups by remember { mutableStateOf(BrushGroupOperations.reconcileRegisteredGroups(brushGroupStore.load(), importedBrushes)) }
     var brushImportFailures by remember { mutableStateOf(brushImportFailureStore.load()) }
@@ -734,11 +723,7 @@ fun InkloomApp(initialIntent: Intent?) {
                         )
                         val workspace = preferences.panelWorkspace
                         workspace?.let(panelState::restoreBackup)
-                        updateSettings(restoredSettings.copy(
-                            showPageRail = EditorPanel.PAGES in panelState.layout.open,
-                            showBrushPanel = EditorPanel.BRUSHES in panelState.layout.open,
-                            showLayerPanel = EditorPanel.LAYERS in panelState.layout.open,
-                        ))
+                        updateSettings(workspace?.toolRail?.applyTo(restoredSettings) ?: restoredSettings)
                         colorPaletteStore.replace(preferences.colorSetLibrary ?: ColorSetLibrary.fromLegacy(preferences.colorPalette, settings.language.text("Saved colors", "已存颜色")))
                     }.onFailure { error ->
                         importError = settings.language.text(
@@ -876,7 +861,7 @@ fun InkloomApp(initialIntent: Intent?) {
             brushStore.save(importedBrushes)
             brushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, importedBrushes)
             brushGroupStore.save(brushGroups)
-            updateSettings(settings.copy(showBrushPanel = true))
+            panelState.show(EditorPanel.BRUSHES, true)
             destination = AppDestination.EDITOR
         }
     }
@@ -962,14 +947,10 @@ fun InkloomApp(initialIntent: Intent?) {
             document = libraryState.documents.firstOrNull { it.id == libraryState.selectedDocumentId } ?: viewModel.currentDocument(),
             documents = libraryState.documents,
             selectedPageId = libraryState.selectedPageId,
-            brushesOpen = brushesOpen,
             brushes = importedBrushes,
             brushGroups = brushGroups,
             importError = importError,
             onBack = { destination = AppDestination.LIBRARY },
-            onToggleBrushes = {
-                updateSettings(settings.copy(showBrushPanel = !settings.showBrushPanel))
-            },
             onImportBrushes = { group ->
                 pendingBrushImportGroup = group?.let(BrushGroupOperations::normalize)?.takeIf(String::isNotBlank)
                 brushPicker.launch(arrayOf("*/*"))
@@ -978,15 +959,6 @@ fun InkloomApp(initialIntent: Intent?) {
             brushImportFailureCount = brushImportFailures.size,
             onOpenBrushImportFailures = { brushImportFailures = brushImportFailureStore.load(); brushImportFailuresOpen = true },
             onBrushGridLayout = { updateSettings(settings.copy(brushGridLayout = it)) },
-            onPanelVisibilityChange = { panel, visible ->
-                val next = when (panel) {
-                    EditorPanel.PAGES -> settings.copy(showPageRail = visible)
-                    EditorPanel.BRUSHES -> settings.copy(showBrushPanel = visible)
-                    EditorPanel.LAYERS -> settings.copy(showLayerPanel = visible)
-                    else -> settings
-                }
-                if (next != settings) updateSettings(next)
-            },
             onBrushCategoryWidth = { updateSettings(settings.copy(brushCategoryWidthDp = it)) },
             onExportBrush = { brush ->
                 pendingBrushExport = brush
@@ -1112,7 +1084,9 @@ fun InkloomApp(initialIntent: Intent?) {
         confirmButton = { TextButton(onClick = { deletionFailed = false }) { Text(tr("OK", "确定")) } },
     )
     if (settingsOpen) SettingsDialog(
-        settings,
+        pagesOpen = EditorPanel.PAGES in panelState.layout.open,
+        onPagesVisibility = { panelState.show(EditorPanel.PAGES, it) },
+        settings = settings,
         brushes = importedBrushes,
         brushGroups = brushGroups,
         onChange = ::updateSettings,
@@ -1789,18 +1763,15 @@ private fun EditorScreen(
     document: InkDocument?,
     documents: List<InkDocument>,
     selectedPageId: String?,
-    brushesOpen: Boolean,
     brushes: List<ImportedBrush>,
     brushGroups: List<String>,
     importError: String?,
     onBack: () -> Unit,
-    onToggleBrushes: () -> Unit,
     onImportBrushes: (String?) -> Unit,
     onImportBrushFolder: () -> Unit,
     brushImportFailureCount: Int,
     onOpenBrushImportFailures: () -> Unit,
     onBrushGridLayout: (Boolean) -> Unit,
-    onPanelVisibilityChange: (EditorPanel, Boolean) -> Unit,
     onBrushCategoryWidth: (Float) -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
@@ -2103,16 +2074,14 @@ private fun EditorScreen(
     var panelLayoutName by remember { mutableStateOf("") }
     var renamingPanelLayout by remember { mutableStateOf<String?>(null) }
     var deletingPanelLayout by remember { mutableStateOf<String?>(null) }
-    var colorPanelOpen by remember { mutableStateOf(panelState.layout.open.any { it.ordinal >= EditorPanel.WHEEL.ordinal }) }
+    val colorPanelOpen = panelState.layout.open.any { it.ordinal >= EditorPanel.WHEEL.ordinal }
     var editSecondaryColor by remember { mutableStateOf(false) }
-    fun showColors() { colorPanelOpen = true; panelState.colors(true) }
+    fun showColors() { panelState.colors(true) }
     fun setBrushPanelOpen(open: Boolean) {
         panelState.show(EditorPanel.BRUSHES, open)
         if (open) panelState.focus(EditorPanel.BRUSHES)
-        onPanelVisibilityChange(EditorPanel.BRUSHES, open)
     }
     fun toggleBrushPanel() = setBrushPanelOpen(!panelState.isActive(EditorPanel.BRUSHES))
-    LaunchedEffect(settings.showPageRail) { panelState.show(EditorPanel.PAGES, settings.showPageRail) }
     var zoom by remember(document.id) { mutableFloatStateOf(1f) }
     var panX by remember(document.id) { mutableFloatStateOf(0f) }
     var panY by remember(document.id) { mutableFloatStateOf(0f) }
@@ -2243,12 +2212,10 @@ private fun EditorScreen(
             imageTransformId = null
         })
     }
-    var layersOpen by remember { mutableStateOf(settings.showLayerPanel) }
+    val layersOpen = EditorPanel.LAYERS in panelState.layout.open
     var layerPickMode by remember(selectedPage.id) { mutableStateOf(false) }
     var layerPickCandidates by remember(selectedPage.id) { mutableStateOf<List<String>>(emptyList()) }
     var layerPickPreviewId by remember(selectedPage.id) { mutableStateOf<String?>(null) }
-    LaunchedEffect(settings.showLayerPanel) { layersOpen = settings.showLayerPanel }
-    LaunchedEffect(layersOpen) { panelState.show(EditorPanel.LAYERS, layersOpen) }
     fun syncCanvasInput(prepareAssets: Boolean = false) {
         canvasView?.let { view ->
             view.activeLayerId = activeLayerId
@@ -2379,16 +2346,14 @@ private fun EditorScreen(
     }
     fun setLayersPanelOpen(open: Boolean, pageId: String? = null) {
         pageId?.let(::selectPageWithViewport)
-        layersOpen = open; panelState.show(EditorPanel.LAYERS, open)
+        panelState.show(EditorPanel.LAYERS, open)
         if (open) panelState.focus(EditorPanel.LAYERS)
-        onPanelVisibilityChange(EditorPanel.LAYERS, open)
     }
     fun setManagedPanelVisible(panel: EditorPanel, open: Boolean) {
         when (panel) {
             EditorPanel.PAGES -> {
                 panelState.show(panel, open)
                 if (open) panelState.focus(panel)
-                onPanelVisibilityChange(panel, open)
             }
             EditorPanel.BRUSHES -> setBrushPanelOpen(open)
             EditorPanel.LAYERS -> setLayersPanelOpen(open)
@@ -2396,8 +2361,7 @@ private fun EditorScreen(
                 panelState.show(panel, open)
                 if (open) panelState.focus(panel)
                 if (panel.ordinal >= EditorPanel.WHEEL.ordinal) {
-                    colorPanelOpen = panelState.layout.open.any { it.ordinal >= EditorPanel.WHEEL.ordinal }
-                    if (!colorPanelOpen) {
+                    if (panelState.layout.open.none { it.ordinal >= EditorPanel.WHEEL.ordinal }) {
                         colorPreview.clear()
                         canvasView?.inkColor = brushColor
                         canvasView?.secondaryInkColor = backgroundColor
@@ -2417,10 +2381,8 @@ private fun EditorScreen(
         setLayersPanelOpen(false)
     }
     var panelsHiddenByShortcut by remember { mutableStateOf(false) }
-    var pageRailBeforeShortcut by remember { mutableStateOf(settings.showPageRail) }
+    var openPanelsBeforeShortcut by remember { mutableStateOf(emptySet<EditorPanel>()) }
     var toolbarBeforeShortcut by remember { mutableStateOf(settings.showToolbar) }
-    var brushesBeforeShortcut by remember { mutableStateOf(false) }
-    var layersBeforeShortcut by remember { mutableStateOf(false) }
     var rulerBeforeShortcut by remember { mutableStateOf(false) }
     var gridBeforeShortcut by remember { mutableStateOf(false) }
     var guidesBeforeShortcut by remember { mutableStateOf(false) }
@@ -2432,23 +2394,8 @@ private fun EditorScreen(
         activeLayerId = layerId
         canvasView?.selectLayerContent(layerId)
     }
-    fun applyWorkspaceSettings(restored: AppSettings) {
-        layersOpen = restored.showLayerPanel
-        panelState.show(EditorPanel.PAGES, restored.showPageRail)
-        panelState.show(EditorPanel.BRUSHES, restored.showBrushPanel)
-        panelState.show(EditorPanel.LAYERS, restored.showLayerPanel)
-        onSettingsChange(restored)
-    }
     fun syncRestoredPanelSettings(saved: app.inkloom.settings.NamedPanelLayout) {
-        val layout = saved.layout
-        layersOpen = EditorPanel.LAYERS in layout.open
-        colorPanelOpen = layout.open.any { it.ordinal >= EditorPanel.WHEEL.ordinal }
-        val restoredSettings = saved.toolRail?.applyTo(settings) ?: settings
-        onSettingsChange(restoredSettings.copy(
-            showPageRail = EditorPanel.PAGES in layout.open,
-            showBrushPanel = EditorPanel.BRUSHES in layout.open,
-            showLayerPanel = EditorPanel.LAYERS in layout.open,
-        ))
+        saved.toolRail?.let { onSettingsChange(it.applyTo(settings)) }
     }
     val workspaceLayoutExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(WorkspaceLayoutCodec.MIME_TYPE)) { uri ->
         if (uri != null) runCatching {
@@ -2469,18 +2416,11 @@ private fun EditorScreen(
             Toast.makeText(context, settings.language.text("Workspace layout restored.", "工作区布局已恢复。"), Toast.LENGTH_LONG).show()
         }.onFailure { Toast.makeText(context, it.message ?: "Could not import workspace layout", Toast.LENGTH_LONG).show() }
     }
-    fun applyWorkspaceSnapshot(snapshot: app.inkloom.settings.ToolboxWorkspaceSnapshot) =
-        applyWorkspaceSettings(settings.applyToolboxWorkspace(snapshot))
     fun applyBuiltInWorkspace(workspace: BuiltInWorkspace) {
         workspaceMenu = false
-        val defaultLayout = EditorPanelLayout()
-        val layout = if (workspace == BuiltInWorkspace.READING) {
-            EditorPanelLayouts.move(defaultLayout, "pages", null,
-                PanelDropTarget("canvas", PanelEdge.LEFT), PanelRect(0f, 0f, 220f, 700f))
-                .copy(open = setOf(EditorPanel.PAGES))
-        } else defaultLayout
-        panelState.commit(layout)
-        applyWorkspaceSnapshot(BuiltInWorkspaces.snapshot(workspace))
+        val saved = BuiltInWorkspaces.snapshot(workspace)
+        panelState.commit(saved.layout)
+        syncRestoredPanelSettings(saved)
     }
     val allChangesSavedMessage = tr("All changes are saved.", "所有更改均已保存。")
     val inkOnlyClipboardMessage = tr("Clipboard actions currently apply to ink selections.", "剪贴板操作目前仅适用于墨迹选区。")
@@ -2629,14 +2569,14 @@ private fun EditorScreen(
                 ProcreateTopButton(Icons.Outlined.OpenWith, tr("Move canvas", "移动画布"), selected = handToolEnabled, onClick = { handToolEnabled = !handToolEnabled; rotateToolEnabled = false })
             }
             ProcreateTopButton(
-                if (settings.showPageRail) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows,
+                if ((EditorPanel.PAGES in panelState.layout.open)) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows,
                 tr("Toggle pages", "显示或隐藏页面栏"),
-                selected = settings.showPageRail,
+                selected = (EditorPanel.PAGES in panelState.layout.open),
                 onClick = {
-                    val open = !settings.showPageRail
+                    val open = !(EditorPanel.PAGES in panelState.layout.open)
                     panelState.show(EditorPanel.PAGES, open)
                     if (open) panelState.focus(EditorPanel.PAGES)
-                    onPanelVisibilityChange(EditorPanel.PAGES, open)
+                    panelState.show(EditorPanel.PAGES, open)
                 },
             )
             Spacer(Modifier.weight(1f))
@@ -3035,12 +2975,12 @@ private fun EditorScreen(
     Box(Modifier.weight(1f).clipToBounds()) {
         fun closeEditorPanel(panel: EditorPanel) {
             when (panel) {
-                EditorPanel.PAGES -> onPanelVisibilityChange(EditorPanel.PAGES, false)
-                EditorPanel.LAYERS -> { layersOpen = false; onPanelVisibilityChange(EditorPanel.LAYERS, false) }
+                EditorPanel.PAGES -> panelState.show(EditorPanel.PAGES, false)
+                EditorPanel.LAYERS -> panelState.show(EditorPanel.LAYERS, false)
                 EditorPanel.BRUSHES -> setBrushPanelOpen(false)
                 EditorPanel.SUBTOOLS, EditorPanel.PROPERTIES -> Unit
                 else -> if (panelState.layout.open.none { it.ordinal >= EditorPanel.WHEEL.ordinal }) {
-                    colorPanelOpen = false; colorPreview.clear()
+                    colorPreview.clear()
                     canvasView?.inkColor = brushColor; canvasView?.secondaryInkColor = backgroundColor
                 }
             }
@@ -3414,18 +3354,14 @@ private fun EditorScreen(
                                 setLayersPanelOpen(!layersOpen)
                             }
                             ShortcutAction.TOGGLE_PANELS -> if (!panelsHiddenByShortcut) {
-                                pageRailBeforeShortcut = settings.showPageRail
+                                openPanelsBeforeShortcut = panelState.layout.open
                                 toolbarBeforeShortcut = settings.showToolbar
-                                brushesBeforeShortcut = brushesOpen
-                                layersBeforeShortcut = layersOpen
-                                onSettingsChange(settings.copy(showPageRail = false, showToolbar = false))
-                                if (brushesOpen) setBrushPanelOpen(false)
-                                layersOpen = false
+                                panelState.commit(panelState.layout.copy(open = emptySet()))
+                                onSettingsChange(settings.copy(showToolbar = false))
                                 panelsHiddenByShortcut = true
                             } else {
-                                onSettingsChange(settings.copy(showPageRail = pageRailBeforeShortcut, showToolbar = toolbarBeforeShortcut))
-                                if (brushesBeforeShortcut && !brushesOpen) toggleBrushPanel()
-                                layersOpen = layersBeforeShortcut
+                                panelState.commit(panelState.layout.copy(open = openPanelsBeforeShortcut))
+                                onSettingsChange(settings.copy(showToolbar = toolbarBeforeShortcut))
                                 panelsHiddenByShortcut = false
                             }
                             ShortcutAction.SAVE_CHECKPOINT -> Toast.makeText(context, allChangesSavedMessage, Toast.LENGTH_SHORT).show()
@@ -4031,7 +3967,7 @@ private fun EditorScreen(
                 when(panel) {
                     EditorPanel.PAGES -> {            PageRail(
                 document, documents, selectedPage.id, assets,
-                onClose = { onPanelVisibilityChange(EditorPanel.PAGES, false) },
+                onClose = { panelState.show(EditorPanel.PAGES, false) },
                 pageTemplates = pageTemplates,
                 onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onInsertNextTo = onInsertPageNextTo, onAppendFiles = { onAppendPageFiles(document.id) }, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage, onTransferPages = onTransferPages,
                 onApplyTemplate = onApplyPageTemplate, onApplyTemplates = onApplyPageTemplates, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
@@ -4049,7 +3985,7 @@ private fun EditorScreen(
                 activeLayerId = activeLayerId,
                 brushColor = brushColor,
                 secondaryBrushColor = backgroundColor,
-                onClose = { layersOpen = false; onPanelVisibilityChange(EditorPanel.LAYERS, false) },
+                onClose = { panelState.show(EditorPanel.LAYERS, false); panelState.show(EditorPanel.LAYERS, false) },
                 onColor = ::changeBrushColor,
                 onSelect = ::selectLayerTarget,
                 onSelectContents = ::selectLayerContents,
@@ -9287,6 +9223,8 @@ private fun BrushSettingSlider(label: String, value: Float, range: ClosedFloatin
 @Composable
 private fun SettingsDialog(
     settings: AppSettings,
+    pagesOpen: Boolean,
+    onPagesVisibility: (Boolean) -> Unit,
     brushes: List<ImportedBrush>,
     brushGroups: List<String>,
     onChange: (AppSettings) -> Unit,
@@ -9323,7 +9261,7 @@ private fun SettingsDialog(
                     FilterChip(selected = settings.language == UiLanguage.SIMPLIFIED_CHINESE, onClick = { onChange(settings.copy(language = UiLanguage.SIMPLIFIED_CHINESE)) }, label = { Text("简体中文") })
                 } }
                 item { Text(tr("INTERFACE", "界面"), color = MutedInk, fontSize = 12.sp) }
-                item { SettingSwitch(tr("Show page sidebar", "显示页面侧栏"), null, settings.showPageRail) { onChange(settings.copy(showPageRail = it)) } }
+                item { SettingSwitch(tr("Show page sidebar", "显示页面侧栏"), null, pagesOpen, onPagesVisibility) }
                 item { SettingSwitch(tr("Show floating toolbar", "显示浮动工具栏"), null, settings.showToolbar) { onChange(settings.copy(showToolbar = it)) } }
                 if (settings.toolbarDock == ToolbarDock.FREE) item { SettingSwitch(tr("Vertical toolbar", "垂直工具栏"), tr("Useful on a wide tablet canvas.", "适合宽屏平板画布。"), settings.verticalToolbar) { onChange(settings.copy(verticalToolbar = it)) } }
                 item { OutlinedButton(onClick = { onChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = 16f, toolbarOffsetYDp = 16f)) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.CenterFocusStrong, null); Spacer(Modifier.width(8.dp)); Text(tr("Reset toolbar position", "重置工具栏位置")) } }

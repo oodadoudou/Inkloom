@@ -43,6 +43,7 @@ class InkloomPinchThenWriteTest {
         object : Statement() {
             override fun evaluate() {
                 val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+                context.getSharedPreferences("inkloom_editor_panels",0).edit().clear().commit()
                 // Live masters now survive editor sessions; this fixture requires default brushes.
                 context.getSharedPreferences("brush_preset_sizes", android.content.Context.MODE_PRIVATE).edit().clear().commit()
                 context.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)

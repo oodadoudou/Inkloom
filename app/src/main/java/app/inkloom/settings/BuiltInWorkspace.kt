@@ -1,39 +1,15 @@
 package app.inkloom.settings
 
-/** Layout presets for the one editor surface shared by notes, PDFs and drawing. */
+/** Presets use the same tree and rail model as saved layouts. */
 enum class BuiltInWorkspace { STUDIO, READING }
 
 object BuiltInWorkspaces {
-    /** Upgrades both orientations without touching input, brush or document preferences. */
-    fun unified(settings: AppSettings): AppSettings {
-        val studio = snapshot(BuiltInWorkspace.STUDIO)
-        return settings.applyToolboxWorkspace(studio).copy(
-            workspaceLayouts = WorkspaceLayoutProfiles(landscape = studio, portrait = studio),
-        )
-    }
-
-    fun snapshot(workspace: BuiltInWorkspace): ToolboxWorkspaceSnapshot {
-        val defaults = AppSettings()
-        return when (workspace) {
-            BuiltInWorkspace.STUDIO -> defaults.copy(
-                showPageRail = false,
-                showBrushPanel = false,
-                showLayerPanel = false,
-                showToolbar = true,
-                pagePanelDock = WorkspacePanelDock.FREE,
-                brushPanelDock = WorkspacePanelDock.FREE,
-                layerPanelDock = WorkspacePanelDock.FREE,
-                toolbarDock = ToolbarDock.LEFT,
-                verticalToolbar = true,
-            )
-            BuiltInWorkspace.READING -> defaults.copy(
-                showPageRail = true,
-                showBrushPanel = false,
-                showLayerPanel = false,
-                showToolbar = false,
-                pagePanelDock = WorkspacePanelDock.LEFT,
-            )
-
-        }.captureToolboxWorkspace()
+    fun snapshot(workspace: BuiltInWorkspace): NamedPanelLayout {
+        val defaults = EditorPanelLayout()
+        val layout = if (workspace == BuiltInWorkspace.READING)
+            EditorPanelLayouts.move(defaults, "pages", null, PanelDropTarget("canvas", PanelEdge.LEFT), PanelRect(0f, 0f, 220f, 700f))
+                .copy(open = setOf(EditorPanel.PAGES)) else defaults
+        return NamedPanelLayout(workspace.name, layout,
+            ToolRailLayout(visible = workspace == BuiltInWorkspace.STUDIO, vertical = true, dock = ToolbarDock.LEFT.name, xDp = 16f, yDp = 16f))
     }
 }

@@ -3,6 +3,7 @@ package app.inkloom.settings
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -38,24 +39,12 @@ class ToolboxQuickSlotTest {
         assertEquals(.05f, normalized.opacity)
     }
 
-    @Test fun `workspace snapshot restores only workspace related settings`() {
-        val snapshot = AppSettings(showPageRail = false, showLayerPanel = true, layerPanelMode = WorkspacePanelMode.ICON_ONLY, layerPanelLocked = true, rightDockStacked = true, rightDockActivePanel = WorkspacePanelKind.LAYERS, freeDockStacked = true, freeDockActivePanel = WorkspacePanelKind.LAYERS, panelTabOrder = "LAYERS,BRUSHES,PAGES", toolbarDock = ToolbarDock.BOTTOM).captureToolboxWorkspace()
-        val original = AppSettings(fingerDrawing = true, penSize = 42f, showPageRail = true)
-
-        val restored = original.applyToolboxWorkspace(snapshot)
-
-        assertEquals(false, restored.showPageRail)
-        assertEquals(true, restored.showLayerPanel)
-        assertEquals(WorkspacePanelMode.ICON_ONLY, restored.layerPanelMode)
-        assertEquals(true, restored.layerPanelLocked)
-        assertEquals(true, restored.rightDockStacked)
-        assertEquals(WorkspacePanelKind.LAYERS, restored.rightDockActivePanel)
-        assertEquals(true, restored.freeDockStacked)
-        assertEquals(WorkspacePanelKind.LAYERS, restored.freeDockActivePanel)
-        assertEquals("LAYERS,BRUSHES,PAGES", restored.panelTabOrder)
-        assertEquals(ToolbarDock.BOTTOM, restored.toolbarDock)
-        assertEquals(true, restored.fingerDrawing)
-        assertEquals(42f, restored.penSize)
+    @Test fun toolRailRestoresOnlyWorkspaceRelatedSettings() {
+        val original=AppSettings(fingerDrawing=true,penSize=42f)
+        val snapshot=ToolRailLayout.capture(AppSettings(toolbarDock=ToolbarDock.BOTTOM))
+        val restored=snapshot.applyTo(original)
+        assertEquals(ToolbarDock.BOTTOM,restored.toolbarDock)
+        assertTrue(restored.fingerDrawing);assertEquals(42f,restored.penSize)
     }
 
     @Test fun `malformed codec input returns eight empty slots`() {

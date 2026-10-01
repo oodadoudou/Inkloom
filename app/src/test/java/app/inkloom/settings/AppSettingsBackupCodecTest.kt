@@ -69,22 +69,7 @@ class AppSettingsBackupCodecTest {
             gradientAngleSnapEnabled = true,
             gradientAngleSnapDegrees = 15f,
             gradientStops = listOf(GradientColorStop(0f, 0xFF102030L), GradientColorStop(.4f, 0xFF405060L), GradientColorStop(1f, 0xFF708090L)),
-            showPageRail = false,
-            showBrushPanel = true,
-            showLayerPanel = true,
-            brushPanelDock = WorkspacePanelDock.FREE,
-            layerPanelDock = WorkspacePanelDock.BOTTOM,
-            brushPanelMode = WorkspacePanelMode.COLLAPSED,
-            layerPanelMode = WorkspacePanelMode.ICON_ONLY,
-            brushPanelLocked = true,
-            bottomDockStacked = true,
-            bottomDockActivePanel = WorkspacePanelKind.LAYERS,
-            freeDockStacked = true,
-            freeDockActivePanel = WorkspacePanelKind.BRUSHES,
-            panelTabOrder = "LAYERS,BRUSHES,PAGES",
-            brushPanelXDp = 333f,
             brushGridLayout = true,
-            brushPanelWidthDp = 527f,
             brushCategoryWidthDp = 218f,
             layerPanelDualList = true,
             layerPanelSplitFraction = .63f,
@@ -144,10 +129,7 @@ class AppSettingsBackupCodecTest {
             shortcutButtonBindings = listOf(ButtonShortcutBinding(android.view.MotionEvent.BUTTON_BACK, ShortcutAction.HAND_TOOL, ShortcutTrigger.HOLD, deviceDescriptor = "dial")),
             shortcutBrushGroupTargets = ShortcutBrushGroupTargets("Pens", "Pencils", "Brushes"),
             toolboxQuickSlots = ToolboxQuickSlots.normalize(listOf(ToolboxQuickSlot(ToolboxQuickSlotKind.TOOL_PRESET, "Red pen", size = 12f, colorArgb = 0xFFAA0000.toInt()))),
-        ).recordWorkspaceFor(WorkspaceOrientation.LANDSCAPE).copy(
-            showPageRail = true,
-            toolbarDock = ToolbarDock.BOTTOM,
-        ).recordWorkspaceFor(WorkspaceOrientation.PORTRAIT)
+        )
         val palette = listOf(0xFF112233.toInt(), 0xFF445566.toInt())
 
         val restored = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(settings, palette)).getOrThrow()

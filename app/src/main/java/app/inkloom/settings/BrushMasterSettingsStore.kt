@@ -8,10 +8,25 @@ class BrushMasterSettingsStore(context: Context) {
     // Preserve existing installations' per-preset sizes. New keys also distinguish the tool role.
     private val preferences = context.getSharedPreferences("brush_preset_sizes", Context.MODE_PRIVATE)
 
+    init {
+        // Publish all role-specific replacements in one transaction; authored/new values win.
+        val edit=preferences.edit(); var changed=false
+        val roles=EditorTool.entries.map { it.name }.toSet()
+        preferences.all.forEach { (oldKey, value) ->
+            if(oldKey.startsWith("size:") && oldKey.removePrefix("size:").substringBefore(':') !in roles && value is Float && value.isFinite()) {
+                val brushId=oldKey.removePrefix("size:")
+                EditorTool.entries.forEach { tool -> val newKey=key("size",tool,brushId)
+                    if(!preferences.contains(newKey)) edit.putFloat(newKey,value.coerceIn(.5f,400f))
+                }
+                edit.remove(oldKey);changed=true
+            }
+        }
+        if(changed) check(edit.commit()) { "Could not migrate brush sizes" }
+    }
+
     fun loadSize(tool: EditorTool, brushId: String, fallback: Float): Float {
         val default = normalize(fallback, .5f, 400f, .5f)
-        val legacy = read("size:${id(brushId)}", default)
-        return normalize(read(key("size", tool, brushId), legacy), .5f, 400f, default)
+        return normalize(read(key("size", tool, brushId), default), .5f, 400f, default)
     }
 
     fun loadOpacity(tool: EditorTool, brushId: String, fallback: Float): Float =

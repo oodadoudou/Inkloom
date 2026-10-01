@@ -1,47 +1,21 @@
 package app.inkloom.settings
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
+import org.junit.Assert.*
 import org.junit.Test
 
 class BuiltInWorkspaceTest {
-    @Test fun `procreate workspace starts with popovers hidden and left controls visible`() {
-        val original = AppSettings(fingerDrawing = true, penSize = 29f)
-
-        val restored = original.applyToolboxWorkspace(BuiltInWorkspaces.snapshot(BuiltInWorkspace.STUDIO))
-
-        assertFalse(restored.showPageRail)
-        assertFalse(restored.showBrushPanel)
-        assertFalse(restored.showLayerPanel)
-        assertEquals(WorkspacePanelDock.FREE, restored.pagePanelDock)
-        assertEquals(WorkspacePanelDock.FREE, restored.brushPanelDock)
-        assertEquals(WorkspacePanelDock.FREE, restored.layerPanelDock)
-        assertEquals(18f, restored.brushPanelYDp)
-        assertEquals(18f, restored.layerPanelYDp)
-        assertEquals(ToolbarDock.LEFT, restored.toolbarDock)
-        assertTrue(restored.verticalToolbar)
-        assertTrue(restored.fingerDrawing)
-        assertEquals(29f, restored.penSize)
+    @Test fun studioStartsWithPopoversHiddenAndLeftControlsVisible() {
+        val original=AppSettings(fingerDrawing=true,penSize=29f)
+        val preset=BuiltInWorkspaces.snapshot(BuiltInWorkspace.STUDIO)
+        val restored=preset.toolRail!!.applyTo(original)
+        assertTrue(preset.layout.open.isEmpty());assertTrue(EditorPanelLayouts.isValid(preset.layout))
+        assertEquals(ToolbarDock.LEFT,restored.toolbarDock);assertTrue(restored.verticalToolbar)
+        assertTrue(restored.fingerDrawing);assertEquals(29f,restored.penSize)
     }
-
-    @Test fun `reading layout keeps pages visible and drawing controls hidden`() {
-        val reading = AppSettings().applyToolboxWorkspace(BuiltInWorkspaces.snapshot(BuiltInWorkspace.READING))
-
-        assertFalse(reading.showToolbar)
-        assertTrue(reading.showPageRail)
-    }
-
-    @Test fun `applying a preset to portrait does not overwrite landscape layout`() {
-        val landscape = AppSettings(showPageRail = false, brushPanelDock = WorkspacePanelDock.BOTTOM)
-            .recordWorkspaceFor(WorkspaceOrientation.LANDSCAPE)
-        val portrait = landscape.withWorkspaceFor(WorkspaceOrientation.PORTRAIT)
-        val updatedPortrait = portrait.applyToolboxWorkspace(BuiltInWorkspaces.snapshot(BuiltInWorkspace.READING))
-            .recordWorkspaceFor(WorkspaceOrientation.PORTRAIT)
-
-        assertEquals(false, updatedPortrait.workspaceLayouts.landscape?.showPageRail)
-        assertEquals(WorkspacePanelDock.BOTTOM, updatedPortrait.workspaceLayouts.landscape?.brushPanelDock)
-        assertEquals(true, updatedPortrait.workspaceLayouts.portrait?.showPageRail)
-        assertEquals(false, updatedPortrait.workspaceLayouts.portrait?.showToolbar)
+    @Test fun readingUsesTheSameTreeWithPagesDockedAndControlsHidden() {
+        val preset=BuiltInWorkspaces.snapshot(BuiltInWorkspace.READING)
+        assertEquals(setOf(EditorPanel.PAGES),preset.layout.open)
+        assertTrue(EditorPanel.PAGES in EditorPanelLayouts.members(preset.layout.dock))
+        assertFalse(preset.toolRail!!.visible)
     }
 }

@@ -72,6 +72,10 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         super.onCleared()
     }
 
+    private val inspectedDocumentUpgrades = mutableSetOf<String>()
+    private val pendingDocumentUpgrades = mutableSetOf<String>()
+    private val documentUpgradeErrors = mutableMapOf<String, String>()
+
     init {
         val recovered = store.recover()
         if (store.list().isEmpty()) {
@@ -255,29 +259,34 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
     fun select(documentId: String) {
         val document = store.get(documentId) ?: return
-        val needsMigration = document.pages.any { page -> page.elements.any { it is PageElement.Fill } }
         mutableState.value = mutableState.value.copy(selectedDocumentId = documentId,
-            selectedPageId = notebookResumeStore.restore(document) ?: document.pages.firstOrNull()?.id, migratingLegacyFills = needsMigration,
-            legacyFillMigrationError = null)
-        if (!needsMigration) return
-        viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                LegacyFillMigration(assets).migrate(document) { migrated ->
-                    synchronized(store) {
-                        check(store.get(documentId) == document) { "The notebook changed while converting fills; please reopen it to retry" }
-                        // Old element journal entries must not resurrect the converted Fill on restart.
+            selectedPageId = notebookResumeStore.restore(document) ?: document.pages.firstOrNull()?.id,
+            migratingLegacyFills = documentId in pendingDocumentUpgrades,
+            legacyFillMigrationError = documentUpgradeErrors[documentId])
+    }
+
+    /** Import/startup boundary. Ordinary notebook switching never scans or reinterprets old data. */
+    private fun queueDocumentUpgrades(documents: List<InkDocument>) {
+        documents.filter { inspectedDocumentUpgrades.add(it.id) }.forEach { document ->
+            if (document.pages.none { page -> page.elements.any { it is PageElement.Fill } }) return@forEach
+            pendingDocumentUpgrades += document.id
+            viewModelScope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    LegacyFillMigration(assets).migrate(document) { migrated -> synchronized(store) {
+                        check(store.get(document.id) == document) { "The notebook changed during the upgrade; restart to retry" }
                         store.recover()
                         store.save(migrated)
-                    }
+                    } }
                 }
-            }
-            refresh()
-            if (mutableState.value.selectedDocumentId == documentId) {
-                mutableState.value = mutableState.value.copy(migratingLegacyFills = false,
-                    legacyFillMigrationError = (result as? LegacyFillMigration.Result.Rejected)?.reason)
+                pendingDocumentUpgrades -= document.id
+                if(result is LegacyFillMigration.Result.Rejected) documentUpgradeErrors[document.id]=result.reason
+                refresh()
+                if(mutableState.value.selectedDocumentId==document.id) mutableState.value=mutableState.value.copy(
+                    migratingLegacyFills=false,legacyFillMigrationError=documentUpgradeErrors[document.id])
             }
         }
     }
+
     fun dismissLegacyFillMigrationError() {
         mutableState.value = mutableState.value.copy(legacyFillMigrationError = null)
     }
@@ -973,7 +982,12 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             if (page.id == pageId) app.inkloom.document.LayerSoloStructure.reconcile(page, transform(page)) else page
         }, updatedAt = System.currentTimeMillis())
     }
-    private fun refresh(recovered: Int = mutableState.value.recoveredOperations) { mutableState.value = mutableState.value.copy(documents = store.list(), folders = loadFolders(), recoveredOperations = recovered) }
+    private fun refresh(recovered: Int = mutableState.value.recoveredOperations) {
+        val documents=store.list()
+        queueDocumentUpgrades(documents)
+        mutableState.value=mutableState.value.copy(documents=documents,folders=loadFolders(),recoveredOperations=recovered,
+            migratingLegacyFills=mutableState.value.selectedDocumentId in pendingDocumentUpgrades)
+    }
     private fun refreshSelection() {
         refresh()
         mutableState.value.selectedDocumentId?.let { id ->

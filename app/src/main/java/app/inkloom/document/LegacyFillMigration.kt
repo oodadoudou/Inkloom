@@ -16,6 +16,7 @@ internal class LegacyFillMigration(private val assets: DocumentAssetService) {
         val fills = document.pages.flatMap { it.elements.filterIsInstance<PageElement.Fill>() }
         if (fills.isEmpty()) return Result.Unchanged
         val reservations = mutableListOf<RasterTileSurfaceRef>()
+        val imageReservations = mutableListOf<String>()
         return try {
             val masks = fills.associate { fill ->
                 require(listOf(fill.x, fill.y, fill.width, fill.height, fill.rotationDegrees, fill.opacity).all(Float::isFinite) &&
@@ -27,20 +28,31 @@ internal class LegacyFillMigration(private val assets: DocumentAssetService) {
                 page.elements.filterIsInstance<PageElement.Fill>().groupBy { it.layerId }.forEach { (id, _) ->
                     val layer = requireNotNull(page.layers.find { it.id == id }) { "A fill's layer is missing" }
                     require(layer.isPaintSurfaceLayer()) { "A fill belongs to a non-paint layer" }
-                    require(!layer.alphaLock || layer.alphaLockBaseContentIds.isEmpty()) {
-                        "This legacy fill uses an object-based alpha lock; its original contents were preserved"
-                    }
-                    val items = page.elements.filter { it.layerId == id }
-                    require(items.dropWhile { it is PageElement.Fill }.none { it is PageElement.Fill }) {
-                        "This legacy fill overlaps retained objects; its original layer order was preserved"
-                    }
+
                 }
             }
             val pages = document.pages.map { page ->
                 val byLayer = page.elements.filterIsInstance<PageElement.Fill>().groupBy { it.layerId }
                 if (byLayer.isEmpty()) return@map page
+                val retainedFills = mutableMapOf<String, PageElement.Image>()
                 val layers = page.layers.map { layer ->
                     val layerFills = byLayer[layer.id] ?: return@map layer
+                    val items=page.elements.filter { it.layerId == layer.id }
+                    if ((layer.alphaLock && layer.alphaLockBaseContentIds.isNotEmpty()) || items.dropWhile { it is PageElement.Fill }.any { it is PageElement.Fill } || layerFills.any { it.deformation != null }) {
+                        // Keep object ordering and alpha-lock identities, rather than baking through them.
+                        layerFills.forEach { fill ->
+                            val mask=masks.getValue(fill.maskAssetPath)
+                            val png=java.io.ByteArrayOutputStream().also { output ->
+                                val color=fill.colorArgb.toInt();val colorAlpha=color ushr 24
+                                StreamingPng.write(output,mask.logicalWidth,mask.logicalHeight,page.dpi) { y,row ->
+                                    row.indices.forEach { x -> val a=(mask.alphaAt(x,y)*colorAlpha+127)/255;row[x]=(color and 0x00ffffff) or (a shl 24) }
+                                }
+                            }.toByteArray()
+                            val path=assets.saveMigratedFillImage(png);imageReservations+=path
+                            retainedFills[fill.id]=PageElement.Image(fill.id,fill.x,fill.y,fill.width,fill.height,fill.rotationDegrees,fill.opacity,fill.layerId,fill.deformation,path)
+                        }
+                        return@map layer
+                    }
                     val surface = layer.rasterTileSurface?.let { reference ->
                         requireNotNull(assets.loadRasterTileSurface(reference)) { "The original paint surface is missing or damaged" }
                     } ?: run {
@@ -59,7 +71,7 @@ internal class LegacyFillMigration(private val assets: DocumentAssetService) {
                     reservations += reference
                     layer.copy(rasterTileSurface = reference)
                 }
-                page.copy(layers = layers, elements = page.elements.filterNot { it is PageElement.Fill })
+                page.copy(layers = layers, elements = page.elements.mapNotNull { element -> if(element is PageElement.Fill) retainedFills[element.id] else element })
             }
             val result = document.copy(pages = pages)
             save(result)
@@ -68,6 +80,7 @@ internal class LegacyFillMigration(private val assets: DocumentAssetService) {
             Result.Rejected(error.message ?: "The legacy fill could not be converted; the original document was preserved")
         } finally {
             reservations.forEach(assets::releaseRasterTileReservation)
+            imageReservations.forEach(assets::releaseAssetReservation)
         }
     }
 
