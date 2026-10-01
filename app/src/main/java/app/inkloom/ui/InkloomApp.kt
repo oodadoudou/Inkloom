@@ -9251,13 +9251,27 @@ private fun SettingsDialog(
                 key(settingsTab) {
                 LazyColumn(Modifier.heightIn(max = 560.dp).semantics { contentDescription = "Settings content" }, verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(top = 12.dp)) {
                 if (settingsTab == 0) {
+                item { Text(tr("Interface gray", "界面灰度"), color = MutedInk, fontSize = 12.sp) }
+                item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    app.inkloom.settings.UiGrayTheme.entries.forEach { gray ->
+                        val label = when (gray) {
+                            app.inkloom.settings.UiGrayTheme.DARK -> tr("Dark", "深灰")
+                            app.inkloom.settings.UiGrayTheme.MEDIUM -> tr("Medium", "中灰")
+                            app.inkloom.settings.UiGrayTheme.SOFT -> tr("Soft", "柔灰")
+                            app.inkloom.settings.UiGrayTheme.LIGHT -> tr("Light", "浅灰")
+                        }
+                        FilterChip(selected = settings.uiGrayTheme == gray,
+                            onClick = { onChange(settings.copy(uiGrayTheme = gray)) },
+                            modifier = Modifier.weight(1f).semantics { contentDescription = "Interface gray ${gray.name}" },
+                            label = { Text(label, fontSize = 12.sp) })
+                    }
+                } }
                 item { Text(tr("LANGUAGE", "语言"), color = MutedInk, fontSize = 12.sp) }
                 item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = settings.language == UiLanguage.ENGLISH, onClick = { onChange(settings.copy(language = UiLanguage.ENGLISH)) }, label = { Text("English") })
                     FilterChip(selected = settings.language == UiLanguage.SIMPLIFIED_CHINESE, onClick = { onChange(settings.copy(language = UiLanguage.SIMPLIFIED_CHINESE)) }, label = { Text("简体中文") })
                 } }
                 item { Text(tr("INTERFACE", "界面"), color = MutedInk, fontSize = 12.sp) }
-                item { SettingSwitch(tr("Show page sidebar", "显示页面侧栏"), null, pagesOpen, onPagesVisibility) }
                 item { SettingSwitch(tr("Show floating toolbar", "显示浮动工具栏"), null, settings.showToolbar) { onChange(settings.copy(showToolbar = it)) } }
                 if (settings.toolbarDock == ToolbarDock.FREE) item { SettingSwitch(tr("Vertical toolbar", "垂直工具栏"), tr("Useful on a wide tablet canvas.", "适合宽屏平板画布。"), settings.verticalToolbar) { onChange(settings.copy(verticalToolbar = it)) } }
                 item { OutlinedButton(onClick = { onChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = 16f, toolbarOffsetYDp = 16f)) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.CenterFocusStrong, null); Spacer(Modifier.width(8.dp)); Text(tr("Reset toolbar position", "重置工具栏位置")) } }

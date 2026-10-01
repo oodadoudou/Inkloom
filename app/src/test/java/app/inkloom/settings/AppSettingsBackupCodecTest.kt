@@ -13,6 +13,16 @@ import app.inkloom.document.GradientEdgeMode
 import app.inkloom.document.GradientKind
 
 class AppSettingsBackupCodecTest {
+    @Test fun `gray theme round trips and old backups use the lighter default`() {
+        for (gray in UiGrayTheme.entries) {
+            val restored = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(AppSettings(uiGrayTheme = gray))).getOrThrow()
+            assertEquals(gray, restored.settings.uiGrayTheme)
+        }
+        val old = """{"format":"inkloom-app-settings","version":1,"settings":{}}""".encodeToByteArray()
+        assertEquals(UiGrayTheme.MEDIUM, AppSettingsBackupCodec.decode(old).getOrThrow().settings.uiGrayTheme)
+        assertEquals(UiGrayTheme.DEFAULT, UiGrayTheme.decode("future-theme"))
+    }
+
     @Test fun `liquify parameters survive backup`() {
         val settings = AppSettings(liquifyStrengthScale = 1.4f,
             liquifyDistortion = .45f, liquifyMomentum = .7f)

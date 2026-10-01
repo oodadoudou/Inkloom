@@ -18,6 +18,7 @@ enum class LayerRowDensity { COMPACT, COMFORTABLE, LARGE }
 
 data class AppSettings(
     val language: UiLanguage = UiLanguage.ENGLISH,
+    val uiGrayTheme: UiGrayTheme = UiGrayTheme.DEFAULT,
     val libraryLayout: LibraryLayout = LibraryLayout.GRID,
     val fingerDrawing: Boolean = false,
     val drawAndHoldEnabled: Boolean = true,
@@ -184,6 +185,7 @@ class AppSettingsStore(context: Context) {
         val pressureMaximum = preferences.getFloat("pressureMaximumInput", 1f).coerceIn(pressureMinimum + .05f, 1f)
         val loaded = AppSettings(
             language = enumValue(preferences.getString("language", null), systemLanguage),
+            uiGrayTheme = UiGrayTheme.decode(preferences.getString("uiGrayTheme", null)),
             libraryLayout = enumValue(preferences.getString("libraryLayout", null), LibraryLayout.GRID),
             fingerDrawing = preferences.getBoolean("fingerDrawing", false),
             drawAndHoldEnabled = preferences.getBoolean("drawAndHoldEnabled", true),
@@ -330,6 +332,7 @@ class AppSettingsStore(context: Context) {
         if (rail != lastToolRail) { workspace.updateToolRail(rail); lastToolRail = rail }
         preferences.edit()
             .putString("language", persisted.language.name)
+            .putString("uiGrayTheme", persisted.uiGrayTheme.name)
             .putString("libraryLayout", persisted.libraryLayout.name)
             .putInt(INPUT_GESTURES_VERSION_KEY, INPUT_GESTURES_VERSION)
             .putInt("shortcutDefaultsMigrationVersion", 1)

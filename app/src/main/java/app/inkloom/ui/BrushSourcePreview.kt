@@ -106,7 +106,7 @@ internal fun BrushSourcePreviews(preset: BrushPresetV5, group: BrushOptionGroup,
             }
             Column(Modifier.width(168.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(card.title, fontSize = 13.sp)
-                Box(Modifier.size(168.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF151515)),
+                Box(Modifier.size(168.dp).clip(RoundedCornerShape(8.dp)).background(app.inkloom.ui.theme.Workspace),
                     contentAlignment = Alignment.Center) {
                     if (failure) Text(language.text("Source unavailable", "无法读取来源图案"),
                         Modifier.padding(12.dp), color = Color.White, fontSize = 12.sp)

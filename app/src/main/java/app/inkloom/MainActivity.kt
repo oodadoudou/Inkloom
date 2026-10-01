@@ -11,11 +11,13 @@ import app.inkloom.engine.v5.android.PixelMemoryPressureCoordinator
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = android.graphics.Color.rgb(54, 54, 54)
-        window.navigationBarColor = android.graphics.Color.rgb(54, 54, 54)
+        val gray = app.inkloom.settings.UiGrayTheme.decode(getSharedPreferences("inkloom_settings", MODE_PRIVATE).getString("uiGrayTheme", null))
+        window.decorView.setBackgroundColor(gray.argb(gray.workspace))
+        window.statusBarColor = gray.argb(gray.workspace)
+        window.navigationBarColor = window.statusBarColor
         WindowCompat.getInsetsController(window, window.decorView).apply {
-            isAppearanceLightStatusBars = false
-            isAppearanceLightNavigationBars = false
+            isAppearanceLightStatusBars = gray == app.inkloom.settings.UiGrayTheme.LIGHT
+            isAppearanceLightNavigationBars = isAppearanceLightStatusBars
         }
         setContent {
             InkloomTheme {

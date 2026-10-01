@@ -343,7 +343,7 @@ private fun ToolPaletteOrganizerDialog(settings: AppSettings, onSettings: (AppSe
                     when(entry) {
                         is ToolPaletteEntry.Tool -> {
                             val latestIndex by rememberUpdatedState(index)
-                            Row(Modifier.fillMaxWidth().height(42.dp).background(Color(0xFF4A4A4A),RoundedCornerShape(5.dp))
+                            Row(Modifier.fillMaxWidth().height(42.dp).background(app.inkloom.ui.theme.SageContainer,RoundedCornerShape(5.dp))
                                 .pointerInput(entry.tool) {
                                     var current=latestIndex
                                     var travel=0f
