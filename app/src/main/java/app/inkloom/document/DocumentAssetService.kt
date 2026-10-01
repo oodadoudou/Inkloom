@@ -504,12 +504,33 @@ class DocumentAssetService(private val context: Context) {
 
     internal fun prepareFilteredVisibleCopy(page:InkPage,effect:app.inkloom.engine.v5.tools.RasterImageFilter.Effect,
         selection:app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot?,cancelled:()->Boolean):PreparedPageGeometry {
+        val filtered=filteredVisibleCopySurface(page,effect,selection,cancelled)
+        val ref=saveRasterTileSurface(filtered)
+        return PreparedPageGeometry(PageGeometryEdit(page,page.copy(layers=page.layers+InkLayer(name="Filtered visible copy",rasterTileSurface=ref)))) { releaseRasterTileReservation(ref) }
+    }
+
+    /** Filter in document pixels first, then reduce presentation size; native effect strength is unchanged. */
+    internal fun renderFilteredVisibleCopyPreview(page:InkPage,effect:app.inkloom.engine.v5.tools.RasterImageFilter.Effect,
+        selection:app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot?,maxSide:Int=1024,cancelled:()->Boolean):Bitmap {
+        require(maxSide in 1..2048)
+        val native=filteredVisibleCopySurface(page,effect,selection,cancelled).snapshot()
+        val scale=minOf(1f,maxSide.toFloat()/maxOf(native.logicalWidth,native.logicalHeight))
+        val width=(native.logicalWidth*scale).toInt().coerceAtLeast(1)
+        val height=(native.logicalHeight*scale).toInt().coerceAtLeast(1)
+        val preview=if(scale==1f) native else app.inkloom.engine.v5.tools.PixelSurfaceResampling.resample(native,
+            width,height,width.toFloat()/native.logicalWidth,height.toFloat()/native.logicalHeight).snapshot()
+        if(cancelled())throw java.util.concurrent.CancellationException()
+        return PixelTileBitmapAdapter.render(preview)
+    }
+
+    private fun filteredVisibleCopySurface(page:InkPage,effect:app.inkloom.engine.v5.tools.RasterImageFilter.Effect,
+        selection:app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot?,cancelled:()->Boolean):PixelTileSurface {
+        if(cancelled())throw java.util.concurrent.CancellationException()
         val size=PagePngExportSize.from(page)
         val source=renderPageCompositeSurface(page,size.width,size.height)
         val filtered=app.inkloom.engine.v5.tools.RasterImageFilter.apply(source,effect,selection,cancelled)
         if(cancelled())throw java.util.concurrent.CancellationException()
-        val ref=saveRasterTileSurface(filtered)
-        return PreparedPageGeometry(PageGeometryEdit(page,page.copy(layers=page.layers+InkLayer(name="Filtered visible copy",rasterTileSurface=ref)))) { releaseRasterTileReservation(ref) }
+        return filtered
     }
 
     fun prepareColorManagement(page: InkPage, settings: app.inkloom.color.PageColorManagement): PreparedPageGeometry {

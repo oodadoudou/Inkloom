@@ -4240,11 +4240,7 @@ private fun EditorScreen(
                         val before=currentAppearancePage
                         val selection=view.selectionMaskSurfaceSnapshot()
                         bitmap=withContext(Dispatchers.Default){
-                            val width=minOf(1024,PagePngExportSize.from(before).width)
-                            val height=(width*PageCropTransform.visibleHeight(before)/PageCropTransform.visibleWidth(before)).toInt().coerceAtLeast(1)
-                            val source=maskAssets.renderPageCompositeSurface(before,width,height)
-                            val filtered=app.inkloom.engine.v5.tools.RasterImageFilter.apply(source,effect,selection){!isActive}
-                            app.inkloom.engine.v5.android.PixelTileBitmapAdapter.render(filtered.snapshot())
+                            maskAssets.renderFilteredVisibleCopyPreview(before,effect,selection,cancelled={!isActive})
                         }
                         if(generation==compositeFilterGeneration && rasterFilterDialogOpen){compositeFilterPreview=bitmap;bitmap=null}
                     } catch(_:kotlinx.coroutines.CancellationException){} catch(failure:Throwable){Toast.makeText(context,failure.message?:"Preview failed",Toast.LENGTH_LONG).show()}
