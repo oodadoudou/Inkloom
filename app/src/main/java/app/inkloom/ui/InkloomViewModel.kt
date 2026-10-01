@@ -441,15 +441,17 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun deletePage(documentId: String, pageId: String) {
-        val willDelete = store.get(documentId)?.pages?.size?.let { it > 1 } == true
-        update(documentId) { document ->
-            if (document.pages.size == 1) document else {
-                val pages = document.pages.filterNot { it.id == pageId }
-                mutableState.value = mutableState.value.copy(selectedPageId = pages.first().id)
-                document.copy(pages = pages, updatedAt = System.currentTimeMillis())
-            }
-        }
-        if (willDelete) selectionRuntime.releasePage(documentId, pageId)
+        val document = store.get(documentId) ?: return
+        if (document.pages.size <= 1 || document.pages.none { it.id == pageId }) return
+        val active = mutableState.value.selectedDocumentId == documentId
+        val visible = if (active) mutableState.value.selectedPageId else notebookResumeStore.restore(document)
+        val next = PageBatchOperations.pageAfterRemoval(document.pages.map { it.id }, setOf(pageId), visible)
+        // Publish navigation only after the document was saved successfully.
+        store.save(document.copy(pages = document.pages.filterNot { it.id == pageId }, updatedAt = System.currentTimeMillis()))
+        if (active) mutableState.value = mutableState.value.copy(selectedPageId = next)
+        next?.let { notebookResumeStore.remember(documentId, it) }
+        refreshSelection()
+        selectionRuntime.releasePage(documentId, pageId)
         scheduleAssetGarbageCollection()
     }
 

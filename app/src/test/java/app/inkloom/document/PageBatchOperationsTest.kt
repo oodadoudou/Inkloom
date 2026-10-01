@@ -4,6 +4,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PageBatchOperationsTest {
+    @Test fun `removal preserves the current page and prefers the next surviving page`() {
+        val pages = listOf("a", "b", "c", "d", "e")
+        assertEquals("d", PageBatchOperations.pageAfterRemoval(pages, setOf("b"), "d"))
+        assertEquals("d", PageBatchOperations.pageAfterRemoval(pages, setOf("e"), "d"))
+        assertEquals("d", PageBatchOperations.pageAfterRemoval(pages, setOf("c"), "c"))
+        assertEquals("d", PageBatchOperations.pageAfterRemoval(pages, setOf("b", "c"), "b"))
+        assertEquals("c", PageBatchOperations.pageAfterRemoval(pages, setOf("d", "e"), "e"))
+        assertEquals("b", PageBatchOperations.pageAfterRemoval(pages, setOf("a"), "a"))
+    }
+
     @Test fun `selected pages move together without changing their relative order`() {
         assertEquals(
             listOf("a", "c", "e", "b", "d"),
