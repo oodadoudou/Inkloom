@@ -2,6 +2,7 @@ package app.inkloom.ui
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -9,18 +10,19 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.inkloom.engine.v5.tools.RasterImageFilter
 import app.inkloom.settings.*
 import java.util.Locale
 
 @Composable
-internal fun RasterFilterDialog(presets:List<RasterFilterPreset>,onPresets:(List<RasterFilterPreset>)->Unit,
+internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset>,onPresets:(List<RasterFilterPreset>)->Unit,
     compositePreview:Bitmap?,copyBusy:Boolean,onPreview:(RasterImageFilter.Effect,Boolean)->Unit,
     onApply:(RasterImageFilter.Effect,Boolean)->Unit,onCancel:()->Unit) {
     val language=LocalUiLanguage.current
     fun tr(en:String,zh:String)=language.text(en,zh)
-    var state by remember{mutableStateOf(RasterFilterPreset())}
+    var state by remember{mutableStateOf(RasterFilterPreset(colorArgb=drawingColor))}
     var composite by remember{mutableStateOf(false)}
     var name by remember{mutableStateOf("")}
     var presetMenu by remember{mutableStateOf(false)}
@@ -28,7 +30,12 @@ internal fun RasterFilterDialog(presets:List<RasterFilterPreset>,onPresets:(List
     LaunchedEffect(effect,composite){onPreview(effect,composite)}
     val names=listOf(tr("Gaussian blur","高斯模糊"),tr("Unsharp mask","USM 锐化"),tr("Denoise","降噪"),tr("Remove stray pixels","清理杂点"),
         tr("Correct line width","修正线宽"),tr("Wave distortion","波形变形"),tr("Motion blur","动感模糊"),tr("Radial blur","径向模糊"),
-        tr("Lens blur","镜头模糊"),tr("Mosaic","马赛克"),tr("Noise","噪点"),tr("Chromatic aberration","色差"))
+        tr("Lens blur","镜头模糊"),tr("Mosaic","马赛克"),tr("Noise","噪点"),tr("Chromatic aberration","色差"),
+        tr("Convert to drawing color","换为绘画色"),tr("Brightness to opacity","亮度转透明度"))
+    var colorPickerOpen by remember { mutableStateOf(false) }
+    if (colorPickerOpen) StandardColorPickerDialog(state.colorArgb or 0xFF000000.toInt(), language,
+        onConfirm = { state=state.copy(colorArgb=it or 0xFF000000.toInt());colorPickerOpen=false },
+        onDismiss = { colorPickerOpen=false })
     AlertDialog(onDismissRequest={if(!copyBusy)onCancel()},title={Text(tr("Image filter","图像滤镜"))},text={
         Column(Modifier.widthIn(min=270.dp,max=420.dp).heightIn(max=520.dp).verticalScroll(rememberScrollState())) {
             Box {
@@ -43,8 +50,15 @@ internal fun RasterFilterDialog(presets:List<RasterFilterPreset>,onPresets:(List
                 TextButton({kinds=true}){Text(names[state.kind])}
                 DropdownMenu(kinds,{kinds=false}){names.forEachIndexed{i,label->DropdownMenuItem(text={Text(label)},onClick={state=state.copy(kind=i,strength=when(i){2,3,4->1f;5->8f;else->2f});kinds=false})}}
             }
+            if (state.kind < 12) {
             Text("${tr("Strength","强度")}  ${String.format(Locale.ROOT,"%.1f",state.strength)}")
             BrushParameterSlider(state.strength,{state=state.copy(strength=it)},valueRange=1f..if(state.kind in listOf(2,4))3f else 20f)
+            }
+            if (state.kind == 12) TextButton({colorPickerOpen=true}) {
+                Box(Modifier.size(18.dp).background(Color(state.colorArgb or 0xFF000000.toInt())))
+                Spacer(Modifier.width(8.dp));Text(tr("Drawing color…","绘画色…"))
+            }
+            if (state.kind == 13) Text(tr("White becomes transparent; darker values become black ink. Source opacity is retained.","白色转为透明；深色转为黑色笔迹，原有透明度继续参与。"),style=MaterialTheme.typography.bodySmall)
             if(state.kind==1){Text(tr("Amount","锐化量"));BrushParameterSlider(state.amount,{state=state.copy(amount=it)},valueRange=0f..4f)}
             if(state.kind==4)Row{FilterChip(state.grow,{state=state.copy(grow=true)},label={Text(tr("Thicken","加粗"))});FilterChip(!state.grow,{state=state.copy(grow=false)},label={Text(tr("Thin","变细"))})}
             if(state.kind==5){Text(tr("Wavelength","波长"));BrushParameterSlider(state.wavelength,{state=state.copy(wavelength=it)},valueRange=16f..512f)}

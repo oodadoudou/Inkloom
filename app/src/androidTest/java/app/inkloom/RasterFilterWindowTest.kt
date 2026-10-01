@@ -12,6 +12,8 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.engine.v5.surface.PixelRect
@@ -38,6 +40,76 @@ class RasterFilterWindowTest {
         }
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
+
+    @Test fun lineArtConversionsUsePickerPreviewCancelUndoAndReopen() {
+        compose.onNodeWithText("New Note").performClick(); compose.onNodeWithText("Create").performClick()
+        val view = canvas()
+        fun pagePoint(x: Float, y: Float): FloatArray {
+            val point=floatArrayOf(x*view.width,y*view.height)
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                android.graphics.Matrix().also { view.transformMatrixToGlobal(it);it.mapPoints(point) }
+            }
+            return point
+        }
+        val start=pagePoint(.25f,.5f);val end=pagePoint(.75f,.5f)
+        val x1=start[0];val x2=end[0];val y=start[1]
+        val down=SystemClock.uptimeMillis()
+        event(MotionEvent.ACTION_DOWN,x1,y,down)
+        repeat(16){event(MotionEvent.ACTION_MOVE,x1+(x2-x1)*(it+1)/16f,y,down)}
+        event(MotionEvent.ACTION_UP,x2,y,down)
+        compose.waitUntil(15_000){view.activeRasterSnapshotForTest()?.tileCount?.let{it>0}==true && !view.hasPendingPaintPublicationForMerge()}
+        val original=fingerprint(view)
+        val originalSurface=view.activeRasterSnapshotForTest()!!
+        val allPixels=originalSurface.copyPremultipliedPixels(PixelRect(0,0,originalSurface.logicalWidth,originalSurface.logicalHeight))
+        val marker=allPixels.indices.maxBy { allPixels[it] ushr 24 }
+        val markerX=marker%originalSurface.logicalWidth;val markerY=marker/originalSurface.logicalWidth
+        assertTrue(allPixels[marker] ushr 24 > 0)
+        fun middle(): Int = view.activeRasterSnapshotForTest()!!.pixelAt(markerX,markerY)
+        fun open() {
+            compose.onNodeWithContentDescription("Actions").performClick()
+            compose.onNodeWithContentDescription("Actions Canvas").performClick()
+            compose.onNodeWithText("Image filter…").performClick()
+            compose.onNodeWithText("Gaussian blur").performClick()
+            compose.onNodeWithText("Convert to drawing color").performScrollTo().performClick()
+        }
+        fun chooseRed() {
+            compose.onNodeWithText("Drawing color…").performClick()
+            compose.onNodeWithContentDescription("Hex color").performTextReplacement("#FF0000")
+            compose.onNodeWithContentDescription("Apply color").performClick()
+            try { compose.waitUntil(15_000){middle() ushr 24 > 0 && middle() ushr 16 and 255 > 0 && middle() and 0xffff == 0} }
+            catch (failure: Throwable) { throw AssertionError("Recolor pixel ${middle().toUInt().toString(16)} at $markerX,$markerY; original ${allPixels[marker].toUInt().toString(16)}; pending ${view.selectionLayerTransferPending}",failure) }
+        }
+        open();chooseRed()
+        val red=fingerprint(view)
+        compose.onNodeWithText("Cancel").performClick()
+        compose.waitUntil(15_000){fingerprint(view)==original && !view.selectionLayerTransferPending}
+        open();chooseRed()
+        compose.onNodeWithText("Apply").performClick()
+        compose.waitUntil(15_000){fingerprint(view)==red && !view.selectionLayerTransferPending}
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        compose.waitUntil(15_000){fingerprint(view)==original}
+        compose.onAllNodesWithContentDescription("Redo").onFirst().performClick()
+        compose.waitUntil(15_000){fingerprint(view)==red}
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithContentDescription("Actions Canvas").performClick()
+        compose.onNodeWithText("Image filter…").performClick()
+        compose.onNodeWithText("Gaussian blur").performClick()
+        compose.onNodeWithText("Brightness to opacity").performScrollTo().performClick()
+        compose.waitUntil(15_000){middle() ushr 24 > 0 && middle() and 0xffffff == 0}
+        val opacity=fingerprint(view)
+        compose.onNodeWithText("Apply").performClick()
+        compose.waitUntil(15_000){!view.selectionLayerTransferPending && fingerprint(view)==opacity}
+        val snapshot=view.activeRasterSnapshotForTest()!!
+        val pixel=snapshot.pixelAt(markerX,markerY)
+        assertTrue(pixel ushr 24 > 0);assertEquals(0,pixel and 0xffffff)
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        compose.waitUntil(15_000){fingerprint(view)==red}
+        compose.onAllNodesWithContentDescription("Redo").onFirst().performClick()
+        compose.waitUntil(15_000){fingerprint(view)==opacity}
+        compose.activityRule.scenario.recreate();compose.waitForIdle()
+        val reopened=canvas()
+        compose.waitUntil(15_000){fingerprint(reopened)==opacity}
+    }
 
     @Test fun filterWindowRejectsMaskTargetInsteadOfEditingItsContent() {
         compose.onNodeWithText("New Note").performClick();compose.onNodeWithText("Create").performClick()

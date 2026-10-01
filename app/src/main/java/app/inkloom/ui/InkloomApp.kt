@@ -4192,7 +4192,7 @@ private fun EditorScreen(
         )
     }
     if (rasterFilterDialogOpen) RasterFilterDialog(
-        presets=settings.rasterFilterPresets,onPresets={onSettingsChange(settings.copy(rasterFilterPresets=it))},
+        drawingColor=brushColor, presets=settings.rasterFilterPresets,onPresets={onSettingsChange(settings.copy(rasterFilterPresets=it))},
         compositePreview=compositeFilterPreview,copyBusy=compositeFilterBusy,
         onPreview={effect,copy ->
             compositeFilterWorker?.cancel();val generation=++compositeFilterGeneration

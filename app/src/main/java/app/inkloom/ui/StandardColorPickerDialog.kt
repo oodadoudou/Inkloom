@@ -79,7 +79,8 @@ internal fun StandardColorPickerDialog(
                 )
             }
         },
-        confirmButton = { TextButton(onClick = { close { onConfirm(draft) } }) { Text(tr("Apply", "应用")) } },
+        confirmButton = { TextButton(onClick = { close { onConfirm(draft) } },
+            modifier = Modifier.semantics { contentDescription = tr("Apply color", "应用颜色") }) { Text(tr("Apply", "应用")) } },
         dismissButton = { TextButton(onClick = { close(onDismiss) }) { Text(tr("Cancel", "取消")) } },
     )
 }

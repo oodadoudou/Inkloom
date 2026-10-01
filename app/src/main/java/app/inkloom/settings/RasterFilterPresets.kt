@@ -9,8 +9,8 @@ import java.util.UUID
 @Serializable
 data class RasterFilterPreset(val id:String=UUID.randomUUID().toString(),val name:String="",val favorite:Boolean=false,
     val kind:Int=0,val strength:Float=2f,val amount:Float=1.2f,val wavelength:Float=64f,val grow:Boolean=true,
-    val angle:Float=0f,val centerX:Float=.5f,val centerY:Float=.5f,val zoom:Boolean=false,val seed:Int=1,val monochrome:Boolean=true) {
-    fun normalized()=copy(name=name.trim().take(48),kind=kind.coerceIn(0,11),strength=strength.takeIf{it.isFinite()}?.coerceIn(1f,20f)?:2f,
+    val angle:Float=0f,val centerX:Float=.5f,val centerY:Float=.5f,val zoom:Boolean=false,val seed:Int=1,val monochrome:Boolean=true,val colorArgb:Int=0xFF111111.toInt()) {
+    fun normalized()=copy(name=name.trim().take(48),kind=kind.coerceIn(0,13),strength=strength.takeIf{it.isFinite()}?.coerceIn(1f,20f)?:2f,
         amount=amount.takeIf{it.isFinite()}?.coerceIn(0f,4f)?:1.2f,wavelength=wavelength.takeIf{it.isFinite()}?.coerceIn(16f,512f)?:64f,
         angle=angle.takeIf{it.isFinite()}?.coerceIn(-180f,180f)?:0f,centerX=centerX.takeIf{it.isFinite()}?.coerceIn(0f,1f)?:.5f,centerY=centerY.takeIf{it.isFinite()}?.coerceIn(0f,1f)?:.5f)
     internal fun effect():RasterImageFilter.Effect {val p=normalized();return when(p.kind){
@@ -19,7 +19,8 @@ data class RasterFilterPreset(val id:String=UUID.randomUUID().toString(),val nam
         4->RasterImageFilter.Effect.AdjustLineWidth(p.strength.coerceAtMost(3f),p.grow);5->RasterImageFilter.Effect.Wave(p.strength,p.wavelength)
         6->RasterImageFilter.Effect.MotionBlur(p.strength,p.angle);7->RasterImageFilter.Effect.RadialBlur(p.strength,p.centerX,p.centerY,p.zoom)
         8->RasterImageFilter.Effect.LensBlur(p.strength);9->RasterImageFilter.Effect.Mosaic(p.strength)
-        10->RasterImageFilter.Effect.Noise(p.strength,p.seed,p.monochrome);else->RasterImageFilter.Effect.ChromaticAberration(p.strength,p.angle)
+        10->RasterImageFilter.Effect.Noise(p.strength,p.seed,p.monochrome);11->RasterImageFilter.Effect.ChromaticAberration(p.strength,p.angle)
+        12->RasterImageFilter.Effect.ConvertToDrawingColor(p.colorArgb);else->RasterImageFilter.Effect.BrightnessToOpacity
     }}
 }
 object RasterFilterPresetsCodec {

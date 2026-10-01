@@ -18,6 +18,8 @@ internal object RasterImageFilter {
     sealed interface Effect {
         val sigma: Float
 
+        data class ConvertToDrawingColor(val colorArgb: Int) : Effect { override val sigma = 1f }
+        data object BrightnessToOpacity : Effect { override val sigma = 1f }
         data class GaussianBlur(override val sigma: Float) : Effect
         data class UnsharpMask(
             override val sigma: Float,
@@ -46,6 +48,8 @@ internal object RasterImageFilter {
         selection: MaskTileSurfaceSnapshot? = null,
         cancelled: () -> Boolean = { false },
     ): PixelTileSurface {
+        if (effect is Effect.ConvertToDrawingColor || effect == Effect.BrightnessToOpacity)
+            return RasterColorConversion.apply(source, effect, selection, cancelled)
         if(source.pixelFormat.isHighPrecision || effect is Effect.MotionBlur || effect is Effect.RadialBlur ||
             effect is Effect.LensBlur || effect is Effect.Mosaic || effect is Effect.Noise || effect is Effect.ChromaticAberration)
             return FloatRasterImageFilter.apply(source,effect,selection,cancelled)

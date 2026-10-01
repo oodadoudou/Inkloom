@@ -70,6 +70,8 @@ internal object FloatRasterImageFilter {
                 fun filtered(x:Int,y:Int):LinearRgba {
                     val old=pixel(x,y)
                     return when(effect){
+                        is RasterImageFilter.Effect.ConvertToDrawingColor, RasterImageFilter.Effect.BrightnessToOpacity ->
+                            error("Color conversions use their pixel-local pipeline")
                         is RasterImageFilter.Effect.GaussianBlur,is RasterImageFilter.Effect.UnsharpMask -> {
                             val i=((y-key.row*tile)*w+x-key.column*tile)*4;val p=requireNotNull(blurred)
                             if(effect is RasterImageFilter.Effect.UnsharpMask) {
