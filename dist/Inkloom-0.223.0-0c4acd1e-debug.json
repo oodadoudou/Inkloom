@@ -1,0 +1,22 @@
+{
+  "version": "0.223.0",
+  "versionCode": 223,
+  "variant": "debug",
+  "commit": "0c4acd1e345d36a9bbada90999a24b02dbca0ab9",
+  "sha256": "e58f9a18986a851b838f0acf27a178f978642baec47ad458b9f5793ea731c336",
+  "bytes": 103533721,
+  "generatedUtc": "2026-10-01T15:34:37.336694+00:00",
+  "verification": {
+    "JVM": "PASS 995 tests, 0 failures, 8 skipped",
+    "Android15Targeted": "PASS 154 unique tests across final targeted runs: adjustment graph/channel/gradient editor, layer contents selection and group drag, selection operations and reload, filter color picker/preview/cancel/undo/redo/reload, grouped visible-copy filtering, stylus paint/erase/brush switching/navigation/hover and mask editing. Broad run passed 153 of 154; strengthened outside-selection reload test passed on final rerun.",
+    "Android15Full": "NOT CLAIMED: no new full-suite run; historical full-suite failures were not re-audited.",
+    "lint": "PASS 0 errors, 114 warnings",
+    "deliveryScript": "PASS 2 temporary-directory tests: complete four-file delivery and corrupted evidence copy retaining previous package",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS emulator installation, versionCode 223, cold startup, actual line-art filter window visual inspection; crash buffer empty",
+    "DriveDesktop": "PASS all four files SHA-256 verified in local sync folder; cloud transfer managed by Drive Desktop, cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING",
+  "evidenceRoot": "app/build/test-results and app/build/outputs/androidTest-results/connected/debug"
+}
