@@ -23,6 +23,7 @@ object DocumentAssetGarbageCollector {
         documents.forEach { document ->
             retain(document.coverImagePath)
             document.pages.forEach { page ->
+                page.colorManagement.assetPaths().forEach(::retain)
                 when (val background = page.background) {
                     is PageBackground.Pdf -> retain(background.assetPath)
                     is PageBackground.Image -> retain(background.assetPath)

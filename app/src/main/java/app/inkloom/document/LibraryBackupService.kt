@@ -115,6 +115,7 @@ class LibraryBackupService(private val filesRoot: File) {
         val portableDocuments = documents.map { document ->
             document.copy(coverImagePath = register(document.coverImagePath, DOCUMENT_ASSETS), pages = document.pages.map { page ->
                 page.copy(
+                    colorManagement=page.colorManagement.mapAssets { register(it,DOCUMENT_ASSETS)!! },
                     background = when (val background = page.background) {
                         is PageBackground.Paper -> background
                         is PageBackground.Pdf -> background.copy(assetPath = register(background.assetPath, DOCUMENT_ASSETS)!!)
@@ -233,6 +234,7 @@ class LibraryBackupService(private val filesRoot: File) {
                         is PageBackground.Image -> verifyAsset(background.assetPath, DOCUMENT_ASSETS)
                         is PageBackground.Paper -> Unit
                     }
+                    page.colorManagement.assetPaths().forEach { verifyAsset(it,DOCUMENT_ASSETS) }
                     page.savedSelections.forEach { verifyAsset(it.surface.assetPath, DOCUMENT_ASSETS) }
                     page.layers.forEach { layer ->
                         verifyRaster(layer.rasterTileSurface)
@@ -344,6 +346,7 @@ class LibraryBackupService(private val filesRoot: File) {
                     archivedAt = null,
                     pages = document.pages.map { page ->
                         page.copy(
+                            colorManagement=page.colorManagement.mapAssets { retained(it,DOCUMENT_ASSETS)!! },
                             background = when (val background = page.background) {
                                 is PageBackground.Paper -> background
                                 is PageBackground.Pdf -> background.copy(assetPath = retained(background.assetPath, DOCUMENT_ASSETS)!!)

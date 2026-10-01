@@ -13,7 +13,7 @@ import kotlin.math.ceil
 
 object ImageAssetDecoder {
     /** Decode only the source pixels intersecting the current (possibly rotated) canvas clip. */
-    fun drawCropped(canvas: Canvas, path: String, crop: ImageCrop, destination: RectF, paint: Paint) {
+    fun drawCropped(canvas: Canvas, path: String, crop: ImageCrop, destination: RectF, paint: Paint, highPrecision: Boolean = false) {
         if (destination.isEmpty) return
         val decoder = BitmapRegionDecoder.newInstance(path, false)
         try {
@@ -28,8 +28,8 @@ object ImageAssetDecoder {
                 ceil(bounds.y + (clip.bottom - destination.top) * sy + 1).toInt().coerceIn(bounds.y, bounds.y + bounds.height))
             if (region.isEmpty) return
             val bitmap = decoder.decodeRegion(region, BitmapFactory.Options().apply {
-                inPreferredConfig = Bitmap.Config.ARGB_8888
-                inPreferredColorSpace = ColorSpace.get(ColorSpace.Named.SRGB)
+                inPreferredConfig = if(highPrecision) Bitmap.Config.RGBA_F16 else Bitmap.Config.ARGB_8888
+                inPreferredColorSpace = ColorSpace.get(if(highPrecision) ColorSpace.Named.LINEAR_EXTENDED_SRGB else ColorSpace.Named.SRGB)
             }) ?: error("Image region could not be decoded")
             try {
                 canvas.drawBitmap(bitmap, null, RectF(

@@ -1,5 +1,7 @@
 package app.inkloom.document
 
+import app.inkloom.color.pixelFormat
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -413,37 +415,109 @@ class DocumentAssetService(private val context: Context) {
         catch(failure:Throwable) { bitmap.recycle(); throw failure }
     }
 
+    fun renderManagedBackground(page:InkPage,width:Int):Bitmap? {
+        val bg=page.background
+        if(bg is PageBackground.Paper)return null
+        val height=(width*PageCropTransform.visibleHeight(page)/PageCropTransform.visibleWidth(page)).toInt().coerceAtLeast(1)
+        val size=if(width.toLong()*height>16_777_216L) (width*kotlin.math.sqrt(16_777_216.0/(width.toLong()*height))).toInt().coerceAtLeast(1) else width
+        val h=(size.toLong()*height/width).toInt().coerceAtLeast(1)
+        val bitmap=app.inkloom.color.ColorBitmap.create(size,h,page.colorManagement.highPrecision)
+        try {
+            PageBackgroundStripRenderer(page.copy(crop=page.backgroundSourceCrop ?: page.crop,backgroundFrame=null),size,h).use { renderer ->
+                for(y in 0 until h step 128) {
+                    val strip=app.inkloom.color.ColorBitmap.create(size,minOf(128,h-y),page.colorManagement.highPrecision)
+                    try {renderer.draw(strip,y);Canvas(bitmap).drawBitmap(strip,0f,y.toFloat(),null)} finally {strip.recycle()}
+                }
+            }
+            if(page.colorManagement.assignedProfile!=null || page.colorManagement.softProof) {
+                app.inkloom.color.IccPreviewCache(page.colorManagement).use { cache ->
+                    val result=PixelTileBitmapAdapter.render(cache.update(PixelTileBitmapAdapter.import(bitmap).snapshot()))
+                    bitmap.recycle();return result
+                }
+            };return bitmap
+        } catch(failure:Throwable){bitmap.recycle();throw failure}
+    }
+
     fun exportPageRaster(page: InkPage, uri: Uri, options: PageRasterExportOptions) = RasterFormatService(context, this).export(page, uri, options)
     fun importArtwork(uri: Uri, name: String): InkDocument = RasterFormatService(context, this).import(uri, name)
 
     fun exportPagePng(page: InkPage, uri: Uri, options: PageRasterExportOptions = PageRasterExportOptions()) {
-        val authored = PagePngExportSize.from(page)
-        val width = options.width ?: authored.width; val height = options.height ?: authored.height
-        require(width in 1..8192 && height in 1..8192)
-        val projection = renderPageCompositeSurface(page, width, height)
-        val tileHeight = 128
-        var strip: Bitmap? = null
-        var stripStart = -1
-        val backgroundRenderer = if (options.includeBackground) PageBackgroundStripRenderer(page, width, height) else null
-        PixelTileCanvasRenderer().use { renderer ->
-            try {
-                context.contentResolver.openOutputStream(uri)?.use { output ->
-                    StreamingPng.write(output, width, height, page.dpi) { y, row ->
-                        if (strip == null || y >= stripStart + requireNotNull(strip).height) {
-                            strip?.recycle(); stripStart = y
-                            strip = Bitmap.createBitmap(width, minOf(tileHeight, height - y), Bitmap.Config.ARGB_8888)
-                            backgroundRenderer?.draw(requireNotNull(strip), y)
-                            val canvas = Canvas(requireNotNull(strip)); canvas.translate(0f, -y.toFloat())
-                            renderer.draw(canvas, projection, RectF(0f, 0f, width.toFloat(), height.toFloat()))
+        val width=options.width ?: PagePngExportSize.from(page).width
+        val height=options.height ?: PagePngExportSize.from(page).height
+        val profile=page.colorManagement.outputProfile?.let(app.inkloom.color.IccColorPipeline::profile)
+            ?: if(page.colorManagement.outputSpace==app.inkloom.color.RgbOutputSpace.DISPLAY_P3) app.inkloom.color.NativeColorManagement.builtinProfile(2) else null
+        app.inkloom.color.IccColorPipeline(page.colorManagement).use { pipeline ->
+            context.contentResolver.openOutputStream(uri)?.use { output ->
+                withPageLinearRows(page,width,height,options.includeBackground) { row ->
+                    val converted=FloatArray(width*4)
+                    StreamingPng.write(output,width,height,page.dpi,profile) { y,pixels ->
+                        pipeline.convert(row(y),converted)
+                        for(x in pixels.indices) {
+                            fun b(i:Int)=(converted[x*4+i].coerceIn(0f,1f)*255+.5f).toInt()
+                            pixels[x]=(b(3) shl 24) or (b(0) shl 16) or (b(1) shl 8) or b(2)
                         }
-                        requireNotNull(strip).getPixels(row, 0, width, 0, y - stripStart, width, 1)
                     }
-                } ?: error("Could not open image destination")
-            } finally { strip?.recycle(); backgroundRenderer?.close() }
+                }
+            } ?: error("Could not open image destination")
         }
     }
 
-    /** Fully prepares a reversible replacement before publishing any new page metadata. */
+    internal fun <T> withPageLinearRows(page: InkPage,width:Int,height:Int,background:Boolean,block: ((Int)->FloatArray)->T):T {
+        require(width in 1..8192 && height in 1..8192)
+        val projection=renderPageCompositeSurface(page,width,height)
+        val bg=if(background) PageBackgroundStripRenderer(page,width,height) else null
+        var strip:Bitmap?=null; var top=-1; var buffer:java.nio.ByteBuffer?=null
+        PixelTileCanvasRenderer().use { renderer ->
+            try { return block { y ->
+                require(y in 0 until height)
+                if(strip==null || y<top || y>=top+requireNotNull(strip).height) {
+                    strip?.recycle();top=y;strip=app.inkloom.color.ColorBitmap.create(width,minOf(128,height-y),true)
+                    bg?.draw(requireNotNull(strip),y)
+                    val canvas=Canvas(requireNotNull(strip));canvas.translate(0f,-y.toFloat())
+                    renderer.draw(canvas,projection,RectF(0f,0f,width.toFloat(),height.toFloat()))
+                    buffer=java.nio.ByteBuffer.allocate(requireNotNull(strip).byteCount).order(java.nio.ByteOrder.nativeOrder())
+                    requireNotNull(strip).copyPixelsToBuffer(requireNotNull(buffer))
+                }
+                val bitmap=requireNotNull(strip)
+                // Read a single native F16 row without quantizing through Bitmap.getPixels().
+                val bytes=requireNotNull(buffer)
+                val values=FloatArray(width*4); val offset=(y-top)*bitmap.rowBytes
+                for(x in 0 until width) {
+                    val c=app.inkloom.engine.v5.surface.PackedRgbaF16.straight(bytes.getLong(offset+x*8))
+                    values[x*4]=c.red;values[x*4+1]=c.green;values[x*4+2]=c.blue;values[x*4+3]=c.alpha
+                }; values
+            } } finally { strip?.recycle();bg?.close() }
+        }
+    }
+
+    fun importColorProfile(uri: Uri, rgbOnly: Boolean): String {
+        val asset=copyAsset(uri,"icc")
+        try {
+            val bytes=app.inkloom.color.IccColorPipeline.profile(asset.path)
+            val kind=app.inkloom.color.NativeColorManagement.profileKind(bytes)
+            require(kind==1 || (!rgbOnly && kind==2)) { "Select a valid ${if(rgbOnly) "RGB" else "RGB or CMYK"} ICC profile" }
+            return asset.path
+        } finally { releaseAssetReservation(asset.path) }
+    }
+
+    fun prepareColorManagement(page: InkPage, settings: app.inkloom.color.PageColorManagement): PreparedPageGeometry {
+        app.inkloom.color.IccColorPipeline(settings).close()
+        if(settings.softProof) { require(settings.proofProfile!=null) { "Select a proof profile" }; app.inkloom.color.IccColorPipeline(settings,true).close() }
+        val reservations=mutableListOf<RasterTileSurfaceRef>()
+        val history=retainHistoryAssets(page.colorManagement.assetPaths()+settings.assetPaths())
+        fun close() { history(); reservations.forEach(::releaseRasterTileReservation) }
+        try {
+            val after=page.copy(colorManagement=settings)
+            val layers=page.layers.map { layer -> layer.rasterTileSurface?.let { ref ->
+                reservations+=saveRasterTileSurface(loadRasterTileSurface(ref),ref)
+                val surface=loadRasterTileSurface(ref)
+                if(surface.pixelFormat!=after.pixelFormat()) layer.copy(rasterTileSurface=saveRasterTileSurface(
+                    app.inkloom.engine.v5.tools.PixelSurfaceResampling.convert(surface.snapshot(),after.pixelFormat())).also(reservations::add)) else layer
+            } ?: layer }
+            return PreparedPageGeometry(PageGeometryEdit(page,after.copy(layers=layers)),::close)
+        } catch(failure:Throwable) { close(); throw failure }
+    }
+
     fun prepareCanvasSize(page: InkPage, request: CanvasSizeRequest): PreparedPageGeometry {
         val (width, height) = request.pixels()
         if (page.crop == PageCrop() && width.toFloat() == page.width && height.toFloat() == page.height) {
@@ -545,7 +619,7 @@ class DocumentAssetService(private val context: Context) {
     fun renderPageCompositeSurface(source: InkPage, width: Int, height: Int): app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot {
         require(width in 1..8192 && height in 1..8192)
         val page = PageCropTransform.project(source)
-        val cache = PixelGroupProjectionCache(width, height)
+        val cache = PixelGroupProjectionCache(width, height, format = page.pixelFormat())
         fun mask(layer: InkLayer) = layer.mask?.takeIf { it.enabled }?.let { m ->
             m.surface?.let { m.expressed(loadMaskTileSurface(it).snapshot()) }
         }
@@ -568,7 +642,7 @@ class DocumentAssetService(private val context: Context) {
             nodes += PixelProjectionNode.Group("base", base)
             if (captured != null && (ids - captured).isNotEmpty()) nodes += PixelProjectionNode.Paint(PixelLayerProjectionInput("additions",
                 renderElementLayerSurface(source, layer.id, width, height, ids - captured), clipToBaseBelow = true))
-            val content = if (ids.isEmpty()) raw ?: cache.emptySnapshot else PixelGroupProjectionCache(width, height).update(nodes).snapshot
+            val content = if (ids.isEmpty()) raw ?: cache.emptySnapshot else PixelGroupProjectionCache(width, height, format = page.pixelFormat()).update(nodes).snapshot
             layer.id to PixelLayerProjectionInput(layer.id, content, opacity = layer.opacity,
                 blendMode = layer.blendMode.toPixelBlendMode(), mask = mask(layer),
                 clipToBaseBelow = layer.clippedToBelow, colorReplacement = layer.colorReplacement)
@@ -587,17 +661,21 @@ class DocumentAssetService(private val context: Context) {
 
     fun renderElementLayerSurface(page: InkPage, layerId: String, width: Int, height: Int,
                                          contentIds: Set<String>? = null): app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot {
-        val surface = PixelTileSurface(width, height)
+        val surface = PixelTileSurface(width, height, pixelFormat = page.pixelFormat())
         val step = surface.tileSize
         surface.beginWrite("render retained elements").use { write ->
             for (top in 0 until height step step) {
-                val bitmap = Bitmap.createBitmap(width, minOf(step, height - top), Bitmap.Config.ARGB_8888)
+                val bitmap = app.inkloom.color.ColorBitmap.create(width, minOf(step, height - top),page.colorManagement.highPrecision)
                 try {
                     val canvas = Canvas(bitmap); canvas.translate(0f, -top.toFloat())
                     drawPage(canvas, page, width, height, includeBackground = false, includedLayerIds = setOf(layerId),
                         includedContentIds = contentIds, includeRaster = false, applyLayerEffects = false, includeDraftLayers = true)
                     val strip = PixelTileBitmapAdapter.import(bitmap, step).snapshot()
-                    strip.tileInfo.forEach { info -> strip.readRgba8Tile(info.key) { pixels ->
+                    strip.tileInfo.forEach { info ->
+                        if(strip.pixelFormat.isHighPrecision) strip.readF16Tile(info.key) { pixels ->
+                            write.editTileF16(app.inkloom.engine.v5.surface.PixelTileKey(info.key.column, top / step),
+                                PixelRect(0,0,minOf(step,width-info.key.column*step),bitmap.height)) { target,_-> pixels.copyInto(target) }
+                        } else strip.readRgba8Tile(info.key) { pixels ->
                         write.editTile(app.inkloom.engine.v5.surface.PixelTileKey(info.key.column, top / step),
                             PixelRect(0, 0, minOf(step, width - info.key.column * step), bitmap.height)) { target, _ -> pixels.copyInto(target) }
                     } }
@@ -702,9 +780,10 @@ class DocumentAssetService(private val context: Context) {
         val sourceLayer = page.layers.firstOrNull { it.id == layerId }
         val reference = sourceLayer?.rasterTileSurface
         val height = (width * PageCropTransform.visibleHeight(page) / PageCropTransform.visibleWidth(page)).toInt().coerceAtLeast(1)
-        if (sourceLayer != null && reference == null) return PixelTileSurface(width, height)
-        if (reference != null && reference.pixelFormat == app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_SRGB_8888.manifestId) {
-            val surface = loadRasterTileSurface(reference)
+        if (sourceLayer != null && reference == null) return PixelTileSurface(width, height, pixelFormat = page.pixelFormat())
+        if (reference != null) {
+            val loaded = loadRasterTileSurface(reference)
+            val surface = if(loaded.pixelFormat == page.pixelFormat()) loaded else app.inkloom.engine.v5.tools.PixelSurfaceResampling.convert(loaded.snapshot(),page.pixelFormat())
             if (page.crop == PageCrop() && sourceLayer.rasterRotationQuarterTurns.mod(4) == 0 &&
                 surface.logicalWidth == width && surface.logicalHeight == height) return surface
             val crop = PageCropTransform.normalized(page.crop)
@@ -873,6 +952,7 @@ class DocumentAssetService(private val context: Context) {
             val portable = document.copy(
                 coverImagePath = document.coverImagePath?.let { "assets/${File(it).name}" },
                 pages = document.pages.map { page -> page.copy(
+                colorManagement = page.colorManagement.mapAssets { "assets/${File(it).name}" },
                 background = when (val background = page.background) {
                     is PageBackground.Pdf -> background.copy(assetPath = "assets/${File(background.assetPath).name}")
                     is PageBackground.Image -> background.copy(assetPath = "assets/${File(background.assetPath).name}")
@@ -894,7 +974,7 @@ class DocumentAssetService(private val context: Context) {
                 ) },
             )
             zip.putNextEntry(ZipEntry("manifest.json")); zip.write(DocumentCheckpointCodec.encode(portable).encodeToByteArray()); zip.closeEntry()
-            val assets = listOfNotNull(document.coverImagePath) +
+            val assets = listOfNotNull(document.coverImagePath) + document.pages.flatMap { it.colorManagement.assetPaths() } +
                 document.pages.mapNotNull { page -> when (val background = page.background) { is PageBackground.Pdf -> background.assetPath; is PageBackground.Image -> background.assetPath; else -> null } } +
                 document.pages.flatMap { it.savedSelections }.map { it.surface.assetPath } +
                 document.pages.flatMap(InkPage::layers).mapNotNull { it.mask?.surface?.assetPath } +
@@ -986,6 +1066,7 @@ class DocumentAssetService(private val context: Context) {
                 trashedAt = null,
                 archivedAt = null,
                 pages = decoded.pages.map { page -> page.copy(
+                    colorManagement = page.colorManagement.mapAssets(::retained),
                     background = when (val background = page.background) {
                         is PageBackground.Pdf -> background.copy(assetPath = retained(background.assetPath))
                         is PageBackground.Image -> background.copy(assetPath = retained(background.assetPath))
@@ -1271,7 +1352,7 @@ class DocumentAssetService(private val context: Context) {
                         }
                         ImageMask.OVAL -> canvas.clipPath(Path().apply { addOval(destination, Path.Direction.CW) })
                     }
-                    try { ImageAssetDecoder.drawCropped(canvas, element.assetPath, element.crop, destination, paint) } finally { canvas.restore() }
+                    try { ImageAssetDecoder.drawCropped(canvas, element.assetPath, element.crop, destination, paint, page.colorManagement.highPrecision) } finally { canvas.restore() }
                 }
                 is PageElement.Fill -> {
                     val destination = android.graphics.RectF(left, top, right, bottom)

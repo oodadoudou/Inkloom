@@ -1258,6 +1258,15 @@ class InkCanvasView(context: Context) : View(context) {
         rebuildSelectionDerivedState()
     }
 
+    private var colorSettings=app.inkloom.color.PageColorManagement()
+    private var colorPreview:app.inkloom.color.IccPreviewCache?=null
+    fun setColorManagement(settings:app.inkloom.color.PageColorManagement) {
+        if(colorSettings==settings && (colorPreview!=null || (settings.assignedProfile==null && !settings.softProof)))return
+        colorPreview?.close();colorPreview=null;colorSettings=settings
+        if(settings.assignedProfile!=null || settings.softProof) colorPreview=app.inkloom.color.IccPreviewCache(settings)
+        invalidate()
+    }
+
     private var boundDocumentLayers: List<app.inkloom.document.InkLayer>? = null
     private var documentLayerTargets: Map<String, app.inkloom.document.LayerEditingTarget.Rejection?>? = null
 
@@ -1916,7 +1925,13 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        setColorManagement(colorSettings)
+    }
+
     override fun onDetachedFromWindow() {
+        colorPreview?.close();colorPreview=null
         clearLiquifyReconstruction()
         selectionAnimation.cancel()
         finishSelectionColorFill(true)
@@ -2071,7 +2086,7 @@ class InkCanvasView(context: Context) : View(context) {
             (layerElementBitmaps.keys + mixedElementOverrides.keys) else emptySet()
         val orderedIds = (layerOrder.filter(contentIds::contains) + contentIds.filterNot(layerOrder::contains)).distinct()
         if (orderedIds.isEmpty()) return false
-        val directSourceOverStack = !hasElements && !hasAdjustments && boundDocumentLayers?.none { it.role == app.inkloom.document.LayerRole.FOLDER } != false && orderedIds.all { layerId ->
+        val directSourceOverStack = colorPreview==null && !hasElements && !hasAdjustments && boundDocumentLayers?.none { it.role == app.inkloom.document.LayerRole.FOLDER } != false && orderedIds.all { layerId ->
             (layerOpacities[layerId] ?: 1f) >= .999f &&
                 (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL) == LayerBlendMode.NORMAL &&
                 layerColorReplacements[layerId] == null &&
@@ -2170,7 +2185,7 @@ class InkCanvasView(context: Context) : View(context) {
         v5RasterProjectionDrawCount++
         rasterTileRenderer.draw(
             canvas,
-            update.snapshot,
+            colorPreview?.update(update.snapshot) ?: update.snapshot,
             RectF(0f, 0f, width.toFloat(), height.toFloat()),
         )
         return true

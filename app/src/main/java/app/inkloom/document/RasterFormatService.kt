@@ -39,7 +39,27 @@ internal class RasterFormatService(private val context: Context, private val ass
         val height = options.height ?: PagePngExportSize.from(page).height
         require(width in 1..8192 && height in 1..8192)
         if(options.format in setOf(RasterFileFormat.OPEN_RASTER, RasterFileFormat.PSD, RasterFileFormat.LAYERED_PNG)) {
+            require(page.colorManagement.assignedProfile==null && page.colorManagement.outputProfile==null && page.colorManagement.outputSpace==app.inkloom.color.RgbOutputSpace.SRGB) { "Profile-assigned artwork requires a native Inkloom bundle or flattened PNG export" }
             exportStack(page, uri, options, width, height); return
+        }
+        if(options.format==RasterFileFormat.CMYK_TIFF) {
+            val profile=page.colorManagement.cmykProfile?.let(app.inkloom.color.IccColorPipeline::profile)
+                ?: error("Select a CMYK printer profile in Color management before CMYK export")
+            require(app.inkloom.color.NativeColorManagement.profileKind(profile)==2) { "CMYK output requires a CMYK ICC profile" }
+            app.inkloom.color.IccColorPipeline(page.colorManagement,cmykProfile=profile).use { pipeline ->
+                assets.withPageLinearRows(page,width,height,true) { row ->
+                    context.contentResolver.openOutputStream(uri)?.use { output ->
+                        TiffRasterCodec.writeCmyk(output,width,height,page.dpi,profile) { y,bytes ->
+                            val pixels=row(y)
+                            for(x in 0 until width) { val a=pixels[x*4+3];for(c in 0..2)pixels[x*4+c]=pixels[x*4+c]*a+1-a;pixels[x*4+3]=1f }
+                            pipeline.convert(pixels,cmyk=bytes)
+                        }
+                    } ?: error("Could not open export destination")
+                }
+            }; return
+        }
+        require(page.colorManagement.outputProfile==null && page.colorManagement.outputSpace==app.inkloom.color.RgbOutputSpace.SRGB) {
+            "Use PNG or CMYK TIFF for profile-controlled output; other formats currently require sRGB output"
         }
         val temporary = File.createTempFile("raster-composite-", ".png", context.cacheDir)
         try {

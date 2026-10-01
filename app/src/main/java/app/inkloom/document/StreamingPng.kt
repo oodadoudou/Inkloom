@@ -7,7 +7,7 @@ import java.util.zip.Deflater
 
 /** RGBA scanlines encoded incrementally. Memory is independent of the full image height. */
 object StreamingPng {
-    fun write(output: OutputStream, width: Int, height: Int, dpi: Float = 300f,
+    fun write(output: OutputStream, width: Int, height: Int, dpi: Float = 300f, iccProfile: ByteArray? = null,
               row: (Int, IntArray) -> Unit) {
         require(width in 1..8192 && height in 1..8192)
         val stream = DataOutputStream(output)
@@ -22,7 +22,13 @@ object StreamingPng {
             data.writeInt(width); data.writeInt(height); data.write(byteArrayOf(8, 6, 0, 0, 0))
         } }.toByteArray()
         chunk("IHDR", header)
-        chunk("sRGB", byteArrayOf(0))
+        if(iccProfile==null) chunk("sRGB", byteArrayOf(0)) else {
+            require(iccProfile.size in 128..16*1024*1024)
+            val profile=java.io.ByteArrayOutputStream()
+            profile.write("Inkloom ICC".toByteArray(Charsets.US_ASCII));profile.write(0);profile.write(0)
+            java.util.zip.DeflaterOutputStream(profile).use { it.write(iccProfile) }
+            chunk("iCCP",profile.toByteArray())
+        }
         val density = (dpi * 1000 / 25.4f).toInt().coerceAtLeast(1)
         val physical = java.io.ByteArrayOutputStream().also { DataOutputStream(it).use { data ->
             data.writeInt(density); data.writeInt(density); data.writeByte(1)

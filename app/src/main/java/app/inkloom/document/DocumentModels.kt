@@ -49,6 +49,7 @@ data class InkPage(
     val width: Float = 1600f,
     val height: Float = 2263f,
     val dpi: Float = 300f,
+    val colorManagement: app.inkloom.color.PageColorManagement = app.inkloom.color.PageColorManagement(),
     val backgroundFrame: PageBackgroundFrame? = null,
     val backgroundSourceCrop: PageCrop? = null,
     val background: PageBackground = PageBackground.Paper(),

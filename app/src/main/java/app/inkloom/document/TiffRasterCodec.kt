@@ -26,6 +26,20 @@ object TiffRasterCodec {
         }; out.write(bytes) }; out.flush()
     }
 
+    /** TIFF separated CMYK, no alpha, with the actual printer ICC profile embedded. */
+    fun writeCmyk(output:OutputStream,width:Int,height:Int,dpi:Float,profile:ByteArray,row:(Int,ByteArray)->Unit) {
+        require(width in 1..8192 && height in 1..8192 && dpi.isFinite() && dpi>0 && profile.size in 128..16*1024*1024)
+        val out=DataOutputStream(output);val count=14;val extras=8+2+count*12+4;val profileOffset=extras+24;val pixelsOffset=profileOffset+profile.size
+        out.writeBytes("MM");out.writeShort(42);out.writeInt(8);out.writeShort(count)
+        fun tag(id:Int,type:Int,n:Int,value:Int) { out.writeShort(id);out.writeShort(type);out.writeInt(n);out.writeInt(value) }
+        tag(256,4,1,width);tag(257,4,1,height);tag(258,3,4,extras);tag(259,3,1,1 shl 16);tag(262,3,1,5 shl 16)
+        tag(273,4,1,pixelsOffset);tag(277,3,1,4 shl 16);tag(278,4,1,height);tag(279,4,1,width*height*4)
+        tag(282,5,1,extras+8);tag(283,5,1,extras+16);tag(296,3,1,2 shl 16);tag(332,3,1,1 shl 16)
+        tag(34675,7,profile.size,profileOffset);out.writeInt(0)
+        repeat(4){out.writeShort(8)};repeat(2){out.writeInt((dpi*1000).toInt());out.writeInt(1000)};out.write(profile)
+        val bytes=ByteArray(width*4);for(y in 0 until height){row(y,bytes);out.write(bytes)};out.flush()
+    }
+
     fun read(file: File): List<Image> = RandomAccessFile(file, "r").use { input ->
         val signature = input.readUnsignedShort(); require(signature == 0x4949 || signature == 0x4d4d) { "Invalid TIFF byte order" }
         val little = signature == 0x4949

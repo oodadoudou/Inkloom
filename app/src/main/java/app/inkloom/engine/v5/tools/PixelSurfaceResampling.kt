@@ -6,27 +6,50 @@ import kotlin.math.ceil
 
 /** Destination tiles are allocated only where the original sparse content can contribute. */
 object PixelSurfaceResampling {
+    fun convert(source: PixelTileSurfaceSnapshot, format: PixelTileFormat): PixelTileSurface {
+        val output=PixelTileSurface(source.logicalWidth,source.logicalHeight,source.tileSize,pixelFormat=format)
+        output.beginWrite("change pixel precision").use { write ->
+            source.tileInfo.forEach { info ->
+                val w=minOf(source.tileSize,source.logicalWidth-info.key.column*source.tileSize)
+                val h=minOf(source.tileSize,source.logicalHeight-info.key.row*source.tileSize)
+                if(format.isHighPrecision) write.editTileF16(info.key,PixelRect(0,0,w,h)) { p,stride ->
+                    for(y in 0 until h) for(x in 0 until w) {
+                        val color=source.linearPixelAt(info.key.column*source.tileSize+x,info.key.row*source.tileSize+y)
+                        p[y*stride+x]=PackedRgbaF16.packPremultiplied(color.red,color.green,color.blue,color.alpha)
+                    }
+                } else write.editTile(info.key,PixelRect(0,0,w,h)) { p,stride ->
+                    for(y in 0 until h) for(x in 0 until w) p[y*stride+x]=source.pixelAt(info.key.column*source.tileSize+x,info.key.row*source.tileSize+y)
+                }
+            }; write.commit().close()
+        }; return output
+    }
+
     fun project(source: PixelTileSurfaceSnapshot, width: Int, height: Int, turns: Int = 0,
                 left: Float = 0f, top: Float = 0f, right: Float = 1f, bottom: Float = 1f): PixelTileSurface {
         val rotation = turns.mod(4)
         val rotatedWidth = if (rotation % 2 == 0) source.logicalWidth else source.logicalHeight
         val rotatedHeight = if (rotation % 2 == 0) source.logicalHeight else source.logicalWidth
-        val rotated = if (rotation == 0) source else PixelTileSurface(rotatedWidth, rotatedHeight, source.tileSize).also { output ->
+        val rotated = if (rotation == 0) source else PixelTileSurface(rotatedWidth, rotatedHeight, source.tileSize, pixelFormat = source.pixelFormat).also { output ->
             output.beginWrite("rotate source").use { write ->
-                source.tileInfo.forEach { info -> source.readRgba8Tile(info.key) { pixels ->
+                source.tileInfo.forEach { info ->
+                    val pixels = if (source.pixelFormat.isHighPrecision) null else source.copyTilePixels(info.key)
+                    val floats = if (source.pixelFormat.isHighPrecision) source.copyTileF16(info.key) else null
                     for (y in 0 until source.tileSize) for (x in 0 until source.tileSize) {
                         val sx = info.key.column * source.tileSize + x; val sy = info.key.row * source.tileSize + y
-                        val pixel = pixels[y * source.tileSize + x]
-                        if (sx < source.logicalWidth && sy < source.logicalHeight && pixel != 0) {
+                        val index = y * source.tileSize + x
+                        val pixel = pixels?.get(index) ?: 0
+                        val packed = floats?.get(index) ?: 0L
+                        if (sx < source.logicalWidth && sy < source.logicalHeight && (pixel != 0 || packed != 0L)) {
                             val point = when (rotation) {
                                 1 -> source.logicalHeight - 1 - sy to sx
                                 2 -> source.logicalWidth - 1 - sx to source.logicalHeight - 1 - sy
                                 else -> sy to source.logicalWidth - 1 - sx
                             }
-                            write.setPixel(point.first, point.second, pixel)
+                            if (floats != null) write.setLinearPixel(point.first, point.second, PackedRgbaF16.straight(packed))
+                            else write.setPixel(point.first, point.second, pixel)
                         }
                     }
-                } }
+                }
                 write.commit().close()
             }
         }.snapshot()
@@ -37,9 +60,8 @@ object PixelSurfaceResampling {
 
     fun resample(source: PixelTileSurfaceSnapshot, width: Int, height: Int,
                  scaleX: Float, scaleY: Float, offsetX: Float = 0f, offsetY: Float = 0f, targetTileSize: Int = source.tileSize): PixelTileSurface {
-        require(source.pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888) { "Resampling currently requires RGBA8" }
         require(width in 1..8192 && height in 1..8192 && scaleX > 0 && scaleY > 0)
-        val output = PixelTileSurface(width, height, targetTileSize)
+        val output = PixelTileSurface(width, height, targetTileSize, pixelFormat = source.pixelFormat)
         val candidates = linkedSetOf<PixelTileKey>()
         val tile = output.tileSize
         val sourceTile = source.tileSize
@@ -54,6 +76,18 @@ object PixelSurfaceResampling {
         output.beginWrite("resample canvas").use { write ->
             candidates.forEach { key ->
                 val tw = minOf(tile, width - key.column * tile); val th = minOf(tile, height - key.row * tile)
+                if (source.pixelFormat.isHighPrecision) {
+                    write.editTileF16(key, PixelRect(0,0,tw,th)) { pixels,stride ->
+                        for(y in 0 until th) for(x in 0 until tw) {
+                            val sx=(key.column*tile+x+.5f-offsetX)/scaleX-.5f; val sy=(key.row*tile+y+.5f-offsetY)/scaleY-.5f
+                            val ix=floor(sx).toInt(); val iy=floor(sy).toInt(); val tx=sx-ix; val ty=sy-iy
+                            val a=source.linearPixelAt(ix,iy); val b=source.linearPixelAt(ix+1,iy)
+                            val c=source.linearPixelAt(ix,iy+1); val d=source.linearPixelAt(ix+1,iy+1)
+                            fun channel(f:(LinearRgba)->Float)=f(a)*(1-tx)*(1-ty)+f(b)*tx*(1-ty)+f(c)*(1-tx)*ty+f(d)*tx*ty
+                            pixels[y*stride+x]=PackedRgbaF16.packPremultiplied(channel{it.red},channel{it.green},channel{it.blue},channel{it.alpha})
+                        }
+                    }
+                } else
                 write.editTile(key, PixelRect(0, 0, tw, th)) { pixels, stride ->
                     for (y in 0 until th) for (x in 0 until tw) {
                         val sx = (key.column * tile + x + .5f - offsetX) / scaleX - .5f

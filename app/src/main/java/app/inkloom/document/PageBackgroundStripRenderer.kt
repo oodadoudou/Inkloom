@@ -62,7 +62,12 @@ internal class PageBackgroundStripRenderer(private val page: InkPage, private va
                 val transform = matrix(p.width, p.height, top) { x, y -> paperPoint(x / p.width, y / p.height, top) }
                 val clip = Rect(maxOf(0, floor(target.left).toInt()), maxOf(0, floor(target.top - top).toInt()),
                     minOf(width, ceil(target.right).toInt()), minOf(bitmap.height, ceil(target.bottom - top).toInt()))
-                if (!clip.isEmpty) p.render(bitmap, clip, transform, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                if (!clip.isEmpty) {
+                    if(bitmap.config==Bitmap.Config.RGBA_F16) {
+                        val prepared=Bitmap.createBitmap(bitmap.width,bitmap.height,Bitmap.Config.ARGB_8888)
+                        try { prepared.eraseColor(Color.WHITE);p.render(prepared,clip,transform,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);canvas.drawBitmap(prepared,0f,0f,null) } finally { prepared.recycle() }
+                    } else p.render(bitmap,clip,transform,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                }
             }
             is PageBackground.Image -> {
                 val decoder = requireNotNull(image)
@@ -86,7 +91,8 @@ internal class PageBackgroundStripRenderer(private val page: InkPage, private va
                 val source = Rect(floor(region.left - 1).toInt().coerceIn(0, decoder.width), floor(region.top - 1).toInt().coerceIn(0, decoder.height),
                     ceil(region.right + 1).toInt().coerceIn(0, decoder.width), ceil(region.bottom + 1).toInt().coerceIn(0, decoder.height))
                 if (source.isEmpty) return
-                val decoded = decoder.decodeRegion(source, BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 })
+                val decoded = decoder.decodeRegion(source, BitmapFactory.Options().apply { inPreferredConfig = if(bitmap.config==Bitmap.Config.RGBA_F16) Bitmap.Config.RGBA_F16 else Bitmap.Config.ARGB_8888
+                    inPreferredColorSpace=android.graphics.ColorSpace.get(if(bitmap.config==Bitmap.Config.RGBA_F16) android.graphics.ColorSpace.Named.LINEAR_EXTENDED_SRGB else android.graphics.ColorSpace.Named.SRGB) })
                 try {
                     canvas.clipRect(target.left, target.top - top, target.right, target.bottom - top)
                     canvas.concat(transform)

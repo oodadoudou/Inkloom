@@ -2046,6 +2046,7 @@ private fun EditorScreen(
     var rotateToolHeld by remember { mutableStateOf(false) }
     fun exitCanvasNavigation() { handToolEnabled = false; handToolHeld = false; rotateToolEnabled = false; rotateToolHeld = false }
     var exportMenu by remember { mutableStateOf(false) }
+    var colorManagementOpen by remember { mutableStateOf(false) }
     var canvasSizeOpen by remember { mutableStateOf(false) }
     var canvasSizeBusy by remember { mutableStateOf(false) }
     var pageExportOpen by remember { mutableStateOf(false) }
@@ -2874,6 +2875,7 @@ private fun EditorScreen(
                     HorizontalDivider()
                     document.pages.forEachIndexed { index, page -> DropdownMenuItem(text = { Text(tr("Go to page ${index + 1}", "前往第 ${index + 1} 页")) }, onClick = { exportMenu = false; selectPageWithViewport(page.id) }) }
                     HorizontalDivider()
+                    DropdownMenuItem(text = { Text(tr("Color management", "色彩管理")) }, onClick = { exportMenu=false;colorManagementOpen=true })
                     DropdownMenuItem(text = { Text(tr("Canvas & resolution", "画布与分辨率")) }, onClick = { exportMenu = false; canvasSizeOpen = true })
                     DropdownMenuItem(text = { Text(tr("Export current page", "导出当前页")) }, onClick = { exportMenu = false; pageExportOpen = true })
                     DropdownMenuItem(text = { Text(tr("Export editable Inkloom package", "导出可编辑 Inkloom 文件")) }, onClick = { exportMenu = false; onExportBundle() })
@@ -2882,6 +2884,27 @@ private fun EditorScreen(
         }
         if (pageExportOpen) PageRasterExportDialog(storedPage, settings.language,
             onDismiss = { pageExportOpen = false }, onExport = { options -> pageExportOpen = false; onExportPage(options) })
+        if(colorManagementOpen) ColorManagementDialog(storedPage,settings.language,canvasSizeBusy,
+            onDismiss={colorManagementOpen=false},onApply={ next ->
+                val view=canvasView
+                if(view!=null && !view.selectionLayerTransferPending) {
+                    view.finishSelectionTransform(apply=true);view.selectionLayerTransferPending=true;canvasSizeBusy=true
+                    appearanceScope.launch {
+                        var prepared:PreparedPageGeometry?=null;var published=false
+                        try {
+                            kotlinx.coroutines.withTimeout(15_000) { while(view.hasPendingPaintPublicationForMerge()) kotlinx.coroutines.delay(8) }
+                            val before=currentAppearancePage
+                            prepared=withContext(Dispatchers.IO){maskAssets.prepareColorManagement(before,next)}
+                            val transaction=requireNotNull(prepared)
+                            check(onApplyPageGeometry(document.id,before.id,transaction.edit,false)) { "Page changed during color setup" }
+                            view.recordExternalEdit(undo={onApplyPageGeometry(document.id,before.id,transaction.edit,true)},
+                                redo={onApplyPageGeometry(document.id,before.id,transaction.edit,false)},dispose=transaction::close)
+                            published=true;colorManagementOpen=false
+                        } catch(failure:Throwable) { Toast.makeText(context,failure.message?:"Color management failed",Toast.LENGTH_LONG).show() }
+                        finally { if(!published)prepared?.close();view.selectionLayerTransferPending=false;canvasSizeBusy=false }
+                    }
+                }
+            })
         if (canvasSizeOpen) CanvasSizeDialog(storedPage, settings.language, canvasSizeBusy,
             onDismiss = { canvasSizeOpen = false }, onApply = { request ->
                 val view = canvasView
@@ -5032,7 +5055,7 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
     val rasterCommitMutex = remember(documentId, page.id) { Mutex() }
     val pendingRasterSaves = remember(documentId, page.id) { java.util.concurrent.atomic.AtomicInteger() }
     val currentMergePage by rememberUpdatedState(page)
-    val rasterSurfaceRuntime = remember(documentId, page.id, rasterRenderWidth) {
+    val rasterSurfaceRuntime = remember(documentId, page.id, rasterRenderWidth, page.colorManagement.highPrecision) {
         RasterLayerSurfaceRuntime(renderWidth = rasterRenderWidth, loader = assets::renderRasterLayerSurface)
     }
     val latestRasterAssets = remember(documentId, page.id) {
@@ -5288,7 +5311,7 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
         }
     }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
-    val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, page.backgroundFrame, page.backgroundSourceCrop, backgroundVisible, rasterRenderWidth) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, rasterRenderWidth, page.backgroundRotationQuarterTurns, page.backgroundSourceCrop ?: page.crop) }.getOrNull() else null }
+    val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, page.backgroundFrame, page.backgroundSourceCrop, page.colorManagement, backgroundVisible, rasterRenderWidth) { if (backgroundVisible) runCatching { if(page.colorManagement.highPrecision || page.colorManagement.assignedProfile!=null || page.colorManagement.softProof) assets.renderManagedBackground(page,rasterRenderWidth) else assets.renderBackground(page.background, rasterRenderWidth, page.backgroundRotationQuarterTurns, page.backgroundSourceCrop ?: page.crop) }.getOrNull() else null }
     DisposableEffect(background) { onDispose { background?.recycle() } }
     val paperColor = (page.background as? PageBackground.Paper)?.colorArgb?.let(::Color) ?: Color.White
     val visibleLayerIds = page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role != LayerRole.FOLDER }.mapTo(mutableSetOf()) { it.id }
@@ -5297,7 +5320,7 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
     val layerBlendModes = page.layers.associate { it.id to it.blendMode }
     val layerOrder = page.layers.mapIndexed { index, layer -> layer.id to index }.toMap()
     val retainedLayerKeys = RetainedLayerRenderKey.forPage(page)
-    val layerElementBitmaps = remember(page.id, page.width, page.height, page.elements, retainedLayerKeys, page.crop, page.backgroundRotationQuarterTurns, rasterRenderWidth) {
+    val layerElementBitmaps = remember(page.id, page.width, page.height, page.elements, retainedLayerKeys, page.crop, page.backgroundRotationQuarterTurns, rasterRenderWidth, page.colorManagement.highPrecision) {
         page.layers.mapNotNull { layer ->
             val elementIds = page.elements.filter { it.layerId == layer.id }.mapTo(linkedSetOf(), PageElement::id)
             if (elementIds.isEmpty() || !LayerHierarchy.effectiveVisible(page.layers, layer)) return@mapNotNull null
@@ -5306,7 +5329,7 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
             val baseElementIds = if (splitAtAlphaLock) elementIds.intersect(capturedIds) else elementIds
             val addedElementIds = if (splitAtAlphaLock) elementIds - capturedIds else emptySet()
             val renderHeight = (rasterRenderWidth * PageCropTransform.visibleHeight(page) / PageCropTransform.visibleWidth(page)).toInt().coerceAtLeast(1)
-            if (rasterRenderWidth.toLong() * renderHeight > 4_194_304L) {
+            if (page.colorManagement.highPrecision || rasterRenderWidth.toLong() * renderHeight > 4_194_304L) {
                 layer.id to LayerElementBitmaps(null, null,
                     baseElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerSurface(page, layer.id, rasterRenderWidth, renderHeight, it) },
                     addedElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerSurface(page, layer.id, rasterRenderWidth, renderHeight, it) })
@@ -5480,6 +5503,7 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
                 view.viewportRotationDegrees = viewportState.rotationDegrees
                 view.setDocumentLayers(page.layers)
                 view.setProtectedLayerIds(lockedLayerIds)
+                view.setColorManagement(page.colorManagement)
                 view.setPageBackground(background, PageCropTransform.project(page).backgroundFrame?.let {
                     android.graphics.RectF(it.left / renderedPage.width, it.top / renderedPage.height,
                         (it.left + it.width) / renderedPage.width, (it.top + it.height) / renderedPage.height) })

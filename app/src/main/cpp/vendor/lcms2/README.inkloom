@@ -1,0 +1,4 @@
+Little CMS core 2.19 (MIT).
+https://github.com/mm2/Little-CMS
+Tag lcms2.19, commit b76633e60c8387a77268fb3359277ca25b5fd75c.
+Only include/ and src/ from the core library; no GPL plugins.
