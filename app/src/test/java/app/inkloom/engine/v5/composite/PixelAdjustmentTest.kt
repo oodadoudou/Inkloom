@@ -10,6 +10,34 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PixelAdjustmentTest {
+    @Test fun channelAdjustmentsPreserveF16AlphaMasksAndSourcePixels() {
+        val surface = PixelTileSurface(64, 64, 64, pixelFormat = app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16)
+        val color = app.inkloom.engine.v5.surface.PackedRgbaF16.packPremultiplied(.3f, .2f, .1f, .5f)
+        surface.beginWrite("fixture").use {
+            it.editTileF16(app.inkloom.engine.v5.surface.PixelTileKey(0, 0), app.inkloom.engine.v5.surface.PixelRect(0, 0, 64, 64)) { pixels, stride ->
+                pixels[10 * stride + 10] = color; pixels[10 * stride + 40] = color
+            }
+            it.commit().close()
+        }
+        val mask = MaskTileSurface(64, 64, 64, initialDefaultAlpha = 255)
+        mask.beginWrite("mask").use { it.setAlpha(40, 10, 0); it.commit().close() }
+        val adjustments = listOf(
+            LayerAdjustment(LayerAdjustmentKind.LEVELS, redLevels = app.inkloom.document.AdjustmentLevels(outputWhite = 0f)),
+            LayerAdjustment(LayerAdjustmentKind.CURVES, redCurve = listOf(app.inkloom.document.AdjustmentCurvePoint(0f, 0f),
+                app.inkloom.document.AdjustmentCurvePoint(1f, 0f)), redCurveSmooth = true))
+        adjustments.forEach { value ->
+            val output = PixelAdjustmentProjectionCache(64, 64, 64, surface.pixelFormat, "f16-${value.kind}")
+                .update(surface.snapshot(), value, 1f, mask.snapshot()).snapshot
+            val changed = output.packedF16At(10, 10)
+            assertEquals(.5f, app.inkloom.engine.v5.surface.PackedRgbaF16.alpha(changed), .001f)
+            assertEquals(0f, app.inkloom.engine.v5.surface.PackedRgbaF16.premultipliedRed(changed), 0f)
+            assertEquals(.2f, app.inkloom.engine.v5.surface.PackedRgbaF16.premultipliedGreen(changed), .001f)
+            assertEquals(.1f, app.inkloom.engine.v5.surface.PackedRgbaF16.premultipliedBlue(changed), .001f)
+            assertEquals(color, output.packedF16At(40, 10))
+            assertEquals(color, surface.snapshot().packedF16At(10, 10))
+        }
+    }
+
     @Test fun singleChannelLevelsLeaveOtherColorsAndAlphaUntouched() {
         val value = LayerAdjustment(LayerAdjustmentKind.LEVELS,
             redLevels = app.inkloom.document.AdjustmentLevels(outputWhite = 0f))

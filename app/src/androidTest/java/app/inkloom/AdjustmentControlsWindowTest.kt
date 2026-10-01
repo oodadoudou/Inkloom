@@ -44,6 +44,74 @@ class AdjustmentControlsWindowTest {
     private fun progress(label: String, value: Float) = compose.onNodeWithContentDescription("$label adjustment")
         .performSemanticsAction(SemanticsActions.SetProgress) { it(value) }
 
+    @Test fun nativeCurveGraphAddsDragsDeletesAndNumericChannelsPersistWithOneUndo() {
+        createNote(); add("Curves")
+        val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+        fun bounds(): android.graphics.Rect {
+            compose.onNodeWithContentDescription("Tone curve graph").performScrollTo()
+            var found: android.graphics.Rect? = null
+            compose.waitUntil(5_000) {
+                if (android.os.Build.VERSION.SDK_INT >= 34) instrumentation.uiAutomation.clearCache()
+                fun visit(node: android.view.accessibility.AccessibilityNodeInfo?) {
+                    if (node == null) return
+                    if (node.contentDescription?.toString() == "Tone curve graph") found = android.graphics.Rect().also { node.getBoundsInScreen(it) }
+                    else repeat(node.childCount) { visit(node.getChild(it)) }
+                }
+                visit(instrumentation.uiAutomation.rootInActiveWindow); found != null
+            }
+            return found!!
+        }
+        fun gesture(start: android.graphics.PointF, end: android.graphics.PointF = start, cancel: Boolean = false) {
+            val down = android.os.SystemClock.uptimeMillis()
+            fun event(action: Int, point: android.graphics.PointF) {
+                val motion = android.view.MotionEvent.obtain(down, android.os.SystemClock.uptimeMillis(), action, 1,
+                    arrayOf(android.view.MotionEvent.PointerProperties().apply { id = 0; toolType = android.view.MotionEvent.TOOL_TYPE_STYLUS }),
+                    arrayOf(android.view.MotionEvent.PointerCoords().apply { x = point.x; y = point.y; pressure = .6f }),
+                    0, 0, 1f, 1f, 0, 0, android.view.InputDevice.SOURCE_STYLUS, 0)
+                try { assertTrue(instrumentation.uiAutomation.injectInputEvent(motion, true)) } finally { motion.recycle() }
+            }
+            event(android.view.MotionEvent.ACTION_DOWN, start)
+            repeat(8) { n ->
+                android.os.SystemClock.sleep(16)
+                val t = (n + 1) / 8f
+                event(android.view.MotionEvent.ACTION_MOVE, android.graphics.PointF(start.x + (end.x - start.x) * t, start.y + (end.y - start.y) * t))
+            }
+            event(if (cancel) android.view.MotionEvent.ACTION_CANCEL else android.view.MotionEvent.ACTION_UP, end)
+            compose.waitForIdle()
+        }
+        fun at(bounds: android.graphics.Rect, x: Float, y: Float) = android.graphics.PointF(bounds.left + bounds.width() * x, bounds.top + bounds.height() * y)
+        var graph = bounds()
+        gesture(at(graph, .4f, .3f))
+        compose.onNodeWithContentDescription("Input curve value").performTextReplacement("102")
+        compose.onNodeWithContentDescription("Output curve value").performTextReplacement("180")
+        compose.onNodeWithText("Smooth", substring = false).performScrollTo().performClick()
+        compose.onNodeWithText("Red", substring = false).performScrollTo().performClick()
+        graph = bounds(); gesture(at(graph, .5f, .4f))
+        compose.onNodeWithContentDescription("Input curve value").performTextReplacement("128")
+        compose.onNodeWithContentDescription("Output curve value").performTextReplacement("100")
+        compose.onNodeWithText("Blue", substring = false).performScrollTo().performClick()
+        graph = bounds(); gesture(at(graph, .5f, .5f))
+        gesture(at(graph, .5f, .5f), at(graph, .6f, .2f), cancel = true)
+        // Delete by dragging outside, then add and remove using the explicit control as well.
+        gesture(at(graph, .5f, .5f), android.graphics.PointF(graph.exactCenterX(), graph.top - 60f))
+        gesture(at(graph, .5f, .4f))
+        compose.onNodeWithContentDescription("Delete curve point").performScrollTo().performClick()
+        compose.onNodeWithText("Apply").performClick()
+        val value = adjustment(LayerAdjustmentKind.CURVES).adjustment!!
+        assertTrue(value.curveSmooth)
+        assertEquals(3, value.curve.size)
+        assertEquals(102f / 255f, value.curve[1].input, .0001f)
+        assertEquals(180f / 255f, value.curve[1].output, .0001f)
+        assertEquals(3, value.redCurve.size)
+        assertEquals(100f / 255f, value.redCurve[1].output, .0001f)
+        assertEquals(2, value.blueCurve.size)
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        assertEquals(LayerAdjustment(LayerAdjustmentKind.CURVES), adjustment(LayerAdjustmentKind.CURVES).adjustment)
+        compose.onAllNodesWithContentDescription("Redo").onFirst().performClick()
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        assertEquals(value, adjustment(LayerAdjustmentKind.CURVES).adjustment)
+    }
+
     @Test fun levelsKeepIndependentChannelsAndResetCancelUndoAndReopen() {
         createNote(); add("Levels")
         compose.onNodeWithText("Red", substring = false).performClick(); progress("Output white", .6f)

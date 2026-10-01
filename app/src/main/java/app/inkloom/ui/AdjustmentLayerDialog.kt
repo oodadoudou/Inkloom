@@ -30,7 +30,7 @@ internal fun adjustmentName(kind: LayerAdjustmentKind, language: UiLanguage): St
 @Composable
 internal fun AdjustmentLayerDialog(layer: InkLayer, onDismiss: () -> Unit, onPreview: (LayerAdjustment) -> Unit, onApply: (LayerAdjustment) -> Unit) {
     val language = LocalUiLanguage.current
-    var levelsChannel by remember(layer.id) { mutableIntStateOf(0) }
+    var channel by remember(layer.id) { mutableIntStateOf(0) }
     var value by remember(layer.id) { mutableStateOf(layer.adjustment ?: LayerAdjustment()) }
     fun update(next: LayerAdjustment) { value = next; onPreview(next) }
     @Composable fun parameter(label: String, current: Float, range: ClosedFloatingPointRange<Float>, update: (Float) -> Unit) {
@@ -63,12 +63,12 @@ internal fun AdjustmentLayerDialog(layer: InkLayer, onDismiss: () -> Unit, onPre
                         parameter(language.text("Threshold", "阈值"), value.threshold, 0f..1f) { update(value.copy(threshold = it)) }
                     }
                     LayerAdjustmentKind.LEVELS -> {
-                        val levels = when (levelsChannel) {
+                        val levels = when (channel) {
                             1 -> value.redLevels; 2 -> value.greenLevels; 3 -> value.blueLevels
                             else -> AdjustmentLevels(value.inputBlack, value.inputGamma, value.inputWhite, value.outputBlack, value.outputWhite)
                         }
                         fun change(next: AdjustmentLevels) {
-                            update(when (levelsChannel) {
+                            update(when (channel) {
                                 1 -> value.copy(redLevels = next); 2 -> value.copy(greenLevels = next); 3 -> value.copy(blueLevels = next)
                                 else -> value.copy(inputBlack = next.inputBlack, inputGamma = next.inputGamma,
                                     inputWhite = next.inputWhite, outputBlack = next.outputBlack, outputWhite = next.outputWhite)
@@ -76,7 +76,7 @@ internal fun AdjustmentLayerDialog(layer: InkLayer, onDismiss: () -> Unit, onPre
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             listOf("RGB", language.text("Red", "红"), language.text("Green", "绿"), language.text("Blue", "蓝")).forEachIndexed { index, label ->
-                                FilterChip(selected = levelsChannel == index, onClick = { levelsChannel = index },
+                                FilterChip(selected = channel == index, onClick = { channel = index },
                                     label = { Text(label) }, modifier = Modifier.weight(1f))
                             }
                         }
@@ -88,11 +88,26 @@ internal fun AdjustmentLayerDialog(layer: InkLayer, onDismiss: () -> Unit, onPre
                         TextButton({ change(AdjustmentLevels()) }) { Text(language.text("Reset channel", "重置此通道")) }
                     }
                     LayerAdjustmentKind.CURVES -> {
-                        listOf(.25f, .5f, .75f).forEach { x ->
-                            val current = value.curve.firstOrNull { kotlin.math.abs(it.input - x) < .001f }?.output ?: x
-                            parameter("${(x * 100).toInt()}%", current, 0f..1f) { output ->
-                                update(value.copy(curve = (value.curve.filterNot { kotlin.math.abs(it.input - x) < .001f } + AdjustmentCurvePoint(x, output)).sortedBy(AdjustmentCurvePoint::input)))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            listOf("RGB", language.text("Red", "红"), language.text("Green", "绿"), language.text("Blue", "蓝")).forEachIndexed { index, label ->
+                                FilterChip(selected = channel == index, onClick = { channel = index },
+                                    label = { Text(label) }, modifier = Modifier.weight(1f))
                             }
+                        }
+                        val points = when (channel) { 1 -> value.redCurve; 2 -> value.greenCurve; 3 -> value.blueCurve; else -> value.curve }
+                        val smooth = when (channel) { 1 -> value.redCurveSmooth; 2 -> value.greenCurveSmooth; 3 -> value.blueCurveSmooth; else -> value.curveSmooth }
+                        key(channel) {
+                            AdjustmentCurveEditor(points, smooth, onChange = { next ->
+                                update(when (channel) {
+                                    1 -> value.copy(redCurve = next); 2 -> value.copy(greenCurve = next); 3 -> value.copy(blueCurve = next)
+                                    else -> value.copy(curve = next)
+                                })
+                            }, onSmooth = { next ->
+                                update(when (channel) {
+                                    1 -> value.copy(redCurveSmooth = next); 2 -> value.copy(greenCurveSmooth = next); 3 -> value.copy(blueCurveSmooth = next)
+                                    else -> value.copy(curveSmooth = next)
+                                })
+                            })
                         }
                     }
                     LayerAdjustmentKind.COLOR_BALANCE -> {

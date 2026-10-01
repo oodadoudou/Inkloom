@@ -67,18 +67,10 @@ object PixelAdjustmentMath {
     }
 
     private fun curve(rgb: FloatArray, value: LayerAdjustment): FloatArray {
-        val points = value.curve.filter { it.input.isFinite() && it.output.isFinite() }
-            .sortedBy { it.input }.ifEmpty { listOf(app.inkloom.document.AdjustmentCurvePoint(0f, 0f), app.inkloom.document.AdjustmentCurvePoint(1f, 1f)) }
-        fun sample(input: Float): Float {
-            val x = input.coerceIn(0f, 1f)
-            val upper = points.indexOfFirst { it.input >= x }
-            if (upper <= 0) return points.first().output
-            if (upper < 0) return points.last().output
-            val left = points[upper - 1]; val right = points[upper]
-            val amount = if (right.input == left.input) 0f else (x - left.input) / (right.input - left.input)
-            return left.output + (right.output - left.output) * amount
-        }
-        return FloatArray(3) { sample(rgb[it]) }
+        val master = PreparedToneCurve(value.curve, value.curveSmooth)
+        val channels = listOf(PreparedToneCurve(value.redCurve, value.redCurveSmooth),
+            PreparedToneCurve(value.greenCurve, value.greenCurveSmooth), PreparedToneCurve(value.blueCurve, value.blueCurveSmooth))
+        return FloatArray(3) { master.sample(channels[it].sample(rgb[it])) }
     }
 
     private fun colorBalance(rgb: FloatArray, value: LayerAdjustment): FloatArray {
@@ -153,9 +145,9 @@ internal class PixelAdjustmentKernel(private val value: LayerAdjustment) {
         value.inputBlack, value.inputGamma, value.inputWhite, value.outputBlack, value.outputWhite))
     private val channelLevels = listOf(value.redLevels, value.greenLevels, value.blueLevels).map(::PreparedLevels)
 
-    private val curvePoints = value.curve.filter { it.input.isFinite() && it.output.isFinite() }
-        .sortedBy { it.input }.ifEmpty { listOf(app.inkloom.document.AdjustmentCurvePoint(0f, 0f),
-            app.inkloom.document.AdjustmentCurvePoint(1f, 1f)) }
+    private val masterCurve = PreparedToneCurve(value.curve, value.curveSmooth)
+    private val channelCurves = listOf(PreparedToneCurve(value.redCurve, value.redCurveSmooth),
+        PreparedToneCurve(value.greenCurve, value.greenCurveSmooth), PreparedToneCurve(value.blueCurve, value.blueCurveSmooth))
     private val gradientStops = value.gradient.filter { it.position.isFinite() }.sortedBy { it.position }
         .ifEmpty { listOf(GradientColorStop(0f, 0xFF000000L), GradientColorStop(1f, 0xFFFFFFFFL)) }
 
@@ -206,16 +198,9 @@ internal class PixelAdjustmentKernel(private val value: LayerAdjustment) {
                 output[2] = masterLevels.apply(channelLevels[2].apply(blue))
             }
             LayerAdjustmentKind.CURVES -> {
-                fun sample(channel: Float): Float {
-                    val x = channel.coerceIn(0f, 1f)
-                    val upper = curvePoints.indexOfFirst { it.input >= x }
-                    if (upper <= 0) return curvePoints.first().output
-                    if (upper < 0) return curvePoints.last().output
-                    val left = curvePoints[upper - 1]; val right = curvePoints[upper]
-                    val amount = if (right.input == left.input) 0f else (x - left.input) / (right.input - left.input)
-                    return left.output + (right.output - left.output) * amount
-                }
-                output[0] = sample(red); output[1] = sample(green); output[2] = sample(blue)
+                output[0] = masterCurve.sample(channelCurves[0].sample(red))
+                output[1] = masterCurve.sample(channelCurves[1].sample(green))
+                output[2] = masterCurve.sample(channelCurves[2].sample(blue))
             }
             LayerAdjustmentKind.COLOR_BALANCE -> {
                 val luminance = (.2126f * red + .7152f * green + .0722f * blue).coerceIn(0f, 1f)
