@@ -5292,21 +5292,13 @@ class InkCanvasView(context: Context) : View(context) {
         val activeResult = results[activeLayerId]
         rebuildSelectionDerivedState()
         val affine = finalTransform as? SelectionAffineTransform
-        if (mixed.isNotEmpty() && affine == null) {
-            results.values.filterNotNull().forEach { result -> result.transactionRecord?.let { it.close() } }
-            mixed.keys.forEach(mixedElementOverrides::remove)
-            mixed.values.forEach(MixedSelectionDraft::close)
-            onPaintCapabilityRejected("UNSUPPORTED_WITH_EXPLICIT_REASON: STRUCTURED_OBJECT_NON_AFFINE_TRANSFORM")
-            invalidateLayerComposition()
-            return false
-        }
         fun publish(layerId: String, useAfter: Boolean) {
             val result = results[layerId] ?: return
             val surface = rasterTileSurfaceFor(layerId) ?: return
             val draft = mixed[layerId]
             val offset = selectionLayerOffsets[layerId] ?: (0f to 0f)
             val layerAffine = affine?.copy(translateX = affine.translateX + offset.first, translateY = affine.translateY + offset.second)
-            val replacement = if (draft != null && useAfter) draft.transformed(requireNotNull(layerAffine), surface.logicalWidth,
+            val replacement = if (draft != null && useAfter) draft.transformed(layerAffine ?: finalTransform, surface.logicalWidth,
                 surface.logicalHeight, pageModelWidth, pageModelHeight) else draft?.source?.elements
             val edit = draft?.let { app.inkloom.document.LayerElementEdit(it.source.elements.mapTo(mutableSetOf(), PageElement::id), replacement.orEmpty()) }
             if (edit != null) mixedElementExpected[layerId] = edit
@@ -6462,12 +6454,6 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun flipSelection(horizontal: Boolean): Boolean {
         selectionCanvasTransform?.let { draft ->
-            if (mixedSelectionDrafts.isNotEmpty()) {
-                onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
-                    "文字和图片保持可编辑时暂不支持镜像；请仅选择像素内容后再翻转"
-                else "Mirroring editable text and images is unsupported; select pixel content only before flipping")
-                return false
-            }
             draft.replace(draft.pose.withPose(if (horizontal) draft.pose.copy(flippedX = !draft.pose.flippedX) else draft.pose.copy(flippedY = !draft.pose.flippedY)))
             return true
         }
@@ -6949,17 +6935,6 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     internal fun setSelectionTransformMode(mode: app.inkloom.engine.v5.tools.SelectionTransformMode) {
-        if (mixedSelectionDrafts.isNotEmpty() && mode in setOf(
-                app.inkloom.engine.v5.tools.SelectionTransformMode.DISTORT,
-                app.inkloom.engine.v5.tools.SelectionTransformMode.SKEW,
-                app.inkloom.engine.v5.tools.SelectionTransformMode.WARP,
-                app.inkloom.engine.v5.tools.SelectionTransformMode.PUPPET,
-            )) {
-            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
-                "文字和图片保持可编辑时支持自由、等比、旋转和翻转；歪斜、网格与扭曲仅作用于像素选区"
-            else "Editable text and images support free, uniform, rotate and flip transforms; skew, mesh and distort apply to pixel-only selections")
-            return
-        }
         selectionCanvasTransform?.mode = mode
         onSelectionTransformChanged(selectionTransformUiState)
         invalidate()
@@ -6989,7 +6964,6 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     internal fun setSelectionMeshDensity(columns: Int, rows: Int) {
-        if (mixedSelectionDrafts.isNotEmpty()) return
         selectionCanvasTransform?.setMeshDensity(columns, rows)
         onSelectionTransformChanged(selectionTransformUiState)
         invalidate()

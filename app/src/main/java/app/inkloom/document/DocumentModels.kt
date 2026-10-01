@@ -524,9 +524,10 @@ sealed interface PageElement {
     val rotationDegrees: Float
     val opacity: Float
     val layerId: String
+    val deformation: ElementDeformation?
 
     @Serializable @SerialName("text")
-    data class Text(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float = 600f, override val height: Float = 120f, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, val text: String, val colorArgb: Long = 0xFF111111, val textSize: Float = 42f, val bold: Boolean = false, val italic: Boolean = false, val underline: Boolean = false, val alignment: InkTextAlignment = InkTextAlignment.START, val listStyle: TextListStyle = TextListStyle.NONE, val lineSpacing: Float = 1.2f) : PageElement
+    data class Text(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float = 600f, override val height: Float = 120f, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, override val deformation: ElementDeformation? = null, val text: String, val colorArgb: Long = 0xFF111111, val textSize: Float = 42f, val bold: Boolean = false, val italic: Boolean = false, val underline: Boolean = false, val alignment: InkTextAlignment = InkTextAlignment.START, val listStyle: TextListStyle = TextListStyle.NONE, val lineSpacing: Float = 1.2f) : PageElement
 
     @Serializable @SerialName("sticky")
     data class Sticky(
@@ -537,20 +538,20 @@ sealed interface PageElement {
         override val height: Float = 260f,
         override val rotationDegrees: Float = 0f,
         override val opacity: Float = 1f,
-        override val layerId: String = LayerIds.INK,
+        override val layerId: String = LayerIds.INK, override val deformation: ElementDeformation? = null,
         val text: String,
         val colorArgb: Long = 0xFFE5E5E5,
         val collapsed: Boolean = false,
     ) : PageElement
 
     @Serializable @SerialName("shape")
-    data class Shape(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float, override val height: Float, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, val kind: ShapeKind = ShapeKind.RECTANGLE, val colorArgb: Long = 0xFF111111, val fillArgb: Long? = null, val strokeWidth: Float = 5f, val path: List<ShapeVertex> = emptyList(), val gradientEndArgb: Long? = null, val gradientStartX: Float = 0f, val gradientStartY: Float = .5f, val gradientEndX: Float = 1f, val gradientEndY: Float = .5f, val gradientKind: GradientKind = GradientKind.LINEAR, val gradientEdgeMode: GradientEdgeMode = GradientEdgeMode.CLAMP, val gradientReverse: Boolean = false, val gradientDither: Boolean = true, val gradientEllipseRatio: Float = .6f, val gradientStops: List<GradientColorStop> = emptyList(), val maskAssetPath: String? = null) : PageElement
+    data class Shape(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float, override val height: Float, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, override val deformation: ElementDeformation? = null, val kind: ShapeKind = ShapeKind.RECTANGLE, val colorArgb: Long = 0xFF111111, val fillArgb: Long? = null, val strokeWidth: Float = 5f, val path: List<ShapeVertex> = emptyList(), val gradientEndArgb: Long? = null, val gradientStartX: Float = 0f, val gradientStartY: Float = .5f, val gradientEndX: Float = 1f, val gradientEndY: Float = .5f, val gradientKind: GradientKind = GradientKind.LINEAR, val gradientEdgeMode: GradientEdgeMode = GradientEdgeMode.CLAMP, val gradientReverse: Boolean = false, val gradientDither: Boolean = true, val gradientEllipseRatio: Float = .6f, val gradientStops: List<GradientColorStop> = emptyList(), val maskAssetPath: String? = null) : PageElement
 
     @Serializable @SerialName("image")
-    data class Image(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float, override val height: Float, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, val assetPath: String, val crop: ImageCrop = ImageCrop(), val mask: ImageMask = ImageMask.RECTANGLE, val cornerRadius: Float = 24f) : PageElement
+    data class Image(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float, override val height: Float, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, override val deformation: ElementDeformation? = null, val assetPath: String, val crop: ImageCrop = ImageCrop(), val mask: ImageMask = ImageMask.RECTANGLE, val cornerRadius: Float = 24f) : PageElement
 
     @Serializable @SerialName("fill")
-    data class Fill(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float, override val height: Float, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, val colorArgb: Long = 0xFF111111, val maskAssetPath: String) : PageElement
+    data class Fill(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float, override val height: Float, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, override val deformation: ElementDeformation? = null, val colorArgb: Long = 0xFF111111, val maskAssetPath: String) : PageElement
 
     @Serializable @SerialName("link")
     data class Link(
@@ -561,7 +562,7 @@ sealed interface PageElement {
         override val height: Float = 150f,
         override val rotationDegrees: Float = 0f,
         override val opacity: Float = 1f,
-        override val layerId: String = LayerIds.INK,
+        override val layerId: String = LayerIds.INK, override val deformation: ElementDeformation? = null,
         val title: String,
         val url: String = "",
         val targetDocumentId: String? = null,

@@ -68,7 +68,7 @@ internal fun SelectionTransformToolbar(
                 IconButton(onClick = { onFinish(false) }) { Icon(Icons.Outlined.Close, t("Cancel transform", "取消变换")) }
                 IconButton(onClick = { onFinish(true) }) { Icon(Icons.Outlined.Check, t("Apply transform", "应用变换")) }
             }
-            if(state.mixed) Text(t("Text and images remain editable. Skew, distort and mesh require pixel-only selections.", "文字和图片保持可编辑；歪斜、扭曲和网格仅用于纯像素选区。"),fontSize=11.sp,color=app.inkloom.ui.theme.MutedInk)
+            if(state.mixed) Text(t("Text and images remain editable after deformation.", "文字和图片变形后仍可编辑。"),fontSize=11.sp,color=app.inkloom.ui.theme.MutedInk)
             HorizontalDivider(Modifier.widthIn(max = 620.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
             if (state.mode == SelectionTransformMode.WARP || state.mode == SelectionTransformMode.PUPPET) Box {

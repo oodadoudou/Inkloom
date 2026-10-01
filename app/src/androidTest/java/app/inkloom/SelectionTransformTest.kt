@@ -367,7 +367,6 @@ class SelectionTransformTest {
             onRasterLayerCommitted = { commit -> commit.layerElements?.let { committed[commit.layerId] = it } }
             onPaintCapabilityRejected = { rejections += it }
             assertTrue(enterFreeTransform())
-            org.junit.Assert.assertFalse(flipSelection(horizontal = true))
             nudgeSelection(5f, 0f)
             assertTrue(finishSelectionTransform(true))
         }
@@ -379,7 +378,52 @@ class SelectionTransformTest {
         assertEquals("image", movedImage.id)
         assertTrue(movedText.x > text.x)
         assertTrue(movedImage.x > image.x)
-        assertTrue(rejections.single().contains("unsupported", ignoreCase = true))
+        assertTrue(rejections.isEmpty())
+    }
+
+    @Test fun mixedMeshDistortAndMirrorKeepObjectsAndUndoTogether() {
+        for (mesh in listOf(false, true)) {
+            val text = PageElement.Text(id = "text", layerId = "first", x = .1f, y = .2f, width = 12f, height = 8f, text = "Editable")
+            val image = PageElement.Image(id = "image", layerId = "second", x = .3f, y = .4f, width = 14f, height = 10f, assetPath = "fixture.png")
+            val originals = mapOf("first" to text, "second" to image)
+            val surfaces = originals.mapValues { PixelTileSurface(64, 64, 64).also { surface ->
+                surface.beginWrite("fixture").use { it.setPixel(20, 20, Color.RED); it.commit().close() }
+            } }
+            val mask = MaskTileSurface(64, 64, 64).also { surface -> surface.beginWrite("all").use {
+                it.composeAlpha(PixelRect(0, 0, 64, 64), ByteArray(64 * 64) { -1 }, mode = MaskComposeMode.REPLACE); it.commit().close()
+            } }
+            val committed = linkedMapOf<String, app.inkloom.document.LayerElementEdit>()
+            val rejections = mutableListOf<String>()
+            canvas {
+                pageModelWidth = 64f; pageModelHeight = 64f; activeLayerId = "first"
+                selectionTransformLayerIds = surfaces.keys; setRasterLayerSurfaces(surfaces)
+                bindDocumentSelectionState(DocumentSelectionRuntime(64).stateFor("warp", "page", 64, 64))
+                replaceSelectionFromMask(mask.snapshot())
+                onPrepareMixedSelection = { layerId, _ -> MixedSelectionSource(listOf(originals.getValue(layerId)),
+                    Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888).apply { setPixel(20, 20, Color.WHITE) }) }
+                onRasterLayerCommitted = { commit -> commit.layerElements?.let { committed[commit.layerId] = it } }
+                onPaintCapabilityRejected = { rejections += it }
+                assertTrue(enterFreeTransform())
+                if (mesh) {
+                    setSelectionTransformMode(app.inkloom.engine.v5.tools.SelectionTransformMode.WARP)
+                    setSelectionMeshDensity(5, 7); nudgeSelection(3f, 2f)
+                } else {
+                    setSelectionTransformMode(app.inkloom.engine.v5.tools.SelectionTransformMode.DISTORT)
+                    skewSelectionBy(5f, 0f)
+                }
+                assertTrue(flipSelection(true))
+                assertTrue(finishSelectionTransform(true))
+                val warped = originals.keys.associateWith { committed.getValue(it).replacement.single() }
+                assertTrue(warped.values.all { it.deformation != null })
+                assertEquals(text.text, (warped.getValue("first") as PageElement.Text).text)
+                assertEquals(image.assetPath, (warped.getValue("second") as PageElement.Image).assetPath)
+                assertTrue(rejections.isEmpty())
+                undo()
+                originals.forEach { (id, original) -> assertEquals(original, committed.getValue(id).replacement.single()) }
+                redo()
+                warped.forEach { (id, result) -> assertEquals(result, committed.getValue(id).replacement.single()) }
+            }
+        }
     }
 
     @Test fun everyTransformEntryRejectsLockedLayersInBothColorFormatsWithoutMutation() {

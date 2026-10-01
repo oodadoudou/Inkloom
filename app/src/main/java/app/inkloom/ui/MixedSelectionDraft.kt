@@ -21,8 +21,8 @@ internal class MixedSelectionDraft(val source: MixedSelectionSource) : AutoClose
 
     fun draw(canvas: Canvas, transform: SelectionRasterTransform, canvasWidth: Int, canvasHeight: Int) {
         if (source.bitmap.isRecycled || canvasWidth <= 0 || canvasHeight <= 0) return
-        val columns = 12
-        val rows = 12
+        val columns = 32
+        val rows = 32
         val vertices = FloatArray((columns + 1) * (rows + 1) * 2)
         var index = 0
         for (row in 0..rows) for (column in 0..columns) {
@@ -35,9 +35,9 @@ internal class MixedSelectionDraft(val source: MixedSelectionSource) : AutoClose
         canvas.drawBitmapMesh(source.bitmap, columns, rows, vertices, 0, null, 0, paint)
     }
 
-    fun transformed(transform: SelectionAffineTransform, rasterWidth: Int, rasterHeight: Int,
+    fun transformed(transform: SelectionRasterTransform, rasterWidth: Int, rasterHeight: Int,
                     pageWidth: Float, pageHeight: Float): List<PageElement> = source.elements.map {
-        StructuredElementTransform.affine(it, transform, rasterWidth, rasterHeight, pageWidth, pageHeight)
+        StructuredElementTransform.map(it, transform, rasterWidth, rasterHeight, pageWidth, pageHeight)
     }
 
     override fun close() {

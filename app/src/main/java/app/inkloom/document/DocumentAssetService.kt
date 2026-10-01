@@ -949,6 +949,10 @@ class DocumentAssetService(private val context: Context) {
                 (includedContentIds == null || id in includedContentIds) && (contentIds == null || id in contentIds)
             fun drawLayerItems(targetLayerId: String, contentIds: Set<String>? = null) {
             page.elements.filter { it.layerId == targetLayerId && contentAllowed(it.id, contentIds) }.forEach { element ->
+            if (element.deformation != null) {
+                drawDeformedElement(canvas, element, page.width, page.height, width, height)
+                return@forEach
+            }
             val left = element.x * width
             val top = element.y * height
             val right = left + element.width / page.width * width
@@ -1172,6 +1176,35 @@ class DocumentAssetService(private val context: Context) {
         // Loading one editable surface must never bake in its parent's opacity or mask.
         if (applyLayerEffects && includedLayerIds == null) drawSiblings(LayerCompositingTree.roots(page.layers))
         else visibleLayers.forEachIndexed { index, layer -> drawLeaf(layer, visibleLayers.getOrNull(index - 1)?.let(::LayerCompositingNode)) }
+    }
+
+    /** Rerender editable source, then present the saved lattice; no document raster replacement. */
+    private fun drawDeformedElement(canvas: Canvas, element: PageElement, pageWidth: Float,
+                                   pageHeight: Float, width: Int, height: Int) {
+        val warp = requireNotNull(element.deformation)
+        fun original(): PageElement = when (element) {
+            is PageElement.Text -> element.copy(x = 0f, y = 0f, rotationDegrees = 0f, deformation = null)
+            is PageElement.Sticky -> element.copy(x = 0f, y = 0f, rotationDegrees = 0f, deformation = null)
+            is PageElement.Shape -> element.copy(x = 0f, y = 0f, rotationDegrees = 0f, deformation = null)
+            is PageElement.Image -> element.copy(x = 0f, y = 0f, rotationDegrees = 0f, deformation = null)
+            is PageElement.Fill -> element.copy(x = 0f, y = 0f, rotationDegrees = 0f, deformation = null)
+            is PageElement.Link -> element.copy(x = 0f, y = 0f, rotationDegrees = 0f, deformation = null)
+        }
+        val source = InkPage(width = element.width, height = element.height,
+            layers = listOf(InkLayer(id = element.layerId, name = "Source")), elements = listOf(original()))
+        val nativeWidth = kotlin.math.ceil(element.width * width / pageWidth).toInt().coerceIn(1, 4096)
+        val bitmap = renderElementLayerBitmap(source, element.layerId, nativeWidth)
+        try {
+            val base = element.withDeformation(null)
+            val vertices = FloatArray(warp.vertices.size * 2)
+            warp.vertices.forEachIndexed { i, uv ->
+                val point = base.contentPoint(uv.x, uv.y, pageWidth, pageHeight)
+                vertices[i * 2] = point.x * width / pageWidth
+                vertices[i * 2 + 1] = point.y * height / pageHeight
+            }
+            canvas.drawBitmapMesh(bitmap, warp.columns - 1, warp.rows - 1, vertices, 0, null, 0,
+                Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+        } finally { bitmap.recycle() }
     }
 
     /** Export counterpart of the live V5 sparse-tile projection. */

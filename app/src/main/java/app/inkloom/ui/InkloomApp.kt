@@ -5739,8 +5739,13 @@ private fun ObjectElementView(
     var dragX by remember(element.id) { mutableFloatStateOf(0f) }
     var dragY by remember(element.id) { mutableFloatStateOf(0f) }
     var editing by remember(element.id) { mutableStateOf(false) }
-    val objectWidth = (canvasWidth * (element.width / page.width)).coerceIn(54.dp, canvasWidth)
-    val objectHeight = (canvasHeight * (element.height / page.height)).coerceIn(42.dp, canvasHeight)
+    val warpedBounds = element.deformation?.let { element.displayBounds(page.width, page.height) }
+    val displayX = warpedBounds?.minOf { it.x }?.div(page.width) ?: element.x
+    val displayY = warpedBounds?.minOf { it.y }?.div(page.height) ?: element.y
+    val displayWidth = warpedBounds?.let { it.maxOf { p -> p.x } - it.minOf { p -> p.x } } ?: element.width
+    val displayHeight = warpedBounds?.let { it.maxOf { p -> p.y } - it.minOf { p -> p.y } } ?: element.height
+    val objectWidth = (canvasWidth * (displayWidth / page.width)).coerceIn(54.dp, canvasWidth)
+    val objectHeight = (canvasHeight * (displayHeight / page.height)).coerceIn(42.dp, canvasHeight)
     val gradientForHandles = (element as? PageElement.Shape)?.takeIf { selected && editable && it.gradientDefinition() != null }
     val gestureModifier = if (editable) Modifier.pointerInput(element.id, canvasWidthPx, canvasHeightPx, gradientForHandles != null) {
         awaitEachGesture {
@@ -5784,9 +5789,9 @@ private fun ObjectElementView(
     } else Modifier
     Box(
         modifier
-            .offset(x = canvasWidth * element.x, y = canvasHeight * element.y)
+            .offset(x = canvasWidth * displayX, y = canvasHeight * displayY)
             .size(objectWidth, objectHeight)
-            .graphicsLayer(rotationZ = element.rotationDegrees, alpha = (element.opacity * layerOpacity).coerceIn(0f, 1f), translationX = dragX, translationY = dragY)
+            .graphicsLayer(rotationZ = if (warpedBounds == null) element.rotationDegrees else 0f, alpha = (element.opacity * layerOpacity).coerceIn(0f, 1f), translationX = dragX, translationY = dragY)
             .then(if (selected) Modifier.border(2.dp, Sage, RoundedCornerShape(5.dp)) else Modifier)
             .then(gestureModifier)
             .combinedClickable(
