@@ -1,0 +1,21 @@
+{
+  "version": "0.224.0",
+  "versionCode": 224,
+  "variant": "debug",
+  "commit": "9de49ac6f6098e5dbc970105cce749a433c3026e",
+  "sha256": "0dae40abfcd79eeebf28ecba4d6d3a84c8d1f5483b96c74af5e4b731f9d6ee6b",
+  "bytes": 103632025,
+  "generatedUtc": "2026-10-01T21:56:14.259452+00:00",
+  "verification": {
+    "JVM": "PASS 1006 tests, 0 failures, 8 skipped",
+    "Android15Targeted": "PASS 64 unique targeted cases across final runs. Broad run passed 63/64; one new clipboard fixture failed because no document selection state was bound. Corrected fixture and all four clipboard/color-range cases passed on rerun. Production code unchanged after broad run. Suites: selection window/interactions, clipboard/color range, raster persistence, fill and pixel bitmap adapter.",
+    "Android15Full": "NOT CLAIMED: no full-suite success or new full-suite run.",
+    "lint": "PASS 0 errors, 114 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS emulator installation, versionCode 224, cold startup and actual selection stroke dialog visual inspection; crash buffer empty",
+    "DriveDesktop": "PASS all four files SHA-256 verified in local sync folder; cloud transfer managed by Drive Desktop, cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING",
+  "evidenceRoot": "app/build/test-results, app/build/outputs/androidTest-results/connected/debug and ignored tasks/selection-clipboard-test-runner.log"
+}

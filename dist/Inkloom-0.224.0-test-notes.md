@@ -1,0 +1,12 @@
+# Inkloom 0.224.0 Debug verification
+
+Source: `9de49ac6f6098e5dbc970105cce749a433c3026e`. APK SHA-256: `0dae40abfcd79eeebf28ecba4d6d3a84c8d1f5483b96c74af5e4b731f9d6ee6b`.
+
+- Selection stroke: inside/center/outside, 0.25-256 px, standard RGB/ARGB picker and opacity. Uses the half-coverage contour of the selection, including holes/islands, scaled masks and tile seams. Cancellable bounded tile/halo distance computation; sparse 8K perimeter coverage tested. Cancel leaves pixels unchanged; apply preserves selection and uses one undo/redo; exact pixels after reopening verified. Locked and mask-edit targets rejected. Keyboard insets and Done actions keep dialog confirmation usable.
+- Paste to shown position: selection menu and Ctrl+Shift+V. Inverse viewport geometry handles scale, pan and rotation; oversized/off-page payloads remain clipped to an accessible page edge. Pixel and selection changes undo/redo together, original feather state restored. Native RGBA8/F16 format conversion and alpha-lock compositing tested. This edits the active raster layer; retained vector/text/new-layer paste semantics are not claimed.
+- Transparent Android image clipboard: straight Bitmap ARGB correctly converts to/from premultiplied engine pixels, preserving half-transparent color. External text clipboard cannot resurrect a cached image. Same native F16 payload retains precision without PNG re-decoding.
+- UI test isolation: clear test-only notebook checkpoints, recovery journal and folder index together. Previous same-title fixtures accidentally reopened another note; isolated exact-payload reopen tests now pass. No user-data cleanup is introduced in production.
+
+1006 JVM tests: 0 failures, 8 skipped. 64 unique targeted Android 15 cases passed across final runs: broad run 63/64, then all four clipboard/color-range tests passed after binding the new fixture's missing document selection state. Production code unchanged after broad run. Lint: 0 errors, 114 warnings. Debug v2 signature, emulator installation, cold startup and actual selection stroke dialog visual inspection verified. Four Drive Desktop delivery copies SHA-256 matched before retiring old deliveries.
+
+No full Android-suite success is claimed. MovinkPad input feel, pressure, latency, 8K production performance and long-session validation remain DEVICE_PENDING. Drive Desktop local four-file hashes are checked during delivery; cloud redownload is unverified. Requirements/design/task documents remain ignored. Deferred or scope-undecided CSP extensions are not claimed implemented.
