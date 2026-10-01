@@ -169,7 +169,11 @@ class DocumentAssetService(private val context: Context) {
                 checkCancelled()
                 importImage(uri, name).also { onProgress(1, 1) }
             }
-            else -> throw IllegalArgumentException("Unsupported file: $name. Import a PDF or image.")
+            name.substringAfterLast('.').lowercase() in setOf("txt", "md", "markdown") || mime == "text/plain" || mime == "text/markdown" -> {
+                val pages = context.contentResolver.openInputStream(uri)?.use { TextPageImporter.read(it, name) } ?: error("Unreadable text file")
+                InkDocument(title = name, pages = pages).also { onProgress(pages.size, pages.size) }
+            }
+            else -> throw IllegalArgumentException("Unsupported file: $name. Import PDF, artwork, images or UTF-8 text/Markdown.")
         }
         checkCancelled()
         val base = name.substringBeforeLast('.').ifBlank { name }
@@ -398,6 +402,15 @@ class DocumentAssetService(private val context: Context) {
             if (measuredWidth > availableWidth) paint.textSize = (paint.textSize * availableWidth / measuredWidth).coerceAtLeast(2f)
             canvas.drawText(text.take(MAX_PDF_TEXT_CHARACTERS_PER_PAGE), left, baseline, paint)
         }
+    }
+
+    fun renderBackgroundForOcr(page: InkPage): Bitmap {
+        val aspect = PageCropTransform.visibleHeight(page) / PageCropTransform.visibleWidth(page)
+        val width = minOf(2048, kotlin.math.sqrt(8_388_608.0 / aspect).toInt(), (8192 / aspect).toInt()).coerceAtLeast(1)
+        val height = (width * aspect).toInt().coerceIn(1,8192)
+        val bitmap = Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888)
+        try { PageBackgroundStripRenderer(page,width,height).use { it.draw(bitmap,0) }; return bitmap }
+        catch(failure:Throwable) { bitmap.recycle(); throw failure }
     }
 
     fun exportPageRaster(page: InkPage, uri: Uri, options: PageRasterExportOptions) = RasterFormatService(context, this).export(page, uri, options)

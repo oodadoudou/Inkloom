@@ -5,20 +5,20 @@ import java.io.File
 
 object ImageOcrIndex {
     fun fingerprint(page: InkPage): String {
-        val sources = buildList {
-            (page.background as? PageBackground.Image)?.assetPath?.let { add("background:$it") }
-            page.elements.filterIsInstance<PageElement.Image>().forEach { image ->
-                add("${image.id}:${image.assetPath}:${image.crop}:${image.rotationDegrees}")
+        val sources=buildList<Pair<String,String>> {
+            when(val background=page.background) {
+                is PageBackground.Image -> add(background.assetPath to "image:$background")
+                is PageBackground.Pdf -> add(background.assetPath to "pdf:${background.pageIndex}")
+                else -> Unit
             }
+            page.elements.filterIsInstance<PageElement.Image>().forEach { add(it.assetPath to it.toString()) }
         }
-        if (sources.isEmpty()) return ""
-        val digest = MessageDigest.getInstance("SHA-256")
-        sources.sorted().forEach { source ->
-            digest.update(source.encodeToByteArray())
-            source.substringAfter(':').substringBefore(':').let(::File).takeIf(File::isFile)?.let { file ->
-                digest.update(file.length().toString().encodeToByteArray())
-                digest.update(file.lastModified().toString().encodeToByteArray())
-            }
+        if(sources.isEmpty()) return ""
+        val digest=MessageDigest.getInstance("SHA-256")
+        digest.update("${page.width}:${page.height}:${page.crop}:${page.backgroundSourceCrop}:${page.backgroundFrame}:${page.backgroundRotationQuarterTurns}".toByteArray())
+        sources.sortedBy { it.second }.forEach { (path,geometry) ->
+            digest.update(geometry.toByteArray()); val file=File(path)
+            if(file.isFile) digest.update("${file.length()}:${file.lastModified()}".toByteArray())
         }
         return digest.digest().take(12).joinToString("") { "%02x".format(it) }
     }

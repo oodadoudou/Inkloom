@@ -28,6 +28,7 @@ class NavigationContextWindowTest {
             val layers = listOf(defaultInkLayers().first(), InkLayer(id = "nav-folder", name = "Nested folder", role = LayerRole.FOLDER, collapsed = true),
                 defaultInkLayers().last().copy(parentId = "nav-folder")) + (0..29).map { InkLayer(id = "nav-layer-$it", name = "Extra layer $it") }
             val pages = (1..32).map { n -> InkPage(id = "nav-page-$n", title = "Review page $n", layers = layers,
+                pdfTextBlocks = listOf(PdfTextBlock("needle needle", listOf(PdfTextBounds(.1f,.2f,.7f,.3f)))),
                 outlineLevel = when (n) { 29 -> 1; 30 -> 2; else -> 0 }, outlineCollapsed = n in 28..29) }
             store.save(InkDocument(id = "nav-main", title = "Navigation fixture", pages = pages, updatedAt = 1000))
             (0..23).forEach { n -> store.save(InkDocument(id = "nav-library-$n", title = "Context note $n", favorite = true, updatedAt = 2000L + n)) }
@@ -74,6 +75,23 @@ class NavigationContextWindowTest {
         assertFalse(document.pages[28].outlineCollapsed)
         compose.onNodeWithContentDescription("Page outline list").performScrollToIndex(0)
         compose.onNodeWithText("Review page 1").assertIsDisplayed()
+    }
+
+    @Test fun searchNavigationVisitsEveryOccurrenceAndWrapsAcrossPages() {
+        openFixtureAtPage30()
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithText("Search this notebook").performScrollTo().performClick()
+        compose.onNode(hasSetTextAction() and hasAnyAncestor(isDialog())).performTextReplacement("needle")
+        compose.onAllNodesWithText("Review page 1").onFirst().performClick()
+        compose.onNodeWithText("1 / 64").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Next search match").performClick()
+        compose.onNodeWithText("2 / 64").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Next search match").performClick()
+        compose.onNodeWithText("3 / 64").assertIsDisplayed()
+        repeat(3) { compose.onNodeWithContentDescription("Previous search match").performClick() }
+        compose.onNodeWithText("64 / 64").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Close search navigation").performClick()
+        compose.onNodeWithContentDescription("Next search match").assertDoesNotExist()
     }
 
     @Test fun layerPanelRevealsActiveLayerInCollapsedFolderOnReopen() {

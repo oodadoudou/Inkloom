@@ -64,4 +64,21 @@ class PageSearchTest {
         })
         assertNull(PageSearch.find(changed, "手写"))
     }
+    @Test fun allOccurrencesAndNavigationWrapWithoutSkippingRepeatedWords() {
+        val page = InkPage(title="Unrelated", pdfTextBlocks=listOf(PdfTextBlock("needle, NEEDLE, needle",listOf(PdfTextBounds(.1f,.2f,.8f,.3f)))))
+        val hits = PageSearch.findAll(page,"needle")
+        assertEquals(3,hits.size); assertEquals(listOf(0,8,16),hits.map { it.matchStart })
+        assertEquals(listOf(0,1,2),hits.map { it.occurrenceIndex })
+        assertEquals(0,PageSearch.nextIndex(2,3,1)); assertEquals(2,PageSearch.nextIndex(0,3,-1))
+        assertNull(PageSearch.nextIndex(0,0,1))
+    }
+    @Test fun scannedPdfFingerprintInvalidatesRotatedCroppedOrReplacedScan() {
+        val page = InkPage(background=PageBackground.Pdf("/safe/scanned.pdf",3))
+        val base = ImageOcrIndex.fingerprint(page)
+        assertTrue(base.isNotBlank())
+        org.junit.Assert.assertNotEquals(base,ImageOcrIndex.fingerprint(page.copy(backgroundRotationQuarterTurns=1)))
+        org.junit.Assert.assertNotEquals(base,ImageOcrIndex.fingerprint(page.copy(crop=PageCrop(.2f,0f,1f,1f))))
+        org.junit.Assert.assertNotEquals(base,ImageOcrIndex.fingerprint(page.copy(background=PageBackground.Pdf("/safe/scanned.pdf",4))))
+    }
+
 }

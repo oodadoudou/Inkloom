@@ -819,7 +819,7 @@ fun InkloomApp(initialIntent: Intent?) {
     }
     fun launchAppendPageFiles(documentId: String) {
         pendingAppendDocumentId = documentId
-        appendPageFilesPicker.launch(arrayOf("application/pdf", "image/*", "application/zip", "image/vnd.adobe.photoshop", "image/openraster"))
+        appendPageFilesPicker.launch(arrayOf("application/pdf", "image/*", "application/zip", "image/vnd.adobe.photoshop", "image/openraster", "text/plain", "text/markdown"))
     }
     var pendingPageScan by remember { mutableStateOf<Pair<Uri, java.io.File>?>(null) }
     val pageScanLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { captured ->
@@ -2135,7 +2135,10 @@ private fun EditorScreen(
     var outlineMenuPageId by remember { mutableStateOf<String?>(null) }
     var outlineRenamePageId by remember { mutableStateOf<String?>(null) }
     var outlineRenameText by remember { mutableStateOf("") }
-    var documentQuery by remember { mutableStateOf("") }
+    var documentQuery by remember(document.id) { mutableStateOf("") }
+    val documentSearchHits = remember(document.pages, documentQuery) {
+        if(documentQuery.isBlank()) emptyList() else document.pages.flatMap { page -> PageSearch.findAll(page, documentQuery).map { page to it } }
+    }
     var recognitionLanguageTag by remember(document.id) { mutableStateOf(if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "zh-Hans" else "en-US") }
     var recognitionMessage by remember(document.id, selectedPage.id) { mutableStateOf<String?>(null) }
     var handwritingConversionHit by remember { mutableStateOf<Pair<InkPage, PageSearchHit>?>(null) }
@@ -3123,7 +3126,7 @@ private fun EditorScreen(
                     eraserPreset = settings.eraserPreset,
                     forceNavigation = handToolEnabled || handToolHeld || rotateToolEnabled || rotateToolHeld,
                     rotateNavigation = rotateToolEnabled || rotateToolHeld,
-                    searchBounds = searchFocus?.takeIf { it.pageId == selectedPage.id }?.bounds ?: pdfLinkFocus?.takeIf { it.first == selectedPage.id }?.second,
+                    searchBounds = (searchFocus?.takeIf { it.pageId == selectedPage.id }?.bounds ?: pdfLinkFocus?.takeIf { it.first == selectedPage.id }?.second)?.let { PageCropTransform.project(it, storedPage.crop) },
                     onPdfGotoLink = { link ->
                         document.pages.firstOrNull { it.id == link.destinationPageId }?.let { target ->
                             searchFocus = null
@@ -3801,6 +3804,21 @@ private fun EditorScreen(
                     },
                     onDismiss = { savedSelectionsOpen = false },
                 )
+                if (searchFocus != null && documentSearchHits.isNotEmpty()) {
+                    val current = documentSearchHits.indexOfFirst { it.second == searchFocus }.coerceAtLeast(0)
+                    Surface(Modifier.align(Alignment.TopCenter).padding(top = 12.dp), color = Workspace, shape = RoundedCornerShape(12.dp), shadowElevation = 3.dp) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { PageSearch.nextIndex(current, documentSearchHits.size, -1)?.let { index ->
+                                val (page, hit) = documentSearchHits[index]; searchFocus = hit; selectPageWithViewport(page.id)
+                            } }) { Icon(Icons.Outlined.KeyboardArrowUp, tr("Previous search match", "上一个搜索命中")) }
+                            Text("${current + 1} / ${documentSearchHits.size}", fontSize = 12.sp)
+                            IconButton(onClick = { PageSearch.nextIndex(current, documentSearchHits.size, 1)?.let { index ->
+                                val (page, hit) = documentSearchHits[index]; searchFocus = hit; selectPageWithViewport(page.id)
+                            } }) { Icon(Icons.Outlined.KeyboardArrowDown, tr("Next search match", "下一个搜索命中")) }
+                            IconButton(onClick = { searchFocus = null }) { Icon(Icons.Outlined.Close, tr("Close search navigation", "关闭搜索导航")) }
+                        }
+                    }
+                }
                 if (layerPickMode) Surface(
                     Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
                     shape = RoundedCornerShape(12.dp), color = Paper, shadowElevation = 3.dp,
@@ -4318,7 +4336,7 @@ private fun EditorScreen(
         )
     }
     if (searchOpen) {
-        val results = if (documentQuery.isBlank()) emptyList() else document.pages.mapNotNull { page -> PageSearch.find(page, documentQuery)?.let { page to it } }
+        val results = documentSearchHits
         val unindexedPdfPages = document.pages.count { it.background is PageBackground.Pdf && it.pdfTextIndexVersion == 0 }
         AlertDialog(
             onDismissRequest = { searchOpen = false },
@@ -4344,7 +4362,7 @@ private fun EditorScreen(
                         modifier = Modifier.weight(1f),
                     ) {
                         if (imageOcrRecognizing) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.DocumentScanner, null)
-                        Spacer(Modifier.width(6.dp)); Text(tr("Recognize images", "识别图片"))
+                        Spacer(Modifier.width(6.dp)); Text(tr("OCR current page", "识别当前页"))
                     }
                 }
                 OutlinedButton(
@@ -4373,7 +4391,7 @@ private fun EditorScreen(
                 }
                 Spacer(Modifier.height(10.dp))
                 if (documentQuery.isNotBlank() && results.isEmpty()) Text(tr("No matching page titles, tags, object text, recognized handwriting, image text, or indexed PDF text.", "没有匹配的页面标题、标签、对象文字、已识别手写、图片文字或已索引 PDF 文字。"), color = MutedInk)
-                else LazyColumn(Modifier.heightIn(max = 340.dp)) { items(results, key = { (page, _) -> page.id }) { (page, hit) ->
+                else LazyColumn(Modifier.heightIn(max = 340.dp)) { items(results, key = { (page, hit) -> "${page.id}:${hit.occurrenceIndex}" }) { (page, hit) ->
                     ListItem(
                         headlineContent = { Text(page.title) },
                         supportingContent = { Text(hit.snippet, maxLines = 2) },

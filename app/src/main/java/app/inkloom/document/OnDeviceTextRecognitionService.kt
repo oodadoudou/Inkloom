@@ -20,32 +20,26 @@ class OnDeviceTextRecognitionService(private val context: Context) {
         BitmapFactory.decodeFile(file.absolutePath, boundsOptions)
         val width = boundsOptions.outWidth.coerceAtLeast(1)
         val height = boundsOptions.outHeight.coerceAtLeast(1)
-        val recognizer = if (languageTag.startsWith("zh", ignoreCase = true)) {
+        return recognize(InputImage.fromFilePath(context, Uri.fromFile(file)), width, height, sourceId, languageTag)
+    }
+
+    suspend fun recognizeBitmap(bitmap: android.graphics.Bitmap, sourceId: String, languageTag: String): List<RecognizedTextBlock> =
+        recognize(InputImage.fromBitmap(bitmap, 0), bitmap.width, bitmap.height, sourceId, languageTag)
+
+    private suspend fun recognize(image: InputImage, width: Int, height: Int, sourceId: String, languageTag: String): List<RecognizedTextBlock> {
+        val recognizer = if (languageTag.startsWith("zh", ignoreCase = true))
             TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
-        } else {
-            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        }
+        else TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         return try {
-            val result = recognizer.process(InputImage.fromFilePath(context, Uri.fromFile(file))).await()
-            result.textBlocks.flatMap { block -> block.lines }.mapNotNull { line ->
+            recognizer.process(image).await().textBlocks.flatMap { it.lines }.mapNotNull { line ->
                 val text = line.text.trim().takeIf(String::isNotBlank) ?: return@mapNotNull null
                 val rect = line.boundingBox ?: return@mapNotNull null
-                RecognizedTextBlock(
-                    text = text,
-                    bounds = PdfTextBounds(
-                        left = rect.left.toFloat().div(width).coerceIn(0f, 1f),
-                        top = rect.top.toFloat().div(height).coerceIn(0f, 1f),
-                        right = rect.right.toFloat().div(width).coerceIn(0f, 1f),
-                        bottom = rect.bottom.toFloat().div(height).coerceIn(0f, 1f),
-                    ),
-                    source = RecognizedTextSource.IMAGE_OCR,
-                    sourceIds = listOf(sourceId),
-                    languageTag = languageTag,
-                )
+                RecognizedTextBlock(text = text, bounds = PdfTextBounds(
+                    rect.left.toFloat().div(width).coerceIn(0f, 1f), rect.top.toFloat().div(height).coerceIn(0f, 1f),
+                    rect.right.toFloat().div(width).coerceIn(0f, 1f), rect.bottom.toFloat().div(height).coerceIn(0f, 1f)),
+                    source = RecognizedTextSource.IMAGE_OCR, sourceIds = listOf(sourceId), languageTag = languageTag)
             }
-        } finally {
-            recognizer.close()
-        }
+        } finally { recognizer.close() }
     }
 
     private suspend fun <T> Task<T>.await(): T = suspendCancellableCoroutine { continuation ->

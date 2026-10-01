@@ -978,8 +978,16 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private suspend fun recognizeImages(page: InkPage, languageTag: String): List<RecognizedTextBlock> = buildList {
-        (page.background as? PageBackground.Image)?.assetPath?.let(::File)?.takeIf(File::isFile)?.let { file ->
-            addAll(textRecognition.recognizeImage(file, "background", languageTag))
+        if (page.background is PageBackground.Image || (page.background is PageBackground.Pdf && page.pdfTextBlocks.isEmpty())) {
+            val bitmap = assets.renderBackgroundForOcr(page)
+            try {
+                val crop = PageCropTransform.normalized(page.crop)
+                addAll(textRecognition.recognizeBitmap(bitmap, "background", languageTag).map { block ->
+                    val b = block.bounds
+                    block.copy(bounds = PdfTextBounds(crop.left + b.left*(crop.right-crop.left), crop.top + b.top*(crop.bottom-crop.top),
+                        crop.left + b.right*(crop.right-crop.left), crop.top + b.bottom*(crop.bottom-crop.top)))
+                })
+            } finally { bitmap.recycle() }
         }
         page.elements.filterIsInstance<PageElement.Image>().forEach { image ->
             val file = File(image.assetPath)

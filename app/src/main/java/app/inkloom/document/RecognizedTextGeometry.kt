@@ -18,19 +18,8 @@ object RecognizedTextGeometry {
         val cropWidth = crop.right - crop.left
         val cropHeight = crop.bottom - crop.top
         fun point(sourceX: Float, sourceY: Float): Pair<Float, Float> {
-            val localX = (sourceX - crop.left) / cropWidth * image.width / page.width
-            val localY = (sourceY - crop.top) / cropHeight * image.height / page.height
-            val centerX = image.x + image.width / page.width / 2f
-            val centerY = image.y + image.height / page.height / 2f
-            val x = image.x + localX
-            val y = image.y + localY
-            val radians = Math.toRadians(image.rotationDegrees.toDouble())
-            val dx = x - centerX
-            val dy = y - centerY
-            return Pair(
-                (centerX + dx * cos(radians).toFloat() - dy * sin(radians).toFloat()).coerceIn(0f, 1f),
-                (centerY + dx * sin(radians).toFloat() + dy * cos(radians).toFloat()).coerceIn(0f, 1f),
-            )
+            val mapped = image.contentPoint((sourceX - crop.left) / cropWidth, (sourceY - crop.top) / cropHeight, page.width, page.height)
+            return (mapped.x / page.width).coerceIn(0f, 1f) to (mapped.y / page.height).coerceIn(0f, 1f)
         }
 
         val corners = listOf(
