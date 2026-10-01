@@ -5,6 +5,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LegacyWorkspaceImportTest {
+    @Test fun legacyDockWidthsUseTheViewportInsteadOfResettingToOneQuarter() {
+        val imported=LegacyWorkspaceImport.fromPreferences(mapOf("showPageRail" to true,"pagePanelDock" to "LEFT", "pagePanelWidthDp" to 160f,
+            "brushPanelDock" to "RIGHT","brushPanelWidthDp" to 240f,"layerPanelDock" to "RIGHT","layerPanelWidthDp" to 300f),1000f,800f)
+        val pages=EditorPanelLayouts.slots(imported.layout,1000f,800f).single { it.node is PanelNode.Tabs && EditorPanel.PAGES in EditorPanelLayouts.members(it.node) }
+        assertEquals(160f,pages.rect.width,.1f)
+        val opened=imported.layout.copy(open=setOf(EditorPanel.PAGES,EditorPanel.BRUSHES,EditorPanel.LAYERS))
+        val slots=EditorPanelLayouts.slots(opened,1000f,800f)
+        assertEquals(300f,slots.single { it.node is PanelNode.Tabs && EditorPanel.BRUSHES in EditorPanelLayouts.members(it.node) }.rect.width,.1f)
+        assertEquals(300f,slots.single { it.node is PanelNode.Tabs && EditorPanel.LAYERS in EditorPanelLayouts.members(it.node) }.rect.width,.1f)
+    }
+
     @Test fun oldFreeGeometryAndVisibilityAreCopiedWithoutResettingCustomSizes() {
         val result=LegacyWorkspaceImport.fromPreferences(mapOf("showBrushPanel" to true,"brushPanelWidthDp" to 620f,"brushPanelXDp" to 333f))
         val brush=result.layout.floating.single { EditorPanel.BRUSHES in EditorPanelLayouts.members(it.node) }

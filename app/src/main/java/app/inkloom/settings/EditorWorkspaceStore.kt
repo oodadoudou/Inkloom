@@ -50,7 +50,9 @@ class EditorWorkspaceStore(private val context: Context) {
     }
 
     private fun migrate(): PanelWorkspaceBackup {
-        val legacy = LegacyWorkspaceImport.fromPreferences(settings.all)
+        val metrics=context.resources.displayMetrics
+        val legacy = LegacyWorkspaceImport.fromPreferences(settings.all,
+            metrics.widthPixels/metrics.density, (metrics.heightPixels/metrics.density-64f).coerceAtLeast(72f))
         fun <T> import(key: String, decode: (String) -> T): T? = preferences.getString(key, null)?.let { raw ->
             runCatching { decode(raw) }.getOrElse {
                 check(preferences.edit().putString("workspace.legacyRecovery.$key", raw).putBoolean("recoveryNotice", true).commit())

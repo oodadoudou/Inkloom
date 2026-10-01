@@ -16,7 +16,7 @@ object LegacyWorkspaceImport {
     val railKeys = setOf("showToolbar", "verticalToolbar", "toolbarDock", "toolbarOffsetXDp", "toolbarOffsetYDp", "toolPaletteLayout")
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun fromPreferences(values: Map<String, *>): PanelWorkspaceBackup {
+    fun fromPreferences(values: Map<String, *>, viewportWidth:Float=1280f, viewportHeight:Float=800f): PanelWorkspaceBackup {
         val root = buildJsonObject {
             values.forEach { (key, value) -> when (value) {
                 is Boolean -> put(key, value)
@@ -25,21 +25,26 @@ object LegacyWorkspaceImport {
                 is String -> put(key, value)
             } }
         }
-        return fromSettings(root)
+        return fromSettings(root,viewportWidth,viewportHeight)
     }
 
-    fun fromSettings(root: JsonObject): PanelWorkspaceBackup {
+    fun fromSettings(root: JsonObject, viewportWidth:Float=1280f, viewportHeight:Float=800f): PanelWorkspaceBackup {
         val profiles = runCatching {
             val stored = root["workspaceLayouts"] ?: return@runCatching emptyMap()
             val data = if (stored is JsonPrimitive && stored.isString) json.parseToJsonElement(stored.content).jsonObject else stored.jsonObject
             listOf("LANDSCAPE", "PORTRAIT").mapNotNull { orientation ->
-                data[orientation.lowercase()]?.jsonObject?.let { orientation to NamedPanelLayout(orientation, layout(it), rail(it)) }
+                data[orientation.lowercase()]?.jsonObject?.let {
+                    val landscape=orientation=="LANDSCAPE"
+                    orientation to NamedPanelLayout(orientation, layout(it,
+                        if(landscape) maxOf(viewportWidth,viewportHeight) else minOf(viewportWidth,viewportHeight),
+                        if(landscape) minOf(viewportWidth,viewportHeight) else maxOf(viewportWidth,viewportHeight)), rail(it))
+                }
             }.toMap()
         }.getOrDefault(emptyMap())
-        return PanelWorkspaceBackup(layout(root), NamedPanelLayouts(), rail(root), profiles)
+        return PanelWorkspaceBackup(layout(root,viewportWidth,viewportHeight), NamedPanelLayouts(), rail(root), profiles)
     }
 
-    private fun layout(root: JsonObject): EditorPanelLayout {
+    private fun layout(root: JsonObject, viewportWidth:Float, viewportHeight:Float): EditorPanelLayout {
         val panels = listOf(EditorPanel.PAGES, EditorPanel.BRUSHES, EditorPanel.LAYERS)
         val defaults = EditorPanelLayout()
         val names = mapOf(EditorPanel.PAGES to "page", EditorPanel.BRUSHES to "brush", EditorPanel.LAYERS to "layer")
@@ -50,6 +55,7 @@ object LegacyWorkspaceImport {
             floating.copy(rect = PanelRect(root.number("${prefix}PanelXDp", floating.rect.x), root.number("${prefix}PanelYDp", floating.rect.y),
                 root.number("${prefix}PanelWidthDp", floating.rect.width).coerceIn(72f, 1200f), root.number("${prefix}PanelHeightDp", floating.rect.height).coerceIn(72f, 1600f)))
         }, open = panels.filterTo(linkedSetOf()) { root.flag(openKeys.getValue(it), false) })
+        val originalRects=panels.associateWith { panel -> result.floating.single { panel in EditorPanelLayouts.members(it.node) }.rect }
         val order = root.text("panelTabOrder").split(',').mapNotNull { value -> panels.firstOrNull { it.name == value.trim() } }.distinct().let { it + panels.filterNot(it::contains) }
         for (dock in listOf("LEFT", "RIGHT", "BOTTOM", "FREE")) {
             val members = order.filter { root.text("${names.getValue(it)}PanelDock").ifEmpty { "FREE" } == dock }
@@ -60,7 +66,20 @@ object LegacyWorkspaceImport {
                 val stacked = root.flag("${dock.lowercase()}DockStacked", false)
                 val target = if (stacked && targetId != null) PanelDropTarget(targetId, PanelEdge.TAB, Int.MAX_VALUE)
                     else if (dock != "FREE") PanelDropTarget(targetId ?: "canvas", if (targetId == null) PanelEdge.valueOf(dock) else PanelEdge.BOTTOM) else null
+                val splitId="split-${result.nextId}"
+                val destination=target?.let { EditorPanelLayouts.node(result,it.nodeId) }
+                val destinationRect=target?.let { drop -> EditorPanelLayouts.slots(result,viewportWidth,viewportHeight).firstOrNull { it.node.id==drop.nodeId }?.rect }
                 result = EditorPanelLayouts.move(result, owner.node.id, null, target, owner.rect)
+                if(target!=null && target.edge!=PanelEdge.TAB && destination!=null) {
+                    val horizontal=target.edge in setOf(PanelEdge.LEFT,PanelEdge.RIGHT)
+                    val desired=if(horizontal) members.maxOf { originalRects.getValue(it).width } else owner.rect.height
+                    val extent=if(horizontal) destinationRect?.width ?: viewportWidth else destinationRect?.height ?: viewportHeight
+                    val portion=if(EditorPanelLayouts.containsCanvas(destination)) (desired+2f)/extent.coerceAtLeast(1f)
+                        else desired/(desired+EditorPanelLayouts.members(destination).mapNotNull(originalRects::get).maxOfOrNull { if(horizontal) it.width else it.height }.let { it ?: desired })
+                    val before=target.edge in setOf(PanelEdge.LEFT,PanelEdge.TOP)
+                    result=EditorPanelLayouts.update(result,splitId) { node -> (node as PanelNode.Split).copy(
+                        fraction=(if(before) portion else 1f-portion).coerceIn(.05f,.95f)) }
+                }
                 targetId = tabsId(result, panel)
             }
             if (root.flag("${dock.lowercase()}DockStacked", false)) {
