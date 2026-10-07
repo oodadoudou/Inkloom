@@ -225,4 +225,107 @@ class PixelAdjustmentTest {
         assertTrue((multiply ushr 16 and 255) < (normal ushr 16 and 255))
         assertEquals(0, cache.update(nodes(PixelBlendMode.MULTIPLY)).recomposedTileCount)
     }
+
+    private fun opaque(vararg points: Pair<Int, Int>, color: Int = 0xff404040.toInt(),
+        format: app.inkloom.engine.v5.surface.PixelTileFormat = app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_SRGB_8888,
+    ) = PixelTileSurface(64, 64, tileSize = 64, pixelFormat = format).also { surface ->
+        surface.beginWrite("fixture").run { points.forEach { (x, y) -> setPixel(x, y, color) }; commit().close() }
+    }
+
+    private fun invert(id: String, clipped: Boolean = true, opacity: Float = 1f) = PixelProjectionNode.Adjustment(id,
+        LayerAdjustment(kind = LayerAdjustmentKind.INVERT), opacity, clipToBaseBelow = clipped)
+
+    @Test fun clippedAdjustmentChangesOnlyItsBaseCoverage() {
+        val below = opaque(10 to 10, 20 to 10)
+        val base = opaque(20 to 10, 30 to 10, color = 0xff202020.toInt())
+        val cache = PixelGroupProjectionCache(64, 64, tileSize = 64)
+        val result = cache.update(listOf(
+            PixelProjectionNode.Paint(PixelLayerProjectionInput("below", below.snapshot())),
+            PixelProjectionNode.Paint(PixelLayerProjectionInput("base", base.snapshot())),
+            invert("clip"),
+        )).snapshot
+        assertEquals("pixels outside the base keep their color", 0xff404040.toInt(), result.pixelAt(10, 10))
+        assertEquals(0xffdfdfdf.toInt(), result.pixelAt(20, 10))
+        assertEquals(0xffdfdfdf.toInt(), result.pixelAt(30, 10))
+        assertEquals(0, result.pixelAt(40, 10))
+        assertEquals(0xff202020.toInt(), base.pixelAt(20, 10))
+    }
+
+    @Test fun clippedAdjustmentFollowsBaseOpacityMaskAndOwnOpacity() {
+        val base = opaque(10 to 10, 20 to 10, color = 0xff000000.toInt())
+        val mask = MaskTileSurface(64, 64, tileSize = 64, initialDefaultAlpha = 255)
+        mask.beginWrite("hide").run { setAlpha(20, 10, 0); commit().close() }
+        val cache = PixelGroupProjectionCache(64, 64, tileSize = 64)
+        fun nodes(baseOpacity: Float, opacity: Float) = listOf(
+            PixelProjectionNode.Paint(PixelLayerProjectionInput("base", base.snapshot(), opacity = baseOpacity, mask = mask.snapshot())),
+            invert("clip", opacity = opacity),
+        )
+        val half = cache.update(nodes(1f, .5f)).snapshot
+        assertEquals(128, half.pixelAt(10, 10) ushr 16 and 255)
+        assertEquals("the base mask hides the base and the clipped adjustment", 0, half.pixelAt(20, 10))
+        val faded = cache.update(nodes(.5f, 1f)).snapshot.pixelAt(10, 10)
+        assertEquals(128, faded ushr 24)
+        assertEquals("inverting black at half base coverage", 64, faded ushr 16 and 255)
+    }
+
+    @Test fun clippedAdjustmentIncludesClippedLayersBelowAndKeepsLaterClippingScope() {
+        val base = opaque(10 to 10, 20 to 10, color = 0xff000000.toInt())
+        val clippedBelow = opaque(10 to 10, 40 to 10, color = 0xffff0000.toInt())
+        val clippedAbove = opaque(20 to 10, 40 to 10, color = 0xff0000ff.toInt())
+        val cache = PixelGroupProjectionCache(64, 64, tileSize = 64)
+        val result = cache.update(listOf(
+            PixelProjectionNode.Paint(PixelLayerProjectionInput("base", base.snapshot())),
+            PixelProjectionNode.Paint(PixelLayerProjectionInput("red", clippedBelow.snapshot(), clipToBaseBelow = true)),
+            invert("clip"),
+            PixelProjectionNode.Paint(PixelLayerProjectionInput("blue", clippedAbove.snapshot(), clipToBaseBelow = true)),
+        )).snapshot
+        assertEquals("red clipped content is inverted with its base", 0xff00ffff.toInt(), result.pixelAt(10, 10))
+        assertEquals("a clipped layer above the adjustment remains visible", 0xff0000ff.toInt(), result.pixelAt(20, 10))
+        assertEquals("and remains limited to the base", 0, result.pixelAt(40, 10))
+    }
+
+    @Test fun stackedClippedAdjustmentsAndHiddenOrMissingBasesHaveExplicitScope() {
+        val base = opaque(10 to 10, color = 0xff000000.toInt())
+        val cache = PixelGroupProjectionCache(64, 64, tileSize = 64)
+        val twice = cache.update(listOf(
+            PixelProjectionNode.Paint(PixelLayerProjectionInput("base", base.snapshot())), invert("a"), invert("b"),
+        )).snapshot
+        assertEquals(0xff000000.toInt(), twice.pixelAt(10, 10))
+        val hidden = cache.update(listOf(
+            PixelProjectionNode.Paint(PixelLayerProjectionInput("below", opaque(10 to 10).snapshot())),
+            PixelProjectionNode.Paint(PixelLayerProjectionInput("base", base.snapshot(), visible = false)), invert("a"),
+        )).snapshot
+        assertEquals(0xff404040.toInt(), hidden.pixelAt(10, 10))
+        val orphan = cache.update(listOf(invert("a"),
+            PixelProjectionNode.Paint(PixelLayerProjectionInput("above", opaque(10 to 10).snapshot())))).snapshot
+        assertEquals(0xff404040.toInt(), orphan.pixelAt(10, 10))
+    }
+
+    @Test fun clippedAdjustmentUsesIsolatedFolderBaseAndF16Precision() {
+        val format = app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16
+        val below = PixelTileSurface(64, 64, tileSize = 64, pixelFormat = format)
+        val child = PixelTileSurface(64, 64, tileSize = 64, pixelFormat = format)
+        val black = app.inkloom.engine.v5.surface.PackedRgbaF16.packPremultiplied(0f, 0f, 0f, 1f)
+        val gray = app.inkloom.engine.v5.surface.PackedRgbaF16.packPremultiplied(.25f, .25f, .25f, 1f)
+        below.beginWrite("below").use {
+            it.editTileF16(app.inkloom.engine.v5.surface.PixelTileKey(0, 0), app.inkloom.engine.v5.surface.PixelRect(0, 0, 64, 64)) { pixels, stride ->
+                pixels[10 * stride + 10] = gray; pixels[10 * stride + 20] = gray
+            }
+            it.commit().close()
+        }
+        child.beginWrite("child").use {
+            it.editTileF16(app.inkloom.engine.v5.surface.PixelTileKey(0, 0), app.inkloom.engine.v5.surface.PixelRect(0, 0, 64, 64)) { pixels, stride ->
+                pixels[10 * stride + 20] = black
+            }
+            it.commit().close()
+        }
+        val cache = PixelGroupProjectionCache(64, 64, tileSize = 64, format = format)
+        val result = cache.update(listOf(
+            PixelProjectionNode.Paint(PixelLayerProjectionInput("below", below.snapshot())),
+            PixelProjectionNode.Group("folder", listOf(PixelProjectionNode.Paint(PixelLayerProjectionInput("child", child.snapshot())))),
+            invert("clip"),
+        )).snapshot
+        assertEquals(gray, result.packedF16At(10, 10))
+        assertEquals(1f, app.inkloom.engine.v5.surface.PackedRgbaF16.premultipliedRed(result.packedF16At(20, 10)), .001f)
+    }
 }

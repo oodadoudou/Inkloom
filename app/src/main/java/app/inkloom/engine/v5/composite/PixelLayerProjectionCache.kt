@@ -24,6 +24,9 @@ data class PixelLayerProjectionInput(
     /** Synthetic Through backdrops are visible, but are outside the child clipping scope. */
     val isClippingBase: Boolean = true,
     val colorReplacement: LayerColorReplacement? = null,
+    /** Defines the clipping scope for following inputs without drawing again, after an adjustment
+     * has already folded this base into a synthetic backdrop. */
+    val clippingBaseOnly: Boolean = false,
 )
 
 enum class PixelActiveDeltaBlend { SOURCE_OVER, DESTINATION_OUT, SOURCE_ATOP }
@@ -507,10 +510,10 @@ class PixelLayerProjectionCache(
             val opacity = if (input.opacity.isFinite()) input.opacity.coerceIn(0f, 1f) else 0f
             val base = if (input.clipToBaseBelow) currentBase else null
             if (!input.clipToBaseBelow && input.isClippingBase) currentBase = input
-            val zeroCoverage = !input.visible || opacity <= 0f ||
+            val zeroCoverage = !input.visible || input.clippingBaseOnly || opacity <= 0f ||
                 (input.clipToBaseBelow && (base == null || !base.visible))
             val coverage = when {
-                !input.visible || opacity <= 0f -> ZERO_COVERAGE
+                !input.visible || input.clippingBaseOnly || opacity <= 0f -> ZERO_COVERAGE
                 input.clipToBaseBelow && (base == null || !base.visible) -> ZERO_COVERAGE
                 input.mask == null && base == null -> null
                 else -> CompositeCoverage { x, y ->
@@ -525,7 +528,7 @@ class PixelLayerProjectionCache(
             }
             PreparedLayer(
                 input = input,
-                opacity = if (input.visible) opacity else 0f,
+                opacity = if (input.visible && !input.clippingBaseOnly) opacity else 0f,
                 clippingBase = base,
                 coverage = coverage,
                 zeroCoverage = zeroCoverage,
@@ -725,6 +728,7 @@ class PixelLayerProjectionCache(
         val activeDeltaSurfaceId: String?,
         val activeDeltaRevision: Long?,
         val activeDeltaBlend: PixelActiveDeltaBlend,
+        val clippingBaseOnly: Boolean,
     ) {
         companion object {
             fun from(input: PixelLayerProjectionInput): ProjectionInputState = ProjectionInputState(
@@ -742,6 +746,7 @@ class PixelLayerProjectionCache(
                 activeDeltaSurfaceId = input.activeDelta?.surfaceId,
                 activeDeltaRevision = input.activeDelta?.revision,
                 activeDeltaBlend = input.activeDeltaBlend,
+                clippingBaseOnly = input.clippingBaseOnly,
             )
         }
     }

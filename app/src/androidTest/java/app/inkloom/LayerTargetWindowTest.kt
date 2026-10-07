@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.onNodeWithText
@@ -155,6 +156,25 @@ class LayerTargetWindowTest {
         compose.waitUntil(10_000) { model.currentPage()!!.layers.single { it.id == id }.mask?.surface != null }
         compose.activityRule.scenario.recreate()
         compose.waitUntil(10_000) { model.currentPage()?.layers?.singleOrNull { it.id == id }?.mask?.surface != null }
+    }
+
+    @Test fun adjustmentLayersCanClipToTheLayerBelowFromWindowControls() {
+        tap("New Note"); tap("Create")
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync { model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java] }
+        tap("Layers"); tap("Add adjustment layer"); tap("Brightness / Contrast")
+        compose.waitUntil(10_000) { model.currentPage()?.layers?.any { it.role == app.inkloom.document.LayerRole.ADJUSTMENT } == true }
+        tap("Cancel")
+        val id = model.currentPage()!!.layers.single { it.role == app.inkloom.document.LayerRole.ADJUSTMENT }.id
+        fun clipped() = model.currentPage()!!.layers.single { it.id == id }.clippedToBelow
+        tap("Toggle clipping")
+        compose.waitUntil(5_000) { clipped() && id in canvas().clippedLayers }
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        compose.waitUntil(10_000) { model.currentPage()?.layers?.singleOrNull { it.id == id }?.clippedToBelow == true }
+        compose.waitUntil(5_000) { id in canvas().clippedLayers }
+        if (compose.onAllNodesWithContentDescription("Layer actions Adjustment 1").fetchSemanticsNodes().isEmpty()) tap("Layers")
+        tap("Layer actions Adjustment 1"); tap("Stop clipping")
+        compose.waitUntil(5_000) { !clipped() && id !in canvas().clippedLayers }
     }
 
     @Test fun creationFollowsSelectedSiblingOrFolderAndSharesPaintHistory() {

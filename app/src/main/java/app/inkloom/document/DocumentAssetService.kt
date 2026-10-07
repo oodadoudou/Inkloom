@@ -680,7 +680,8 @@ class DocumentAssetService(private val context: Context) {
             paint = { layer -> when {
                 layer.role == LayerRole.BACKGROUND -> null
                 layer.role == LayerRole.ADJUSTMENT && layer.adjustment != null -> PixelProjectionNode.Adjustment(
-                    layer.id, layer.adjustment, layer.opacity, layer.blendMode.toPixelBlendMode(), mask(layer), layer.visible && !LayerHierarchy.effectiveDraft(page.layers, layer))
+                    layer.id, layer.adjustment, layer.opacity, layer.blendMode.toPixelBlendMode(), mask(layer), layer.visible && !LayerHierarchy.effectiveDraft(page.layers, layer),
+                    layer.clippedToBelow)
                 else -> inputs[layer.id]?.let(PixelProjectionNode::Paint)
             } },
             group = { layer, children -> PixelProjectionNode.Group(layer.id, children, layer.opacity, layer.blendMode.toPixelBlendMode(),
@@ -1609,7 +1610,7 @@ class DocumentAssetService(private val context: Context) {
                 PixelProjectionNode.Adjustment(layer.id, layer.adjustment, layer.opacity, layer.blendMode.toPixelBlendMode(),
                     layer.mask?.takeIf { it.enabled }?.let { mask ->
                         mask.surface?.let { mask.expressed(loadMaskTileSurface(it).snapshot()) } },
-                    layer.id in visibleIds)
+                    layer.id in visibleIds, layer.clippedToBelow)
             else PixelProjectionNode.Paint((inputs[layer.id] ?: PixelLayerProjectionInput(layer.id,
                 projection.emptySnapshot, opacity = layer.opacity, clipToBaseBelow = layer.clippedToBelow))
                 .copy(visible = layer.id in visibleIds)) },

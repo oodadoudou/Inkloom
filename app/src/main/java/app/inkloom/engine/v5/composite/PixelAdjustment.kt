@@ -257,14 +257,19 @@ internal class PixelAdjustmentProjectionCache(
     private var signatures = emptyMap<PixelTileKey, List<Any?>>()
 
     fun update(input: PixelTileSurfaceSnapshot, adjustment: LayerAdjustment, opacity: Float,
-        mask: MaskTileSurfaceSnapshot?, blendMode: PixelBlendMode = PixelBlendMode.NORMAL): PixelLayerProjectionUpdate {
+        mask: MaskTileSurfaceSnapshot?, blendMode: PixelBlendMode = PixelBlendMode.NORMAL,
+        /** Clipping-base coverage; its alpha further weights the correction. Missing tiles mean no effect. */
+        coverage: PixelTileSurfaceSnapshot? = null): PixelLayerProjectionUpdate {
         require(input.logicalWidth == width && input.logicalHeight == height && input.tileSize == tileSize && input.pixelFormat == format)
+        require(coverage == null || (coverage.logicalWidth == width && coverage.logicalHeight == height &&
+            coverage.tileSize == tileSize && coverage.pixelFormat == format)) { "Clipping coverage is incompatible" }
         val amount = opacity.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 1f
         if (amount == 0f) return PixelLayerProjectionUpdate(input, 0, input.tileCount)
         val kernel = PixelAdjustmentKernel(adjustment)
         val next = input.tileKeys.associateWith { key -> listOf(
             input.surfaceId, input.generationAt(key), adjustment.hashCode(), amount.toBits(), blendMode,
             mask?.surfaceId, mask?.revision, mask?.defaultAlpha, mask?.let { maskGenerations(it, bounds(key)) },
+            coverage?.surfaceId, coverage?.generationAt(key),
         ) }
         val dirty = (signatures.keys + next.keys).filter { signatures[it] != next[it] }
         if (dirty.isNotEmpty()) output.beginWrite("adjustment layer").use { write ->
@@ -275,7 +280,9 @@ internal class PixelAdjustmentProjectionCache(
                         pixels.fill(0)
                         val blended = FloatArray(4)
                         val changed = FloatArray(3)
+                        val clip = coverage?.let { surface -> surface.readRgba8Tile(key) { it } ?: IntArray(0) }
                         input.readRgba8Tile(key) { source ->
+                            if (clip != null && clip.isEmpty()) { source.copyInto(pixels, 0, 0, minOf(source.size, pixels.size)); return@readRgba8Tile }
                             for (y in 0 until area.height) for (x in 0 until area.width) {
                                 val index = y * stride + x; val color = source[index]; val alpha = color ushr 24 and 255
                                 if (alpha == 0) continue
@@ -285,7 +292,8 @@ internal class PixelAdjustmentProjectionCache(
                                 val blue = (color and 255) / 255f / alphaFloat
                                 kernel.applyInto(red, green, blue, changed)
                                 val target = blendAdjusted(red, green, blue, changed, blendMode, blended)
-                                val weight = amount * maskWeight(mask, area.left + x, area.top + y)
+                                val weight = amount * maskWeight(mask, area.left + x, area.top + y) *
+                                    (clip?.let { (it[index] ushr 24 and 255) / 255f } ?: 1f)
                                 fun channel(original: Float, adjusted: Float) = ((original + (adjusted - original) * weight) * alphaFloat * 255f).roundToInt().coerceIn(0, alpha)
                                 pixels[index] = (alpha shl 24) or (channel(red, target[0]) shl 16) or
                                     (channel(green, target[1]) shl 8) or channel(blue, target[2])
@@ -296,7 +304,9 @@ internal class PixelAdjustmentProjectionCache(
                         pixels.fill(0L)
                         val blended = FloatArray(4)
                         val changed = FloatArray(3)
+                        val clip = coverage?.let { surface -> surface.readF16Tile(key) { it } ?: LongArray(0) }
                         input.readF16Tile(key) { source ->
+                            if (clip != null && clip.isEmpty()) { source.copyInto(pixels, 0, 0, minOf(source.size, pixels.size)); return@readF16Tile }
                             for (y in 0 until area.height) for (x in 0 until area.width) {
                                 val index = y * stride + x; val color = source[index]; val alpha = PackedRgbaF16.alpha(color)
                                 if (alpha <= 0f) continue
@@ -305,7 +315,8 @@ internal class PixelAdjustmentProjectionCache(
                                 val blue = PackedRgbaF16.premultipliedBlue(color) / alpha
                                 kernel.applyInto(red, green, blue, changed)
                                 val target = blendAdjusted(red, green, blue, changed, blendMode, blended)
-                                val weight = amount * maskWeight(mask, area.left + x, area.top + y)
+                                val weight = amount * maskWeight(mask, area.left + x, area.top + y) *
+                                    (clip?.let { PackedRgbaF16.alpha(it[index]).coerceIn(0f, 1f) } ?: 1f)
                                 fun channel(original: Float, adjusted: Float) = (original + (adjusted - original) * weight) * alpha
                                 pixels[index] = PackedRgbaF16.packPremultiplied(channel(red, target[0]), channel(green, target[1]), channel(blue, target[2]), alpha)
                             }

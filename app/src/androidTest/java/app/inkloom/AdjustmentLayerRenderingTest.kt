@@ -192,4 +192,56 @@ class AdjustmentLayerRenderingTest {
             assets.releaseRasterTileReservation(redRef)
         }
     }
+    @Test fun clippedAdjustmentChangesOnlyItsBaseInCanvasAndExport() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val assets = DocumentAssetService(instrumentation.targetContext)
+        val gray = Color.rgb(64, 64, 64)
+        fun filled(id: String, color: Int, right: Int) = PixelTileSurface(64, 64, 64, id).also { surface ->
+            surface.beginWrite("fixture").run {
+                editTile(PixelTileKey(0, 0), PixelRect(0, 0, 64, 64)) { pixels, stride ->
+                    for (y in 0 until 64) for (x in 0 until right) pixels[y * stride + x] = color
+                }
+                commit().close()
+            }
+        }
+        val below = filled("clip-below", gray, 64)
+        val base = filled("clip-base", Color.WHITE, 32)
+        val belowRef = assets.saveRasterTileSurface(below)
+        val baseRef = assets.saveRasterTileSurface(base)
+        try {
+            for (clipped in listOf(true, false)) {
+                val layers = listOf(
+                    InkLayer("below", "Below", rasterTileSurface = belowRef),
+                    InkLayer("base", "Base", rasterTileSurface = baseRef),
+                    InkLayer("adjust", "Invert", role = LayerRole.ADJUSTMENT, clippedToBelow = clipped,
+                        adjustment = LayerAdjustment(LayerAdjustmentKind.INVERT)),
+                )
+                val page = InkPage(width = 64f, height = 64f, background = PageBackground.Paper(0xFFFFFFFF), layers = layers)
+                val exported = assets.renderPageBitmap(page, 64)
+                try {
+                    assertEquals(Color.BLACK, exported.getPixel(16, 32))
+                    assertEquals("clipping keeps the correction away from layers below its base",
+                        if (clipped) gray else Color.rgb(191, 191, 191), exported.getPixel(48, 32))
+                    instrumentation.runOnMainSync {
+                        val view = InkCanvasView(instrumentation.targetContext).apply {
+                            layout(0, 0, 64, 64)
+                            pagePaperColor = Color.WHITE
+                            setDocumentLayers(layers)
+                            setRasterLayerSurfaces(mapOf("below" to below, "base" to base))
+                            layerOrder = listOf("below", "base")
+                            clippedLayers = if (clipped) setOf("adjust") else emptySet()
+                        }
+                        val live = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
+                        try {
+                            view.draw(Canvas(live))
+                            for (x in listOf(16, 48)) assertEquals(exported.getPixel(x, 32), live.getPixel(x, 32))
+                        } finally { live.recycle() }
+                    }
+                } finally { exported.recycle() }
+            }
+        } finally {
+            assets.releaseRasterTileReservation(belowRef)
+            assets.releaseRasterTileReservation(baseRef)
+        }
+    }
 }

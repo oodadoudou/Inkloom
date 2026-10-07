@@ -660,7 +660,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun toggleLayerClippedToBelow(documentId: String, pageId: String, layerId: String) = updateLayerStructure(documentId, pageId) { page ->
-        page.copy(layers = page.layers.map { if (it.id == layerId && it.isPaintSurfaceLayer()) it.copy(clippedToBelow = !it.clippedToBelow) else it })
+        page.copy(layers = page.layers.map { if (it.id == layerId && it.canClipToBelow()) it.copy(clippedToBelow = !it.clippedToBelow) else it })
     }
 
     fun toggleLayerDrawingAssist(documentId: String, pageId: String, layerId: String, guide: app.inkloom.document.LayerDrawingGuide) = updatePage(documentId, pageId) { page ->

@@ -15,6 +15,8 @@ sealed interface PixelProjectionNode {
         val blendMode: PixelBlendMode = PixelBlendMode.NORMAL,
         val mask: MaskTileSurfaceSnapshot? = null,
         val visible: Boolean = true,
+        /** Limits the correction to the clipping base below and the clipped layers already above it. */
+        val clipToBaseBelow: Boolean = false,
     ) : PixelProjectionNode
     data class Group(
         val id: String,
@@ -62,24 +64,38 @@ class PixelGroupProjectionCache(
         fun project(children: List<PixelProjectionNode>, scope: String,
             initialBackdrop: app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot? = null): app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot {
             val inputs = mutableListOf<PixelLayerProjectionInput>()
+            // Base for clipped inputs; it survives an adjustment folding the prefix into one backdrop.
+            var clippingBase: PixelLayerProjectionInput? = null
+            fun add(input: PixelLayerProjectionInput) {
+                inputs += input
+                if (!input.clipToBaseBelow && input.isClippingBase) clippingBase = input
+            }
             initialBackdrop?.let { inputs += PixelLayerProjectionInput("$scope/backdrop", it, isClippingBase = false) }
             for (node in children) when (node) {
-                is PixelProjectionNode.Paint -> inputs += node.input
-                is PixelProjectionNode.Adjustment -> if (node.visible) {
+                is PixelProjectionNode.Paint -> add(node.input)
+                is PixelProjectionNode.Adjustment -> {
+                    val base = clippingBase.takeIf { node.clipToBaseBelow }
+                    // A clipped correction without a visible base has nothing to correct.
+                    if (!node.visible || (node.clipToBaseBelow && base?.visible != true)) continue
                     val before = compose("before-adjustment/${node.id}", inputs)
+                    val coverage = base?.let {
+                        compose("adjustment-clip/${node.id}", listOf(it.copy(layerId = "${node.id}/clip-base",
+                            blendMode = PixelBlendMode.NORMAL, colorReplacement = null, clipToBaseBelow = false, clippingBaseOnly = false)))
+                    }
                     usedAdjustments += node.id
                     val cache = adjustments.getOrPut(node.id) {
                         PixelAdjustmentProjectionCache(width, height, tileSize, format, "$surfaceId/adjustment/${node.id}")
                     }
                     val result = count(cache.update(before, node.adjustment, node.opacity.coerceIn(0f, 1f), node.mask,
-                        node.blendMode))
+                        node.blendMode, coverage))
                     inputs.clear()
                     inputs += PixelLayerProjectionInput(node.id, result, isClippingBase = false)
+                    if (base != null) inputs += base.copy(clippingBaseOnly = true) else clippingBase = null
                 }
                 is PixelProjectionNode.Group -> {
                     require(groupIds.add(node.id)) { "Duplicate or cyclic projection group ${node.id}" }
                     when {
-                        !node.visible -> inputs += PixelLayerProjectionInput(node.id, emptySnapshot, visible = false)
+                        !node.visible -> add(PixelLayerProjectionInput(node.id, emptySnapshot, visible = false))
                         node.passThrough -> {
                             require(!node.clipToBaseBelow) { "Through groups cannot be clipped" }
                             val before = compose("before/${node.id}", inputs)
@@ -92,9 +108,10 @@ class PixelGroupProjectionCache(
                             // The result already contains the previous backdrop; replace the prefix.
                             inputs.clear()
                             inputs += PixelLayerProjectionInput(node.id, result, isClippingBase = false)
+                            clippingBase = null
                         }
-                        else -> inputs += PixelLayerProjectionInput(node.id, project(node.children, "group/${node.id}"),
-                            opacity = node.opacity, blendMode = node.blendMode, mask = node.mask, clipToBaseBelow = node.clipToBaseBelow)
+                        else -> add(PixelLayerProjectionInput(node.id, project(node.children, "group/${node.id}"),
+                            opacity = node.opacity, blendMode = node.blendMode, mask = node.mask, clipToBaseBelow = node.clipToBaseBelow))
                     }
                 }
             }

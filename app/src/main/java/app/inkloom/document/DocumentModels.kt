@@ -260,6 +260,9 @@ data class LayerDrawingGuide(
 /** V5 has one paint-layer truth. Backgrounds and folders are structural, all other layers own pixels. */
 fun InkLayer.isPaintSurfaceLayer(): Boolean = role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER, LayerRole.ADJUSTMENT)
 
+/** Pixel layers and adjustment layers can be limited to the clipping base below them. */
+fun InkLayer.canClipToBelow(): Boolean = isPaintSurfaceLayer() || role == LayerRole.ADJUSTMENT
+
 @Serializable
 enum class LayerAdjustmentKind {
     BRIGHTNESS_CONTRAST,

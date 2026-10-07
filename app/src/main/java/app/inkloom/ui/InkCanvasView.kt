@@ -2193,7 +2193,7 @@ class InkCanvasView(context: Context) : View(context) {
                     layerOpacities[layer.id] ?: layer.opacity,
                     (layerBlendModes[layer.id] ?: layer.blendMode).toPixelBlendMode(),
                     layerMasks[layer.id]?.takeIf { it.enabled }?.let { mask ->
-                        layerMaskSurfaces[layer.id]?.let(mask::expressed) }, layer.visible)
+                        layerMaskSurfaces[layer.id]?.let(mask::expressed) }, layer.visible, layer.id in clippedLayers)
             else PixelProjectionNode.Paint((inputs[layer.id] ?: PixelLayerProjectionInput(layer.id,
                 cache.emptySnapshot, opacity = layer.opacity, blendMode = layer.blendMode.toPixelBlendMode(),
                 clipToBaseBelow = layer.clippedToBelow)).copy(visible = layer.visible)) },

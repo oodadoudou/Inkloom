@@ -46,7 +46,7 @@ internal fun LayerQuickActions(
     var adjustmentOpen by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().height(34.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceEvenly) {
-        LayerQuickIcon(Icons.Outlined.ContentCut, tr("Toggle clipping", "切换剪贴"), editable && content, layer?.clippedToBelow == true, onClip)
+        LayerQuickIcon(Icons.Outlined.ContentCut, tr("Toggle clipping", "切换剪贴"), editable && layer?.canClipToBelow() == true, layer?.clippedToBelow == true, onClip)
         LayerQuickIcon(Icons.Outlined.Lightbulb, tr("Toggle reference", "切换参考图层"), editable, layer?.reference == true, onReference)
         LayerQuickIcon(Icons.Outlined.EditNote, tr("Toggle draft", "切换草稿图层"), editable, layer?.draft == true, onDraft)
         LayerQuickIcon(Icons.Outlined.Lock, tr("Toggle layer lock", "切换图层锁定"), layer != null && layer.role != LayerRole.BACKGROUND, layer?.locked == true, onLock)
