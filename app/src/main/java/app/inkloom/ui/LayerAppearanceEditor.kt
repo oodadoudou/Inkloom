@@ -17,6 +17,7 @@ import app.inkloom.document.LayerPaletteColorEdit
 import app.inkloom.document.LayerColorReplacement
 import app.inkloom.document.LayerColorReplacementEdit
 import app.inkloom.document.LayerSoloVisibilityEdit
+import app.inkloom.document.canClipToBelow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -77,6 +78,15 @@ internal class LayerAppearanceEditor(
         if (closed || finishing || preview != null) { rejected(); return }
         if (!app.inkloom.document.LayerGroupPolicy.canPassThrough(page().layers, layerId)) { throughRejected(); return }
         if (begin(layerId) { app.inkloom.document.LayerGroupCompositingEdit(layerId, it.passThrough, true) }) commit()
+        rejectedGesture = false
+    }
+
+    fun toggleClipping(layerId: String) {
+        if (closed || finishing || preview != null) { rejected(); return }
+        val layer = page().layers.firstOrNull { it.id == layerId && it.canClipToBelow() } ?: run { rejected(); return }
+        val edit = app.inkloom.document.LayerClippingEdit(layerId, layer.clippedToBelow, !layer.clippedToBelow)
+        if (edit.apply(page(), false) == null) { throughRejected(); return }
+        if (begin(layerId) { edit }) commit()
         rejectedGesture = false
     }
 

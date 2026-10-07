@@ -44,4 +44,25 @@ class LayerGroupCompositingEditTest {
         assertEquals(paintedChild, requireNotNull(edit.apply(through, true)).layers.last())
         assertNull(edit.apply(through))
     }
+
+    @Test fun clippingHistoryPatchesOnlyItsFlagAndRejectsStaleOrThroughBases() {
+        val base = InkLayer(id = "base", name = "Base")
+        val adjustment = InkLayer(id = "adjust", name = "Adjust", role = LayerRole.ADJUSTMENT,
+            adjustment = LayerAdjustment(LayerAdjustmentKind.INVERT))
+        val stack = InkPage(layers = listOf(base, adjustment))
+        val edit = LayerClippingEdit(adjustment.id, false, true)
+        val clipped = requireNotNull(edit.apply(stack))
+        assertTrue(clipped.layers.single { it.id == adjustment.id }.clippedToBelow)
+        val later = clipped.copy(layers = clipped.layers.map { if (it.id == base.id) it.copy(name = "Later edit") else it })
+        val undone = requireNotNull(edit.apply(later, true))
+        assertEquals("Later edit", undone.layers.single { it.id == base.id }.name)
+        assertFalse(undone.layers.single { it.id == adjustment.id }.clippedToBelow)
+        assertNull("stale redo", edit.apply(clipped))
+        assertNull("stale undo", edit.apply(stack, true))
+        assertNull("folders and backgrounds are not clip targets",
+            LayerClippingEdit(folder.id, false, true).apply(page))
+        val throughBase = InkPage(layers = listOf(folder.copy(passThrough = true), child,
+            adjustment.copy(parentId = null)))
+        assertNull("a Through folder cannot become a clipping base", edit.apply(throughBase))
+    }
 }

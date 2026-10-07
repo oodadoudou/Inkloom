@@ -29,3 +29,15 @@ data class LayerGroupCompositingEdit(override val layerId: String, val before: B
         return page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(passThrough = value) else it })
     }
 }
+
+/** Clip-to-below changes only this layer's flag; history never replays a stale page snapshot. */
+data class LayerClippingEdit(override val layerId: String, val before: Boolean, val after: Boolean) : LayerAppearanceEdit {
+    override val isNoOp get() = before == after
+    override fun apply(page: InkPage, undo: Boolean): InkPage? {
+        val layer = page.layers.firstOrNull { it.id == layerId && it.canClipToBelow() } ?: return null
+        if (layer.clippedToBelow != if (undo) after else before) return null
+        val value = if (undo) before else after
+        return page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(clippedToBelow = value) else it })
+            .takeIf { LayerGroupPolicy.rejection(it.layers) == null }
+    }
+}

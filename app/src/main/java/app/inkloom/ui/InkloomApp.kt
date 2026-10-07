@@ -1023,14 +1023,6 @@ fun InkloomApp(initialIntent: Intent?) {
             onApplyLayerAppearanceEdit = viewModel::applyLayerAppearanceEdit,
             onSetLayerRasterTileSurface = viewModel::setLayerRasterTileSurface,
             onToggleLayerAlphaLock = viewModel::toggleLayerAlphaLock,
-            onToggleLayerClippedToBelow = { documentId, pageId, layerId ->
-                viewModel.toggleLayerClippedToBelow(documentId, pageId, layerId)?.let { rejection ->
-                    val message = if (rejection == app.inkloom.document.LayerGroupRejection.THROUGH_CLIPPING)
-                        settings.language.text("Through folders cannot be a clipping base. Remove clipping first.", "穿透组不能作为剪贴底层，请先取消剪贴。")
-                    else settings.language.text("The layer target is no longer available.", "目标图层已不可用。")
-                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-                }
-            },
             onToggleLayerDrawingAssist = viewModel::toggleLayerDrawingAssist,
             onUpdateLayerDrawingGuide = viewModel::updateLayerDrawingGuide,
             onToggleLayerFolderCollapsed = viewModel::toggleLayerFolderCollapsed,
@@ -1816,7 +1808,6 @@ private fun EditorScreen(
     onApplyLayerAppearanceEdit: (String, String, LayerAppearanceEdit, Boolean) -> Boolean,
     onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit,
     onToggleLayerAlphaLock: (String, String, String) -> Unit,
-    onToggleLayerClippedToBelow: (String, String, String) -> Unit,
     onToggleLayerDrawingAssist: (String, String, String, LayerDrawingGuide) -> Unit,
     onUpdateLayerDrawingGuide: (String, String, String, LayerDrawingGuide) -> Unit,
     onToggleLayerFolderCollapsed: (String, String, String) -> Unit,
@@ -3976,7 +3967,7 @@ private fun EditorScreen(
                 onPaletteColor = appearanceEditor::setPaletteColor,
                 onLayerColor = appearanceEditor::setColorReplacement,
                 onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
-                onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
+                onToggleClippedToBelow = appearanceEditor::toggleClipping,
                 onToggleReference = { appearanceEditor.toggleReferenceFlag(it, app.inkloom.document.LayerReferenceFlag.REFERENCE) },
                 onToggleDraft = { appearanceEditor.toggleReferenceFlag(it, app.inkloom.document.LayerReferenceFlag.DRAFT) },
                 onToggleDrawingAssist = { onToggleLayerDrawingAssist(document.id, selectedPage.id, it, settings.toLayerDrawingGuide()) },
