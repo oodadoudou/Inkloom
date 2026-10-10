@@ -61,6 +61,7 @@ fun BrushEditorV1Dialog(
     var saveAsName by remember(source.id) { mutableStateOf(session.current.identity.name + tr(" - Copy", " - 副本")) }
     var selectedGroup by remember(source.id) { mutableStateOf(BrushOptionGroup.SPACING) }
     var moreOpen by remember { mutableStateOf(false) }
+    var compactPadOpen by remember { mutableStateOf(false) }
     val panels = remember(session.current) { BrushOptionDescriptors.productionPanels(session.current) }
     val activePanel = panels.firstOrNull { it.first == selectedGroup } ?: panels.first()
     val orderedOptions = if (activePanel.first == BrushOptionGroup.PRESSURE) activePanel.second.sortedBy {
@@ -125,8 +126,18 @@ fun BrushEditorV1Dialog(
                     BoxWithConstraints(Modifier.weight(1f)) {
                         // Keep the three-column relationship on a tablet; stack the pad only on a phone.
                         val wide = maxWidth >= 720.dp
+                        // In a short window the pad must not consume the parameter viewport.
+                        val compactHeight = !wide && maxHeight < 360.dp
                         Column {
-                            Row(Modifier.weight(1f)) {
+                            if (compactHeight) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                    TextButton(onClick = { compactPadOpen = false }) { Text(tr("Parameters", "参数")) }
+                                    TextButton(onClick = { compactPadOpen = true }) { Text(tr("Drawing pad", "试画板")) }
+                                }
+                            }
+                            if (compactHeight && compactPadOpen) {
+                                V5ScratchPad(session.current, settings, Modifier.fillMaxWidth().weight(1f))
+                            } else Row(Modifier.weight(1f)) {
                                 LazyColumn(Modifier.width(if (wide) 174.dp else 128.dp).fillMaxHeight()
                                     .background(Paper), contentPadding = PaddingValues(8.dp)) {
                                     item {
@@ -143,7 +154,8 @@ fun BrushEditorV1Dialog(
                                     }
                                 }
                                 VerticalDivider()
-                                LazyColumn(Modifier.weight(if (wide) .42f else 1f).fillMaxHeight(),
+                                LazyColumn(Modifier.weight(if (wide) .42f else 1f).fillMaxHeight()
+                                    .semantics { contentDescription = tr("Brush parameters", "笔刷参数") },
                                     contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                                     item {
                                         Text(activePanel.first.localizedLabel(language), style = MaterialTheme.typography.titleMedium)
@@ -173,7 +185,7 @@ fun BrushEditorV1Dialog(
                                     V5ScratchPad(session.current, settings, Modifier.weight(.58f).fillMaxHeight())
                                 }
                             }
-                            if (!wide) {
+                            if (!wide && !compactHeight) {
                                 HorizontalDivider()
                                 V5ScratchPad(session.current, settings, Modifier.fillMaxWidth().height(220.dp))
                             }

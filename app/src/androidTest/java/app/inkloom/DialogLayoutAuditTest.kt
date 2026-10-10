@@ -325,6 +325,26 @@ class DialogLayoutAuditTest {
         } finally { file.delete() }
     }
 
+    @Test fun brushStudioParametersRemainReachableInShortLandscape() {
+        val preset = app.inkloom.brushpresetv5.BrushPresetV5Import.requirePreset(app.inkloom.model.SystemBrushCatalog.brushes.first())
+        val owned = app.inkloom.brushpresetv5.OwnedBrushPreset(preset,
+            app.inkloom.brushpresetv5.PresetOwnership.Factory(preset.identity.id))
+        compose.runOnUiThread { compose.activity.setContent { MaterialTheme {
+            BrushEditorV1Dialog(owned, app.inkloom.settings.AppSettings(language = UiLanguage.SIMPLIFIED_CHINESE), {}, {}, {}, null, {})
+        } } }
+        compose.waitForIdle()
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("笔刷参数"))
+            .performScrollToNode(androidx.compose.ui.test.hasText("大小"))
+        compose.onNodeWithText("大小").assertIsDisplayed()
+        compose.onNodeWithText("完成").assertIsDisplayed()
+        open("试画板")
+        compose.onNodeWithText("试笔板").assertIsDisplayed()
+        open("参数")
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("笔刷参数"))
+            .performScrollToNode(androidx.compose.ui.test.hasText("大小"))
+        compose.onNodeWithText("大小").assertIsDisplayed()
+    }
+
     private fun open(text: String) {
         val node = compose.onNodeWithText(text)
         runCatching { node.performScrollTo() }
