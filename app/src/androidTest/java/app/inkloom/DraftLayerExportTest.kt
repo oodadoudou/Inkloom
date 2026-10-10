@@ -86,4 +86,26 @@ class DraftLayerExportTest {
         exported.recycle()
         editorLayer.recycle()
     }
+
+    @Test fun hiddenOrDraftClippingBasesHideTheirClippedLayersInEveryOutputPath() {
+        val assets = DocumentAssetService(ApplicationProvider.getApplicationContext())
+        val lower = InkLayer(id = "lower", name = "Lower")
+        val base = InkLayer(id = "base", name = "Base")
+        val clipped = InkLayer(id = "clipped", name = "Clipped", clippedToBelow = true)
+        fun shape(layer: InkLayer, x: Float, width: Float, color: Long) = PageElement.Shape(x = x, y = .25f, width = width, height = 16f,
+            layerId = layer.id, kind = ShapeKind.RECTANGLE, colorArgb = color, fillArgb = color, strokeWidth = 0f)
+        // Lower covers the whole row, base only the left half; red clipped ink spans both.
+        val elements = listOf(shape(lower, 0f, 64f, 0xFF0000FF), shape(base, 0f, 32f, 0xFF000000), shape(clipped, 0f, 64f, 0xFFFF0000))
+        for (excluded in listOf<(InkLayer) -> InkLayer>({ it.copy(visible = false) }, { it.copy(draft = true) })) {
+            val page = InkPage(width = 64f, height = 64f, layers = listOf(lower, excluded(base), clipped), elements = elements)
+            val flat = assets.renderPageBitmap(page, 64)
+            val composite = assets.renderPageCompositeSurface(page, 64, 64)
+            try {
+                for (x in listOf(8, 48)) {
+                    assertEquals("flattened export at $x", Color.BLUE, flat.getPixel(x, 20))
+                    assertEquals("sparse composite at $x must not re-clip to a lower layer", Color.BLUE, composite.pixelAt(x, 20))
+                }
+            } finally { flat.recycle() }
+        }
+    }
 }

@@ -682,7 +682,10 @@ class DocumentAssetService(private val context: Context) {
                 layer.role == LayerRole.ADJUSTMENT && layer.adjustment != null -> PixelProjectionNode.Adjustment(
                     layer.id, layer.adjustment, layer.opacity, layer.blendMode.toPixelBlendMode(), mask(layer), layer.visible && !LayerHierarchy.effectiveDraft(page.layers, layer),
                     layer.clippedToBelow)
-                else -> inputs[layer.id]?.let(PixelProjectionNode::Paint)
+                // A hidden or draft layer stays an invisible node: it remains the clipping base, so
+                // clipped layers above it disappear instead of re-clipping to a lower layer.
+                else -> PixelProjectionNode.Paint(inputs[layer.id] ?: PixelLayerProjectionInput(layer.id, cache.emptySnapshot,
+                    visible = false, clipToBaseBelow = layer.clippedToBelow))
             } },
             group = { layer, children -> PixelProjectionNode.Group(layer.id, children, layer.opacity, layer.blendMode.toPixelBlendMode(),
                 mask(layer), layer.clippedToBelow, layer.visible && !LayerHierarchy.effectiveDraft(page.layers, layer), layer.passThrough) })
