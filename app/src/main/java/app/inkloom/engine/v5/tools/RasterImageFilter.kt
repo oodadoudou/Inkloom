@@ -40,6 +40,8 @@ internal object RasterImageFilter {
         data class Mosaic(override val sigma: Float) : Effect
         data class Noise(override val sigma: Float,val seed:Int=1,val monochrome:Boolean=true) : Effect
         data class ChromaticAberration(override val sigma: Float,val angle:Float=0f) : Effect
+        /** Fixed-strength 3x3 sharpening (Sharpen / Sharpen More); it has no user parameters. */
+        data class Sharpen(val strong: Boolean) : Effect { override val sigma = 1f }
     }
 
     fun apply(
@@ -51,7 +53,8 @@ internal object RasterImageFilter {
         if (effect is Effect.ConvertToDrawingColor || effect == Effect.BrightnessToOpacity)
             return RasterColorConversion.apply(source, effect, selection, cancelled)
         if(source.pixelFormat.isHighPrecision || effect is Effect.MotionBlur || effect is Effect.RadialBlur ||
-            effect is Effect.LensBlur || effect is Effect.Mosaic || effect is Effect.Noise || effect is Effect.ChromaticAberration)
+            effect is Effect.LensBlur || effect is Effect.Mosaic || effect is Effect.Noise || effect is Effect.ChromaticAberration ||
+            effect is Effect.Sharpen)
             return FloatRasterImageFilter.apply(source,effect,selection,cancelled)
         require(selection == null || (selection.logicalWidth > 0 && selection.logicalHeight > 0)) {
             "Selection mask has invalid dimensions"

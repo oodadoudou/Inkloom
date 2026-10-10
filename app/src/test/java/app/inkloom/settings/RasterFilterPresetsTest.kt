@@ -20,6 +20,13 @@ class RasterFilterPresetsTest {
 
     @Test fun importedPresetParametersAreBounded(){
         val values=RasterFilterPresetsCodec.decode("""[{"name":"bad","kind":400,"strength":500,"angle":900,"centerX":-9}]""")
-        assertEquals(13,values.single().kind);assertEquals(20f,values.single().strength,0f);assertEquals(0f,values.single().centerX,0f)
+        assertEquals(15,values.single().kind);assertEquals(20f,values.single().strength,0f);assertEquals(0f,values.single().centerX,0f)
+    }
+
+    @Test fun fixedSharpenKindsRoundTripWithoutStrength(){
+        val presets=listOf(RasterFilterPreset(name="Sharp",kind=14),RasterFilterPreset(name="Sharp more",kind=15,favorite=true))
+        assertEquals(presets,RasterFilterPresetsCodec.decode(RasterFilterPresetsCodec.encode(presets)))
+        assertEquals(app.inkloom.engine.v5.tools.RasterImageFilter.Effect.Sharpen(strong=false),presets[0].effect())
+        assertEquals(app.inkloom.engine.v5.tools.RasterImageFilter.Effect.Sharpen(strong=true),presets[1].effect())
     }
 }

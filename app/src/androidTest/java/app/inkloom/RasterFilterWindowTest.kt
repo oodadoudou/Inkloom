@@ -174,6 +174,58 @@ class RasterFilterWindowTest {
         compose.waitUntil(15_000) { fingerprint(view) == filtered }
     }
 
+    @Test fun fixedSharpenFiltersPreviewCancelApplyAndShareWindowHistory() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        val view = canvas()
+        val rect = IntArray(2)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.getLocationOnScreen(rect) }
+        val y = rect[1] + view.height / 2f
+        val x1 = rect[0] + view.width * .25f
+        val x2 = rect[0] + view.width * .75f
+        val down = SystemClock.uptimeMillis()
+        event(MotionEvent.ACTION_DOWN, x1, y, down)
+        repeat(16) { index -> event(MotionEvent.ACTION_MOVE, x1 + (x2 - x1) * (index + 1) / 16f, y, down) }
+        event(MotionEvent.ACTION_UP, x2, y, down)
+        compose.waitUntil(15_000) { fingerprint(view) != 0 && !view.hasPendingPaintPublicationForMerge() }
+        fun open(kind: String) {
+            compose.onNodeWithContentDescription("Actions").performClick()
+            compose.onNodeWithContentDescription("Actions Canvas").performClick()
+            compose.onNodeWithText("Image filter…").performClick()
+            compose.onNodeWithText("Gaussian blur").performClick()
+            compose.onNodeWithText(kind).performScrollTo().performClick()
+        }
+        // Uniform ink has no color edge to sharpen; deterministic noise gives it one.
+        // Results are read after Apply because the dialog first previews its default filter.
+        fun applied(vararg excluded: Int): Int {
+            compose.onNodeWithText("Apply").performClick()
+            var result = 0
+            compose.waitUntil(15_000) {
+                val first = fingerprint(view); SystemClock.sleep(200)
+                result = fingerprint(view)
+                !view.selectionLayerTransferPending && first == result && result !in excluded
+            }
+            return result
+        }
+        val ink = fingerprint(view)
+        open("Noise"); val noisy = applied(ink)
+        open("Sharpen")
+        compose.onNodeWithText("Fixed strength; use Unsharp mask for adjustable sharpening.").assertExists()
+        compose.onNodeWithText("Cancel").performClick()
+        compose.waitUntil(15_000) { fingerprint(view) == noisy && !view.selectionLayerTransferPending }
+        open("Sharpen"); val sharpened = applied(noisy)
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        compose.waitUntil(15_000) { fingerprint(view) == noisy }
+        open("Sharpen more"); val stronger = applied(noisy, sharpened)
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        compose.waitUntil(15_000) { fingerprint(view) == noisy }
+        compose.onAllNodesWithContentDescription("Redo").onFirst().performClick()
+        compose.waitUntil(15_000) { fingerprint(view) == stronger }
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        val reopened = canvas()
+        compose.waitUntil(15_000) { fingerprint(reopened) == stronger }
+    }
+
     private fun fingerprint(view: InkCanvasView): Int {
         val snapshot = view.activeRasterSnapshotForTest() ?: return 0
         return snapshot.copyPremultipliedPixels(PixelRect(0, 0, snapshot.logicalWidth, snapshot.logicalHeight)).contentHashCode()

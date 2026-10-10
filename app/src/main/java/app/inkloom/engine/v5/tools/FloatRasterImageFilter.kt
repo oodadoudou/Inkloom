@@ -102,6 +102,20 @@ internal object FloatRasterImageFilter {
                             val dx=cos(angle)*effect.sigma;val dy=sin(angle)*effect.sigma;val r=sample(x+dx,y+dy);val b=sample(x-dx,y-dy)
                             LinearRgba(r.red,old.green,b.blue,maxOf(old.alpha,r.alpha,b.alpha))
                         }
+                        is RasterImageFilter.Effect.Sharpen -> {
+                            // Unpremultiplied Laplacian; transparent neighbors contribute the center
+                            // color, so ink edges keep their alpha and gain no bright halo.
+                            if(old.alpha<=0f) old else {
+                                val amount=if(effect.strong) .5f else .25f
+                                val offsets=if(effect.strong) SHARPEN_STRONG else SHARPEN_NORMAL
+                                val r=old.red/old.alpha;val g=old.green/old.alpha;val b=old.blue/old.alpha
+                                var dr=0f;var dg=0f;var db=0f
+                                for(i in offsets.indices step 2){val p=pixel(x+offsets[i],y+offsets[i+1])
+                                    if(p.alpha>0f){dr+=r-p.red/p.alpha;dg+=g-p.green/p.alpha;db+=b-p.blue/p.alpha}}
+                                fun channel(c:Float,d:Float)=(c+d*amount).coerceAtLeast(0f).let{if(source.pixelFormat.isHighPrecision)it else it.coerceAtMost(1f)}*old.alpha
+                                LinearRgba(channel(r,dr),channel(g,dg),channel(b,db),old.alpha)
+                            }
+                        }
                         is RasterImageFilter.Effect.Wave -> sample(x+sin(y*2*PI.toFloat()/effect.wavelength)*effect.sigma,y.toFloat())
                         is RasterImageFilter.Effect.CleanLineArt -> {
                             var n=0;for(dy in -1..1)for(dx in -1..1)if((dx!=0 || dy!=0) && pixel(x+dx,y+dy).alpha>=.125f)n++
@@ -133,4 +147,7 @@ internal object FloatRasterImageFilter {
             };write.commit().close()
         };return output
     }
+
+    private val SHARPEN_NORMAL=intArrayOf(0,-1,-1,0,1,0,0,1)
+    private val SHARPEN_STRONG=intArrayOf(-1,-1,0,-1,1,-1,-1,0,1,0,-1,1,0,1,1,1)
 }

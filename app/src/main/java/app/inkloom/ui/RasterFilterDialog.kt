@@ -31,7 +31,8 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
     val names=listOf(tr("Gaussian blur","高斯模糊"),tr("Unsharp mask","USM 锐化"),tr("Denoise","降噪"),tr("Remove stray pixels","清理杂点"),
         tr("Correct line width","修正线宽"),tr("Wave distortion","波形变形"),tr("Motion blur","动感模糊"),tr("Radial blur","径向模糊"),
         tr("Lens blur","镜头模糊"),tr("Mosaic","马赛克"),tr("Noise","噪点"),tr("Chromatic aberration","色差"),
-        tr("Convert to drawing color","换为绘画色"),tr("Brightness to opacity","亮度转透明度"))
+        tr("Convert to drawing color","换为绘画色"),tr("Brightness to opacity","亮度转透明度"),
+        tr("Sharpen","锐化"),tr("Sharpen more","强锐化"))
     var colorPickerOpen by remember { mutableStateOf(false) }
     if (colorPickerOpen) StandardColorPickerDialog(state.colorArgb or 0xFF000000.toInt(), language,
         onConfirm = { state=state.copy(colorArgb=it or 0xFF000000.toInt());colorPickerOpen=false },
@@ -58,6 +59,7 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
                 Box(Modifier.size(18.dp).background(Color(state.colorArgb or 0xFF000000.toInt())))
                 Spacer(Modifier.width(8.dp));Text(tr("Drawing color…","绘画色…"))
             }
+            if (state.kind >= 14) Text(tr("Fixed strength; use Unsharp mask for adjustable sharpening.","固定强度；需要调节时请使用 USM 锐化。"),style=MaterialTheme.typography.bodySmall)
             if (state.kind == 13) Text(tr("White becomes transparent; darker values become black ink. Source opacity is retained.","白色转为透明；深色转为黑色笔迹，原有透明度继续参与。"),style=MaterialTheme.typography.bodySmall)
             if(state.kind==1){Text(tr("Amount","锐化量"));BrushParameterSlider(state.amount,{state=state.copy(amount=it)},valueRange=0f..4f)}
             if(state.kind==4)Row{FilterChip(state.grow,{state=state.copy(grow=true)},label={Text(tr("Thicken","加粗"))});FilterChip(!state.grow,{state=state.copy(grow=false)},label={Text(tr("Thin","变细"))})}
