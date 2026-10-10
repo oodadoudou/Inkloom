@@ -259,6 +259,31 @@ class DialogLayoutAuditTest {
         check("笔刷另存为", "保存", "取消", focus = "笔刷名称")
     }
 
+    private fun imageFixture(): java.io.File {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = java.io.File(context.cacheDir, "window-audit.png")
+        val bitmap = android.graphics.Bitmap.createBitmap(128, 160, android.graphics.Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.WHITE)
+        android.graphics.Canvas(bitmap).drawCircle(64f, 80f, 40f, android.graphics.Paint().apply { color = android.graphics.Color.BLACK })
+        file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+        return file
+    }
+
+    @Test fun brushSourceTipSequenceRemainsReachable() {
+        val file = imageFixture()
+        val preset = app.inkloom.brushpresetv5.BrushPresetV5Import.requirePreset(app.inkloom.model.SystemBrushCatalog.brushes.first())
+            .copy(tipTexture = app.inkloom.brushpresetv5.TipTextureSettings(assetPaths = List(12) { file.path }))
+        val workspace = BrushSourceWorkspace(InstrumentationRegistry.getInstrumentation().targetContext)
+        try {
+            audit("来源编辑", "应用来源", "取消") {
+                BrushSourceEditor(preset, BrushSourceRole.SHAPE, workspace, UiLanguage.SIMPLIFIED_CHINESE, {}, {})
+            }
+            open("12")
+            compose.onNodeWithText("● 12").assertIsDisplayed()
+        } finally { workspace.close(); file.delete() }
+    }
+
     private fun open(text: String) {
         val node = compose.onNodeWithText(text)
         runCatching { node.performScrollTo() }

@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 internal fun BrushSourceEditor(preset:BrushPresetV5,role:BrushSourceRole,workspace:BrushSourceWorkspace,language:UiLanguage,
     onDismiss:()->Unit,onApply:(BrushPresetV5)->Unit) {
     fun tr(en:String,zh:String)=language.text(en,zh)
@@ -64,7 +65,7 @@ internal fun BrushSourceEditor(preset:BrushPresetV5,role:BrushSourceRole,workspa
                 BrushSourceRole.SECONDARY_GRAIN -> BrushOptionGroup.DUAL_GRAIN
             }
             BrushSourcePreviews(draft,group,language)
-            if(!grain && paths().size>1) Row { paths().indices.forEach { i -> TextButton(enabled=!busy,onClick={index=i}) { Text(if(i==index) "● ${i+1}" else "${i+1}") } } }
+            if(!grain && paths().size>1) FlowRow { paths().indices.forEach { i -> TextButton(enabled=!busy,onClick={index=i}) { Text(if(i==index) "● ${i+1}" else "${i+1}") } } }
             TextButton(enabled=!busy,onClick={picker.launch(arrayOf("image/*"))}) { Text(tr("Import / replace image","导入／更换图片")) }
             if(!grain) TextButton(enabled=!busy,onClick={index=paths().size;picker.launch(arrayOf("image/*"))}) { Text(tr("Add shape image","添加笔尖图片")) }
             Row {
