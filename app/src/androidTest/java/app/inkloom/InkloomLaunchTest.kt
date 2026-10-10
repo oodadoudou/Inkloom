@@ -894,7 +894,8 @@ class InkloomLaunchTest {
         composeRule.waitForIdle()
         assertEquals(app.inkloom.settings.SelectionShape.BRUSH, findInkCanvasView()!!.selectionShape)
         composeRule.onNodeWithContentDescription("Selection actions").performClick()
-        composeRule.onNodeWithText("Selection settings").performClick()
+        // The selection actions menu is longer than the window; its later entries scroll into view.
+        composeRule.onNodeWithText("Selection settings").performScrollTo().performClick()
         composeRule.onNodeWithText("Brush size  42 px").assertIsDisplayed()
         composeRule.onNodeWithText("Done").performClick()
         composeRule.onNodeWithContentDescription("Exit selection tool").performClick()
