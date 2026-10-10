@@ -345,6 +345,21 @@ class DialogLayoutAuditTest {
         compose.onNodeWithText("大小").assertIsDisplayed()
     }
 
+    @Test fun brushPressurePresetsRemainReachableAtLargeFont() {
+        val preset = app.inkloom.brushpresetv5.BrushPresetV5Import.requirePreset(app.inkloom.model.SystemBrushCatalog.brushes.first())
+        val owned = app.inkloom.brushpresetv5.OwnedBrushPreset(preset,
+            app.inkloom.brushpresetv5.PresetOwnership.Factory(preset.identity.id))
+        compose.runOnUiThread { compose.activity.setContent { MaterialTheme {
+            BrushEditorV1Dialog(owned, app.inkloom.settings.AppSettings(language = UiLanguage.SIMPLIFIED_CHINESE), {}, {}, {}, null, {})
+        } } }
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("笔刷类别"))
+            .performScrollToNode(androidx.compose.ui.test.hasText("压力"))
+        open("压力")
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("笔刷参数"))
+            .performScrollToNode(androidx.compose.ui.test.hasText("自定义"))
+        compose.onAllNodes(androidx.compose.ui.test.hasText("自定义"))[0].performScrollTo().assertIsDisplayed()
+    }
+
     private fun open(text: String) {
         val node = compose.onNodeWithText(text)
         runCatching { node.performScrollTo() }

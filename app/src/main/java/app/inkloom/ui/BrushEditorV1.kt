@@ -139,6 +139,7 @@ fun BrushEditorV1Dialog(
                                 V5ScratchPad(session.current, settings, Modifier.fillMaxWidth().weight(1f))
                             } else Row(Modifier.weight(1f)) {
                                 LazyColumn(Modifier.width(if (wide) 174.dp else 128.dp).fillMaxHeight()
+                                    .semantics { contentDescription = tr("Brush categories", "笔刷类别") }
                                     .background(Paper), contentPadding = PaddingValues(8.dp)) {
                                     item {
                                         Text(session.current.identity.family.localizedLabel(language),
@@ -211,7 +212,7 @@ fun BrushEditorV1Dialog(
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 private fun BrushOptionRow(
     option: BrushOptionDescriptor,
     value: BrushPresetV5,
@@ -238,7 +239,7 @@ private fun BrushOptionRow(
     if (option.id.endsWith("CurveShape")) {
         Column(Modifier.fillMaxWidth()) {
             Text(label, fontSize = 13.sp)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 PressureCurveShape.entries.forEach { shape ->
                     TextButton(onClick = { if (shape != PressureCurveShape.CUSTOM) onValue(option.apply(value, shape.ordinal.toFloat())) },
                         contentPadding = PaddingValues(horizontal = 2.dp)) {
