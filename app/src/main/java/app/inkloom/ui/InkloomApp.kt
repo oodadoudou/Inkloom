@@ -9669,6 +9669,8 @@ private fun ToolboxQuickSlotEditorDialog(
     }
     var colorText by remember(selectedIndex, slot.colorArgb) { mutableStateOf("#%06X".format(slot.colorArgb and 0xFFFFFF)) }
     AlertDialog(
+        modifier = Modifier.imePadding(),
+        properties = DialogProperties(decorFitsSystemWindows = false),
         onDismissRequest = onDismiss,
         title = { Text(tr("Toolbox quick slots", "Toolbox 快速槽")) },
         text = {

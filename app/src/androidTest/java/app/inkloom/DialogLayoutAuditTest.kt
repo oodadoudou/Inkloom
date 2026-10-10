@@ -14,6 +14,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performSemanticsAction
@@ -303,6 +304,15 @@ class DialogLayoutAuditTest {
             .performScrollToNode(androidx.compose.ui.test.hasText("自定义快捷键"))
         open("自定义快捷键")
         check("Toolbox 快捷键", "完成", "完成", focus = "搜索操作或按键")
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
+        val dialogId = compose.onAllNodes(isDialog()).fetchSemanticsNodes().last().id
+        val list = compose.onNode(hasAnyAncestor(SemanticsMatcher("shortcut dialog") { it.id == dialogId }) and
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+        list.performScrollToNode(androidx.compose.ui.test.hasText("配置 8 个快速槽"))
+        open("配置 8 个快速槽")
+        compose.onNode(hasAnyAncestor(isDialog()) and androidx.compose.ui.test.hasText("快速槽名称")).performScrollTo()
+        check("Toolbox 快速槽", "完成", "完成", focus = "快速槽名称")
     }
 
     @Test fun coverCropRemainsReachableInShortLandscape() {
@@ -393,10 +403,13 @@ class DialogLayoutAuditTest {
         compose.waitForIdle()
     }
 
+    private var auditGeneration = 0
+
     private fun audit(title: String?, confirm: String?, dismiss: String, focus: String? = null, dialog: @Composable () -> Unit) {
+        val generation = ++auditGeneration
         compose.runOnUiThread {
             compose.activity.setContent { MaterialTheme {
-                CompositionLocalProvider(LocalUiLanguage provides UiLanguage.SIMPLIFIED_CHINESE) { dialog() }
+                CompositionLocalProvider(LocalUiLanguage provides UiLanguage.SIMPLIFIED_CHINESE) { androidx.compose.runtime.key(generation) { dialog() } }
             } }
         }
         compose.waitForIdle()
@@ -414,31 +427,62 @@ class DialogLayoutAuditTest {
             }
         }
         focus?.let { label ->
-            compose.onAllNodes(inDialog and androidx.compose.ui.test.hasSetTextAction() and (androidx.compose.ui.test.hasText(label, substring = true) or androidx.compose.ui.test.hasContentDescription(label)))[0].performClick()
+            val field = compose.onAllNodes(inDialog and androidx.compose.ui.test.hasSetTextAction() and (androidx.compose.ui.test.hasText(label, substring = true) or androidx.compose.ui.test.hasContentDescription(label)))[0]
+            runCatching { field.performScrollTo() }
+            field.assertIsDisplayed().performClick()
             SystemClock.sleep(800); compose.waitForIdle()
         }
         val texts = compose.onAllNodes(inDialog and SemanticsMatcher.keyIsDefined(SemanticsProperties.Text))
-        val labels = texts.fetchSemanticsNodes().flatMap { it.config[SemanticsProperties.Text].map { text -> text.text } }.distinct()
+        val initialTexts = texts.fetchSemanticsNodes()
+        val lazyParents = initialTexts.flatMap { textNode ->
+            val parent = generateSequence(textNode.parent) { it.parent }.firstOrNull {
+                it.config.contains(SemanticsProperties.VerticalScrollAxisRange) &&
+                    it.config.contains(androidx.compose.ui.semantics.SemanticsActions.ScrollToIndex)
+            }
+            textNode.config[SemanticsProperties.Text].map { it.text to parent?.id }
+        }.toMap()
+        val labels = initialTexts.flatMap { it.config[SemanticsProperties.Text].map { text -> text.text } }.distinct()
         assertTrue("$title has content", labels.isNotEmpty())
         for (label in labels) {
-            val node = compose.onAllNodes(inDialog and androidx.compose.ui.test.hasText(label))[0]
+            lazyParents[label]?.let { id ->
+                compose.onNode(SemanticsMatcher("lazy column $id") { it.id == id }, useUnmergedTree = true)
+                    .performScrollToNode(androidx.compose.ui.test.hasText(label))
+            }
+            fun node() = compose.onAllNodes(inDialog and androidx.compose.ui.test.hasText(label))[0]
             // A chip in a horizontally scrolling row first needs its row revealed in the
             // outer vertical scroll area; scrolling only the chip cannot move that parent.
-            generateSequence(node.fetchSemanticsNode().parent) { it.parent }
+            generateSequence(node().fetchSemanticsNode().parent) { it.parent }
                 .filter { it.config.contains(SemanticsProperties.HorizontalScrollAxisRange) }
                 .toList().asReversed().forEach { row ->
                     runCatching { compose.onNode(SemanticsMatcher("scroll row ${row.id}") { it.id == row.id },
                         useUnmergedTree = true).performScrollTo() }
                 }
-            generateSequence(node.fetchSemanticsNode().parent) { it.parent }
+            generateSequence(node().fetchSemanticsNode().parent) { it.parent }
                 .filter { it.config.contains(SemanticsProperties.HorizontalScrollAxisRange) &&
                     it.config.contains(androidx.compose.ui.semantics.SemanticsActions.ScrollToIndex) }
                 .forEach { row ->
                     compose.onNode(SemanticsMatcher("lazy row ${row.id}") { it.id == row.id }, useUnmergedTree = true)
                         .performScrollToNode(androidx.compose.ui.test.hasText(label))
                 }
-            runCatching { node.performScrollTo() }
-            try { node.assertIsDisplayed() } catch (failure: AssertionError) {
+            runCatching { node().performScrollTo() }
+            // Nested horizontal lists may be taller than the vertical viewport (for example
+            // cover cards above an IME). Reveal the target itself, not just the row's top edge.
+            generateSequence(node().fetchSemanticsNode().parent) { it.parent }
+                .filter { it.config.contains(SemanticsProperties.VerticalScrollAxisRange) }
+                .forEach { parent ->
+                    val scroll = compose.onNode(SemanticsMatcher("vertical container ${parent.id}") { it.id == parent.id }, useUnmergedTree = true)
+                    val viewport = scroll.getUnclippedBoundsInRoot()
+                    val target = node().getUnclippedBoundsInRoot()
+                    val dy = when {
+                        target.top < viewport.top -> target.top - viewport.top
+                        target.bottom > viewport.bottom -> target.bottom - viewport.bottom
+                        else -> androidx.compose.ui.unit.Dp(0f)
+                    }
+                    if (dy.value != 0f) scroll.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.ScrollBy) {
+                        it(0f, dy.value * compose.density.density)
+                    }
+                }
+            try { node().assertIsDisplayed() } catch (failure: AssertionError) {
                 InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("screencap -p /data/local/tmp/dialog-audit.png").close()
                 SystemClock.sleep(500)
                 throw AssertionError("[$title] '$label' is clipped or unreachable", failure)
