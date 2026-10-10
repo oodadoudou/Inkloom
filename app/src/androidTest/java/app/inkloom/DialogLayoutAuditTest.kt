@@ -380,6 +380,12 @@ class DialogLayoutAuditTest {
         }
     }
 
+    @Test fun filterPresetNameRemainsReachableWithKeyboard() {
+        audit("图像滤镜", "应用", "取消", focus = "预设名称") {
+            RasterFilterDialog(0xff000000.toInt(), emptyList(), {}, null, false, { _, _ -> }, { _, _ -> }, {})
+        }
+    }
+
     private fun open(text: String) {
         val node = compose.onNodeWithText(text)
         runCatching { node.performScrollTo() }

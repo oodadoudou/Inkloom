@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import app.inkloom.engine.v5.tools.RasterImageFilter
 import app.inkloom.settings.*
 import java.util.Locale
@@ -37,7 +38,7 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
     if (colorPickerOpen) StandardColorPickerDialog(state.colorArgb or 0xFF000000.toInt(), language,
         onConfirm = { state=state.copy(colorArgb=it or 0xFF000000.toInt());colorPickerOpen=false },
         onDismiss = { colorPickerOpen=false })
-    AlertDialog(onDismissRequest={if(!copyBusy)onCancel()},title={Text(tr("Image filter","图像滤镜"))},text={
+    AlertDialog(modifier = Modifier.imePadding(), properties = DialogProperties(decorFitsSystemWindows = false), onDismissRequest={if(!copyBusy)onCancel()},title={Text(tr("Image filter","图像滤镜"))},text={
         Column(Modifier.widthIn(min=270.dp,max=420.dp).heightIn(max=520.dp).verticalScroll(rememberScrollState())) {
             Box {
                 TextButton({presetMenu=true}){Text(tr("Presets & favorites","预设与收藏"))}
