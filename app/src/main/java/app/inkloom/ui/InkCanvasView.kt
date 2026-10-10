@@ -970,6 +970,8 @@ class InkCanvasView(context: Context) : View(context) {
     var referenceLayerIds: Set<String> = emptySet()
     var draftLayerIds: Set<String> = emptySet()
     var excludeDraftLayersFromReference: Boolean = true
+    var excludeLockedLayersFromReference: Boolean = false
+    var excludeActiveLayerFromReference: Boolean = false
     var liquifyMode: LiquifyMode = LiquifyMode.PUSH
     var liquifyStrength: Float = .55f
         set(value) { field = value.coerceIn(0f, 1f) }
@@ -4665,11 +4667,17 @@ class InkCanvasView(context: Context) : View(context) {
         val availableLayers = layerOrder.ifEmpty {
             (rasterLayerTileSurfaces.keys + layerElementBitmaps.keys).distinct()
         }
-        val visibleNonDraft = availableLayers.filterNotTo(linkedSetOf()) { excludeDraftLayersFromReference && it in draftLayerIds }
+        val visibleNonDraft = availableLayers.filterNotTo(linkedSetOf()) {
+            (excludeDraftLayersFromReference && it in draftLayerIds) ||
+                (excludeLockedLayersFromReference && it in protectedLayerIds)
+        }
+        // As in Clip Studio Paint, excluding the editing layer applies only when referring to
+        // multiple layers; a current-layer reference keeps the layer being edited.
+        val multiple = if (excludeActiveLayerFromReference) visibleNonDraft - activeLayerId else visibleNonDraft
         val referenced = when (referenceTarget) {
-            ReferenceTarget.ALL_VISIBLE -> visibleNonDraft
+            ReferenceTarget.ALL_VISIBLE -> multiple
             ReferenceTarget.ACTIVE_LAYER -> setOf(activeLayerId).intersect(visibleNonDraft)
-            ReferenceTarget.REFERENCE_LAYERS -> referenceLayerIds.intersect(visibleNonDraft).ifEmpty { setOf(activeLayerId).intersect(visibleNonDraft) }
+            ReferenceTarget.REFERENCE_LAYERS -> referenceLayerIds.intersect(multiple).ifEmpty { setOf(activeLayerId).intersect(visibleNonDraft) }
         }
         drawPageContent(canvas, includeInteractionOverlays = false, referencedLayerIds = referenced, includePageBackground = includePaper)
         return bitmap

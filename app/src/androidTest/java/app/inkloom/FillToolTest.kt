@@ -142,6 +142,45 @@ class FillToolTest {
         assertTrue("Including a draft reference folder must restore its boundary", committedWidth in 80..120)
     }
 
+    @Test fun lockedAndEditingLayerExclusionsChangeTheMultipleLayerFillReference() {
+        var committedWidth = 0
+        fun border() = PixelTileSurface(200, 200).also { surface ->
+            surface.beginWrite("border").use { w ->
+                for (offset in -4..4) for (c in 50..150) {
+                    w.setPixel(c, 50 + offset, Color.BLACK); w.setPixel(c, 150 + offset, Color.BLACK)
+                    w.setPixel(50 + offset, c, Color.BLACK); w.setPixel(150 + offset, c, Color.BLACK)
+                }
+                w.commit().close()
+            }
+        }
+        val view = canvas {
+            tool = EditorTool.FILL; fingerDrawingEnabled = true; pagePaperColor = Color.WHITE
+            pageModelWidth = 200f; pageModelHeight = 200f; activeLayerId = "color"
+            referenceTarget = ReferenceTarget.ALL_VISIBLE
+            layerOrder = listOf("color", "line")
+            setRasterLayerSurfaces(mapOf("color" to PixelTileSurface(200, 200), "line" to border()))
+            setProtectedLayerIds(setOf("line"))
+            onSparseFillCommitted = { mask, _, _, _ -> committedWidth = mask.nonZeroBounds()?.width ?: 0 }
+        }
+        fun fill(time: Long): Int {
+            send(view, time, MotionEvent.ACTION_DOWN, 100f, 100f); send(view, time + 50L, MotionEvent.ACTION_UP, 100f, 100f)
+            return committedWidth
+        }
+        assertTrue("locked line art is referenced by default", fill(0L) in 80..120)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.excludeLockedLayersFromReference = true }
+        assertEquals("excluding locked layers removes the boundary", 200, fill(100L))
+        // The editing layer now carries the boundary; the other layer is empty.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.excludeLockedLayersFromReference = false; view.setProtectedLayerIds(emptySet())
+            view.setRasterLayerSurfaces(mapOf("color" to border(), "line" to PixelTileSurface(200, 200)))
+        }
+        assertTrue("the editing layer is referenced by default", fill(200L) in 80..120)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.excludeActiveLayerFromReference = true }
+        assertEquals("excluding the editing layer refers only to the others", 200, fill(300L))
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.referenceTarget = ReferenceTarget.ACTIVE_LAYER }
+        assertTrue("a current-layer reference ignores the editing-layer exclusion", fill(400L) in 80..120)
+    }
+
     @Test fun referenceTargetConfinesFillToMarkedLineArtLayer() {
         var committedWidth = 0f
         val color = PixelTileSurface(200, 200)

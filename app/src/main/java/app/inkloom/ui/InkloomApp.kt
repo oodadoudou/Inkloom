@@ -5838,6 +5838,8 @@ internal fun InkCanvasView.applyBrushConfiguration(
     selectionFilter = settings.selectionFilter
     referenceTarget = settings.referenceTarget
     excludeDraftLayersFromReference = settings.excludeDraftLayersFromReference
+    excludeLockedLayersFromReference = settings.excludeLockedLayersFromReference
+    excludeActiveLayerFromReference = settings.excludeActiveLayerFromReference
     eyedropperReferenceTarget = settings.eyedropperReferenceTarget
     eyedropperIncludePaper = settings.eyedropperIncludePaper
     fillSensitivity = settings.fillSensitivity

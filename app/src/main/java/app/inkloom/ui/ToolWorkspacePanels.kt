@@ -191,6 +191,12 @@ internal fun WorkspaceToolPropertiesPanel(
             if (tool in setOf(EditorTool.FILL, EditorTool.SELECT)) WorkspacePropertySwitch(
                 language.text("Exclude draft layers", "排除草稿图层"), settings.excludeDraftLayersFromReference,
             ) { onSettings(settings.copy(excludeDraftLayersFromReference = it)) }
+            if (tool in setOf(EditorTool.FILL, EditorTool.SELECT)) WorkspacePropertySwitch(
+                language.text("Exclude locked layers", "排除锁定图层"), settings.excludeLockedLayersFromReference,
+            ) { onSettings(settings.copy(excludeLockedLayersFromReference = it)) }
+            if (tool in setOf(EditorTool.FILL, EditorTool.SELECT)) WorkspacePropertySwitch(
+                language.text("Exclude editing layer", "排除编辑中的图层"), settings.excludeActiveLayerFromReference,
+            ) { onSettings(settings.copy(excludeActiveLayerFromReference = it)) }
             when (tool) {
                 EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY -> {
                     WorkspacePropertySlider(language.text("Size", "大小"), "${brushSize.toInt()} px",

@@ -31,6 +31,15 @@ class AppSettingsBackupCodecTest {
         assertTrue(AppSettingsBackupCodec.decode(old).getOrThrow().settings.excludeDraftLayersFromReference)
     }
 
+    @Test fun `locked and editing layer reference exclusions survive backup and default off`() {
+        val restored = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(
+            AppSettings(excludeLockedLayersFromReference = true, excludeActiveLayerFromReference = true))).getOrThrow().settings
+        assertTrue(restored.excludeLockedLayersFromReference); assertTrue(restored.excludeActiveLayerFromReference)
+        val old = """{"format":"inkloom-app-settings","version":1,"settings":{}}""".encodeToByteArray()
+        val defaults = AppSettingsBackupCodec.decode(old).getOrThrow().settings
+        assertFalse(defaults.excludeLockedLayersFromReference); assertFalse(defaults.excludeActiveLayerFromReference)
+    }
+
     @Test fun `liquify parameters survive backup`() {
         val settings = AppSettings(liquifyStrengthScale = 1.4f,
             liquifyDistortion = .45f, liquifyMomentum = .7f)

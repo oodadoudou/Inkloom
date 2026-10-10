@@ -188,6 +188,10 @@ class AppSettingsStoreTest {
             AppSettingsStore(context).save(AppSettings(referenceTarget = ReferenceTarget.REFERENCE_LAYERS, excludeDraftLayersFromReference = false))
             assertEquals(ReferenceTarget.REFERENCE_LAYERS, AppSettingsStore(context).load().referenceTarget)
             org.junit.Assert.assertFalse(AppSettingsStore(context).load().excludeDraftLayersFromReference)
+            org.junit.Assert.assertFalse(AppSettingsStore(context).load().excludeLockedLayersFromReference)
+            AppSettingsStore(context).save(AppSettings(excludeLockedLayersFromReference = true, excludeActiveLayerFromReference = true))
+            org.junit.Assert.assertTrue(AppSettingsStore(context).load().excludeLockedLayersFromReference)
+            org.junit.Assert.assertTrue(AppSettingsStore(context).load().excludeActiveLayerFromReference)
         } finally {
             preferences.edit().clear().commit()
         }

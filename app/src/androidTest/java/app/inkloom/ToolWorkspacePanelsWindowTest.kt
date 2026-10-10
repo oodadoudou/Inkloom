@@ -35,6 +35,22 @@ class ToolWorkspacePanelsWindowTest {
         compose.onNodeWithText("Momentum").assertExists()
     }
 
+    @Test fun fillToolPropertyTogglesLockedAndEditingLayerReferenceExclusions() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithContentDescription("Actions Views").performClick()
+        compose.onNodeWithText("Views…").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Show Tool property view").performClick()
+        compose.onNodeWithText("Done").performClick()
+        compose.onNodeWithContentDescription("Paint bucket").performClick()
+        compose.onNodeWithText("Exclude draft layers").assertExists()
+        compose.onNodeWithText("Exclude locked layers").performScrollTo().performClick()
+        compose.onNodeWithText("Exclude editing layer").performScrollTo().performClick()
+        compose.waitUntil(5_000) { AppSettingsStore(compose.activity).load().let {
+            it.excludeLockedLayersFromReference && it.excludeActiveLayerFromReference } }
+    }
+
     private val compose = createAndroidComposeRule<MainActivity>()
     private val clean = TestRule { base, _ -> object : Statement() {
         override fun evaluate() {
