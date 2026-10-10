@@ -541,6 +541,58 @@ class SelectionWindowRegressionTest {
         compose.waitUntil(10_000) { view.activeRasterSnapshotForTest()?.revision != revision }
     }
 
+    @Test fun transformDragAndKeyboardNudgeAfterZoomMoveExactPageDistances() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        stroke(pagePoint(view, .3f, .4f), pagePoint(view, .5f, .4f))
+        compose.waitUntil(10_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 }
+        tap("Selection"); tap("Rectangle selection")
+        stroke(pagePoint(view, .2f, .3f), pagePoint(view, .6f, .5f)); compose.waitForIdle()
+        tap("Transform selection")
+        // Zoom in with a real pinch while the transform is open.
+        val time = SystemClock.uptimeMillis()
+        fun packet(action: Int, points: List<Offset>) {
+            val motion = MotionEvent.obtain(time, SystemClock.uptimeMillis(), action, points.size,
+                Array(points.size) { i -> MotionEvent.PointerProperties().apply { id = i; toolType = MotionEvent.TOOL_TYPE_FINGER } },
+                Array(points.size) { i -> MotionEvent.PointerCoords().apply { x = points[i].x; y = points[i].y; pressure = 1f; touchMajor = 8f } },
+                0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+            try { assertTrue(instrumentation.uiAutomation.injectInputEvent(motion, true)) } finally { motion.recycle() }
+            SystemClock.sleep(20)
+        }
+        val a = pagePoint(view, .4f, .75f); val b = pagePoint(view, .6f, .75f)
+        val c = pagePoint(view, .3f, .75f); val d = pagePoint(view, .7f, .75f)
+        packet(MotionEvent.ACTION_DOWN, listOf(a))
+        packet(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), listOf(a, b))
+        repeat(8) { i -> val t = (i + 1) / 8f; packet(MotionEvent.ACTION_MOVE, listOf(a + (c - a) * t, b + (d - b) * t)) }
+        packet(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), listOf(c, d))
+        packet(MotionEvent.ACTION_UP, listOf(c))
+        compose.waitForIdle()
+        assertTrue("pinch zoomed in", view.viewportScale > 1.2f)
+        val raster = requireNotNull(view.activeRasterSnapshotForTest())
+        val before = requireNotNull(view.selectionTransformUiState).pose
+        // The viewport zoom is a Compose layer on the canvas host; map page points through it.
+        fun zoomed(x: Float, y: Float): Offset {
+            val point = pagePoint(view, x, y); val center = pagePoint(view, .5f, .5f); val scale = view.viewportScale
+            return Offset(center.x + (point.x - center.x) * scale + view.viewportPanX, center.y + (point.y - center.y) * scale + view.viewportPanY)
+        }
+        stroke(zoomed(.4f, .4f), zoomed(.4f, .45f))
+        compose.waitForIdle()
+        val dragged = requireNotNull(view.selectionTransformUiState).pose
+        assertEquals("a drag between page positions moves that page distance at any zoom",
+            .05f * raster.logicalHeight, dragged.centerY - before.centerY, 3f)
+        assertEquals(before.centerX, dragged.centerX, 3f)
+        assertEquals("the drag does not resize", before.width, dragged.width, .5f)
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_RIGHT); compose.waitForIdle()
+        assertEquals("arrow nudges 1 page pixel after zoom", dragged.centerX + 1f, view.selectionTransformUiState!!.pose.centerX, .001f)
+        val shift = SystemClock.uptimeMillis()
+        instrumentation.sendKeySync(KeyEvent(shift, shift, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, 0, KeyEvent.META_SHIFT_ON))
+        instrumentation.sendKeySync(KeyEvent(shift, shift + 1, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_RIGHT, 0, KeyEvent.META_SHIFT_ON))
+        compose.waitForIdle()
+        assertEquals("Shift+arrow nudges 10 page pixels", dragged.centerX + 11f, view.selectionTransformUiState!!.pose.centerX, .001f)
+        tap("Apply transform")
+        compose.waitUntil(10_000) { view.selectionTransformUiState == null }
+    }
+
     private fun toolbarCenter(label: String): Offset {
         compose.waitForIdle()
         val bounds = mutableListOf<android.graphics.Rect>()
