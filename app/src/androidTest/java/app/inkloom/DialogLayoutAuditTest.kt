@@ -14,6 +14,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.InkLayer
 import app.inkloom.document.InkPage
@@ -97,9 +98,17 @@ class DialogLayoutAuditTest {
 
 
     @Test fun editorNotebookDialogsKeepEveryControlReachableAtLargeFontInChinese() {
+        // The library title is readable instead of being squeezed beside its actions.
+        val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        compose.onNodeWithText("你的笔记本").assertIsDisplayed()
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        // Ellipsis is the truncation signal; CJK fallback glyphs at 2x can report vertical overflow.
+        assertTrue("library title is not ellipsized", layouts.isNotEmpty() && !layouts.first().isLineEllipsized(layouts.first().lineCount - 1))
         compose.onNode(androidx.compose.ui.test.hasText("新建笔记") or androidx.compose.ui.test.hasContentDescription("新建笔记")).performClick()
         open("创建")
         compose.waitForIdle()
+        // The vertical tool rail scrolls, so its last tool stays reachable in a short window.
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("激光笔")).performScrollTo().assertIsDisplayed()
         fun actions() = compose.onNode(androidx.compose.ui.test.hasContentDescription("操作")).performClick()
         actions(); check("操作", null, "完成")
         open("搜索当前笔记"); check("搜索此笔记", null, "完成")

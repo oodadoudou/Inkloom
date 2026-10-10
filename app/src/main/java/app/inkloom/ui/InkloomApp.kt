@@ -1216,11 +1216,9 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                     item { FilterChip(selected = filter == LibraryFilter.PDF, onClick = { filter = LibraryFilter.PDF }, label = { Text("PDF") }) }
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(tr("Your notebooks", "你的笔记本"), fontSize = if(compact) 22.sp else 32.sp, maxLines=1, overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis, color = Ink)
-                    if(!compact) Text(tr("Continue a note or start with a fresh page.", "继续书写，或从空白页开始。"), color = MutedInk)
-                }
+            // Compact windows (narrow or large fonts) give the title its own line instead of
+            // squeezing it beside five actions until only "You…" remains.
+            val libraryActions: @Composable RowScope.() -> Unit = {
                 IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, tr("Settings", "设置")) }
                 TextButton(onClick = { managingNotes = !managingNotes; selectedNoteIds = emptySet() }) {
                     Text(if (managingNotes) tr("Done", "完成") else tr("Select", "选择"))
@@ -1236,6 +1234,16 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                         Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text(tr("New Note", "新建笔记"))
                     }
                 }
+            }
+            if (compact) {
+                Text(tr("Your notebooks", "你的笔记本"), fontSize = 22.sp, color = Ink)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically, content = libraryActions)
+            } else Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(tr("Your notebooks", "你的笔记本"), fontSize = 32.sp, maxLines=1, overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis, color = Ink)
+                    Text(tr("Continue a note or start with a fresh page.", "继续书写，或从空白页开始。"), color = MutedInk)
+                }
+                libraryActions()
             }
             Spacer(Modifier.height(26.dp))
             OutlinedTextField(value = search, onValueChange = { search = it }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Search notes", "搜索笔记")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
