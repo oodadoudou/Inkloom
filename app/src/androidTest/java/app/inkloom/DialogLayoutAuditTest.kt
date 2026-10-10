@@ -284,6 +284,27 @@ class DialogLayoutAuditTest {
         } finally { workspace.close(); file.delete() }
     }
 
+    @Test fun settingsTabsAndShortcutSearchRemainReachableWithKeyboard() {
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("设置")).performClick()
+        check("设置", "完成", "完成")
+        for ((tab, last) in listOf("通用" to "重置工具栏位置", "手势" to "显示 V5 落笔诊断", "压感" to "重置压感设置", "备份" to "恢复资料库备份")) {
+            compose.onNode(hasAnyAncestor(isDialog()) and SemanticsMatcher.keyIsDefined(SemanticsProperties.HorizontalScrollAxisRange))
+                .performScrollToNode(androidx.compose.ui.test.hasText(tab))
+            open(tab)
+            compose.onNode(androidx.compose.ui.test.hasContentDescription("Settings content"))
+                .performScrollToNode(androidx.compose.ui.test.hasText(last))
+            compose.onNodeWithText(last).assertIsDisplayed()
+            compose.onNodeWithText("完成").assertIsDisplayed()
+        }
+        compose.onNode(hasAnyAncestor(isDialog()) and SemanticsMatcher.keyIsDefined(SemanticsProperties.HorizontalScrollAxisRange))
+            .performScrollToNode(androidx.compose.ui.test.hasText("快捷键"))
+        open("快捷键")
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("Settings content"))
+            .performScrollToNode(androidx.compose.ui.test.hasText("自定义快捷键"))
+        open("自定义快捷键")
+        check("Toolbox 快捷键", "完成", "完成", focus = "搜索操作或按键")
+    }
+
     private fun open(text: String) {
         val node = compose.onNodeWithText(text)
         runCatching { node.performScrollTo() }

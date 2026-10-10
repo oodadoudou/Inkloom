@@ -9409,6 +9409,7 @@ private fun ShortcutEditorDialog(settings: AppSettings, brushes: List<ImportedBr
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(listeningFor) { if (listeningFor != null) focusRequester.requestFocus() }
     AlertDialog(
+        properties = DialogProperties(decorFitsSystemWindows = false),
         onDismissRequest = onDismiss,
         title = { Text(tr("Toolbox shortcuts", "Toolbox 快捷键")) },
         text = {
