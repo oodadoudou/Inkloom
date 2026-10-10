@@ -404,6 +404,68 @@ class EditorPanelsWindowTest {
         assertEquals(original.height, layers(state).height, .5f)
     }
 
+    @Test fun backgroundingDuringAPanelDragRestoresTheLayoutAndAcceptsTheNextGesture() {
+        lateinit var state: EditorPanelState
+        val original = EditorPanelLayout(open = setOf(EditorPanel.LAYERS)).let { l -> l.copy(floating = l.floating.map {
+            if (it.node.id == "layers") it.copy(rect = PanelRect(250f, 60f, 280f, 300f)) else it
+        }) }
+        compose.runOnUiThread {
+            state = EditorPanelState(compose.activity); state.layout = original
+            compose.activity.setContent { MaterialTheme {
+                EditorPanels(state, {}, canvas = { Text("Canvas") }, content = { Text("Body ${it.name}") })
+            } }
+        }
+        compose.waitForIdle()
+        val panel = compose.onNodeWithTag("editor-panel-layers")
+        val shown = panel.fetchSemanticsNode().boundsInWindow
+        val grip = point("Move panel group")
+        val time = SystemClock.uptimeMillis()
+        event(0, grip, time); SystemClock.sleep(80)
+        for (i in 1..10) { event(2, grip + Offset(30f * i, 20f * i), time); SystemClock.sleep(16) }
+        compose.waitForIdle()
+        assertNotEquals("the group follows the pointer", shown, panel.fetchSemanticsNode().boundsInWindow)
+        // Home/recents: the gesture never receives its release while the editor is stopped.
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        compose.waitForIdle()
+        assertEquals(original, state.layout)
+        assertEquals("no stale drag offset survives", shown, panel.fetchSemanticsNode().boundsInWindow)
+        drag(point("Move panel group"), point("Move panel group") + Offset(120f, 80f))
+        assertNotEquals(original.floating, state.layout.floating)
+        assertEquals(300f, layers(state).height, .5f)
+    }
+
+    @Test fun windowResizeDuringAPanelDragCancelsItWithoutCommittingTheRelease() {
+        lateinit var state: EditorPanelState
+        val hostHeight = androidx.compose.runtime.mutableStateOf<Float?>(null)
+        val original = EditorPanelLayout(open = setOf(EditorPanel.LAYERS)).let { l -> l.copy(floating = l.floating.map {
+            if (it.node.id == "layers") it.copy(rect = PanelRect(250f, 60f, 280f, 300f)) else it
+        }) }
+        compose.runOnUiThread {
+            state = EditorPanelState(compose.activity); state.layout = original
+            compose.activity.setContent { MaterialTheme {
+                val height = hostHeight.value
+                Box(Modifier.fillMaxWidth().then(if (height == null) Modifier.fillMaxHeight() else Modifier.height(height.dp))) {
+                    EditorPanels(state, {}, canvas = { Text("Canvas") }, content = { Text("Body ${it.name}") })
+                }
+            } }
+        }
+        compose.waitForIdle()
+        val grip = point("Move panel group")
+        val time = SystemClock.uptimeMillis()
+        event(0, grip, time); SystemClock.sleep(80)
+        for (i in 1..10) { event(2, grip + Offset(30f * i, 10f * i), time); SystemClock.sleep(16) }
+        // Rotation or split-screen resizing: the frozen drop geometry no longer applies.
+        compose.runOnUiThread { hostHeight.value = 420f }
+        compose.waitForIdle()
+        event(1, grip + Offset(300f, 100f), time); compose.waitForIdle()
+        assertEquals(original, state.layout)
+        compose.runOnUiThread { hostHeight.value = null }
+        compose.waitForIdle()
+        drag(point("Move panel group"), point("Move panel group") + Offset(120f, 60f))
+        assertNotEquals(original.floating, state.layout.floating)
+    }
+
     private fun layers(state: EditorPanelState) = state.layout.floating.single { EditorPanel.LAYERS in EditorPanelLayouts.members(it.node) }.rect
 
     @Composable private fun ResizeHost(state: EditorPanelState) {
