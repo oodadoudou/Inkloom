@@ -16,6 +16,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToString
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.InkLayer
 import app.inkloom.document.InkPage
@@ -150,6 +152,64 @@ class DialogLayoutAuditTest {
         open("色域选择…"); check("色域选择", "选择", "取消"); close("取消")
     }
 
+    @Test fun brushMoveAndBatchDialogsRemainReachableWithKeyboard() {
+        val brush = app.inkloom.model.SystemBrushCatalog.brushes.first()
+        audit("移动笔刷", "移动", "取消", focus = "分组") {
+            BrushMoveToGroupDialog(brush, listOf("线稿"), {}, {})
+        }
+        audit("移动所选笔刷", "移动所选", "取消", focus = "目标分组") {
+            BrushBatchGroupDialog(3, listOf("线稿"), BrushBatchGroupOperation.MOVE, {}, {})
+        }
+        audit("复制所选笔刷", "复制所选", "取消", focus = "目标分组") {
+            BrushBatchGroupDialog(3, listOf("线稿"), BrushBatchGroupOperation.COPY, {}, {})
+        }
+    }
+
+    @Test fun brushGroupManagerRemainsReachableWithKeyboard() {
+        audit("管理分组", "重命名", "完成", focus = "重命名所选分组") {
+            BrushGroupManagerDialog(listOf("线稿", "上色"), {}, { _, _ -> }, { _, _ -> }, {})
+        }
+    }
+
+    @Test fun brushFailureAndHistoryListsKeepActionsReachable() {
+        val brush = app.inkloom.model.SystemBrushCatalog.brushes.first()
+        audit("笔刷导入问题", "完成", "全部清除") {
+            BrushImportFailuresDialog(listOf(app.inkloom.importer.BrushImportFailure(
+                "failure", "content://test/brush", "测试笔刷", "线稿", listOf("无法读取笔刷文件，请重新选择文件后重试。"),
+                emptyList(), 0, 0, 1)), UiLanguage.SIMPLIFIED_CHINESE, {}, {}, {}, {})
+        }
+        audit("版本历史", "完成", "完成") {
+            BrushVersionHistoryDialog(brush, listOf(app.inkloom.importer.BrushVersion("version", 0, brush)), {}, {}, {})
+        }
+    }
+
+    @Test fun layerPanelDialogsRemainReachableAtLargeFont() {
+        compose.onNode(androidx.compose.ui.test.hasText("新建笔记") or androidx.compose.ui.test.hasContentDescription("新建笔记")).performClick()
+        open("创建")
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("图层")).performScrollTo().assertIsDisplayed().performClick()
+        fun menu() {
+            val nodes = compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("图层操作"))
+            if (nodes.fetchSemanticsNodes().isEmpty()) {
+                InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("screencap -p /data/local/tmp/layer-audit.png").close()
+                throw AssertionError(compose.onRoot(useUnmergedTree = true).printToString())
+            }
+            nodes[0].performClick()
+        }
+        menu(); open("重命名"); check("重命名图层", "保存", "取消", focus = "图层名称")
+        open("取消")
+        menu(); open("图层着色"); check("图层着色", "应用", "取消")
+        open("取消")
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("输入图层不透明度")).performClick()
+        check("图层不透明度", "确定", "取消", focus = "不透明度（%）")
+        open("取消")
+        menu(); open("蒙版"); open("蒙版选区")
+        compose.waitForIdle()
+        menu(); open("蒙版"); open("蒙版渐变与阈值")
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("显示蒙版渐变开关")).performClick()
+        check("蒙版表达", "应用", "取消")
+        open("取消")
+    }
+
     private fun open(text: String) {
         val node = compose.onNodeWithText(text)
         runCatching { node.performScrollTo() }
@@ -185,6 +245,14 @@ class DialogLayoutAuditTest {
         for (index in 0 until count) {
             val node = texts[index]
             val label = node.fetchSemanticsNode().config[SemanticsProperties.Text].joinToString()
+            // A chip in a horizontally scrolling row first needs its row revealed in the
+            // outer vertical scroll area; scrolling only the chip cannot move that parent.
+            generateSequence(node.fetchSemanticsNode().parent) { it.parent }
+                .filter { it.config.contains(SemanticsProperties.HorizontalScrollAxisRange) }
+                .toList().asReversed().forEach { row ->
+                    runCatching { compose.onNode(SemanticsMatcher("scroll row ${row.id}") { it.id == row.id },
+                        useUnmergedTree = true).performScrollTo() }
+                }
             runCatching { node.performScrollTo() }
             try { node.assertIsDisplayed() } catch (failure: AssertionError) {
                 InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("screencap -p /data/local/tmp/dialog-audit.png").close()

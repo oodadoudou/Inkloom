@@ -222,7 +222,7 @@ import java.util.Date
 import java.util.UUID
 
 private enum class AppDestination { LIBRARY, EDITOR }
-private enum class BrushBatchGroupOperation { MOVE, COPY }
+internal enum class BrushBatchGroupOperation { MOVE, COPY }
 private const val UNGROUPED_BRUSH_FILTER = "\u0000ungrouped"
 internal val LocalUiLanguage = staticCompositionLocalOf { UiLanguage.ENGLISH }
 
@@ -7980,7 +7980,7 @@ private fun BrushPanel(
 }
 
 @Composable
-private fun BrushMoveToGroupDialog(brush: ImportedBrush, groups: List<String>, onDismiss: () -> Unit, onMove: (String) -> Unit) {
+internal fun BrushMoveToGroupDialog(brush: ImportedBrush, groups: List<String>, onDismiss: () -> Unit, onMove: (String) -> Unit) {
     var groupName by remember(brush.id) { mutableStateOf(brush.groupName) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -8009,7 +8009,7 @@ private fun BrushMoveToGroupDialog(brush: ImportedBrush, groups: List<String>, o
 }
 
 @Composable
-private fun BrushBatchGroupDialog(
+internal fun BrushBatchGroupDialog(
     count: Int,
     groups: List<String>,
     operation: BrushBatchGroupOperation,
@@ -8891,7 +8891,7 @@ private fun ProcreateBrushLibrary(
 }
 
 @Composable
-private fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit, onRename: (String, String) -> Unit, onMove: (String, Int) -> Unit, onCreate: (String) -> Unit, initialParent: String? = null) {
+internal fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit, onRename: (String, String) -> Unit, onMove: (String, Int) -> Unit, onCreate: (String) -> Unit, initialParent: String? = null) {
     var selected by remember { mutableStateOf(groups.firstOrNull().orEmpty()) }
     LaunchedEffect(groups) { if (groups.none { it == selected }) selected = groups.firstOrNull().orEmpty() }
     var replacement by remember(selected) { mutableStateOf(selected) }
@@ -8902,10 +8902,12 @@ private fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit,
         BrushGroupOperations.normalize("$normalizedParent/$normalizedInputGroup")
     } else normalizedInputGroup
     AlertDialog(
+        modifier = Modifier.imePadding(),
+        properties = DialogProperties(decorFitsSystemWindows = false),
         onDismissRequest = onDismiss,
         title = { Text(tr("Manage groups", "管理分组")) },
         text = {
-            Column(Modifier.dialogContentWidth(320.dp, 440.dp)) {
+            Column(Modifier.dialogContentWidth(320.dp, 440.dp).verticalScroll(rememberScrollState())) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
                         value = newGroupPath,
@@ -8957,7 +8959,7 @@ private fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit,
 }
 
 @Composable
-private fun BrushImportFailuresDialog(
+internal fun BrushImportFailuresDialog(
     failures: List<BrushImportFailure>,
     language: UiLanguage,
     onDismiss: () -> Unit,
@@ -9015,7 +9017,7 @@ private fun BrushImportFailuresDialog(
 }
 
 @Composable
-private fun BrushVersionHistoryDialog(
+internal fun BrushVersionHistoryDialog(
     brush: ImportedBrush,
     versions: List<BrushVersion>,
     onDismiss: () -> Unit,
