@@ -632,9 +632,9 @@ fun InkloomApp(initialIntent: Intent?) {
             }
         }
     }
-    if(folderImportProgress != null) AlertDialog(onDismissRequest={},title={Text(settings.language.text("Importing brushes", "正在导入笔刷"))},
-        text={Column(verticalArrangement=Arrangement.spacedBy(12.dp)) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(folderImportProgress.orEmpty()); Text(settings.language.text("Completed files are saved. Stop takes effect after the current file.", "已完成的文件会保存。停止将在当前文件处理完后生效。")) }},
-        confirmButton={TextButton(onClick={stopFolderImport.set(true)}) {Text(settings.language.text("Stop import", "停止导入"))}})
+    folderImportProgress?.let { progress ->
+        BrushFolderImportProgressDialog(progress, settings.language) { stopFolderImport.set(true) }
+    }
     folderImportReport?.let { report -> AlertDialog(onDismissRequest={folderImportReport=null},title={Text(settings.language.text("Folder import result", "文件夹导入结果"))},
         text={Column(Modifier.heightIn(max=420.dp).verticalScroll(rememberScrollState())) {Text(report)}},confirmButton={TextButton(onClick={folderImportReport=null}) {Text(settings.language.text("Done", "完成"))}}) }
     fun retryBrushImport(failure: BrushImportFailure) {
@@ -871,19 +871,14 @@ fun InkloomApp(initialIntent: Intent?) {
     }
 
     CompositionLocalProvider(LocalUiLanguage provides settings.language, LocalColorStudioState provides colorStudioState) {
-    damagedBackupUri?.let { uri -> AlertDialog(
-        onDismissRequest = { damagedBackupUri = null },
-        title = { Text(tr("Backup is damaged", "备份已损坏")) },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(tr("No content was restored. You can recover intact notebooks and brushes while skipping damaged items.", "尚未恢复任何内容。可以跳过损坏项目，只救回完好的笔记和笔刷。"))
-            Text(damagedBackupIssues.take(4).joinToString("\n"), color = MutedInk, fontSize = 12.sp)
-        } },
-        confirmButton = { TextButton(onClick = {
-            damagedBackupUri = null
-            viewModel.restoreLibraryBackup(uri, recoverIntactItems = true) { result -> handleBackupRestore(uri, result, offerRecovery = false) }
-        }) { Text(tr("Recover intact items", "救回完好内容")) } },
-        dismissButton = { TextButton(onClick = { damagedBackupUri = null }) { Text(tr("Cancel", "取消")) } },
-    ) }
+    damagedBackupUri?.let { uri ->
+        DamagedBackupRecoveryDialog(damagedBackupIssues, settings.language,
+            onDismiss = { damagedBackupUri = null },
+            onRecover = {
+                damagedBackupUri = null
+                viewModel.restoreLibraryBackup(uri, recoverIntactItems = true) { result -> handleBackupRestore(uri, result, offerRecovery = false) }
+            })
+    }
     pdfImportProgress?.let { progress -> AlertDialog(
         onDismissRequest = {},
         title = { Text(if (progress.addingPages) tr("Adding pages", "正在追加页面") else tr("Importing PDF", "正在导入 PDF")) },

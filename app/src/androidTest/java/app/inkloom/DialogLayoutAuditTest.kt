@@ -370,6 +370,16 @@ class DialogLayoutAuditTest {
         tool("图片"); check("添加页面图片", "扫描页面", "取消")
     }
 
+    @Test fun importProgressAndRecoveryKeepLongDetailsAndActionsReachable() {
+        audit("正在导入笔刷", "停止导入", "停止导入") {
+            BrushFolderImportProgressDialog("正在读取：" + "漫画线稿与插画笔刷目录／".repeat(30), UiLanguage.SIMPLIFIED_CHINESE, {})
+        }
+        audit("备份已损坏", "救回完好内容", "取消") {
+            DamagedBackupRecoveryDialog(List(4) { "文件 ${it + 1}：" + "无法读取备份中的素材项目。".repeat(10) },
+                UiLanguage.SIMPLIFIED_CHINESE, {}, {})
+        }
+    }
+
     private fun open(text: String) {
         val node = compose.onNodeWithText(text)
         runCatching { node.performScrollTo() }
