@@ -11,6 +11,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.platform.SoftwareKeyboardController
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -41,9 +43,12 @@ internal fun SelectionStrokeDialog(
     var placement by rememberSaveable { mutableStateOf(SelectionStrokePlacement.CENTER) }
     var color by rememberSaveable { mutableIntStateOf(initialColor) }
     var opacity by rememberSaveable { mutableFloatStateOf(initialOpacity.coerceIn(0f, 1f)) }
-    val focus = LocalFocusManager.current
-    val keyboard = LocalSoftwareKeyboardController.current
-    fun close(action: () -> Unit) { focus.clearFocus(force = true); keyboard?.hide(); action() }
+    // Dialog content runs in its own window with its own focus owner. Reading these here would
+    // clear focus in the activity window and leave the text field focused, so closing a nested
+    // picker could re-raise the keyboard and move the dialog's buttons under the user's finger.
+    var dialogFocus by remember { mutableStateOf<FocusManager?>(null) }
+    var dialogKeyboard by remember { mutableStateOf<SoftwareKeyboardController?>(null) }
+    fun close(action: () -> Unit) { dialogFocus?.clearFocus(force = true); dialogKeyboard?.hide(); action() }
     var pickerOpen by remember { mutableStateOf(false) }
     val width = widthText.toFloatOrNull()?.takeIf { it.isFinite() && it in .25f..256f }
     if (pickerOpen) StandardColorPickerDialog(color, language,
@@ -53,7 +58,10 @@ internal fun SelectionStrokeDialog(
         properties = DialogProperties(decorFitsSystemWindows = false),
         onDismissRequest = { close(onDismiss) },
         title = { Text(tr("Stroke selection", "选区描边")) },
-        text = { Column(Modifier.widthIn(max = 380.dp).heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+        text = {
+            val focus = LocalFocusManager.current; val keyboard = LocalSoftwareKeyboardController.current
+            SideEffect { dialogFocus = focus; dialogKeyboard = keyboard }
+            Column(Modifier.widthIn(max = 380.dp).heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(widthText, { widthText = it }, label = { Text(tr("Width (px)", "宽度（像素）")) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),

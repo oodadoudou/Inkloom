@@ -17,6 +17,10 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.engine.v5.surface.PixelRect
@@ -25,6 +29,7 @@ import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
@@ -126,6 +131,33 @@ class SelectionWindowRegressionTest {
         tap("Exit selection tool"); tap("Gallery"); tap("Untitled Note")
         val reopened = canvas()
         compose.waitUntil(15_000) { reopened.activeRasterSnapshotForTest()?.copyPremultipliedPixels(bounds)?.contentEquals(outlined) == true }
+    }
+
+    @Test fun confirmingAStrokeColorDoesNotRefocusTheWidthFieldOrRaiseTheKeyboard() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        stroke(pagePoint(view, .3f, .3f), pagePoint(view, .4f, .3f))
+        compose.waitUntil(15_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 && !view.hasPendingPaintPublicationForMerge() }
+        tap("Selection"); tap("Rectangle selection")
+        stroke(pagePoint(view, .2f, .2f), pagePoint(view, .5f, .5f))
+        tap("Selection actions"); tap("Stroke selection…")
+        fun keyboardShown() = instrumentation.uiAutomation.windows.any { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+        compose.onNodeWithContentDescription("Stroke width").performTextReplacement("8")
+        compose.onNodeWithContentDescription("Stroke width").performImeAction()
+        compose.waitUntil(5_000) { !keyboardShown() }; SystemClock.sleep(400); compose.waitForIdle()
+        tap("Stroke color")
+        compose.onNodeWithContentDescription("Hex color").performScrollTo()
+        compose.onNodeWithContentDescription("Hex color").performTextReplacement("#FF0000")
+        compose.onNodeWithContentDescription("Hex color").performImeAction()
+        compose.waitUntil(5_000) { !keyboardShown() }; SystemClock.sleep(400); compose.waitForIdle()
+        tap("Apply color")
+        // The stroke dialog regains window focus here; it must not move focus into its text field,
+        // which would raise the keyboard and move the dialog's buttons under the user's finger.
+        SystemClock.sleep(1_000); compose.waitForIdle()
+        compose.onNodeWithContentDescription("Stroke width").assert(SemanticsMatcher.expectValue(SemanticsProperties.Focused, false))
+        assertFalse("closing the color picker must not raise the keyboard under the stroke dialog", keyboardShown())
+        tap("Apply stroke")
+        compose.waitUntil(20_000) { !view.selectionLayerTransferPending && compose.onAllNodesWithText("Apply stroke").fetchSemanticsNodes().isEmpty() }
     }
 
     @Test fun outsideDeleteUsesActualMenuAndUndoAndReopenPreserveKeptContent() {

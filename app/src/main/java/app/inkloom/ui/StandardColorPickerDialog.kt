@@ -11,12 +11,15 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.platform.SoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
@@ -52,9 +55,12 @@ internal fun StandardColorPickerDialog(
     fun tr(en: String, zh: String) = language.text(en, zh)
     var draft by remember(initialColor) { mutableIntStateOf(initialColor) }
     var hex by remember(initialColor) { mutableStateOf(StandardColorHex.format(initialColor)) }
-    val focus = LocalFocusManager.current
-    val keyboard = LocalSoftwareKeyboardController.current
-    fun close(action: () -> Unit) { focus.clearFocus(force = true); keyboard?.hide(); action() }
+    // Dialog content runs in its own window with its own focus owner. Reading these here would
+    // clear focus in the activity window and leave the text field focused, so closing a nested
+    // picker could re-raise the keyboard and move the dialog's buttons under the user's finger.
+    var dialogFocus by remember { mutableStateOf<FocusManager?>(null) }
+    var dialogKeyboard by remember { mutableStateOf<SoftwareKeyboardController?>(null) }
+    fun close(action: () -> Unit) { dialogFocus?.clearFocus(force = true); dialogKeyboard?.hide(); action() }
     fun update(color: Int) { draft = color; hex = StandardColorHex.format(color) }
     AlertDialog(
         onDismissRequest = { close(onDismiss) },
@@ -62,6 +68,8 @@ internal fun StandardColorPickerDialog(
         properties = DialogProperties(decorFitsSystemWindows = false),
         title = { Text(tr("Choose color", "选择颜色")) },
         text = {
+            val focus = LocalFocusManager.current; val keyboard = LocalSoftwareKeyboardController.current
+            SideEffect { dialogFocus = focus; dialogKeyboard = keyboard }
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 CspColorPanel(
                     color = draft,
