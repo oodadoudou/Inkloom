@@ -75,4 +75,44 @@ class ExtendedRasterFiltersTest {
         val high=stripe(high=true).snapshot()
         assertTrue(RasterImageFilter.apply(high,RasterImageFilter.Effect.Sharpen(true)).snapshot().linearPixelAt(63,60).red>1.4f)
     }
+    @Test fun everyFilterRespectsSelectionPrecisionAndTransparentSurroundings(){
+        for(high in listOf(false,true)) {
+            val format=if(high)PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 else PixelTileFormat.PREMULTIPLIED_SRGB_8888
+            val source=PixelTileSurface(128,128,64,pixelFormat=format)
+            source.beginWrite("content").use { w ->
+                for(y in 20 until 60) for(x in 20 until 60) {
+                    val v=((x*7+y*3)%40)/60f+.2f
+                    if(high) w.setLinearPixel(x,y,LinearRgba(v*1.3f,v*.7f,.4f,if(x<40) 1f else .5f))
+                    else {
+                        // Premultiplied ARGB without android.graphics in a JVM test.
+                        val a=if(x<40) 255 else 128; val r=(v*255).toInt().coerceAtMost(255); val g=(v*180).toInt()
+                        w.setPixel(x,y,(a shl 24) or (r*a/255 shl 16) or (g*a/255 shl 8) or (90*a/255))
+                    }
+                }
+                w.commit().close()
+            }
+            val snapshot=source.snapshot()
+            assertTrue("fixture has content",if(high) snapshot.linearPixelAt(30,30).alpha>0f else snapshot.pixelAt(30,30) ushr 24>0)
+            val selection=MaskTileSurface(128,128,64)
+            selection.beginWrite("left half").use { w -> for(y in 0 until 128) for(x in 0 until 40) w.setAlpha(x,y,255); w.commit().close() }
+            for(kind in 0..15) {
+                val effect=app.inkloom.settings.RasterFilterPreset(kind=kind,strength=4f,colorArgb=0xffff0000.toInt()).effect()
+                val output=RasterImageFilter.apply(snapshot,effect,selection.snapshot()).snapshot()
+                assertEquals("$effect keeps the layer precision",format,output.pixelFormat)
+                for(y in 20 until 60) for(x in 44 until 60) {
+                    if(high) assertEquals("$effect high precision unselected $x,$y",snapshot.packedF16At(x,y),output.packedF16At(x,y))
+                    else assertEquals("$effect unselected $x,$y",snapshot.pixelAt(x,y),output.pixelAt(x,y))
+                }
+                val whole=RasterImageFilter.apply(snapshot,effect).snapshot()
+                for((x,y) in listOf(100 to 100,120 to 5,5 to 120)) {
+                    if(high) assertEquals("$effect transparent surroundings stay empty",0f,PackedRgbaF16.alpha(whole.packedF16At(x,y)),0f)
+                    else assertEquals("$effect transparent surroundings stay empty",0,whole.pixelAt(x,y))
+                }
+                if(high) for(y in 20 until 60 step 7) for(x in 20 until 60 step 7) {
+                    val p=whole.linearPixelAt(x,y)
+                    assertTrue("$effect finite F16",p.red.isFinite()&&p.green.isFinite()&&p.blue.isFinite()&&p.alpha in 0f..1f)
+                }
+            }
+        }
+    }
 }
