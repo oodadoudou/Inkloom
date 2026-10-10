@@ -4126,9 +4126,11 @@ private fun EditorScreen(
         val linkPageState = rememberLazyListState()
         RevealSelectedItem(linkPageState, targetDocument.id, targetPage?.id, targetDocument.pages.indexOfFirst { it.id == targetPage?.id })
         AlertDialog(
+            modifier = Modifier.imePadding(),
+            properties = DialogProperties(decorFitsSystemWindows = false),
             onDismissRequest = { linkInsertOpen = false },
             title = { Text(tr("Insert link", "插入链接")) },
-            text = { Column(Modifier.dialogContentWidth(360.dp, 560.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            text = { Column(Modifier.dialogContentWidth(360.dp, 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(insertLinkTitle, { insertLinkTitle = it }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = !insertInternalLink, onClick = { insertInternalLink = false }, label = { Text(tr("Web link", "网页链接")) })

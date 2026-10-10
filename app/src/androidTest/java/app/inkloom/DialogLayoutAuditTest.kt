@@ -360,6 +360,16 @@ class DialogLayoutAuditTest {
         compose.onAllNodes(androidx.compose.ui.test.hasText("自定义"))[0].performScrollTo().assertIsDisplayed()
     }
 
+    @Test fun insertDialogsRemainReachableWithKeyboard() {
+        compose.onNode(androidx.compose.ui.test.hasText("新建笔记") or androidx.compose.ui.test.hasContentDescription("新建笔记")).performClick()
+        open("创建")
+        fun tool(name: String) = compose.onNode(androidx.compose.ui.test.hasContentDescription(name)).performScrollTo().performClick()
+        tool("文字"); check("插入文本", "插入", "取消", focus = "文本"); open("取消")
+        tool("便笺"); check("新建便签", "插入", "取消", focus = "便签"); open("取消")
+        tool("链接"); check("插入链接", "插入", "取消", focus = "网页、邮箱或电话号码"); open("取消")
+        tool("图片"); check("添加页面图片", "扫描页面", "取消")
+    }
+
     private fun open(text: String) {
         val node = compose.onNodeWithText(text)
         runCatching { node.performScrollTo() }
@@ -388,7 +398,7 @@ class DialogLayoutAuditTest {
             }
         }
         focus?.let { label ->
-            compose.onAllNodes(inDialog and (androidx.compose.ui.test.hasText(label, substring = true) or androidx.compose.ui.test.hasContentDescription(label)))[0].performClick()
+            compose.onAllNodes(inDialog and androidx.compose.ui.test.hasSetTextAction() and (androidx.compose.ui.test.hasText(label, substring = true) or androidx.compose.ui.test.hasContentDescription(label)))[0].performClick()
             SystemClock.sleep(800); compose.waitForIdle()
         }
         val texts = compose.onAllNodes(inDialog and SemanticsMatcher.keyIsDefined(SemanticsProperties.Text))
