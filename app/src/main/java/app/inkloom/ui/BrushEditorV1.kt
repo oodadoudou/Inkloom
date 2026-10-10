@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import app.inkloom.ui.theme.Paper
 import app.inkloom.ui.theme.Ink
+import app.inkloom.ui.theme.MutedInk
 import app.inkloom.ui.theme.SageContainer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,6 +26,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -86,7 +88,7 @@ fun BrushEditorV1Dialog(
                         val title: @Composable () -> Unit = {
                             Column {
                                 Text(tr("Brush Studio", "笔刷工作室"), style = MaterialTheme.typography.titleLarge)
-                                Text(session.current.identity.name, color = Color.Gray, fontSize = 12.sp, maxLines = 1)
+                                Text(session.current.identity.name, color = MutedInk, fontSize = 12.sp, maxLines = 1)
                             }
                         }
                         val actions: @Composable RowScope.() -> Unit = {
@@ -143,15 +145,16 @@ fun BrushEditorV1Dialog(
                                     .background(Paper), contentPadding = PaddingValues(8.dp)) {
                                     item {
                                         Text(session.current.identity.family.localizedLabel(language),
-                                            Modifier.padding(12.dp), color = Color.Gray, fontSize = 12.sp)
+                                            Modifier.padding(12.dp), color = MutedInk, fontSize = 12.sp)
                                     }
                                     items(panels, key = { it.first.name }) { (group, _) ->
                                         Text(group.localizedLabel(language),
                                             Modifier.fillMaxWidth().clip(RoundedCornerShape(7.dp))
                                                 .background(if (group == activePanel.first) Ink else Color.Transparent)
                                                 .clickable { selectedGroup = group }
+                                                .semantics { selected = group == activePanel.first }
                                                 .padding(horizontal = 12.dp, vertical = 16.dp),
-                                            fontSize = 13.sp)
+                                            fontSize = 13.sp, color = if (group == activePanel.first) Paper else Ink)
                                     }
                                 }
                                 VerticalDivider()
@@ -163,7 +166,7 @@ fun BrushEditorV1Dialog(
                                         if (activePanel.first == BrushOptionGroup.STROKE) {
                                             Text(tr("Global stabilization: ${(settings.globalStrokeStabilization * 100).toInt()}%. The brush setting is applied after it.",
                                                 "全局防抖：${(settings.globalStrokeStabilization * 100).toInt()}%。此笔刷设置在全局防抖之后生效。"),
-                                                fontSize = 12.sp, color = Color.Gray)
+                                                fontSize = 12.sp, color = MutedInk)
                                         }
                                     }
                                     if (activePanel.first in setOf(BrushOptionGroup.TIP, BrushOptionGroup.PAPER, BrushOptionGroup.DUAL_SHAPE, BrushOptionGroup.DUAL_GRAIN)) {

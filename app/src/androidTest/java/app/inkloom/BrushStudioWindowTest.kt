@@ -5,6 +5,8 @@ import android.graphics.Rect
 import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
@@ -66,6 +68,13 @@ class BrushStudioWindowTest {
         tap("清空")
         compose.waitUntil(5_000) { drawingPad() !== livePad && drawingPad().retainedStrokeCount == 0 }
         capture("studio-properties")
+        val selectedLabel = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        compose.onNode(androidx.compose.ui.test.hasText("描边路径") and androidx.compose.ui.test.isSelected())
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(selectedLabel) }
+        assertTrue("Selected category text must contrast with its highlight", selectedLabel.isNotEmpty() &&
+            androidx.core.graphics.ColorUtils.calculateContrast(selectedLabel.single().layoutInput.style.color.toArgb(),
+                app.inkloom.ui.theme.Ink.toArgb()) >= 4.5)
+
         assertTrue("The studio must follow the app language on an English emulator", find("Brush Studio").isEmpty())
         val pressure = bounds("压力")
         assertTrue("Drawing pad must sit to the right of categories", pad.left > pressure.right)
