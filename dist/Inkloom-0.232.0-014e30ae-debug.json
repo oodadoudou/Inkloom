@@ -1,0 +1,22 @@
+{
+  "version": "0.232.0",
+  "versionCode": 232,
+  "variant": "debug",
+  "commit": "014e30ae0471898a341a0174da26b0cda0154210",
+  "sha256": "d12ff0f45d6f5962c30d8c3ddf44423bb64db0bc2a1490191b202e0a8b2ad91a",
+  "bytes": 103730329,
+  "generatedUtc": "2026-10-10T19:46:47.618871+00:00",
+  "verification": {
+    "JVM": "PASS 1029 tests, 0 failures/errors, 8 skipped",
+    "Android15Targeted": "PASS 120 tests, 0 failures/errors/skips in one consolidated run on release source. Window audits, Brush Studio, brush sources, colors, library folders, selections, pressure settings, image paper, cover decoder, filters, brush switching, hover, eraser, pinch/write and brush-window input.",
+    "Android15Full": "NOT CLAIMED: targeted suite only.",
+    "Review": "Eleven focused window fixes, each separately committed: narrow header, tip selectors, shortcut IME, cover crop, compact studio pad, pressure presets, link IME, import/recovery scrolling, filter IME, quick-slot IME and selected-category contrast.",
+    "lint": "PASS 0 errors, 114 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS emulator install, versionCode 232, cold start Status ok; launch screenshot inspected; crash buffer empty",
+    "DriveDesktop": "PASS all four files SHA-256 verified in local sync folder; cloud transfer managed by Drive Desktop, cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING",
+  "evidenceRoot": "app/build/test-results, app/build/outputs/androidTest-results/connected/debug and ignored tasks/232/"
+}
