@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -357,6 +358,53 @@ class EditorPanelsWindowTest {
         drag(again, again + Offset(0f, -40f*density), cancel = true)
         assertEquals(saved, state.layout)
     }
+
+    @Test fun draggingAFloatingGroupOffscreenOrAfterAShorterWindowKeepsItsSize() {
+        lateinit var state: EditorPanelState
+        val hostHeight = androidx.compose.runtime.mutableStateOf<Float?>(null)
+        val original = PanelRect(250f, 20f, 280f, 300f)
+        compose.runOnUiThread {
+            state = EditorPanelState(compose.activity)
+            state.layout = EditorPanelLayout(open = setOf(EditorPanel.LAYERS), floating = EditorPanelLayout().floating
+                .map { if (it.node.id == "layers") it.copy(rect = original) else it })
+            compose.activity.setContent { MaterialTheme {
+                val height = hostHeight.value
+                Box(Modifier.fillMaxWidth().then(if (height == null) Modifier.fillMaxHeight() else Modifier.height(height.dp)).testTag("offscreen-host")) {
+                    EditorPanels(state, {}, canvas = { Text("Canvas") }, content = { Text("Body ${it.name}") })
+                }
+            } }
+        }
+        compose.waitForIdle()
+        val host = compose.onNodeWithTag("offscreen-host").fetchSemanticsNode()
+        val bottom = (host.boundsInWindow.bottom + host.positionOnScreen.y - host.positionInWindow.y) - 2f
+        val grip = point("Move panel group")
+        // Stay above the edge-docking zone; the panel body itself extends past the window.
+        drag(grip, Offset(grip.x, bottom - 220f))
+        val dropped = layers(state)
+        assertEquals("moving past the edge keeps the stored size", original.width, dropped.width, .5f)
+        assertEquals(original.height, dropped.height, .5f)
+        val hostHeightDp = host.size.height / compose.activity.resources.displayMetrics.density
+        assertTrue("the whole panel is pulled back inside", dropped.bottom <= hostHeightDp + .5f)
+        // Holding a title grip before a slow drag moves it; it never becomes a corner resize.
+        val before = layers(state)
+        drag(point("Move panel group"), point("Move panel group") - Offset(0f, 300f))
+        assertEquals(original.height, layers(state).height, .5f)
+        assertEquals(original.width, layers(state).width, .5f)
+        assertTrue(layers(state).y < before.y)
+        drag(point("Move layers tab"), point("Move layers tab") + Offset(200f, 0f))
+        assertEquals(original.height, layers(state).height, .5f)
+        assertEquals(original.width, layers(state).width, .5f)
+        // A shorter window (rotation or split screen) trims only the displayed size.
+        compose.runOnUiThread { hostHeight.value = 200f }
+        compose.waitForIdle()
+        drag(point("Move panel group"), point("Move panel group") + Offset(40f, 0f))
+        assertEquals(original.height, layers(state).height, .5f)
+        compose.runOnUiThread { hostHeight.value = null }
+        compose.waitForIdle()
+        assertEquals(original.height, layers(state).height, .5f)
+    }
+
+    private fun layers(state: EditorPanelState) = state.layout.floating.single { EditorPanel.LAYERS in EditorPanelLayouts.members(it.node) }.rect
 
     @Composable private fun ResizeHost(state: EditorPanelState) {
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {

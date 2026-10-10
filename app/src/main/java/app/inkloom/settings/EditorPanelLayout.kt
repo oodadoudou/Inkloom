@@ -12,6 +12,9 @@ data class PanelRect(val x: Float, val y: Float, val width: Float, val height: F
     val bottom get() = y + height
     fun contains(px: Float, py: Float) = px in x..right && py in y..bottom
     fun moved(dx: Float, dy: Float) = copy(x = x + dx, y = y + dy)
+    /** Moving keeps the stored size; only the position is pulled back into the window. */
+    fun placedWithin(w: Float, h: Float) = copy(
+        x = x.coerceIn(0f, (w - width).coerceAtLeast(0f)), y = y.coerceIn(0f, (h - height).coerceAtLeast(0f)))
     fun bounded(w: Float, h: Float): PanelRect {
         val width = width.coerceIn(minOf(72f, w), w.coerceAtLeast(1f))
         val minHeight = minOf(72f, h.coerceAtLeast(1f))
@@ -57,6 +60,8 @@ data class PanelSlot(val node: PanelNode, val rect: PanelRect, val rootId: Strin
 /** Small immutable layout transactions: a panel has one owner, preview never edits the document. */
 object EditorPanelLayouts {
     const val groupGripWidth = 30f
+    /** Title row owning the group grip, tab grips and close button. */
+    const val titleHeight = 32f
 
     /** A title grip owns the complete window or the highest docked group without canvas. */
     fun groupSourceId(layout: EditorPanelLayout, tabId: String): String? {

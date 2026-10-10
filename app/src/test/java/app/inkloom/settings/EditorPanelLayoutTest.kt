@@ -118,4 +118,13 @@ class EditorPanelLayoutTest {
         assertEquals(PanelEdge.TAB, EditorPanelLayouts.target(listOf(target), emptySet(), 250f, 112f, dragged, 0f, 1f, 900f,700f)?.edge)
     }
 
+    @Test fun movingAFloatingPanelPastAnEdgeKeepsItsSizeAndOnlyClampsPosition() {
+        val panel = PanelRect(250f, 20f, 280f, 300f)
+        assertEquals(PanelRect(250f, 400f, 280f, 300f), panel.moved(0f, 2000f).placedWithin(900f, 700f))
+        assertEquals(PanelRect(620f, 0f, 280f, 300f), panel.moved(5000f, -900f).placedWithin(900f, 700f))
+        assertEquals(PanelRect(0f, 0f, 280f, 300f), panel.moved(-400f, 0f).placedWithin(900f, 200f))
+        // Display may trim an oversized window, but moving must not persist that trim.
+        assertEquals(200f, panel.placedWithin(900f, 200f).bounded(900f, 200f).height, 0f)
+        assertEquals(300f, panel.placedWithin(900f, 200f).height, 0f)
+    }
 }

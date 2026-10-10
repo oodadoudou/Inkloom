@@ -215,7 +215,10 @@ internal fun EditorPanels(
             // Every title grip belongs to its complete group; only an explicit
             // per-tab grip may detach one leaf from that group.
             val sourceId=if (panel == null) EditorPanelLayouts.groupSourceId(state.layout,slot.node.id) ?: return else slot.node.id
-            val rect=currentSlots.firstOrNull { it.node.id==sourceId }?.rect ?: slot.rect
+            val shown=currentSlots.firstOrNull { it.node.id==sourceId }?.rect ?: slot.rect
+            // A short window trims only the displayed size; dragging must not persist that trim.
+            val stored=state.layout.floating.firstOrNull { it.node.id==sourceId }?.rect
+            val rect=stored?.let { shown.copy(width=it.width,height=it.height) } ?: shown
             drag=PanelDrag(gestureOrigin[0] ?: state.layout,sourceId,panel,rect,gestureDown[0].x/density,gestureDown[0].y/density)
             if (panel != null) state.layout = EditorPanelLayouts.select(state.layout, panel)
         }
@@ -248,7 +251,7 @@ internal fun EditorPanels(
         fun finish() {
             val d=drag ?: return
             if (!EditorPanelLayouts.intentionalDrag(d.panel,d.dx,d.dy)) { cancel(); return }
-            val rect=d.start.moved(d.dx,d.dy).bounded(w,h)
+            val rect=d.start.moved(d.dx,d.dy).placedWithin(w,h)
             state.commit(EditorPanelLayouts.move(d.original,d.sourceId,d.panel,d.target,rect))
             drag=null; releaseInput()
         }
@@ -262,7 +265,10 @@ internal fun EditorPanels(
                 val pendingPerimeterResize = if(!state.layout.locked) state.layout.floating.asReversed().firstNotNullOfOrNull { root ->
                     val visible=EditorPanelLayouts.visible(root.node,state.layout.open) ?: return@firstNotNullOfOrNull null
                     val rect=root.rect.bounded(w,h)
-                    if(!rect.contains(down.position.x/density,down.position.y/density)) null else
+                    // The title row owns move/detach/close; a held grip must never turn into a
+                    // perimeter resize. Its edges still resize through the explicit handles.
+                    if(!rect.contains(down.position.x/density,down.position.y/density) ||
+                        down.position.y/density-rect.y < EditorPanelLayouts.titleHeight) null else
                         PanelResizing.gripAt(down.position.x/density-rect.x,down.position.y/density-rect.y,rect.width,rect.height)
                             ?.let { Triple(root.node.id,it,state.layout) }
                 } else null
@@ -329,7 +335,7 @@ internal fun EditorPanels(
                     .background(Paper).border(1.dp,OutlineSoft).pointerInput(slot.rootId) {
                         awaitEachGesture { awaitFirstDown(requireUnconsumed=false,pass=PointerEventPass.Initial);state.raise(slot.rootId,tabs.id) }
                     }) {
-                    Row(Modifier.fillMaxWidth().height(32.dp).background(Paper),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().height(EditorPanelLayouts.titleHeight.dp).background(Paper),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                         Box(Modifier.width(EditorPanelLayouts.groupGripWidth.dp).fillMaxHeight()
                             .semantics { contentDescription=language.text("Move panel group","移动面板组合") }
                             .pointerInput(tabs.id,slot.rootId) {
