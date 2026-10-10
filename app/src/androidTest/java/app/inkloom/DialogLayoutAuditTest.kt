@@ -210,6 +210,36 @@ class DialogLayoutAuditTest {
         open("取消")
     }
 
+    @Test fun pagePanelDialogsRemainReachableAtLargeFont() {
+        compose.onNode(androidx.compose.ui.test.hasText("新建笔记") or androidx.compose.ui.test.hasContentDescription("新建笔记")).performClick()
+        open("创建")
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("显示或隐藏页面栏")).performScrollTo().assertIsDisplayed().performClick()
+        fun menu() {
+            try { compose.waitUntil(5_000) { compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("页面菜单")).fetchSemanticsNodes().isNotEmpty() } }
+            catch (failure: Throwable) { throw AssertionError(compose.onRoot(useUnmergedTree = true).printToString(), failure) }
+            compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("页面菜单"))[0].performScrollTo().assertIsDisplayed().performClick()
+        }
+        menu(); open("页码与标签"); check("页面信息", "保存", "取消", focus = "标签")
+        open("取消")
+        menu(); open("裁剪页面"); check("裁剪页面", "应用", "取消")
+        open("取消")
+        menu(); open("页面模板"); check(null, null, "取消")
+        open("取消")
+    }
+
+    @Test fun pageNavigatorCounterAndPopupTitleDoNotClipAtLargeFont() {
+        compose.onNode(androidx.compose.ui.test.hasText("新建笔记") or androidx.compose.ui.test.hasContentDescription("新建笔记")).performClick()
+        open("创建")
+        val counter = compose.onNode(androidx.compose.ui.test.hasContentDescription("长按跳转页面"))
+        val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        counter.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertTrue("Page count fits its navigator", layouts.isNotEmpty() && !layouts.single().didOverflowHeight)
+        counter.performClick()
+        compose.onNodeWithText("跳转页面").assertIsDisplayed()
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("跳转到第 1")).assertIsDisplayed()
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("关闭页面跳转")).performClick()
+    }
+
     private fun open(text: String) {
         val node = compose.onNodeWithText(text)
         runCatching { node.performScrollTo() }
@@ -236,7 +266,7 @@ class DialogLayoutAuditTest {
             }
         }
         focus?.let { label ->
-            compose.onAllNodes(androidx.compose.ui.test.hasText(label, substring = true) or androidx.compose.ui.test.hasContentDescription(label))[0].performClick()
+            compose.onAllNodes(hasAnyAncestor(isDialog()) and (androidx.compose.ui.test.hasText(label, substring = true) or androidx.compose.ui.test.hasContentDescription(label)))[0].performClick()
             SystemClock.sleep(800); compose.waitForIdle()
         }
         val texts = compose.onAllNodes(hasAnyAncestor(isDialog()) and SemanticsMatcher.keyIsDefined(SemanticsProperties.Text))

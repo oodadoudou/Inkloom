@@ -63,7 +63,7 @@ internal fun PageJumpPopup(pages: List<InkPage>, selectedPageId: String, navigat
             modifier = Modifier.width(minOf(280.dp, (width - 24.dp).coerceAtLeast(72.dp)))
                 .semantics { contentDescription = language.text("Page jump panel", "页面跳转面板") }) {
             Column(Modifier.padding(6.dp)) {
-                Row(Modifier.fillMaxWidth().height(36.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 36.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(language.text("Go to page", "跳转页面"), Modifier.weight(1f).padding(start = 6.dp), color = Ink)
                     IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Outlined.Close, language.text("Close page jump", "关闭页面跳转"), Modifier.size(17.dp))

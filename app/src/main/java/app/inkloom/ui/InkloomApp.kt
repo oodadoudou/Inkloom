@@ -3517,7 +3517,7 @@ private fun EditorScreen(
                     border = CardDefaults.outlinedCardBorder(),
                     shadowElevation = 5.dp,
                 ) {
-                    Row(Modifier.height(38.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.heightIn(min = 38.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box {
                             val ratio = zoom * (canvasView?.width ?: 0) / PageCropTransform.visibleWidth(selectedPage).coerceAtLeast(1f)
                             val zoomDescription = tr("Quick zoom", "快捷缩放")
