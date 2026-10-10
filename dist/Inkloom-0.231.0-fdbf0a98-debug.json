@@ -1,0 +1,23 @@
+{
+  "version": "0.231.0",
+  "versionCode": 231,
+  "variant": "debug",
+  "commit": "fdbf0a988d96bdbfdd45bfa1398d82a2edb2f0a5",
+  "sha256": "531d776f4fbfb6ece6cfaebe3d5666147cde0046947f11cbabccf5c1d96b9ad9",
+  "bytes": 103697561,
+  "generatedUtc": "2026-10-10T16:25:35.144546+00:00",
+  "verification": {
+    "JVM": "PASS 1029 tests, 0 failures, 8 skipped",
+    "Android15Targeted": "PASS 199 tests in one run on the release source: reference exclusions, fill, settings, tool properties, color range, groups, adjustments, brush switching, hover, eraser, navigation, pinch/write, dialog audit, draft export, export dialog, color input, preset execution, raster projection and persistence.",
+    "Android15Full": "NOT CLAIMED: targeted suite only.",
+    "Review": "Fixed filtered references bypassing adjustments/group compositing; added separate paper/imported-background/text exclusions; fixed group-manager IME clipping and page navigator large-font clipping.",
+    "TestCorrections": "Zoom overflow probe was below visible viewport even on unchanged main; relocated while preserving outside-layout assertion. Page-dialog field selector matched a background tab; scoped to dialog and confirmed original page implementation passes. No page-dialog rewrite retained.",
+    "lint": "PASS 0 errors, 114 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS emulator install, versionCode 231, cold start Status ok; screenshot inspected; crash buffer empty",
+    "DriveDesktop": "PASS all four files SHA-256 verified in local sync folder; cloud transfer managed by Drive Desktop, cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING",
+  "evidenceRoot": "app/build/test-results, app/build/outputs/androidTest-results/connected/debug and ignored tasks/231/"
+}
