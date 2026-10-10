@@ -1,0 +1,22 @@
+{
+  "version": "0.229.0",
+  "versionCode": 229,
+  "variant": "debug",
+  "commit": "0a92fd8ba54e6de3a38a2449e76d41c2f684e382",
+  "sha256": "8d48b4bab213362107ab84b796d0bc4561da21b43af2f8f21822b8bffaae638a",
+  "bytes": 103681177,
+  "generatedUtc": "2026-10-10T09:42:20.331044+00:00",
+  "verification": {
+    "JVM": "PASS 1026 tests, 0 failures, 8 skipped",
+    "Android15Targeted": "PASS 152 tests in one run on the release source: adjustment rendering (objects, F16 parity), adjustment controls, layer target window (preview/reset/apply/undo), color management, selection window regressions (transform after zoom), selection transform/mesh, raster filter window, filtered visible copy, dialog audit, group rendering, draft export, format round trip, native composite parity, launch/editor.",
+    "Android15Flake": "strokeDialogCancelApplyColorUndoAndReopenKeepSelectionAndPixels failed once in an earlier full SelectionWindowRegressionTest run (timeout waiting for the stroke result), then passed twice alone, in a 25/25 suite rerun and in this release run; recorded as intermittent.",
+    "Android15Full": "NOT CLAIMED: no new full-suite run or full-suite success.",
+    "lint": "PASS 0 errors, 114 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS emulator installation, versionCode 229, cold startup Status ok; crash buffer empty",
+    "DriveDesktop": "PASS all four files SHA-256 verified in local sync folder; cloud transfer managed by Drive Desktop, cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING",
+  "evidenceRoot": "app/build/test-results, app/build/outputs/androidTest-results/connected/debug and ignored tasks/229/, tasks/ad11/, tasks/ad13/, tasks/tf34/"
+}
