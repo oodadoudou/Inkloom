@@ -338,7 +338,7 @@ private fun ToolPaletteOrganizerDialog(settings: AppSettings, onSettings: (AppSe
     AlertDialog(
         onDismissRequest=onDismiss,
         title={Text(language.text("Customize tool rail", "自定义工具栏"))},
-        text={Column(dialogContentWidth(300.dp, 420.dp).heightIn(max=560.dp)) {
+        text={Column(Modifier.dialogContentWidth(300.dp, 420.dp).heightIn(max=560.dp)) {
             Text(language.text("Long-press and drag tools across separators. Changes are saved with the workspace.", "长按拖动工具可跨越分隔线；设置会随工作区保存。"),fontSize=11.sp,color=MutedInk)
             Spacer(Modifier.height(8.dp))
             LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)) {

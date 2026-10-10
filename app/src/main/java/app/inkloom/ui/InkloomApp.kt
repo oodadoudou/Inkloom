@@ -4120,7 +4120,7 @@ private fun EditorScreen(
         AlertDialog(
             onDismissRequest = { linkInsertOpen = false },
             title = { Text(tr("Insert link", "插入链接")) },
-            text = { Column(dialogContentWidth(360.dp, 560.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            text = { Column(Modifier.dialogContentWidth(360.dp, 560.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(insertLinkTitle, { insertLinkTitle = it }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = !insertInternalLink, onClick = { insertInternalLink = false }, label = { Text(tr("Web link", "网页链接")) })
@@ -4261,7 +4261,7 @@ private fun EditorScreen(
         text = {
             val marked = document.pages.withIndex().filter { it.value.bookmarked }
             if (marked.isEmpty()) Text(tr("No bookmarked pages yet.", "还没有收藏的页面。"), color = MutedInk)
-            else LazyColumn(dialogContentWidth(320.dp, 520.dp).heightIn(max = 420.dp)) {
+            else LazyColumn(Modifier.dialogContentWidth(320.dp, 520.dp).heightIn(max = 420.dp)) {
                 items(marked, key = { it.value.id }) { (index, page) ->
                     ListItem(
                         headlineContent = { Text(page.title, maxLines = 1) },
@@ -4288,7 +4288,7 @@ private fun EditorScreen(
             onDismissRequest = { outlineOpen = false },
             title = { Text(tr("Page outline", "页面大纲")) },
             text = {
-                LazyColumn(dialogContentWidth(360.dp, 560.dp).heightIn(max = 480.dp).semantics { contentDescription = "Page outline list" }, state = outlineState, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                LazyColumn(Modifier.dialogContentWidth(360.dp, 560.dp).heightIn(max = 480.dp).semantics { contentDescription = "Page outline list" }, state = outlineState, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     items(visibleOutlinePages, key = { it.id }) { page ->
                         val index = document.pages.indexOf(page)
                         val hasChildren = PageOutline.hasChildren(document.pages, index)
@@ -4360,7 +4360,7 @@ private fun EditorScreen(
         AlertDialog(
             onDismissRequest = { searchOpen = false },
             title = { Text(tr("Search this note", "搜索此笔记")) },
-            text = { Column(dialogContentWidth(340.dp, 560.dp)) {
+            text = { Column(Modifier.dialogContentWidth(340.dp, 560.dp)) {
                 OutlinedTextField(documentQuery, { documentQuery = it; searchFocus = null }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Page, handwriting, image, or PDF text", "页面、手写、图片或 PDF 文字")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     FilterChip(selected = recognitionLanguageTag == "en-US", onClick = { recognitionLanguageTag = "en-US" }, label = { Text("English") })
@@ -4801,7 +4801,7 @@ private fun PageRail(
                 onDismissRequest = { cropOpen = false },
                 title = { Text(tr("Crop page", "裁剪页面")) },
                 text = {
-                    LazyColumn(dialogContentWidth(340.dp, 520.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LazyColumn(Modifier.dialogContentWidth(340.dp, 520.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         item { Text(tr("The source PDF/image and all page content remain unchanged. Resetting the crop restores the full page.", "源 PDF、图片及页面内容不会改变；重置裁剪即可恢复完整页面。"), color = MutedInk, fontSize = 12.sp) }
                         item { BrushSettingSlider("${tr("Left", "左")}  ${(cropDraft.left * 100).toInt()}%", cropDraft.left, 0f..0.95f) { cropDraft = PageCropTransform.normalized(cropDraft.copy(left = it)) } }
                         item { BrushSettingSlider("${tr("Top", "上")}  ${(cropDraft.top * 100).toInt()}%", cropDraft.top, 0f..0.95f) { cropDraft = PageCropTransform.normalized(cropDraft.copy(top = it)) } }
@@ -4817,7 +4817,7 @@ private fun PageRail(
                 onDismissRequest = { transferOpen = false },
                 title = { Text(tr("Move or copy page", "移动或复制页面")) },
                 text = {
-                    LazyColumn(dialogContentWidth(360.dp, 560.dp).heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    LazyColumn(Modifier.dialogContentWidth(360.dp, 560.dp).heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         items(transferTargets, key = { it.id }) { target ->
                             ListItem(
                                 headlineContent = { Text(target.title, maxLines = 1) },
@@ -4868,7 +4868,7 @@ private fun PageRail(
     if (batchTransferOpen) AlertDialog(
         onDismissRequest = { batchTransferOpen = false },
         title = { Text(tr("Move or copy ${selectedPageIds.size} pages", "移动或复制 ${selectedPageIds.size} 页")) },
-        text = { LazyColumn(dialogContentWidth(360.dp, 560.dp).heightIn(max = 360.dp)) {
+        text = { LazyColumn(Modifier.dialogContentWidth(360.dp, 560.dp).heightIn(max = 360.dp)) {
             items(transferTargets, key = { it.id }) { target -> ListItem(
                 headlineContent = { Text(target.title, maxLines = 1) },
                 supportingContent = { Text(tr("${target.pages.size} pages", "${target.pages.size} 页")) },
@@ -4943,7 +4943,7 @@ internal fun PageTemplatePickerDialog(
         text = {
             // One scroll owner: on narrow windows or with large fonts the header scrolls away with
             // the template list instead of being clipped above a nested list.
-            LazyColumn(dialogContentWidth(440.dp, 640.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            LazyColumn(Modifier.dialogContentWidth(440.dp, 640.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 6.dp)) {
                         Text(
@@ -6172,7 +6172,7 @@ private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onS
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (element is PageElement.Image) tr("Transform image", "变换图片") else tr("Object properties", "对象属性")) },
-        text = { LazyColumn(dialogContentWidth(340.dp, 520.dp).heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        text = { LazyColumn(Modifier.dialogContentWidth(340.dp, 520.dp).heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val image = draft as? PageElement.Image
             if (image != null) {
                 item { ImageTransformPreview(image) }
@@ -7980,7 +7980,7 @@ private fun BrushMoveToGroupDialog(brush: ImportedBrush, groups: List<String>, o
         onDismissRequest = onDismiss,
         title = { Text(tr("Move brush", "移动笔刷")) },
         text = {
-            Column(dialogContentWidth(320.dp, 440.dp)) {
+            Column(Modifier.dialogContentWidth(320.dp, 440.dp)) {
                 Text(brush.name, fontSize = 13.sp)
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
@@ -8016,7 +8016,7 @@ private fun BrushBatchGroupDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (moving) tr("Move selected brushes", "移动所选笔刷") else tr("Copy selected brushes", "复制所选笔刷")) },
         text = {
-            Column(dialogContentWidth(320.dp, 440.dp)) {
+            Column(Modifier.dialogContentWidth(320.dp, 440.dp)) {
                 Text("$count ${tr("brushes selected", "支笔刷已选择")}", color = MutedInk, fontSize = 12.sp)
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
@@ -8899,7 +8899,7 @@ private fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit,
         onDismissRequest = onDismiss,
         title = { Text(tr("Manage groups", "管理分组")) },
         text = {
-            Column(dialogContentWidth(320.dp, 440.dp)) {
+            Column(Modifier.dialogContentWidth(320.dp, 440.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
                         value = newGroupPath,
@@ -8964,7 +8964,7 @@ private fun BrushImportFailuresDialog(
         onDismissRequest = onDismiss,
         title = { Text(language.text("Brush import issues", "笔刷导入问题")) },
         text = {
-            Column(dialogContentWidth(360.dp, 520.dp)) {
+            Column(Modifier.dialogContentWidth(360.dp, 520.dp)) {
                 Text(
                     language.text(
                         "Failed sources stay here with their exact reason. Retry after updating Inkloom or restoring file access.",
@@ -9021,7 +9021,7 @@ private fun BrushVersionHistoryDialog(
         onDismissRequest = onDismiss,
         title = { Text(tr("Version history", "版本历史")) },
         text = {
-            Column(dialogContentWidth(340.dp, 480.dp)) {
+            Column(Modifier.dialogContentWidth(340.dp, 480.dp)) {
                 Text(brush.name, fontSize = 13.sp)
                 Text(tr("Inkloom saves the previous preset before every brush edit.", "Inkloom 会在每次编辑笔刷前保存旧预设。"), color = MutedInk, fontSize = 11.sp)
                 Spacer(Modifier.height(10.dp))
@@ -9263,7 +9263,7 @@ private fun SettingsDialog(
         confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Done", "完成")) } },
         title = { Text(tr("Settings", "设置")) },
         text = {
-            Column(dialogContentWidth(300.dp, 520.dp)) {
+            Column(Modifier.dialogContentWidth(300.dp, 520.dp)) {
                 val tabs = listOf(tr("General", "通用"), tr("Gestures", "手势"), tr("Pressure", "压感"), tr("Shortcuts", "快捷键"), tr("Backup", "备份"))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     items(tabs.size) { index ->
@@ -9666,7 +9666,7 @@ private fun ToolboxQuickSlotEditorDialog(
         onDismissRequest = onDismiss,
         title = { Text(tr("Toolbox quick slots", "Toolbox 快速槽")) },
         text = {
-            LazyColumn(dialogContentWidth(380.dp, 560.dp).heightIn(max = 560.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyColumn(Modifier.dialogContentWidth(380.dp, 560.dp).heightIn(max = 560.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 item {
                     Text(
                         tr("Bind a Toolbox key to Quick slot 1–8 in the shortcut list, then choose what the slot restores here.", "先在快捷键列表中为快速槽 1–8 绑定 Toolbox 按键，再在此选择快速槽恢复的内容。"),
@@ -10128,7 +10128,7 @@ private fun SelectionStudioPanel(
     if (colorRangeOpen) AlertDialog(
         onDismissRequest = { colorRangeOpen = false },
         title = { Text(tr("Color range", "色域选择")) },
-        text = { Column(dialogContentWidth(320.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        text = { Column(Modifier.dialogContentWidth(320.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(28.dp).background(Color(colorRangeTarget), RoundedCornerShape(5.dp)))
                 Spacer(Modifier.width(10.dp))
@@ -10147,7 +10147,7 @@ private fun SelectionStudioPanel(
     if (optionsOpen) AlertDialog(
         onDismissRequest = { optionsOpen = false },
         title = { Text(tr("Selection settings", "选区设置")) },
-        text = { Column(dialogContentWidth(320.dp).heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
+        text = { Column(Modifier.dialogContentWidth(320.dp).heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
                             if (shape == SelectionShape.BRUSH) {
                                 Text("${tr("Brush size", "画笔大小")}  ${brushSize.toInt()} px")
                                 BrushParameterSlider(brushSize, onBrushSize, valueRange = 4f..300f)
@@ -10208,7 +10208,7 @@ private fun SelectionStudioPanel(
     if (launcherSettingsOpen) AlertDialog(
         onDismissRequest = { launcherSettingsOpen = false },
         title = { Text(tr("Selection shortcuts", "选区快捷操作")) },
-        text = { Column(dialogContentWidth(320.dp).heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
+        text = { Column(Modifier.dialogContentWidth(320.dp).heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
             Text(tr("Arrange shortcuts with the arrows. Essential commands remain in More.", "用箭头调整顺序；必要操作始终可从「更多」访问。"), fontSize = 11.sp)
             launcherOrder.forEachIndexed { index, action ->
                 val label = when (action) {
