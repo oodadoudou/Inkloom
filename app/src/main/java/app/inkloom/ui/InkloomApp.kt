@@ -4900,7 +4900,7 @@ private fun PageInkPreview(page: InkPage, assets: DocumentAssetService, modifier
 }
 
 @Composable
-private fun PageTemplatePickerDialog(
+internal fun PageTemplatePickerDialog(
     library: PageTemplateLibrary,
     documentId: String,
     title: String,
@@ -4937,73 +4937,78 @@ private fun PageTemplatePickerDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            Column(Modifier.widthIn(min = 440.dp, max = 640.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    tr(
-                        "Choose a reusable paper, image, or PDF background. Existing ink and objects are preserved.",
-                        "选择可复用的纸张、图片或 PDF 背景；现有墨迹与对象会完整保留。",
-                    ),
-                    color = MutedInk,
-                    fontSize = 12.sp,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onImport) { Icon(Icons.Outlined.FileOpen, null); Spacer(Modifier.width(6.dp)); Text(tr("Import image/PDF", "导入图片/PDF")) }
-                    if (onSaveCurrent != null) OutlinedButton(onClick = onSaveCurrent) { Icon(Icons.Outlined.BookmarkAdd, null); Spacer(Modifier.width(6.dp)); Text(tr("Save current", "保存当前页")) }
-                }
-                TextButton(onClick = { customSizeOpen = true }) { Icon(Icons.Outlined.Add, null); Text(tr("Custom paper", "自定义纸张")) }
-                Text(tr("Paper color", "纸张颜色"), color = MutedInk, fontSize = 12.sp)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PaperColorCatalog.options.forEach { option ->
-                        val label = paperColorName(option)
-                        val description = tr("Paper color $label", "纸张颜色 $label")
-                        Box(
-                            Modifier
-                                .size(32.dp)
-                                .background(Color(option.colorArgb), CircleShape)
-                                .border(if (paperColor == option.colorArgb) 2.dp else 1.dp, if (paperColor == option.colorArgb) Ink else OutlineSoft, CircleShape)
-                                .clickable { paperColor = option.colorArgb; paperColorOverridden = true }
-                                .semantics { contentDescription = description },
+            // One scroll owner: on narrow windows or with large fonts the header scrolls away with
+            // the template list instead of being clipped above a nested list.
+            val minimumWidth = (LocalConfiguration.current.screenWidthDp - 96).coerceIn(240, 440).dp
+            LazyColumn(Modifier.widthIn(min = minimumWidth, max = 640.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 6.dp)) {
+                        Text(
+                            tr(
+                                "Choose a reusable paper, image, or PDF background. Existing ink and objects are preserved.",
+                                "选择可复用的纸张、图片或 PDF 背景；现有墨迹与对象会完整保留。",
+                            ),
+                            color = MutedInk,
+                            fontSize = 12.sp,
                         )
-                    }
-                }
-                LazyColumn(Modifier.heightIn(max = 430.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    items(ordered, key = { it.id }) { template ->
-                        val displayedTemplate = if (PageTemplateCatalog.isBuiltIn(template.id) || paperColorOverridden) PageTemplateOperations.withPaperColor(template, paperColor) else template
-                        val selected = currentBackground == displayedTemplate.background
-                        val builtIn = PageTemplateCatalog.isBuiltIn(template.id)
-                        val isDefault = template.id == defaultId
-                        val displayName = pageTemplateName(template)
-                        val favoriteDescription = tr("Favorite $displayName template", "收藏 $displayName 模板")
-                        val defaultDescription = tr("Set $displayName as notebook default", "将 $displayName 设为笔记默认模板")
-                        val useDescription = tr("Use $displayName template", "使用 $displayName 模板")
-                        ListItem(
-                            headlineContent = { Text(displayName, maxLines = 1) },
-                            supportingContent = {
-                                Text(
-                                    "${pageTemplateKind(template)} · ${template.width.toInt()} × ${template.height.toInt()}" + if (isDefault) tr(" · notebook default", " · 笔记默认") else "",
-                                    color = MutedInk,
-                                    fontSize = 11.sp,
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            OutlinedButton(onClick = onImport) { Icon(Icons.Outlined.FileOpen, null); Spacer(Modifier.width(6.dp)); Text(tr("Import image/PDF", "导入图片/PDF")) }
+                            if (onSaveCurrent != null) OutlinedButton(onClick = onSaveCurrent) { Icon(Icons.Outlined.BookmarkAdd, null); Spacer(Modifier.width(6.dp)); Text(tr("Save current", "保存当前页")) }
+                        }
+                        TextButton(onClick = { customSizeOpen = true }) { Icon(Icons.Outlined.Add, null); Text(tr("Custom paper", "自定义纸张")) }
+                        Text(tr("Paper color", "纸张颜色"), color = MutedInk, fontSize = 12.sp)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            PaperColorCatalog.options.forEach { option ->
+                                val label = paperColorName(option)
+                                val description = tr("Paper color $label", "纸张颜色 $label")
+                                Box(
+                                    Modifier
+                                        .size(32.dp)
+                                        .background(Color(option.colorArgb), CircleShape)
+                                        .border(if (paperColor == option.colorArgb) 2.dp else 1.dp, if (paperColor == option.colorArgb) Ink else OutlineSoft, CircleShape)
+                                        .clickable { paperColor = option.colorArgb; paperColorOverridden = true }
+                                        .semantics { contentDescription = description },
                                 )
-                            },
-                            leadingContent = { PageTemplatePreview(displayedTemplate, selected) },
-                            trailingContent = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(onClick = { onToggleFavorite(template.id) }, modifier = Modifier.size(34.dp).semantics { contentDescription = favoriteDescription }) {
-                                        Icon(if (template.id in library.favoriteIds) Icons.Filled.Star else Icons.Outlined.StarBorder, null, tint = Ink)
-                                    }
-                                    IconButton(onClick = { onSetDefault(if (isDefault) null else template.id, (displayedTemplate.background as? PageBackground.Paper)?.colorArgb) }, modifier = Modifier.size(34.dp).semantics { contentDescription = defaultDescription }) {
-                                        Icon(if (isDefault) Icons.Filled.Home else Icons.Outlined.Home, null, tint = Ink)
-                                    }
-                                    if (!builtIn) IconButton(onClick = { onDelete(template.id) }, modifier = Modifier.size(34.dp)) {
-                                        Icon(Icons.Outlined.Delete, tr("Delete template", "删除模板"), tint = MutedInk)
-                                    }
-                                    TextButton(onClick = { onChoose(template, (displayedTemplate.background as? PageBackground.Paper)?.colorArgb) }, modifier = Modifier.semantics { contentDescription = useDescription }) { Text(if (selected) tr("Selected", "已选择") else tr("Use", "使用")) }
-                                }
-                            },
-                            colors = ListItemDefaults.colors(containerColor = if (selected) Workspace else Color.Transparent),
-                            modifier = Modifier.clip(RoundedCornerShape(10.dp)),
-                        )
+                            }
+                        }
                     }
+                }
+                items(ordered, key = { it.id }) { template ->
+                    val displayedTemplate = if (PageTemplateCatalog.isBuiltIn(template.id) || paperColorOverridden) PageTemplateOperations.withPaperColor(template, paperColor) else template
+                    val selected = currentBackground == displayedTemplate.background
+                    val builtIn = PageTemplateCatalog.isBuiltIn(template.id)
+                    val isDefault = template.id == defaultId
+                    val displayName = pageTemplateName(template)
+                    val favoriteDescription = tr("Favorite $displayName template", "收藏 $displayName 模板")
+                    val defaultDescription = tr("Set $displayName as notebook default", "将 $displayName 设为笔记默认模板")
+                    val useDescription = tr("Use $displayName template", "使用 $displayName 模板")
+                    ListItem(
+                        headlineContent = { Text(displayName, maxLines = 1) },
+                        supportingContent = {
+                            Text(
+                                "${pageTemplateKind(template)} · ${template.width.toInt()} × ${template.height.toInt()}" + if (isDefault) tr(" · notebook default", " · 笔记默认") else "",
+                                color = MutedInk,
+                                fontSize = 11.sp,
+                            )
+                        },
+                        leadingContent = { PageTemplatePreview(displayedTemplate, selected) },
+                        trailingContent = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { onToggleFavorite(template.id) }, modifier = Modifier.size(34.dp).semantics { contentDescription = favoriteDescription }) {
+                                    Icon(if (template.id in library.favoriteIds) Icons.Filled.Star else Icons.Outlined.StarBorder, null, tint = Ink)
+                                }
+                                IconButton(onClick = { onSetDefault(if (isDefault) null else template.id, (displayedTemplate.background as? PageBackground.Paper)?.colorArgb) }, modifier = Modifier.size(34.dp).semantics { contentDescription = defaultDescription }) {
+                                    Icon(if (isDefault) Icons.Filled.Home else Icons.Outlined.Home, null, tint = Ink)
+                                }
+                                if (!builtIn) IconButton(onClick = { onDelete(template.id) }, modifier = Modifier.size(34.dp)) {
+                                    Icon(Icons.Outlined.Delete, tr("Delete template", "删除模板"), tint = MutedInk)
+                                }
+                                TextButton(onClick = { onChoose(template, (displayedTemplate.background as? PageBackground.Paper)?.colorArgb) }, modifier = Modifier.semantics { contentDescription = useDescription }) { Text(if (selected) tr("Selected", "已选择") else tr("Use", "使用")) }
+                            }
+                        },
+                        colors = ListItemDefaults.colors(containerColor = if (selected) Workspace else Color.Transparent),
+                        modifier = Modifier.clip(RoundedCornerShape(10.dp)),
+                    )
                 }
             }
         },
