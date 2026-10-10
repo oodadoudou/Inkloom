@@ -61,4 +61,44 @@ class RasterFormatRoundTripTest {
             } finally { file.delete() }
         } } finally { assets.releaseRasterTileReservation(ref); assets.releaseAssetReservation(maskRef.assetPath) }
     }
+
+    @Test fun draftLayersAreLeftOutOfInterchangeByDefaultIncludedOnRequestAndKeptAsDraftsInLayeredPng() {
+        val assets=DocumentAssetService(context)
+        fun solid(color:Int,left:Int)=PixelTileSurface(64,64).also { surface ->
+            surface.beginWrite("fixture").use { write -> for(y in 10 until 30) for(x in left until left+20) write.setPixel(x,y,color); write.commit().close() }
+        }
+        val draftRef=assets.saveRasterTileSurface(solid(Color.BLUE,5)); val finalRef=assets.saveRasterTileSurface(solid(Color.RED,35))
+        val sketch=InkLayer(name="Sketch",rasterTileSurface=draftRef,draft=true,reference=true)
+        val final=InkLayer(name="Final",rasterTileSurface=finalRef)
+        val page=InkPage(width=64f,height=64f,layers=listOf(sketch,final))
+        fun roundTrip(format:RasterFileFormat,include:Boolean):InkPage {
+            val file=File(context.cacheDir,"draft-roundtrip.${format.extension}")
+            try {
+                assets.exportPageRaster(page,Uri.fromFile(file),PageRasterExportOptions(64,64,false,format,includeDraftLayers=include))
+                return assets.importArtwork(Uri.fromFile(file),file.name).pages.single()
+            } finally { file.delete() }
+        }
+        try {
+            for(format in listOf(RasterFileFormat.PSD,RasterFileFormat.OPEN_RASTER)) {
+                val excluded=roundTrip(format,false)
+                assertEquals("$format leaves drafts out by default",listOf("Final"),excluded.layers.map { it.name })
+                assertEquals(0,assets.renderPageCompositeSurface(excluded,64,64).pixelAt(10,20))
+                val included=roundTrip(format,true).layers.single { it.name=="Sketch" }
+                assertEquals("$format writes included drafts with their pixels, not blank",
+                    Color.BLUE,assets.loadRasterTileSurface(requireNotNull(included.rasterTileSurface)).pixelAt(10,20))
+                assertFalse(included.draft)
+            }
+            val layered=roundTrip(RasterFileFormat.LAYERED_PNG,false)
+            val restored=layered.layers.single { it.name=="Sketch" }
+            assertTrue("the Inkloom layered package keeps the draft flag",restored.draft); assertTrue(restored.reference)
+            assertEquals(Color.BLUE,assets.loadRasterTileSurface(requireNotNull(restored.rasterTileSurface)).pixelAt(10,20))
+            assertEquals("restored drafts stay out of page output",0,assets.renderPageCompositeSurface(layered,64,64).pixelAt(10,20))
+            val file=File(context.cacheDir,"draft-stack.zip")
+            try {
+                assets.exportPageRaster(page,Uri.fromFile(file),PageRasterExportOptions(64,64,false,RasterFileFormat.LAYERED_PNG))
+                val xml=java.util.zip.ZipFile(file).use { zip -> zip.getInputStream(zip.getEntry("stack.xml")).bufferedReader().readText() }
+                assertTrue("third-party ORA readers see the draft hidden",Regex("name=\"Sketch\"[^>]*visibility=\"hidden\"").containsMatchIn(xml))
+            } finally { file.delete() }
+        } finally { assets.releaseRasterTileReservation(draftRef); assets.releaseRasterTileReservation(finalRef) }
+    }
 }

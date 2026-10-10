@@ -46,4 +46,6 @@ class PreparedPageGeometry(val edit: PageGeometryEdit, private val release: () -
 }
 
 data class PageRasterExportOptions(val width: Int? = null, val height: Int? = null, val includeBackground: Boolean = true,
-    val format: RasterFileFormat = RasterFileFormat.PNG, val quality: Int = 95)
+    val format: RasterFileFormat = RasterFileFormat.PNG, val quality: Int = 95,
+    /** Off by default: draft layers are left out, as in Clip Studio Paint's export settings. */
+    val includeDraftLayers: Boolean = false)

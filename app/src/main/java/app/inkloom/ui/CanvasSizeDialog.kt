@@ -70,6 +70,7 @@ internal fun PageRasterExportDialog(page: InkPage, language: UiLanguage, onDismi
     var width by remember { mutableStateOf(PageCropTransform.visibleWidth(page).toInt().toString()) }
     var height by remember { mutableStateOf(PageCropTransform.visibleHeight(page).toInt().toString()) }
     var background by remember { mutableStateOf(true) }
+    var drafts by remember { mutableStateOf(false) }
     var format by remember { mutableStateOf(RasterFileFormat.PNG) }
     var formatMenu by remember { mutableStateOf(false) }
     val w = width.toIntOrNull(); val h = height.toIntOrNull()
@@ -88,8 +89,13 @@ internal fun PageRasterExportDialog(page: InkPage, language: UiLanguage, onDismi
             if (format == RasterFileFormat.JPEG) Text(tr("JPEG has no transparency; paper is included. Up to 16 MP.", "JPEG 不含透明度，将包含纸张；最大 1600 万像素。"), style = MaterialTheme.typography.bodySmall)
             if (format in setOf(RasterFileFormat.PSD, RasterFileFormat.OPEN_RASTER, RasterFileFormat.LAYERED_PNG)) Text(tr("Objects export as raster layers. Unsupported layer features report an error.", "对象导出为像素图层。未支持的图层特性会提示原因。"), style = MaterialTheme.typography.bodySmall)
             Row { Checkbox(background, { background = it }, enabled = format != RasterFileFormat.JPEG); Text(tr("Include paper", "包含纸张背景")) }
+            if (page.layers.any { it.draft }) {
+                Row { Checkbox(drafts, { drafts = it }); Text(tr("Include draft layers", "包含草稿图层")) }
+                Text(tr("Drafts are left out unless included. Layered PNG keeps them as drafts.",
+                    "默认不输出草稿图层；分层 PNG 会保留其草稿标记。"), style = MaterialTheme.typography.bodySmall)
+            }
         }
     }, confirmButton = { TextButton(enabled = w != null && h != null && w in 1..8192 && h in 1..8192,
-        onClick = { if (w != null && h != null) onExport(PageRasterExportOptions(w, h, background, format)) }) { Text(tr("Export", "导出")) } },
+        onClick = { if (w != null && h != null) onExport(PageRasterExportOptions(w, h, background, format, includeDraftLayers = drafts)) }) { Text(tr("Export", "导出")) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) } })
 }

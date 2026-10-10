@@ -33,7 +33,13 @@ internal class RasterFormatService(private val context: Context, private val ass
     @Serializable private data class Stack(val version: Int = 1, val width: Int, val height: Int, val dpi: Float,
         val layers: List<InkLayer>, val files: Map<String, String>, val masks: Map<String, String>)
 
-    fun export(page: InkPage, uri: Uri, options: PageRasterExportOptions) {
+    fun export(source: InkPage, uri: Uri, options: PageRasterExportOptions) {
+        // Inkloom's own layered package keeps drafts as drafts; other outputs follow the option.
+        val page = when {
+            options.includeDraftLayers -> DraftLayerOutput.asOrdinaryLayers(source)
+            options.format == RasterFileFormat.LAYERED_PNG -> source
+            else -> DraftLayerOutput.withoutDrafts(source)
+        }
         if(options.format == RasterFileFormat.PNG) { assets.exportPagePng(page, uri, options); return }
         val width = options.width ?: PagePngExportSize.from(page).width
         val height = options.height ?: PagePngExportSize.from(page).height
@@ -105,7 +111,7 @@ internal class RasterFormatService(private val context: Context, private val ass
 
     private fun raw(page: InkPage, layer: InkLayer, width: Int, height: Int): PixelTileSurfaceSnapshot {
         val isolated = layer.copy(parentId=null, visible=true, opacity=1f, blendMode=LayerBlendMode.NORMAL,
-            clippedToBelow=false, mask=null, colorReplacement=null, alphaLock=false)
+            clippedToBelow=false, mask=null, colorReplacement=null, alphaLock=false, draft=false)
         return assets.renderPageCompositeSurface(page.copy(layers=listOf(isolated)), width, height)
     }
     private fun exportStack(page: InkPage, uri: Uri, options: PageRasterExportOptions, width: Int, height: Int) {
@@ -171,7 +177,8 @@ internal class RasterFormatService(private val context: Context, private val ass
                     xml.startTag(null,"stack")
                     fun append(parent:String?) { selected.filter { it.parentId==parent }.asReversed().forEach { layer ->
                         val tag=if(layer.role==LayerRole.FOLDER) "stack" else "layer"; xml.startTag(null,tag); xml.attribute(null,"name",layer.name)
-                        xml.attribute(null,"opacity","${layer.opacity}"); xml.attribute(null,"visibility",if(layer.visible) "visible" else "hidden")
+                        // Other ORA readers have no draft concept; the Inkloom metadata keeps the flag.
+                        xml.attribute(null,"opacity","${layer.opacity}"); xml.attribute(null,"visibility",if(layer.visible && !layer.draft) "visible" else "hidden")
                         xml.attribute(null,"composite-op",oraModes[layer.blendMode] ?: "svg:src-over")
                         if(tag=="stack") { xml.attribute(null,"isolation",if(layer.passThrough) "auto" else "isolate"); append(layer.id) }
                         else xml.attribute(null,"src",files.getValue(layer.id))

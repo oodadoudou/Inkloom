@@ -78,6 +78,10 @@ class DialogLayoutAuditTest {
             RasterFilterDialog(0xFF000000.toInt(), emptyList(), {}, null, false, { _, _ -> }, { _, _ -> }, {})
         }
         audit(null, null, "取消") { ColorManagementDialog(page, UiLanguage.SIMPLIFIED_CHINESE, false, {}, {}) }
+        audit("导出页面", "导出", "取消") {
+            PageRasterExportDialog(page.copy(layers = listOf(InkLayer("sketch", "Sketch", draft = true))), UiLanguage.SIMPLIFIED_CHINESE, {}, {})
+        }
+        compose.onNodeWithText("包含草稿图层").assertIsDisplayed()
         audit(null, null, "取消") {
             PageTemplatePickerDialog(app.inkloom.document.PageTemplateLibrary(), "doc", "添加页面", page.background,
                 {}, { _, _ -> }, {}, {}, { _, _ -> }, {}, { _, _, _, _ -> null }, onSaveCurrent = {})
