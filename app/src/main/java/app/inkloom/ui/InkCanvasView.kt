@@ -1994,8 +1994,11 @@ class InkCanvasView(context: Context) : View(context) {
         applyColorManagement: Boolean = true,
     ) {
         if (drawV5RasterLayerProjection(canvas, includeElements, layerFilter, includeBackdrop, applyColorManagement)) return
-        val elementLayerIds = if (includeElements) layerElementBitmaps.keys.filter { layerFilter == null || it in layerFilter } else emptyList()
-        val rasterLayerIds = rasterLayerTileSurfaces.keys.filter { layerFilter == null || it in layerFilter }
+        // A reference filter hides layers but keeps the tree and every clipping base: a layer
+        // clipped to an excluded base disappears instead of re-clipping to a lower layer.
+        fun drawable(layerId: String) = layerFilter == null || layerId in layerFilter
+        val elementLayerIds = if (includeElements) layerElementBitmaps.keys.toList() else emptyList()
+        val rasterLayerIds = rasterLayerTileSurfaces.keys.toList()
         val availableLayerIds = elementLayerIds + rasterLayerIds
         val orderedLayerIds = (layerOrder.filter { it in availableLayerIds } + availableLayerIds.filterNot { it in layerOrder }).distinct()
         val compositionBounds = RectF(canvas.clipBounds)
@@ -2056,7 +2059,7 @@ class InkCanvasView(context: Context) : View(context) {
             val layer = node.layer
             if (!layer.visible) return@draw
             if (layer.role != app.inkloom.document.LayerRole.FOLDER) {
-                if (layer.id in availableLayerIds) drawLeaf(layer.id, lower)
+                if (layer.id in availableLayerIds && drawable(layer.id)) drawLeaf(layer.id, lower)
             } else {
                 val save = canvas.saveLayer(compositionBounds, Paint().apply {
                     alpha = ((layerOpacities[layer.id] ?: layer.opacity).coerceIn(0f, 1f) * 255f).toInt()
@@ -2073,11 +2076,11 @@ class InkCanvasView(context: Context) : View(context) {
             }
         }
         val documentLayers = boundDocumentLayers
-        if (documentLayers != null && layerFilter == null) drawSiblings(LayerCompositingTree.roots(documentLayers))
+        if (documentLayers != null) drawSiblings(LayerCompositingTree.roots(documentLayers))
         else {
             var previous: LayerCompositingNode? = null
             orderedLayerIds.forEach { id ->
-                drawLeaf(id, previous)
+                if (drawable(id)) drawLeaf(id, previous)
                 if (id !in clippedLayers) previous = LayerCompositingNode(app.inkloom.document.InkLayer(id = id, name = id))
             }
         }

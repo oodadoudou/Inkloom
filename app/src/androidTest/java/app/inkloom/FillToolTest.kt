@@ -15,6 +15,7 @@ import app.inkloom.model.EditorTool
 import app.inkloom.settings.ReferenceTarget
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -216,6 +217,78 @@ class FillToolTest {
             view.setRasterLayerSurfaces(mapOf("color" to border(), "line" to border()))
         }
         assertTrue("other reference layers still apply when the editing layer is excluded", fill(400L) in 80..120)
+    }
+
+    private fun borderSurface() = PixelTileSurface(200, 200).also { surface ->
+        surface.beginWrite("border").use { w ->
+            for (offset in -4..4) for (c in 50..150) {
+                w.setPixel(c, 50 + offset, Color.BLACK); w.setPixel(c, 150 + offset, Color.BLACK)
+                w.setPixel(50 + offset, c, Color.BLACK); w.setPixel(150 + offset, c, Color.BLACK)
+            }
+            w.commit().close()
+        }
+    }
+    private fun whiteSurface() = PixelTileSurface(200, 200).also { surface ->
+        surface.beginWrite("white").use { w -> for (y in 0 until 200) for (x in 0 until 200) w.setPixel(x, y, Color.WHITE); w.commit().close() }
+    }
+    private fun fillWidth(view: InkCanvasView, time: Long, result: () -> Int): Int {
+        send(view, time, MotionEvent.ACTION_DOWN, 100f, 100f); send(view, time + 50L, MotionEvent.ACTION_UP, 100f, 100f)
+        return result()
+    }
+
+    @Test fun excludingAnEmptyLockedClippingBaseDoesNotReattachItsClippedLines() {
+        var width = 0
+        val view = canvas {
+            tool = EditorTool.FILL; fingerDrawingEnabled = true; pagePaperColor = Color.WHITE
+            pageModelWidth = 200f; pageModelHeight = 200f; activeLayerId = "color"
+            referenceTarget = ReferenceTarget.ALL_VISIBLE
+            layerOrder = listOf("color", "locked", "clip")
+            setRasterLayerSurfaces(mapOf("color" to whiteSurface(), "locked" to PixelTileSurface(200, 200), "clip" to borderSurface()))
+            setProtectedLayerIds(setOf("locked")); clippedLayers = setOf("clip")
+            onSparseFillCommitted = { mask, _, _, _ -> width = mask.nonZeroBounds()?.width ?: 0 }
+        }
+        assertEquals("the empty clipping base hides the lines", 200, fillWidth(view, 0L) { width })
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.excludeLockedLayersFromReference = true }
+        assertEquals("excluding the base must not re-clip the lines to the layer below", 200, fillWidth(view, 100L) { width })
+    }
+
+    @Test fun excludedClippingBasesInsideFoldersBehaveAsHiddenAndKeepTheTree() {
+        var width = 0
+        val under = app.inkloom.document.InkLayer(id = "under", name = "Under")
+        val color = app.inkloom.document.InkLayer(id = "color", name = "Color")
+        val group = app.inkloom.document.InkLayer(id = "group", name = "Group", role = app.inkloom.document.LayerRole.FOLDER)
+        val base = app.inkloom.document.InkLayer(id = "base", name = "Base", parentId = group.id)
+        val clip = app.inkloom.document.InkLayer(id = "clip", name = "Clip", parentId = group.id, clippedToBelow = true)
+        val view = canvas {
+            tool = EditorTool.FILL; fingerDrawingEnabled = true; pagePaperColor = Color.WHITE
+            pageModelWidth = 200f; pageModelHeight = 200f; activeLayerId = color.id
+            referenceTarget = ReferenceTarget.ALL_VISIBLE
+            // The opaque layer directly beneath the group would expose a wrong re-clip.
+            setDocumentLayers(listOf(under, group, base, clip, color)); layerOrder = listOf("under", "base", "clip", "color")
+            setRasterLayerSurfaces(mapOf("under" to whiteSurface(), "color" to PixelTileSurface(200, 200),
+                "base" to whiteSurface(), "clip" to borderSurface()))
+            clippedLayers = setOf("clip")
+            bindDocumentSelectionState(app.inkloom.engine.v5.selection.DocumentSelectionRuntime(64).stateFor("reference-tree", "page", 200, 200))
+            onSparseFillCommitted = { mask, _, _, _ -> width = mask.nonZeroBounds()?.width ?: 0 }
+        }
+        fun colorRange(): Boolean {
+            var found = false
+            // Clear the probe selection so the next fill uses the reference instead of the selection.
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { found = view.selectColorRange(Color.BLACK, .05f, false); view.clearSelection() }
+            return found
+        }
+        assertTrue("an opaque base shows its clipped lines", fillWidth(view, 0L) { width } in 80..120)
+        assertTrue(colorRange())
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.setProtectedLayerIds(setOf("base")); view.excludeLockedLayersFromReference = true }
+        assertEquals("an excluded locked base hides the lines clipped to it", 200, fillWidth(view, 100L) { width })
+        assertFalse("color range sees the same reference as fill", colorRange())
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.excludeLockedLayersFromReference = false; view.setProtectedLayerIds(emptySet())
+            view.setDocumentLayers(listOf(under, group, base.copy(draft = true), clip, color))
+        }
+        assertEquals("an excluded draft base hides its clipped lines too", 200, fillWidth(view, 200L) { width })
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.excludeDraftLayersFromReference = false }
+        assertTrue("including drafts restores the clipped lines", fillWidth(view, 300L) { width } in 80..120)
     }
 
     @Test fun referenceTargetConfinesFillToMarkedLineArtLayer() {
