@@ -6167,7 +6167,7 @@ private fun ImageTransformPreview(image: PageElement.Image) {
 }
 
 @Composable
-private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onSave: (PageElement) -> Unit) {
+internal fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onSave: (PageElement) -> Unit) {
     var draft by remember(element.id) { mutableStateOf(element) }
     val defaultLinkedPageTitle = tr("Linked page", "链接页面")
     val normalizedDraftLink = (draft as? PageElement.Link)?.takeUnless(InternalLinkTarget::isInternal)?.let { LinkTarget.normalize(it.url) }
@@ -6175,7 +6175,7 @@ private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onS
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (element is PageElement.Image) tr("Transform image", "变换图片") else tr("Object properties", "对象属性")) },
-        text = { LazyColumn(Modifier.dialogContentWidth(340.dp, 520.dp).heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        text = { LazyColumn(Modifier.dialogContentWidth(340.dp, 520.dp).heightIn(max = 520.dp).semantics { contentDescription = "Object properties content" }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val image = draft as? PageElement.Image
             if (image != null) {
                 item { ImageTransformPreview(image) }

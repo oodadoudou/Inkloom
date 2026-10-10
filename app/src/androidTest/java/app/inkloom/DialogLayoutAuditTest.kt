@@ -116,7 +116,7 @@ class DialogLayoutAuditTest {
         compose.onNode(androidx.compose.ui.test.hasContentDescription("激光笔")).performScrollTo().assertIsDisplayed()
         fun actions() = compose.onNode(androidx.compose.ui.test.hasContentDescription("操作")).performClick()
         actions(); check("操作", null, "完成")
-        open("搜索当前笔记"); check("搜索此笔记", null, "完成")
+        open("搜索当前笔记"); check("搜索此笔记", null, "完成", focus = "页面、手写、图片或 PDF 文字")
         compose.onNodeWithText("完成").performClick(); compose.waitForIdle()
         actions(); open("书签"); check("书签", null, "完成")
         compose.onNodeWithText("完成").performClick(); compose.waitForIdle()
@@ -139,7 +139,7 @@ class DialogLayoutAuditTest {
         section("Canvas"); open("画布与分辨率"); check("画布与分辨率", "应用", "取消"); close("取消")
         section("Canvas"); open("图像滤镜…"); check("图像滤镜", "应用", "取消"); close("取消")
         section("Views"); open("视图…"); check("视图", null, "完成"); close("完成")
-        section("Views"); open("保存面板布局…"); check("保存面板布局", "保存", "取消"); close("取消")
+        section("Views"); open("保存面板布局…"); check("保存面板布局", "保存", "取消", focus = "名称"); close("取消")
         // The layout manager is offered once a named layout exists.
         section("Views"); open("保存面板布局…")
         compose.onNode(hasAnyAncestor(isDialog()) and androidx.compose.ui.test.hasSetTextAction()).performTextReplacement("审计布局")
@@ -260,81 +260,6 @@ class DialogLayoutAuditTest {
         check("笔刷另存为", "保存", "取消", focus = "笔刷名称")
     }
 
-    private fun imageFixture(): java.io.File {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val file = java.io.File(context.cacheDir, "window-audit.png")
-        val bitmap = android.graphics.Bitmap.createBitmap(128, 160, android.graphics.Bitmap.Config.ARGB_8888)
-        bitmap.eraseColor(android.graphics.Color.WHITE)
-        android.graphics.Canvas(bitmap).drawCircle(64f, 80f, 40f, android.graphics.Paint().apply { color = android.graphics.Color.BLACK })
-        file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
-        bitmap.recycle()
-        return file
-    }
-
-    @Test fun brushSourceTipSequenceRemainsReachable() {
-        val file = imageFixture()
-        val preset = app.inkloom.brushpresetv5.BrushPresetV5Import.requirePreset(app.inkloom.model.SystemBrushCatalog.brushes.first())
-            .copy(tipTexture = app.inkloom.brushpresetv5.TipTextureSettings(assetPaths = List(12) { file.path }))
-        val workspace = BrushSourceWorkspace(InstrumentationRegistry.getInstrumentation().targetContext)
-        try {
-            audit("来源编辑", "应用来源", "取消") {
-                BrushSourceEditor(preset, BrushSourceRole.SHAPE, workspace, UiLanguage.SIMPLIFIED_CHINESE, {}, {})
-            }
-            open("12")
-            compose.onNodeWithText("● 12").assertIsDisplayed()
-        } finally { workspace.close(); file.delete() }
-    }
-
-    @Test fun settingsTabsAndShortcutSearchRemainReachableWithKeyboard() {
-        compose.onNode(androidx.compose.ui.test.hasContentDescription("设置")).performClick()
-        check("设置", "完成", "完成")
-        for ((tab, last) in listOf("通用" to "重置工具栏位置", "手势" to "显示 V5 落笔诊断", "压感" to "重置压感设置", "备份" to "恢复资料库备份")) {
-            compose.onNode(hasAnyAncestor(isDialog()) and SemanticsMatcher.keyIsDefined(SemanticsProperties.HorizontalScrollAxisRange))
-                .performScrollToNode(androidx.compose.ui.test.hasText(tab))
-            open(tab)
-            compose.onNode(androidx.compose.ui.test.hasContentDescription("Settings content"))
-                .performScrollToNode(androidx.compose.ui.test.hasText(last))
-            compose.onNodeWithText(last).assertIsDisplayed()
-            compose.onNodeWithText("完成").assertIsDisplayed()
-        }
-        compose.onNode(hasAnyAncestor(isDialog()) and SemanticsMatcher.keyIsDefined(SemanticsProperties.HorizontalScrollAxisRange))
-            .performScrollToNode(androidx.compose.ui.test.hasText("快捷键"))
-        open("快捷键")
-        compose.onNode(androidx.compose.ui.test.hasContentDescription("Settings content"))
-            .performScrollToNode(androidx.compose.ui.test.hasText("自定义快捷键"))
-        open("自定义快捷键")
-        check("Toolbox 快捷键", "完成", "完成", focus = "搜索操作或按键")
-        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
-        compose.waitForIdle()
-        val dialogId = compose.onAllNodes(isDialog()).fetchSemanticsNodes().last().id
-        val list = compose.onNode(hasAnyAncestor(SemanticsMatcher("shortcut dialog") { it.id == dialogId }) and
-            SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
-        list.performScrollToNode(androidx.compose.ui.test.hasText("配置 8 个快速槽"))
-        open("配置 8 个快速槽")
-        compose.onNode(hasAnyAncestor(isDialog()) and androidx.compose.ui.test.hasText("快速槽名称")).performScrollTo()
-        check("Toolbox 快速槽", "完成", "完成", focus = "快速槽名称")
-    }
-
-    @Test fun coverCropRemainsReachableInShortLandscape() {
-        val file = imageFixture()
-        try {
-            compose.runOnUiThread { compose.activity.setContent { MaterialTheme {
-                NotebookCoverCropDialog(android.net.Uri.fromFile(file), UiLanguage.SIMPLIFIED_CHINESE, {}, {})
-            } } }
-            compose.waitUntil(5_000) { compose.onAllNodes(androidx.compose.ui.test.hasText("缩放")).fetchSemanticsNodes().isNotEmpty() }
-            check("裁剪封面", "使用封面", "取消")
-        } finally { file.delete() }
-    }
-
-    @Test fun coverCropControlsRemainReachableAtLargeFont() {
-        val file = imageFixture()
-        try {
-            audit("裁剪封面", "使用封面", "取消") {
-                NotebookCoverCropDialog(android.net.Uri.fromFile(file), UiLanguage.SIMPLIFIED_CHINESE, {}, {})
-            }
-        } finally { file.delete() }
-    }
-
     @Test fun brushStudioParametersRemainReachableInShortLandscape() {
         val preset = app.inkloom.brushpresetv5.BrushPresetV5Import.requirePreset(app.inkloom.model.SystemBrushCatalog.brushes.first())
         val owned = app.inkloom.brushpresetv5.OwnedBrushPreset(preset,
@@ -370,6 +295,74 @@ class DialogLayoutAuditTest {
         compose.onAllNodes(androidx.compose.ui.test.hasText("自定义"))[0].performScrollTo().assertIsDisplayed()
     }
 
+    @Test fun transformNumericDialogsRemainReachableWithKeyboard() {
+        compose.runOnUiThread { compose.activity.setContent { MaterialTheme {
+            SelectionTransformToolbar(
+                state = SelectionTransformUiState(app.inkloom.engine.v5.tools.SelectionTransformPose(100f, 100f, 80f, 80f),
+                    app.inkloom.engine.v5.tools.SelectionTransformMode.SKEW),
+                language = UiLanguage.SIMPLIFIED_CHINESE, onMode = {},
+                interpolation = app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR, onInterpolation = {},
+                onDimensions = { _, _, _, _, _ -> }, onResetPivot = {}, onPivotEditing = {}, onSkewBy = { _, _ -> },
+                onMeshDensity = { _, _ -> }, onClearPuppetPins = {}, onReference = {}, onAlign = {},
+                onDistribute = { _, _ -> }, onFlip = {}, onReset = {}, onSnapping = { _, _, _ -> }, onNudge = { _, _ -> }, onFinish = {})
+        } } }
+        open("数值歪斜")
+        check("数值歪斜", "应用", "取消", focus = "垂直（像素）")
+        open("取消")
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("变换尺寸")).performScrollTo().performClick()
+        check("变换尺寸", "更新尺寸", "取消", focus = "位置 X（像素）")
+    }
+
+    @Test fun settingsTabsAndShortcutSearchRemainReachableWithKeyboard() {
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("设置")).performClick()
+        check("设置", "完成", "完成")
+        for ((tab, last) in listOf("通用" to "重置工具栏位置", "手势" to "显示 V5 落笔诊断", "压感" to "重置压感设置", "备份" to "恢复资料库备份")) {
+            compose.onNode(hasAnyAncestor(isDialog()) and SemanticsMatcher.keyIsDefined(SemanticsProperties.HorizontalScrollAxisRange))
+                .performScrollToNode(androidx.compose.ui.test.hasText(tab))
+            open(tab)
+            compose.onNode(androidx.compose.ui.test.hasContentDescription("Settings content"))
+                .performScrollToNode(androidx.compose.ui.test.hasText(last))
+            compose.onNodeWithText(last).assertIsDisplayed()
+            compose.onNodeWithText("完成").assertIsDisplayed()
+        }
+        compose.onNode(hasAnyAncestor(isDialog()) and SemanticsMatcher.keyIsDefined(SemanticsProperties.HorizontalScrollAxisRange))
+            .performScrollToNode(androidx.compose.ui.test.hasText("快捷键"))
+        open("快捷键")
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("Settings content"))
+            .performScrollToNode(androidx.compose.ui.test.hasText("自定义快捷键"))
+        open("自定义快捷键")
+        check("Toolbox 快捷键", "完成", "完成", focus = "搜索操作或按键")
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
+        val dialogId = compose.onAllNodes(isDialog()).fetchSemanticsNodes().last().id
+        val list = compose.onNode(hasAnyAncestor(SemanticsMatcher("shortcut dialog") { it.id == dialogId }) and
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+        list.performScrollToNode(androidx.compose.ui.test.hasText("配置 8 个快速槽"))
+        open("配置 8 个快速槽")
+        compose.onNode(hasAnyAncestor(isDialog()) and androidx.compose.ui.test.hasText("快速槽名称")).performScrollTo()
+        check("Toolbox 快速槽", "完成", "完成", focus = "快速槽名称")
+    }
+
+    @Test fun libraryAndSelectionSecondaryDialogsRemainReachable() {
+        compose.onNode(androidx.compose.ui.test.hasText("新建笔记") or androidx.compose.ui.test.hasContentDescription("新建笔记")).performClick()
+        check("新建笔记本", "创建", "取消", focus = "标题")
+        open("创建")
+        compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("选择"))[0].performClick()
+        fun selectionMenu() = compose.onNode(androidx.compose.ui.test.hasContentDescription("选区操作")).performClick()
+        selectionMenu(); open("选区设置"); check("选区设置", "完成", "完成"); open("完成")
+        selectionMenu(); open("排列选区快捷操作"); check("选区快捷操作", "完成", "完成"); open("完成")
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("退出选区工具")).performClick()
+        open("图库")
+        fun noteMenu() = compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("笔记操作"))[0].performClick()
+        noteMenu(); open("重命名")
+        compose.onNode(hasAnyAncestor(isDialog()) and androidx.compose.ui.test.hasSetTextAction()).performClick()
+        check("重命名笔记", "保存", "取消"); open("取消")
+        noteMenu(); open("编辑标签")
+        compose.onNode(hasAnyAncestor(isDialog()) and androidx.compose.ui.test.hasSetTextAction()).performClick()
+        check("笔记标签", "保存", "取消"); open("取消")
+        noteMenu(); open("更换封面"); check("更换封面", "应用", "取消")
+    }
+
     @Test fun insertDialogsRemainReachableWithKeyboard() {
         compose.onNode(androidx.compose.ui.test.hasText("新建笔记") or androidx.compose.ui.test.hasContentDescription("新建笔记")).performClick()
         open("创建")
@@ -378,6 +371,30 @@ class DialogLayoutAuditTest {
         tool("便笺"); check("新建便签", "插入", "取消", focus = "便签"); open("取消")
         tool("链接"); check("插入链接", "插入", "取消", focus = "网页、邮箱或电话号码"); open("取消")
         tool("图片"); check("添加页面图片", "扫描页面", "取消")
+    }
+
+    @Test fun objectPropertiesRemainReachableWithKeyboard() {
+        val file = imageFixture()
+        try {
+            val elements = listOf(
+                app.inkloom.document.PageElement.Text(x = .1f, y = .1f, text = "测试文字"),
+                app.inkloom.document.PageElement.Sticky(x = .1f, y = .1f, text = "测试便签"),
+                app.inkloom.document.PageElement.Link(x = .1f, y = .1f, title = "示例", url = "https://example.com"),
+                app.inkloom.document.PageElement.Shape(x = .1f, y = .1f, width = 100f, height = 100f),
+                app.inkloom.document.PageElement.Image(x = .1f, y = .1f, width = 100f, height = 100f, assetPath = file.path))
+            for (element in elements) {
+                val focus = when (element) {
+                    is app.inkloom.document.PageElement.Text -> "文本"
+                    is app.inkloom.document.PageElement.Sticky -> "便签"
+                    is app.inkloom.document.PageElement.Link -> "标题"
+                    else -> null
+                }
+                audit(null, "保存", "取消", focus) { ElementEditorDialog(element, {}, {}) }
+                compose.onNode(androidx.compose.ui.test.hasContentDescription("Object properties content"))
+                    .performScrollToNode(androidx.compose.ui.test.hasText("不透明度", substring = true))
+                compose.onNodeWithText("保存").assertIsDisplayed()
+            }
+        } finally { file.delete() }
     }
 
     @Test fun importProgressAndRecoveryKeepLongDetailsAndActionsReachable() {
@@ -394,6 +411,89 @@ class DialogLayoutAuditTest {
         audit("图像滤镜", "应用", "取消", focus = "预设名称") {
             RasterFilterDialog(0xff000000.toInt(), emptyList(), {}, null, false, { _, _ -> }, { _, _ -> }, {})
         }
+    }
+
+    private fun imageFixture(): java.io.File {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = java.io.File(context.cacheDir, "window-audit.png")
+        val bitmap = android.graphics.Bitmap.createBitmap(128, 160, android.graphics.Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.WHITE)
+        android.graphics.Canvas(bitmap).drawCircle(64f, 80f, 40f, android.graphics.Paint().apply { color = android.graphics.Color.BLACK })
+        file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+        return file
+    }
+
+    @Test fun brushSourceTipSequenceRemainsReachable() {
+        val file = imageFixture()
+        val preset = app.inkloom.brushpresetv5.BrushPresetV5Import.requirePreset(app.inkloom.model.SystemBrushCatalog.brushes.first())
+            .copy(tipTexture = app.inkloom.brushpresetv5.TipTextureSettings(assetPaths = List(12) { file.path }))
+        val workspace = BrushSourceWorkspace(InstrumentationRegistry.getInstrumentation().targetContext)
+        try {
+            audit("来源编辑", "应用来源", "取消") {
+                BrushSourceEditor(preset, BrushSourceRole.SHAPE, workspace, UiLanguage.SIMPLIFIED_CHINESE, {}, {})
+            }
+            open("12")
+            compose.onNodeWithText("● 12").assertIsDisplayed()
+        } finally { workspace.close(); file.delete() }
+    }
+
+    @Test fun imagePaperControlsRemainReachableWithKeyboard() {
+        val file = imageFixture()
+        try {
+            audit("图片纸张", "保存模板", "取消", focus = "模板名称") {
+                ImagePaperPreviewDialog(PageTemplate(name = "测试图片", background = PageBackground.Image(file.path)), onDismiss = {}, onSave = {})
+            }
+        } finally { file.delete() }
+    }
+
+    @Test fun coverCropRemainsReachableInShortLandscape() {
+        val file = imageFixture()
+        try {
+            compose.runOnUiThread { compose.activity.setContent { MaterialTheme {
+                NotebookCoverCropDialog(android.net.Uri.fromFile(file), UiLanguage.SIMPLIFIED_CHINESE, {}, {})
+            } } }
+            compose.waitUntil(5_000) { compose.onAllNodes(androidx.compose.ui.test.hasText("缩放")).fetchSemanticsNodes().isNotEmpty() }
+            check("裁剪封面", "使用封面", "取消")
+        } finally { file.delete() }
+    }
+
+    @Test fun colorSetSecondaryDialogsRemainReachableWithKeyboard() {
+        compose.runOnUiThread { compose.activity.setContent { MaterialTheme {
+            ColorSetPanel(0xff336699.toInt(), UiLanguage.SIMPLIFIED_CHINESE, androidx.compose.ui.unit.Dp(450f), {}, {})
+        } } }
+        fun menu() = compose.onNode(androidx.compose.ui.test.hasContentDescription("色板菜单")).performClick()
+        menu(); open("添加基础色板")
+        check("Inkloom 基础色板", null, "取消")
+        open("取消")
+        menu(); open("新建色板")
+        check("名称", "保存", "取消", focus = "名称")
+        open("取消")
+        menu(); open("从文件导入色板")
+        check("导入到色板", "追加颜色", "取消")
+    }
+
+    @Test fun coverCropControlsRemainReachableAtLargeFont() {
+        val file = imageFixture()
+        try {
+            audit("裁剪封面", "使用封面", "取消") {
+                NotebookCoverCropDialog(android.net.Uri.fromFile(file), UiLanguage.SIMPLIFIED_CHINESE, {}, {})
+            }
+        } finally { file.delete() }
+    }
+
+    @Test fun savedSelectionsKeepNamesActionsAndRenameReachable() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val assets = app.inkloom.document.DocumentAssetService(context)
+        val mask = app.inkloom.engine.v5.surface.MaskTileSurface(64, 64)
+        val reference = assets.saveMaskTileSurface(mask.snapshot())
+        val entry = app.inkloom.document.SavedSelection(name = "漫画人物与背景的复杂选区", surface = reference)
+        audit("选区", "完成", "完成") {
+            SavedSelectionsPanel(listOf(entry), assets, UiLanguage.SIMPLIFIED_CHINESE, true, {}, { _, _ -> }, { _, _ -> }, {}, {})
+        }
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("选区操作 " + entry.name)).performClick()
+        open("重命名")
+        check("重命名选区", "保存", "取消", focus = "名称")
     }
 
     private fun open(text: String) {
