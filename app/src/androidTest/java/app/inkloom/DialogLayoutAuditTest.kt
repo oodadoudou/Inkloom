@@ -14,6 +14,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.InkLayer
@@ -116,6 +117,31 @@ class DialogLayoutAuditTest {
         actions(); open("书签"); check("书签", null, "完成")
         compose.onNodeWithText("完成").performClick(); compose.waitForIdle()
         actions(); open("页面大纲"); check("页面大纲", null, "完成")
+    }
+
+    @Test fun editorCanvasViewAndShareDialogsKeepEveryControlReachableAtLargeFontInChinese() {
+        compose.onNode(androidx.compose.ui.test.hasText("新建笔记") or androidx.compose.ui.test.hasContentDescription("新建笔记")).performClick()
+        open("创建")
+        fun section(name: String) {
+            compose.onNode(androidx.compose.ui.test.hasContentDescription("操作")).performClick()
+            compose.onNode(androidx.compose.ui.test.hasContentDescription("Actions $name")).performClick()
+            compose.waitForIdle()
+        }
+        fun close(label: String) {
+            compose.onAllNodes(hasAnyAncestor(isDialog()) and androidx.compose.ui.test.hasText(label)).let { it[it.fetchSemanticsNodes().size - 1] }.performClick()
+            compose.waitForIdle()
+        }
+        section("Canvas"); open("色彩管理"); check("色彩管理", null, "取消"); close("取消")
+        section("Canvas"); open("画布与分辨率"); check("画布与分辨率", "应用", "取消"); close("取消")
+        section("Canvas"); open("图像滤镜…"); check("图像滤镜", "应用", "取消"); close("取消")
+        section("Views"); open("视图…"); check("视图", null, "完成"); close("完成")
+        section("Views"); open("保存面板布局…"); check("保存面板布局", "保存", "取消"); close("取消")
+        // The layout manager is offered once a named layout exists.
+        section("Views"); open("保存面板布局…")
+        compose.onNode(hasAnyAncestor(isDialog()) and androidx.compose.ui.test.hasSetTextAction()).performTextReplacement("审计布局")
+        close("保存")
+        section("Views"); open("管理面板布局…"); check("面板布局", null, "完成"); close("完成")
+        section("Share"); open("导出当前页"); check("导出页面", "导出", "取消"); close("取消")
     }
 
     private fun open(text: String) {
