@@ -187,6 +187,43 @@ class LayerTargetWindowTest {
         compose.waitUntil(5_000) { !clipped() && id !in canvas().clippedLayers }
     }
 
+    @Test fun adjustmentCreatedWithActiveSelectionUsesItAsMaskInOneHistoryStep() {
+        tap("New Note"); tap("Create"); val view = canvas()
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync { model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java] }
+        val size = requireNotNull(app.inkloom.document.SelectionMaskCompositor.maskSize(model.currentPage()!!.width, model.currentPage()!!.height))
+        instrumentation.runOnMainSync {
+            val mask = app.inkloom.engine.v5.surface.MaskTileSurface(size.width, size.height)
+            mask.beginWrite("left half").use { write ->
+                for (y in 0 until size.height) for (x in 0 until size.width / 2) write.setAlpha(x, y, 255)
+                write.commit().close()
+            }
+            view.replaceSelectionFromMask(mask.snapshot())
+        }
+        tap("Layers"); tap("Add adjustment layer"); tap("Brightness / Contrast")
+        compose.waitUntil(10_000) { model.currentPage()?.layers?.any { it.role == app.inkloom.document.LayerRole.ADJUSTMENT } == true }
+        tap("Cancel")
+        val layer = model.currentPage()!!.layers.single { it.role == app.inkloom.document.LayerRole.ADJUSTMENT }
+        val reference = requireNotNull(layer.mask?.surface) { "The active selection becomes the correction mask" }
+        val assets = app.inkloom.document.DocumentAssetService(instrumentation.targetContext)
+        assets.loadMaskTileSurface(reference).snapshot().let { mask ->
+            assertEquals(255, mask.alphaAt(size.width / 4, size.height / 2))
+            assertEquals(0, mask.alphaAt(size.width * 3 / 4, size.height / 2))
+        }
+        compose.waitUntil(5_000) { layer.id in canvas().layerMasks }
+        fun history(redo: Boolean = false) {
+            val key = if (redo) android.view.KeyEvent.KEYCODE_Y else android.view.KeyEvent.KEYCODE_Z
+            val time = SystemClock.uptimeMillis()
+            instrumentation.sendKeySync(android.view.KeyEvent(time, time, android.view.KeyEvent.ACTION_DOWN, key, 0, android.view.KeyEvent.META_CTRL_ON))
+            instrumentation.sendKeySync(android.view.KeyEvent(time, time + 1, android.view.KeyEvent.ACTION_UP, key, 0, android.view.KeyEvent.META_CTRL_ON))
+            compose.waitForIdle()
+        }
+        history(); compose.waitUntil(10_000) { model.currentPage()!!.layers.none { it.id == layer.id } }
+        history(true); compose.waitUntil(10_000) { model.currentPage()!!.layers.singleOrNull { it.id == layer.id }?.mask?.surface == reference }
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        compose.waitUntil(10_000) { model.currentPage()?.layers?.singleOrNull { it.id == layer.id }?.mask?.surface == reference }
+    }
+
     @Test fun creationFollowsSelectedSiblingOrFolderAndSharesPaintHistory() {
         tap("New Note"); tap("Create"); val view = canvas()
         lateinit var model: app.inkloom.ui.InkloomViewModel

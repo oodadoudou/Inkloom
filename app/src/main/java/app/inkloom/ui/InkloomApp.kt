@@ -5312,7 +5312,8 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
                 pendingRasterSaves, rasterCommitMutex, latestRasterAssets,
                 { edit, undo -> onApplyLayerInsertion(documentId, page.id, edit, undo) },
                 { id -> onSelectionTransferLayerChosen(id); view.selectLayerContent(id) }, gradientCommitScope,
-                { Toast.makeText(context, settings.language.text("Could not add adjustment layer", "无法添加调整图层"), Toast.LENGTH_SHORT).show() }
+                { Toast.makeText(context, settings.language.text("Could not add adjustment layer", "无法添加调整图层"), Toast.LENGTH_SHORT).show() },
+                assets,
             ).create(view, targetId, folder = false, adjustment = adjustment, onCreated = onCreated)
         }
         view.onLayerMergeRequested = { request ->

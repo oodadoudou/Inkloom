@@ -12,7 +12,8 @@ data class LayerInsertionEdit(
             val current = page.layers.firstOrNull { it.id == layer.id } ?: return null
             // The host verifies the live raster is empty after awaiting paint publication.
             // Object and child ownership must also be empty before removing the node.
-            if (current.mask != null ||
+            // A mask created with the layer (from the active selection) belongs to this edit.
+            if (current.mask != layer.mask ||
                 page.elements.any { it.layerId == layer.id } || page.layers.any { it.parentId == layer.id }) return null
             return page.copy(layers = page.layers.filterNot { it.id == layer.id }.map {
                 if (it.id == expandedParentId) it.copy(collapsed = true) else it

@@ -61,4 +61,19 @@ class LayerInsertionEditTest {
         assertEquals(added, edit.apply(requireNotNull(edit.apply(added, true))))
         assertNull(LayerInsertionEdit.create(page, child.id, true, "invalid", correction))
     }
+
+    @Test fun selectionMaskCreatedWithAnAdjustmentUndoesWithItButLaterMaskEditsBlockIt() {
+        val created = MaskTileSurfaceRef("masks/created.bin", "created", 64, 64, 64, 1L, 0, 1)
+        val base = requireNotNull(LayerInsertionEdit.create(page, lower.id, false, "masked", LayerAdjustment(LayerAdjustmentKind.INVERT)))
+        val edit = base.copy(layer = base.layer.copy(mask = LayerMask(baseVisible = false, surface = created)))
+        val added = requireNotNull(edit.apply(page))
+        assertEquals(created, added.layers.single { it.id == "masked" }.mask?.surface)
+        assertEquals(page, edit.apply(added, true))
+        val repainted = added.copy(layers = added.layers.map {
+            if (it.id == "masked") it.copy(mask = it.mask?.copy(surface = created.copy(assetPath = "masks/later.bin"))) else it
+        })
+        assertNull("a later mask stroke is undone first", edit.apply(repainted, true))
+        assertNull("an unmasked creation cannot remove a layer that later gained a mask",
+            base.apply(added, true))
+    }
 }
