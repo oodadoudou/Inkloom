@@ -1,0 +1,21 @@
+{
+  "version": "0.228.0",
+  "versionCode": 228,
+  "variant": "debug",
+  "commit": "882d6aa3697fafb26d35e8ec6119ef931cdbdcba",
+  "sha256": "9d9e57f46197cb551f05a900b7c07052016a827aebd6b2c54f61d8a21a65ea97",
+  "bytes": 103664793,
+  "generatedUtc": "2026-10-10T09:08:11.665474+00:00",
+  "verification": {
+    "JVM": "PASS 1024 tests, 0 failures, 8 skipped",
+    "Android15Targeted": "PASS 193 tests in one run on the release source: launch/editor, editor panels (off-screen, held grips, background, resize, canvas isolation), dialog audit at 720x1280/320dpi/font 2.0 Chinese, tool workspace and named layouts, workspace store, layer target, raster filters, fill, settings store, draft export, format round trip, canvas sizing, color management, merge/group/adjustment/mask rendering, legacy fill migration, layer order.",
+    "Android15Full": "NOT CLAIMED: no new full-suite run or full-suite success.",
+    "lint": "PASS 0 errors, 114 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS emulator installation, versionCode 228, cold startup Status ok; crash buffer empty",
+    "DriveDesktop": "PASS all four files SHA-256 verified in local sync folder; cloud transfer managed by Drive Desktop, cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING",
+  "evidenceRoot": "app/build/test-results, app/build/outputs/androidTest-results/connected/debug and ignored tasks/228/, tasks/ui14/, tasks/ly11/"
+}

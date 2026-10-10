@@ -1,0 +1,13 @@
+# Inkloom 0.228.0 Debug verification
+
+Source: `882d6aa3697fafb26d35e8ec6119ef931cdbdcba`. APK SHA-256: `9d9e57f46197cb551f05a900b7c07052016a827aebd6b2c54f61d8a21a65ea97`.
+
+- Workspace gestures (UI-14): moving a floating panel never changes its stored size. Dropping it past the window edge only pulls its position back inside, and a shorter window (rotation, split screen) trims only the displayed size. Held group/tab grips no longer turn into a top-left or top-edge perimeter resize. Backgrounding mid-drag, a window resize mid-drag, held-stylus panel drags over the canvas and a second finger on the canvas are covered by window regressions; none leaves ink or a stale layout.
+- Narrow windows and large fonts (UI-15, partial): the editor top bar scrolls its commands with Actions pinned, and Actions categories wrap. The page template picker uses one scroll owner. About 20 dialogs cap their fixed widths to the window, and tool properties scroll with row-sized switch targets. A dialog audit at 720x1280 / 320 dpi / font scale 2.0 in Simplified Chinese covers 13 dialogs and the editor's Actions, search, bookmarks and outline. Remaining dialogs are not yet audited at runtime, and the narrow library title still truncates.
+- Draft layers (LY-11, partial): PSD, ORA and flat exports leave out drafts, draft folders and layers clipped to omitted bases by default, as in Clip Studio Paint. "Include draft layers" writes them as ordinary layers with pixels; previously PSD draft layers were written blank. The Inkloom layered PNG package keeps draft/reference flags, and its stack.xml hides drafts for third-party ORA readers. Fill and automatic selection can exclude locked layers and the editing layer (multiple-layer references only). Text-object and paper reference exclusions are not implemented.
+- Fixed: the sparse page composite dropped hidden or draft clipping bases, so clipped layers re-clipped to a lower layer in native large exports, filters and merges.
+- Known approximations unchanged: clipped adjustments interpolate by base coverage (semi-transparent base edges may differ from Photoshop clipping groups). Sharpen / Sharpen more are original fixed kernels, not proprietary pixel matches.
+
+1024 JVM tests: 0 failures, 8 skipped. 193 Android 15 tests passed in one run on the release source; classes are listed in the adjacent JSON. One existing launch test was stale (it tapped an off-screen entry of the grown selection menu) and was corrected.
+
+No full Android-suite success is claimed. MovinkPad touch, pressure, latency, 120 Hz panel dragging and long sessions remain DEVICE_PENDING. Drive Desktop local four-file hashes are checked during delivery; cloud redownload is unverified. Requirements/design/task documents remain ignored.
