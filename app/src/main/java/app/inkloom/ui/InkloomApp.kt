@@ -2434,7 +2434,9 @@ private fun EditorScreen(
             TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 8.dp)) {
                 Text(tr("Gallery", "图库"), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
-            Box {
+            // Narrow windows and large fonts: the title yields first, the command row scrolls, and
+            // Actions stays reachable at the end instead of being pushed off-screen.
+            Box(Modifier.weight(.4f, fill = false)) {
                 Text(
                     document.title,
                     Modifier.widthIn(max = 180.dp).clip(RoundedCornerShape(6.dp))
@@ -2457,142 +2459,144 @@ private fun EditorScreen(
                     }
                 }
             }
-            ProcreateTopButton(Icons.Outlined.Undo, tr("Undo", "撤销"), onClick = { canvasView?.undo() })
-            ProcreateTopButton(Icons.Outlined.Redo, tr("Redo", "重做"), onClick = { canvasView?.redo() })
-            ProcreateTopButton(Icons.Outlined.Settings, tr("Settings", "设置"), onClick = onSettings)
-            ProcreateTopButton(Icons.Outlined.Gesture, tr("Selection", "选择"),
-                selected = tool == EditorTool.SELECT || selectionActive,
-                onClick = {
-                    if (tool == EditorTool.SELECT || selectionActive) finishSelectionTool(deselect = true)
-                    else {
-                        exitCanvasNavigation(); rememberSelectionReturnTarget()
-                        tool = EditorTool.SELECT
-                        onSettingsChange(settings.copy(selectionMode = SelectionMode.ADD))
-                        syncCanvasInput()
-                    }
-                },
-                onLongClick = {
-                    exitCanvasNavigation(); rememberSelectionReturnTarget()
-                    tool = EditorTool.SELECT; syncCanvasInput()
-                    canvasView?.reselect()
-                })
-            if (selectionActive || selectionTransformState != null || tool == EditorTool.SELECT) {
-                ProcreateTopButton(Icons.Outlined.NearMe, tr("Transform selection", "变换选区"),
-                    selected = selectionTransformState != null, onClick = {
-                        exitCanvasNavigation()
-                        if (selectionTransformState != null) canvasView?.finishSelectionTransform(apply = true)
-                        else {
-                            rememberSelectionReturnTarget()
-                            selectedElementId = null
-                            tool = EditorTool.SELECT
-                            canvasView?.enterFreeTransform()
-                        }
-                    })
-            } else {
-                ProcreateTopButton(Icons.Outlined.OpenWith, tr("Move canvas", "移动画布"), selected = handToolEnabled, onClick = { handToolEnabled = !handToolEnabled; rotateToolEnabled = false })
-            }
-            ProcreateTopButton(
-                if ((EditorPanel.PAGES in panelState.layout.open)) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows,
-                tr("Toggle pages", "显示或隐藏页面栏"),
-                selected = (EditorPanel.PAGES in panelState.layout.open),
-                onClick = {
-                    val open = !(EditorPanel.PAGES in panelState.layout.open)
-                    panelState.show(EditorPanel.PAGES, open)
-                    if (open) panelState.focus(EditorPanel.PAGES)
-                    panelState.show(EditorPanel.PAGES, open)
-                },
-            )
-            Spacer(Modifier.weight(1f))
-            offeredContinueFillColor?.let { fillColor ->
-                AssistChip(
+            Row(Modifier.weight(1f, fill = false).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                ProcreateTopButton(Icons.Outlined.Undo, tr("Undo", "撤销"), onClick = { canvasView?.undo() })
+                ProcreateTopButton(Icons.Outlined.Redo, tr("Redo", "重做"), onClick = { canvasView?.redo() })
+                ProcreateTopButton(Icons.Outlined.Settings, tr("Settings", "设置"), onClick = onSettings)
+                ProcreateTopButton(Icons.Outlined.Gesture, tr("Selection", "选择"),
+                    selected = tool == EditorTool.SELECT || selectionActive,
                     onClick = {
-                        if (continueFilling) stopContinueFilling() else {
-                            continueFilling = true
-                            continueFillStartedWithTool = tool
-                            canvasView?.setContinueFilling(true, fillColor)
+                        if (tool == EditorTool.SELECT || selectionActive) finishSelectionTool(deselect = true)
+                        else {
+                            exitCanvasNavigation(); rememberSelectionReturnTarget()
+                            tool = EditorTool.SELECT
+                            onSettingsChange(settings.copy(selectionMode = SelectionMode.ADD))
+                            syncCanvasInput()
                         }
                     },
-                    label = { Text(if (continueFilling) tr("Done filling", "完成填充") else tr("Continue filling", "继续填充"), fontSize = 10.sp) },
-                    leadingIcon = { Icon(if (continueFilling) Icons.Outlined.Check else Icons.Outlined.FormatColorFill, null, Modifier.size(16.dp)) },
-                    modifier = Modifier.height(32.dp),
+                    onLongClick = {
+                        exitCanvasNavigation(); rememberSelectionReturnTarget()
+                        tool = EditorTool.SELECT; syncCanvasInput()
+                        canvasView?.reselect()
+                    })
+                if (selectionActive || selectionTransformState != null || tool == EditorTool.SELECT) {
+                    ProcreateTopButton(Icons.Outlined.NearMe, tr("Transform selection", "变换选区"),
+                        selected = selectionTransformState != null, onClick = {
+                            exitCanvasNavigation()
+                            if (selectionTransformState != null) canvasView?.finishSelectionTransform(apply = true)
+                            else {
+                                rememberSelectionReturnTarget()
+                                selectedElementId = null
+                                tool = EditorTool.SELECT
+                                canvasView?.enterFreeTransform()
+                            }
+                        })
+                } else {
+                    ProcreateTopButton(Icons.Outlined.OpenWith, tr("Move canvas", "移动画布"), selected = handToolEnabled, onClick = { handToolEnabled = !handToolEnabled; rotateToolEnabled = false })
+                }
+                ProcreateTopButton(
+                    if ((EditorPanel.PAGES in panelState.layout.open)) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows,
+                    tr("Toggle pages", "显示或隐藏页面栏"),
+                    selected = (EditorPanel.PAGES in panelState.layout.open),
+                    onClick = {
+                        val open = !(EditorPanel.PAGES in panelState.layout.open)
+                        panelState.show(EditorPanel.PAGES, open)
+                        if (open) panelState.focus(EditorPanel.PAGES)
+                        panelState.show(EditorPanel.PAGES, open)
+                    },
                 )
-            }
-            ProcreateTopButton(Icons.Outlined.Brush, tr("Brushes", "笔刷"), selected = tool == EditorTool.PEN, onClick = {
-                exitCanvasNavigation()
-                val alreadySelected = tool == EditorTool.PEN
-                if ((alreadySelected || tool == EditorTool.LIQUIFY) && activeBrush != null) {
-                    // Opening the library is not a brush selection. Keep the live masters.
-                    toggleBrushPanel()
-                    return@ProcreateTopButton
+                Spacer(Modifier.weight(1f))
+                offeredContinueFillColor?.let { fillColor ->
+                    AssistChip(
+                        onClick = {
+                            if (continueFilling) stopContinueFilling() else {
+                                continueFilling = true
+                                continueFillStartedWithTool = tool
+                                canvasView?.setContinueFilling(true, fillColor)
+                            }
+                        },
+                        label = { Text(if (continueFilling) tr("Done filling", "完成填充") else tr("Continue filling", "继续填充"), fontSize = 10.sp) },
+                        leadingIcon = { Icon(if (continueFilling) Icons.Outlined.Check else Icons.Outlined.FormatColorFill, null, Modifier.size(16.dp)) },
+                        modifier = Modifier.height(32.dp),
+                    )
                 }
-                tool = EditorTool.PEN
-                val paintBrushes = availableBrushes.filter { !it.hidden && it.toolBinding.isSupported &&
-                    BrushRoleClassifier.editorTool(it) in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) }
-                val remembered = activeBrush?.takeIf { active -> paintBrushes.any { it.id == active.id } }
-                    ?: paintBrushes.firstOrNull { it.id == brushUsage.lastPaintBrushId }
-                    ?: paintBrushes.maxByOrNull(ImportedBrush::lastUsedAt)
-                activeBrush = remembered
-                selectedBrushId = remembered?.id
-                brushSize = savedBrushSize(remembered, remembered?.defaultSize ?: settings.penSize, EditorTool.PEN)
-                brushOpacity = savedBrushOpacity(remembered, remembered?.defaultOpacity ?: settings.penOpacity, EditorTool.PEN)
-                remembered?.let { selected ->
-                    changeBrushUsage(brushUsage.used(selected.id, eraser = false))
-                    onSettingsChange(settings.copy(persistentDrawingTool = EditorTool.PEN, persistentBrushPresetId = selected.id))
-                }
-                syncCanvasInput(prepareAssets = remembered != null)
-                if (alreadySelected || EditorPanel.BRUSHES !in panelState.layout.open) toggleBrushPanel()
-            })
-            ProcreateTopButton(InkloomIcons.Eraser, tr("Eraser", "橡皮"), selected = tool == EditorTool.ERASER, onClick = {
-                exitCanvasNavigation()
-                val eraser = activeBrush?.takeIf(BrushRoleClassifier::isEraser)
-                    ?: availableBrushes.firstOrNull { it.id == brushUsage.lastEraserBrushId && !it.hidden &&
-                        (BrushRoleClassifier.isEraser(it) ||
-                            (brushUsage.eraserUsesPaintTip && BrushToolTipReuse.forEraser(it.v5PresetJson).isSuccess)) }
-                    ?: brushes.filter(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
-                    ?: systemBrushCatalog().first { BrushRoleClassifier.isEraser(it) }
-                if (brushUsage.eraserUsesPaintTip && !BrushRoleClassifier.isEraser(eraser) &&
-                    BrushToolTipReuse.forEraser(eraser.v5PresetJson).isSuccess) {
-                    activeBrush = eraser; selectedBrushId = eraser.id; tool = EditorTool.ERASER
-                    brushSize = savedBrushSize(eraser, eraser.defaultSize, EditorTool.ERASER)
-                    brushOpacity = savedBrushOpacity(eraser, eraser.defaultOpacity, EditorTool.ERASER)
-                    syncCanvasInput(prepareAssets = true)
-                } else selectWorkspaceBrush(eraser)
-                if (EditorPanel.BRUSHES !in panelState.layout.open) setBrushPanelOpen(true)
-            }, onLongClick = {
-                val paint = activeBrush?.takeIf { BrushRoleClassifier.editorTool(it) == EditorTool.PEN }
-                    ?: availableBrushes.firstOrNull { it.id == brushUsage.lastPaintBrushId && !it.hidden }
-                val result = BrushToolTipReuse.forEraser(paint?.v5PresetJson)
-                result.onSuccess {
-                    val chosen = requireNotNull(paint)
-                    activeBrush = chosen; selectedBrushId = chosen.id; tool = EditorTool.ERASER
-                    brushSize = savedBrushSize(chosen, chosen.defaultSize, EditorTool.ERASER)
-                    brushOpacity = savedBrushOpacity(chosen, chosen.defaultOpacity, EditorTool.ERASER)
-                    changeBrushUsage(brushUsage.borrowPaintTipForEraser(chosen.id))
-                    onSettingsChange(settings.copy(persistentDrawingTool = EditorTool.ERASER,
-                        persistentBrushPresetId = chosen.id))
-                    syncCanvasInput(prepareAssets = true)
-                }.onFailure { Toast.makeText(context, it.message ?: "Tip cannot be used for erasing", Toast.LENGTH_LONG).show() }
-            })
-            ProcreateTopButton(Icons.Outlined.Layers, tr("Layers", "图层"), selected = layersOpen, onClick = {
-                setLayersPanelOpen(!panelState.isActive(EditorPanel.LAYERS))
-            })
-            ProcreateTopButton(Icons.Outlined.SwapHoriz, tr("Quick swap foreground and background colors", "快捷交换前景色和背景色"),
-                onClick = ::swapDrawingColors)
-            Box {
-                Box(Modifier.size(44.dp).semantics { contentDescription = colorsDescription }, contentAlignment = Alignment.Center) {
-                    Box(Modifier.size(32.dp)) {
-                        Box(
-                            Modifier.align(Alignment.TopEnd).size(21.dp).clip(CircleShape).background(Color(backgroundColor)).border(1.5.dp, if (colorPanelOpen && editSecondaryColor) Ink else OutlineSoft, CircleShape).clickable { editSecondaryColor = true; showColors() },
-                        )
-                        Box(
-                            Modifier.align(Alignment.BottomStart).size(23.dp).clip(CircleShape).background(Color(brushColor)).border(2.dp, if (colorPanelOpen && !editSecondaryColor) Ink else OutlineSoft, CircleShape).combinedClickable(
-                                onClick = { editSecondaryColor = false; showColors() },
-                                onLongClick = { editorHostView.startDragAndDrop(ClipData.newPlainText("Inkloom color", brushColor.toUInt().toString()), ColorDropDragShadow(brushColor), CanvasColorDrop(brushColor), 0) },
-                            ),
-                        )
+                ProcreateTopButton(Icons.Outlined.Brush, tr("Brushes", "笔刷"), selected = tool == EditorTool.PEN, onClick = {
+                    exitCanvasNavigation()
+                    val alreadySelected = tool == EditorTool.PEN
+                    if ((alreadySelected || tool == EditorTool.LIQUIFY) && activeBrush != null) {
+                        // Opening the library is not a brush selection. Keep the live masters.
+                        toggleBrushPanel()
+                        return@ProcreateTopButton
                     }
-                }
+                    tool = EditorTool.PEN
+                    val paintBrushes = availableBrushes.filter { !it.hidden && it.toolBinding.isSupported &&
+                        BrushRoleClassifier.editorTool(it) in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) }
+                    val remembered = activeBrush?.takeIf { active -> paintBrushes.any { it.id == active.id } }
+                        ?: paintBrushes.firstOrNull { it.id == brushUsage.lastPaintBrushId }
+                        ?: paintBrushes.maxByOrNull(ImportedBrush::lastUsedAt)
+                    activeBrush = remembered
+                    selectedBrushId = remembered?.id
+                    brushSize = savedBrushSize(remembered, remembered?.defaultSize ?: settings.penSize, EditorTool.PEN)
+                    brushOpacity = savedBrushOpacity(remembered, remembered?.defaultOpacity ?: settings.penOpacity, EditorTool.PEN)
+                    remembered?.let { selected ->
+                        changeBrushUsage(brushUsage.used(selected.id, eraser = false))
+                        onSettingsChange(settings.copy(persistentDrawingTool = EditorTool.PEN, persistentBrushPresetId = selected.id))
+                    }
+                    syncCanvasInput(prepareAssets = remembered != null)
+                    if (alreadySelected || EditorPanel.BRUSHES !in panelState.layout.open) toggleBrushPanel()
+                })
+                ProcreateTopButton(InkloomIcons.Eraser, tr("Eraser", "橡皮"), selected = tool == EditorTool.ERASER, onClick = {
+                    exitCanvasNavigation()
+                    val eraser = activeBrush?.takeIf(BrushRoleClassifier::isEraser)
+                        ?: availableBrushes.firstOrNull { it.id == brushUsage.lastEraserBrushId && !it.hidden &&
+                            (BrushRoleClassifier.isEraser(it) ||
+                                (brushUsage.eraserUsesPaintTip && BrushToolTipReuse.forEraser(it.v5PresetJson).isSuccess)) }
+                        ?: brushes.filter(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
+                        ?: systemBrushCatalog().first { BrushRoleClassifier.isEraser(it) }
+                    if (brushUsage.eraserUsesPaintTip && !BrushRoleClassifier.isEraser(eraser) &&
+                        BrushToolTipReuse.forEraser(eraser.v5PresetJson).isSuccess) {
+                        activeBrush = eraser; selectedBrushId = eraser.id; tool = EditorTool.ERASER
+                        brushSize = savedBrushSize(eraser, eraser.defaultSize, EditorTool.ERASER)
+                        brushOpacity = savedBrushOpacity(eraser, eraser.defaultOpacity, EditorTool.ERASER)
+                        syncCanvasInput(prepareAssets = true)
+                    } else selectWorkspaceBrush(eraser)
+                    if (EditorPanel.BRUSHES !in panelState.layout.open) setBrushPanelOpen(true)
+                }, onLongClick = {
+                    val paint = activeBrush?.takeIf { BrushRoleClassifier.editorTool(it) == EditorTool.PEN }
+                        ?: availableBrushes.firstOrNull { it.id == brushUsage.lastPaintBrushId && !it.hidden }
+                    val result = BrushToolTipReuse.forEraser(paint?.v5PresetJson)
+                    result.onSuccess {
+                        val chosen = requireNotNull(paint)
+                        activeBrush = chosen; selectedBrushId = chosen.id; tool = EditorTool.ERASER
+                        brushSize = savedBrushSize(chosen, chosen.defaultSize, EditorTool.ERASER)
+                        brushOpacity = savedBrushOpacity(chosen, chosen.defaultOpacity, EditorTool.ERASER)
+                        changeBrushUsage(brushUsage.borrowPaintTipForEraser(chosen.id))
+                        onSettingsChange(settings.copy(persistentDrawingTool = EditorTool.ERASER,
+                            persistentBrushPresetId = chosen.id))
+                        syncCanvasInput(prepareAssets = true)
+                    }.onFailure { Toast.makeText(context, it.message ?: "Tip cannot be used for erasing", Toast.LENGTH_LONG).show() }
+                })
+                ProcreateTopButton(Icons.Outlined.Layers, tr("Layers", "图层"), selected = layersOpen, onClick = {
+                    setLayersPanelOpen(!panelState.isActive(EditorPanel.LAYERS))
+                })
+                ProcreateTopButton(Icons.Outlined.SwapHoriz, tr("Quick swap foreground and background colors", "快捷交换前景色和背景色"),
+                    onClick = ::swapDrawingColors)
+                Box {
+                    Box(Modifier.size(44.dp).semantics { contentDescription = colorsDescription }, contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(32.dp)) {
+                            Box(
+                                Modifier.align(Alignment.TopEnd).size(21.dp).clip(CircleShape).background(Color(backgroundColor)).border(1.5.dp, if (colorPanelOpen && editSecondaryColor) Ink else OutlineSoft, CircleShape).clickable { editSecondaryColor = true; showColors() },
+                            )
+                            Box(
+                                Modifier.align(Alignment.BottomStart).size(23.dp).clip(CircleShape).background(Color(brushColor)).border(2.dp, if (colorPanelOpen && !editSecondaryColor) Ink else OutlineSoft, CircleShape).combinedClickable(
+                                    onClick = { editSecondaryColor = false; showColors() },
+                                    onLongClick = { editorHostView.startDragAndDrop(ClipData.newPlainText("Inkloom color", brushColor.toUInt().toString()), ColorDropDragShadow(brushColor), CanvasColorDrop(brushColor), 0) },
+                                ),
+                            )
+                        }
+                    }
 
+                }
             }
             ProcreateTopButton(Icons.Outlined.MoreHoriz, tr("Actions", "操作"),
                 selected = workspaceMenu, onClick = { workspaceMenu = true })

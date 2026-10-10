@@ -42,6 +42,12 @@ class DialogLayoutAuditTest {
         override fun evaluate() {
             fun shell(command: String) = InstrumentationRegistry.getInstrumentation().uiAutomation
                 .executeShellCommand(command).close()
+            val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+            context.getSharedPreferences("inkloom_editor_panels", android.content.Context.MODE_PRIVATE).edit().clear().commit()
+            context.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE).edit().clear()
+                .putString("language", "SIMPLIFIED_CHINESE").putInt("studioWorkspaceVersion", 2)
+                .putBoolean("showBrushPanel", false).putBoolean("showLayerPanel", false).putBoolean("showPageRail", false).commit()
+            resetNotebookTestLibrary(context)
             shell("wm size 720x1280"); shell("wm density 320"); shell("settings put system font_scale 2.0")
             SystemClock.sleep(1500)
             try { base.evaluate() } finally {
@@ -86,6 +92,26 @@ class DialogLayoutAuditTest {
     }
 
 
+    @Test fun editorNotebookDialogsKeepEveryControlReachableAtLargeFontInChinese() {
+        compose.onNode(androidx.compose.ui.test.hasText("新建笔记") or androidx.compose.ui.test.hasContentDescription("新建笔记")).performClick()
+        open("创建")
+        compose.waitForIdle()
+        fun actions() = compose.onNode(androidx.compose.ui.test.hasContentDescription("操作")).performClick()
+        actions(); check("操作", null, "完成")
+        open("搜索当前笔记"); check("搜索此笔记", null, "完成")
+        compose.onNodeWithText("完成").performClick(); compose.waitForIdle()
+        actions(); open("书签"); check("书签", null, "完成")
+        compose.onNodeWithText("完成").performClick(); compose.waitForIdle()
+        actions(); open("页面大纲"); check("页面大纲", null, "完成")
+    }
+
+    private fun open(text: String) {
+        val node = compose.onNodeWithText(text)
+        runCatching { node.performScrollTo() }
+        node.assertIsDisplayed().performClick()
+        compose.waitForIdle()
+    }
+
     private fun audit(title: String?, confirm: String?, dismiss: String, focus: String? = null, dialog: @Composable () -> Unit) {
         compose.runOnUiThread {
             compose.activity.setContent { MaterialTheme {
@@ -93,7 +119,17 @@ class DialogLayoutAuditTest {
             } }
         }
         compose.waitForIdle()
-        title?.let { compose.onNodeWithText(it).assertIsDisplayed() }
+        check(title, confirm, dismiss, focus)
+    }
+
+    private fun check(title: String?, confirm: String?, dismiss: String, focus: String? = null) {
+        compose.waitForIdle()
+        title?.let {
+            try { compose.onNodeWithText(it).assertIsDisplayed() } catch (failure: AssertionError) {
+                InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("screencap -p /data/local/tmp/dialog-audit.png").close()
+                SystemClock.sleep(500); throw failure
+            }
+        }
         focus?.let { label ->
             compose.onAllNodes(androidx.compose.ui.test.hasText(label, substring = true) or androidx.compose.ui.test.hasContentDescription(label))[0].performClick()
             SystemClock.sleep(800); compose.waitForIdle()
@@ -106,6 +142,8 @@ class DialogLayoutAuditTest {
             val label = node.fetchSemanticsNode().config[SemanticsProperties.Text].joinToString()
             runCatching { node.performScrollTo() }
             try { node.assertIsDisplayed() } catch (failure: AssertionError) {
+                InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("screencap -p /data/local/tmp/dialog-audit.png").close()
+                SystemClock.sleep(500)
                 throw AssertionError("[$title] '$label' is clipped or unreachable", failure)
             }
         }

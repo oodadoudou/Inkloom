@@ -2,8 +2,6 @@ package app.inkloom.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -21,6 +19,7 @@ import app.inkloom.settings.text
 import app.inkloom.ui.theme.*
 
 /** One action surface with a stable category path; preferences live in Settings. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun EditorActionsDialog(language: UiLanguage, section: Int, onSection: (Int) -> Unit,
     onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
@@ -29,8 +28,9 @@ internal fun EditorActionsDialog(language: UiLanguage, section: Int, onSection: 
     AlertDialog(onDismissRequest = onDismiss, title = { Text(language.text("Actions", "操作")) },
         confirmButton = { TextButton(onClick = onDismiss) { Text(language.text("Done", "完成")) } },
         text = { Column(Modifier.widthIn(max = 520.dp)) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                itemsIndexed(labels) { index, label ->
+            // Categories wrap on narrow windows or large fonts so none is hidden off-screen.
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                labels.forEachIndexed { index, label ->
                     TextButton(onClick = { onSection(index) }, modifier = Modifier.height(44.dp)
                         .background(if (section == index) SageContainer else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(6.dp))
                         .semantics { contentDescription = "Actions ${label.first}"; selected = section == index }) {
