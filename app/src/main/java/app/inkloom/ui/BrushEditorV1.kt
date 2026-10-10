@@ -81,32 +81,45 @@ fun BrushEditorV1Dialog(
             Surface(Modifier.fillMaxSize().widthIn(max = 1200.dp).heightIn(max = 860.dp),
                 shape = RoundedCornerShape(16.dp), color = Paper, contentColor = Ink) {
                 Column {
-                    Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 18.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(tr("Brush Studio", "笔刷工作室"), style = MaterialTheme.typography.titleLarge)
-                            Text(session.current.identity.name, color = Color.Gray, fontSize = 12.sp, maxLines = 1)
-                        }
-                        Box {
-                            TextButton(onClick = { moreOpen = true }) { Text(tr("Actions", "操作")) }
-                            DropdownMenu(moreOpen, { moreOpen = false }) {
-                                DropdownMenuItem(text = { Text(tr("Save As", "另存为")) },
-                                    onClick = { moreOpen = false; saveAsOpen = true })
-                                if (!source.isFactory) {
-                                    DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = {
-                                        moreOpen = false
-                                        saveAs(session.commitAsNew(session.current.identity.name + tr(" - Copy", " - 副本")).preset)
-                                    })
-                                    onResetToFactory?.let { reset ->
-                                        DropdownMenuItem(text = { Text(tr("Reset", "重置")) }, onClick = { moreOpen = false; reset() })
-                                    }
-                                    DropdownMenuItem(text = { Text(tr("Delete", "删除"), color = MaterialTheme.colorScheme.error) },
-                                        onClick = { moreOpen = false; onDelete() })
-                                }
+                    BoxWithConstraints(Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(horizontal = 18.dp, vertical = 8.dp)) {
+                        val title: @Composable () -> Unit = {
+                            Column {
+                                Text(tr("Brush Studio", "笔刷工作室"), style = MaterialTheme.typography.titleLarge)
+                                Text(session.current.identity.name, color = Color.Gray, fontSize = 12.sp, maxLines = 1)
                             }
                         }
-                        TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) }
-                        Button(onClick = commit) { Text(tr("Done", "完成")) }
+                        val actions: @Composable RowScope.() -> Unit = {
+                            Box {
+                                TextButton(onClick = { moreOpen = true }) { Text(tr("Actions", "操作")) }
+                                DropdownMenu(moreOpen, { moreOpen = false }) {
+                                    DropdownMenuItem(text = { Text(tr("Save As", "另存为")) },
+                                        onClick = { moreOpen = false; saveAsOpen = true })
+                                    if (!source.isFactory) {
+                                        DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = {
+                                            moreOpen = false
+                                            saveAs(session.commitAsNew(session.current.identity.name + tr(" - Copy", " - 副本")).preset)
+                                        })
+                                        onResetToFactory?.let { reset ->
+                                            DropdownMenuItem(text = { Text(tr("Reset", "重置")) }, onClick = { moreOpen = false; reset() })
+                                        }
+                                        DropdownMenuItem(text = { Text(tr("Delete", "删除"), color = MaterialTheme.colorScheme.error) },
+                                            onClick = { moreOpen = false; onDelete() })
+                                    }
+                                }
+                            }
+                            TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) }
+                            Button(onClick = commit) { Text(tr("Done", "完成")) }
+                        }
+                        if (maxWidth < 560.dp) {
+                            Column {
+                                title()
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically, content = actions)
+                            }
+                        } else Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.weight(1f)) { title() }
+                            actions()
+                        }
                     }
                     HorizontalDivider()
                     BoxWithConstraints(Modifier.weight(1f)) {

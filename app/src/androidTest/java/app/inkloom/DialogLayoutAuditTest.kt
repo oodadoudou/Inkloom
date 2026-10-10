@@ -14,6 +14,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.onRoot
@@ -240,6 +241,24 @@ class DialogLayoutAuditTest {
         compose.onNode(androidx.compose.ui.test.hasContentDescription("关闭页面跳转")).performClick()
     }
 
+    @Test fun brushStudioTitleAndActionsFitAtLargeFont() {
+        val preset = app.inkloom.brushpresetv5.BrushPresetV5Import.requirePreset(app.inkloom.model.SystemBrushCatalog.brushes.first())
+        val owned = app.inkloom.brushpresetv5.OwnedBrushPreset(preset,
+            app.inkloom.brushpresetv5.PresetOwnership.Factory(preset.identity.id))
+        compose.runOnUiThread { compose.activity.setContent { MaterialTheme {
+            BrushEditorV1Dialog(owned, app.inkloom.settings.AppSettings(language = UiLanguage.SIMPLIFIED_CHINESE), {}, {}, {}, null, {})
+        } } }
+        compose.waitForIdle()
+        val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        compose.onNodeWithText("笔刷工作室").assertIsDisplayed().performSemanticsAction(
+            androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(results) }
+        assertTrue("Brush Studio title fits one line: " + results.map { "${it.size} lines=${it.lineCount} widthOverflow=${it.didOverflowWidth}" },
+            results.isNotEmpty() && results.single().lineCount == 1 && results.single().getLineRight(0) <= results.single().size.width + 1f)
+        listOf("操作", "取消", "完成").forEach { compose.onNodeWithText(it).assertIsDisplayed() }
+        open("操作"); open("另存为")
+        check("笔刷另存为", "保存", "取消", focus = "笔刷名称")
+    }
+
     private fun open(text: String) {
         val node = compose.onNodeWithText(text)
         runCatching { node.performScrollTo() }
@@ -259,22 +278,23 @@ class DialogLayoutAuditTest {
 
     private fun check(title: String?, confirm: String?, dismiss: String, focus: String? = null) {
         compose.waitForIdle()
+        val dialogId = compose.onAllNodes(isDialog()).fetchSemanticsNodes().last().id
+        val inDialog = hasAnyAncestor(SemanticsMatcher("front dialog") { it.id == dialogId })
         title?.let {
-            try { compose.onNodeWithText(it).assertIsDisplayed() } catch (failure: AssertionError) {
+            try { compose.onNode(inDialog and androidx.compose.ui.test.hasText(it)).assertIsDisplayed() } catch (failure: AssertionError) {
                 InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("screencap -p /data/local/tmp/dialog-audit.png").close()
                 SystemClock.sleep(500); throw failure
             }
         }
         focus?.let { label ->
-            compose.onAllNodes(hasAnyAncestor(isDialog()) and (androidx.compose.ui.test.hasText(label, substring = true) or androidx.compose.ui.test.hasContentDescription(label)))[0].performClick()
+            compose.onAllNodes(inDialog and (androidx.compose.ui.test.hasText(label, substring = true) or androidx.compose.ui.test.hasContentDescription(label)))[0].performClick()
             SystemClock.sleep(800); compose.waitForIdle()
         }
-        val texts = compose.onAllNodes(hasAnyAncestor(isDialog()) and SemanticsMatcher.keyIsDefined(SemanticsProperties.Text))
-        val count = texts.fetchSemanticsNodes().size
-        assertTrue("$title has content", count > 0)
-        for (index in 0 until count) {
-            val node = texts[index]
-            val label = node.fetchSemanticsNode().config[SemanticsProperties.Text].joinToString()
+        val texts = compose.onAllNodes(inDialog and SemanticsMatcher.keyIsDefined(SemanticsProperties.Text))
+        val labels = texts.fetchSemanticsNodes().flatMap { it.config[SemanticsProperties.Text].map { text -> text.text } }.distinct()
+        assertTrue("$title has content", labels.isNotEmpty())
+        for (label in labels) {
+            val node = compose.onAllNodes(inDialog and androidx.compose.ui.test.hasText(label))[0]
             // A chip in a horizontally scrolling row first needs its row revealed in the
             // outer vertical scroll area; scrolling only the chip cannot move that parent.
             generateSequence(node.fetchSemanticsNode().parent) { it.parent }
@@ -282,6 +302,13 @@ class DialogLayoutAuditTest {
                 .toList().asReversed().forEach { row ->
                     runCatching { compose.onNode(SemanticsMatcher("scroll row ${row.id}") { it.id == row.id },
                         useUnmergedTree = true).performScrollTo() }
+                }
+            generateSequence(node.fetchSemanticsNode().parent) { it.parent }
+                .filter { it.config.contains(SemanticsProperties.HorizontalScrollAxisRange) &&
+                    it.config.contains(androidx.compose.ui.semantics.SemanticsActions.ScrollToIndex) }
+                .forEach { row ->
+                    compose.onNode(SemanticsMatcher("lazy row ${row.id}") { it.id == row.id }, useUnmergedTree = true)
+                        .performScrollToNode(androidx.compose.ui.test.hasText(label))
                 }
             runCatching { node.performScrollTo() }
             try { node.assertIsDisplayed() } catch (failure: AssertionError) {
@@ -291,9 +318,9 @@ class DialogLayoutAuditTest {
             }
         }
         listOfNotNull(confirm, dismiss).forEach { button ->
-            compose.onAllNodes(hasAnyAncestor(isDialog()) and androidx.compose.ui.test.hasText(button))
+            compose.onAllNodes(inDialog and androidx.compose.ui.test.hasText(button))
                 .fetchSemanticsNodes().let { assertTrue("[$title] button $button exists", it.isNotEmpty()) }
-            compose.onAllNodes(hasAnyAncestor(isDialog()) and androidx.compose.ui.test.hasText(button)).let { buttons ->
+            compose.onAllNodes(inDialog and androidx.compose.ui.test.hasText(button)).let { buttons ->
                 buttons[buttons.fetchSemanticsNodes().size - 1].assertIsDisplayed()
             }
         }
