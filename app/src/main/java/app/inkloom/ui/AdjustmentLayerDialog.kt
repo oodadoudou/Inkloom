@@ -2,10 +2,13 @@ package app.inkloom.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -31,8 +34,11 @@ internal fun adjustmentName(kind: LayerAdjustmentKind, language: UiLanguage): St
 internal fun AdjustmentLayerDialog(layer: InkLayer, onDismiss: () -> Unit, onPreview: (LayerAdjustment) -> Unit, onApply: (LayerAdjustment) -> Unit) {
     val language = LocalUiLanguage.current
     var channel by remember(layer.id) { mutableIntStateOf(0) }
-    var value by remember(layer.id) { mutableStateOf(layer.adjustment ?: LayerAdjustment()) }
-    fun update(next: LayerAdjustment) { value = next; onPreview(next) }
+    val original = remember(layer.id) { layer.adjustment ?: LayerAdjustment() }
+    var value by remember(layer.id) { mutableStateOf(original) }
+    // CSP/Photoshop-style before/after comparison; Apply always commits the edited values.
+    var previewing by remember(layer.id) { mutableStateOf(true) }
+    fun update(next: LayerAdjustment) { value = next; if (previewing) onPreview(next) }
     @Composable fun parameter(label: String, current: Float, range: ClosedFloatingPointRange<Float>, update: (Float) -> Unit) {
         Text("$label  ${String.format(Locale.ROOT, "%.2f", current)}", style = MaterialTheme.typography.labelMedium)
         BrushParameterSlider(current.coerceIn(range.start, range.endInclusive), update, valueRange = range,
@@ -43,6 +49,15 @@ internal fun AdjustmentLayerDialog(layer: InkLayer, onDismiss: () -> Unit, onPre
         title = { Text(adjustmentName(value.kind, language)) },
         text = {
             Column(Modifier.widthIn(min = 270.dp, max = 430.dp).heightIn(max = 490.dp).verticalScroll(rememberScrollState())) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.weight(1f).toggleable(previewing, role = Role.Checkbox) { checked ->
+                        previewing = checked; onPreview(if (checked) value else original)
+                    }, verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(previewing, onCheckedChange = null)
+                        Text(language.text("Preview", "预览"))
+                    }
+                    TextButton({ update(LayerAdjustment(kind = value.kind)) }) { Text(language.text("Reset", "重置")) }
+                }
                 when (value.kind) {
                     LayerAdjustmentKind.BRIGHTNESS_CONTRAST -> {
                         parameter(language.text("Brightness", "亮度"), value.brightness, -1f..1f) { update(value.copy(brightness = it)) }

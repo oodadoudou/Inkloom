@@ -15,6 +15,7 @@ import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
@@ -222,6 +223,50 @@ class LayerTargetWindowTest {
         history(true); compose.waitUntil(10_000) { model.currentPage()!!.layers.singleOrNull { it.id == layer.id }?.mask?.surface == reference }
         compose.activityRule.scenario.recreate(); compose.waitForIdle()
         compose.waitUntil(10_000) { model.currentPage()?.layers?.singleOrNull { it.id == layer.id }?.mask?.surface == reference }
+    }
+
+    @Test fun adjustmentDialogPreviewToggleResetAndApplyFormOneHistoryStep() {
+        tap("New Note"); tap("Create"); val view = canvas()
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync { model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java] }
+        stroke(pagePoint(view, .2f, .5f), pagePoint(view, .8f, .5f))
+        compose.waitUntil(10_000) { model.currentPage()?.layers?.any { it.rasterTileSurface != null } == true && !view.hasPendingPaintPublicationForMerge() }
+        fun shown(): Int {
+            var red = 0
+            instrumentation.runOnMainSync {
+                val bitmap = android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
+                try { view.draw(android.graphics.Canvas(bitmap)); red = android.graphics.Color.red(bitmap.getPixel(view.width / 2, view.height / 2)) }
+                finally { bitmap.recycle() }
+            }
+            return red
+        }
+        val ink = shown()
+        tap("Layers"); tap("Add adjustment layer"); tap("Brightness / Contrast")
+        compose.waitUntil(10_000) { model.currentPage()?.layers?.any { it.role == app.inkloom.document.LayerRole.ADJUSTMENT } == true }
+        val id = model.currentPage()!!.layers.single { it.role == app.inkloom.document.LayerRole.ADJUSTMENT }.id
+        compose.onNodeWithContentDescription("Brightness adjustment").performSemanticsAction(SemanticsActions.SetProgress) { it(.6f) }
+        compose.waitUntil(10_000) { shown() > ink + 40 }
+        val adjusted = shown()
+        compose.onNodeWithText("Preview").performClick()
+        compose.waitUntil(10_000) { shown() == ink }
+        compose.onNodeWithText("Preview").performClick()
+        compose.waitUntil(10_000) { shown() == adjusted }
+        compose.onNodeWithText("Reset").performClick()
+        compose.waitUntil(10_000) { shown() == ink }
+        compose.onNodeWithContentDescription("Brightness adjustment").performSemanticsAction(SemanticsActions.SetProgress) { it(.6f) }
+        compose.waitUntil(10_000) { shown() == adjusted }
+        // Apply with the preview hidden still commits the edited values.
+        compose.onNodeWithText("Preview").performClick()
+        compose.waitUntil(10_000) { shown() == ink }
+        tap("Apply")
+        compose.waitUntil(10_000) {
+            model.currentPage()!!.layers.single { it.id == id }.adjustment!!.brightness > .5f && !view.selectionLayerTransferPending
+        }
+        compose.waitUntil(10_000) { shown() == adjusted }
+        tap("Undo")
+        compose.waitUntil(10_000) { model.currentPage()!!.layers.single { it.id == id }.adjustment!!.brightness == 0f }
+        assertTrue("one undo restores the parameters without removing the layer", model.currentPage()!!.layers.any { it.id == id })
+        compose.waitUntil(10_000) { shown() == ink }
     }
 
     @Test fun creationFollowsSelectedSiblingOrFolderAndSharesPaintHistory() {
