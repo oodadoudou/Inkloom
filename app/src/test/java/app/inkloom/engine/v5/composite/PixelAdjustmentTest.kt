@@ -328,4 +328,50 @@ class PixelAdjustmentTest {
         assertEquals(gray, result.packedF16At(10, 10))
         assertEquals(1f, app.inkloom.engine.v5.surface.PackedRgbaF16.premultipliedRed(result.packedF16At(20, 10)), .001f)
     }
+
+    @Test fun highPrecisionPagesMatchEightBitCorrectionsAndKeepNeutralHdr() {
+        val f16 = app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16
+        val colors = listOf(0xff6496c8.toInt(), 0x80301810.toInt(), 0xff0a0a0a.toInt(), 0xfff0e0d0.toInt())
+        val eight = PixelTileSurface(64, 64, 64)
+        val high = PixelTileSurface(64, 64, 64, pixelFormat = f16)
+        eight.beginWrite("8").use { w -> colors.forEachIndexed { i, c -> w.setPixel(i, 0, c) }; w.commit().close() }
+        high.beginWrite("16").use {
+            it.editTileF16(app.inkloom.engine.v5.surface.PixelTileKey(0, 0), app.inkloom.engine.v5.surface.PixelRect(0, 0, 64, 64)) { pixels, stride ->
+                colors.forEachIndexed { i, c -> pixels[i] = app.inkloom.engine.v5.surface.PackedRgbaF16.fromPremultipliedArgb8888(c) }
+                pixels[stride] = app.inkloom.engine.v5.surface.PackedRgbaF16.packPremultiplied(1.4f, .5f, -.05f, 1f)
+            }
+            it.commit().close()
+        }
+        val adjustments = listOf(
+            LayerAdjustment(LayerAdjustmentKind.THRESHOLD, threshold = .5f),
+            LayerAdjustment(LayerAdjustmentKind.BRIGHTNESS_CONTRAST, brightness = .2f, contrast = .3f),
+            LayerAdjustment(LayerAdjustmentKind.LEVELS, inputBlack = .1f, inputGamma = 1.6f, inputWhite = .9f),
+            LayerAdjustment(LayerAdjustmentKind.CURVES, curve = listOf(app.inkloom.document.AdjustmentCurvePoint(0f, 0f),
+                app.inkloom.document.AdjustmentCurvePoint(.5f, .7f), app.inkloom.document.AdjustmentCurvePoint(1f, 1f))),
+            LayerAdjustment(LayerAdjustmentKind.HUE_SATURATION, hueDegrees = 40f, saturation = .3f),
+            LayerAdjustment(LayerAdjustmentKind.INVERT),
+            LayerAdjustment(LayerAdjustmentKind.POSTERIZE, posterizeLevels = 4),
+        )
+        adjustments.forEach { value ->
+            val a = PixelAdjustmentProjectionCache(64, 64, 64, eight.pixelFormat, "8-${value.kind}").update(eight.snapshot(), value, 1f, null).snapshot
+            val b = PixelAdjustmentProjectionCache(64, 64, 64, f16, "16-${value.kind}").update(high.snapshot(), value, 1f, null).snapshot
+            colors.indices.forEach { x ->
+                val expected = a.pixelAt(x, 0)
+                val actual = app.inkloom.engine.v5.surface.PackedRgbaF16.toPremultipliedArgb8888(b.packedF16At(x, 0))
+                for (shift in listOf(24, 16, 8, 0)) assertEquals("${value.kind} pixel $x channel $shift",
+                    expected ushr shift and 255, actual ushr shift and 255, 2)
+            }
+        }
+        val neutral = PixelAdjustmentProjectionCache(64, 64, 64, f16, "neutral").update(high.snapshot(),
+            LayerAdjustment(LayerAdjustmentKind.BRIGHTNESS_CONTRAST), 1f, null).snapshot
+        val hdr = neutral.packedF16At(0, 1)
+        assertEquals("neutral corrections keep HDR", 1.4f, app.inkloom.engine.v5.surface.PackedRgbaF16.premultipliedRed(hdr), .01f)
+        assertEquals(-.05f, app.inkloom.engine.v5.surface.PackedRgbaF16.premultipliedBlue(hdr), .01f)
+        val brighter = PixelAdjustmentProjectionCache(64, 64, 64, f16, "bright").update(high.snapshot(),
+            LayerAdjustment(LayerAdjustmentKind.BRIGHTNESS_CONTRAST, brightness = .1f), 1f, null).snapshot
+        assertTrue("brightness extends HDR instead of clipping it", app.inkloom.engine.v5.surface.PackedRgbaF16.premultipliedRed(brighter.packedF16At(0, 1)) > 1.4f)
+    }
+
+    private fun assertEquals(message: String, expected: Int, actual: Int, tolerance: Int) =
+        assertTrue("$message expected $expected but was $actual", kotlin.math.abs(expected - actual) <= tolerance)
 }

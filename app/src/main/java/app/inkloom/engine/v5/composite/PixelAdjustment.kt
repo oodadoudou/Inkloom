@@ -151,7 +151,8 @@ internal class PixelAdjustmentKernel(private val value: LayerAdjustment) {
     private val gradientStops = value.gradient.filter { it.position.isFinite() }.sortedBy { it.position }
         .ifEmpty { listOf(GradientColorStop(0f, 0xFF000000L), GradientColorStop(1f, 0xFFFFFFFFL)) }
 
-    fun applyInto(inputRed: Float, inputGreen: Float, inputBlue: Float, output: FloatArray) {
+    /** [clampOutput] false keeps extended (HDR) values where the operation is defined beyond 0..1. */
+    fun applyInto(inputRed: Float, inputGreen: Float, inputBlue: Float, output: FloatArray, clampOutput: Boolean = true) {
         require(output.size >= 3)
         val red = finite(inputRed); val green = finite(inputGreen); val blue = finite(inputBlue)
         when (value.kind) {
@@ -240,10 +241,28 @@ internal class PixelAdjustmentKernel(private val value: LayerAdjustment) {
                 output[0] = gray; output[1] = gray; output[2] = gray
             }
         }
-        for (index in 0..2) output[index] = finite(output[index]).coerceIn(0f, 1f)
+        for (index in 0..2) output[index] = finite(output[index]).let { if (clampOutput) it.coerceIn(0f, 1f) else it }
     }
 
     private fun finite(number: Float) = if (number.isFinite()) number else 0f
+}
+
+/**
+ * Corrections are defined on display-encoded values, as on 8-bit pages. Linear F16 pixels are
+ * encoded with a sign-preserving extended sRGB curve so both precisions look the same and
+ * extended values survive operations that are defined beyond 0..1.
+ */
+internal object ExtendedSrgb {
+    fun encode(linear: Float): Float = when {
+        linear < 0f -> -encode(-linear)
+        linear <= .0031308f -> linear * 12.92f
+        else -> 1.055f * linear.pow(1f / 2.4f) - .055f
+    }
+    fun decode(encoded: Float): Float = when {
+        encoded < 0f -> -decode(-encoded)
+        encoded <= .04045f -> encoded / 12.92f
+        else -> ((encoded + .055f) / 1.055f).pow(2.4f)
+    }
 }
 
 internal class PixelAdjustmentProjectionCache(
@@ -310,14 +329,16 @@ internal class PixelAdjustmentProjectionCache(
                             for (y in 0 until area.height) for (x in 0 until area.width) {
                                 val index = y * stride + x; val color = source[index]; val alpha = PackedRgbaF16.alpha(color)
                                 if (alpha <= 0f) continue
-                                val red = PackedRgbaF16.premultipliedRed(color) / alpha
-                                val green = PackedRgbaF16.premultipliedGreen(color) / alpha
-                                val blue = PackedRgbaF16.premultipliedBlue(color) / alpha
-                                kernel.applyInto(red, green, blue, changed)
-                                val target = blendAdjusted(red, green, blue, changed, blendMode, blended)
                                 val weight = amount * maskWeight(mask, area.left + x, area.top + y) *
                                     (clip?.let { PackedRgbaF16.alpha(it[index]).coerceIn(0f, 1f) } ?: 1f)
-                                fun channel(original: Float, adjusted: Float) = (original + (adjusted - original) * weight) * alpha
+                                if (weight <= 0f) { pixels[index] = color; continue }
+                                val red = ExtendedSrgb.encode(PackedRgbaF16.premultipliedRed(color) / alpha)
+                                val green = ExtendedSrgb.encode(PackedRgbaF16.premultipliedGreen(color) / alpha)
+                                val blue = ExtendedSrgb.encode(PackedRgbaF16.premultipliedBlue(color) / alpha)
+                                kernel.applyInto(red, green, blue, changed, clampOutput = false)
+                                val target = blendAdjusted(red, green, blue, changed, blendMode, blended)
+                                fun channel(original: Float, adjusted: Float) =
+                                    ExtendedSrgb.decode(original + (adjusted - original) * weight) * alpha
                                 pixels[index] = PackedRgbaF16.packPremultiplied(channel(red, target[0]), channel(green, target[1]), channel(blue, target[2]), alpha)
                             }
                         }

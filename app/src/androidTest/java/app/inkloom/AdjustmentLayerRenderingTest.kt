@@ -283,4 +283,25 @@ class AdjustmentLayerRenderingTest {
             } finally { exported.recycle() }
         }
     }
+
+    @Test fun highPrecisionPagesExportTheSameCorrectionsAsEightBitPages() {
+        val assets = DocumentAssetService(InstrumentationRegistry.getInstrumentation().targetContext)
+        val ink = InkLayer(id = "ink", name = "Ink")
+        val shape = app.inkloom.document.PageElement.Shape(x = 0f, y = 0f, width = 64f, height = 64f, layerId = ink.id,
+            kind = app.inkloom.document.ShapeKind.RECTANGLE, colorArgb = 0xFF6496C8, fillArgb = 0xFF6496C8, strokeWidth = 0f)
+        for (adjustment in listOf(LayerAdjustment(LayerAdjustmentKind.THRESHOLD, threshold = .5f),
+            LayerAdjustment(LayerAdjustmentKind.LEVELS, inputBlack = .1f, inputGamma = 1.6f, inputWhite = .9f),
+            LayerAdjustment(LayerAdjustmentKind.BRIGHTNESS_CONTRAST, brightness = .2f, contrast = .3f))) {
+            fun render(high: Boolean): Int {
+                val page = InkPage(width = 64f, height = 64f, background = PageBackground.Paper(0xFFFFFFFF), elements = listOf(shape),
+                    layers = listOf(ink, InkLayer("adjust", "Adjust", role = LayerRole.ADJUSTMENT, adjustment = adjustment)),
+                    colorManagement = app.inkloom.color.PageColorManagement(highPrecision = high))
+                val bitmap = assets.renderPageBitmap(page, 64)
+                return try { bitmap.getPixel(32, 32) } finally { bitmap.recycle() }
+            }
+            val eight = render(false); val high = render(true)
+            for (shift in listOf(16, 8, 0)) assertTrue("${adjustment.kind} channel $shift: ${eight.toUInt().toString(16)} vs ${high.toUInt().toString(16)}",
+                kotlin.math.abs((eight ushr shift and 255) - (high ushr shift and 255)) <= 3)
+        }
+    }
 }
