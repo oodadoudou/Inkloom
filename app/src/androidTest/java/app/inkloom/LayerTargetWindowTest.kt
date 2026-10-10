@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performClick
@@ -219,8 +220,16 @@ class LayerTargetWindowTest {
             instrumentation.sendKeySync(android.view.KeyEvent(time, time + 1, android.view.KeyEvent.ACTION_UP, key, 0, android.view.KeyEvent.META_CTRL_ON))
             compose.waitForIdle()
         }
-        history(); compose.waitUntil(10_000) { model.currentPage()!!.layers.none { it.id == layer.id } }
-        history(true); compose.waitUntil(10_000) { model.currentPage()!!.layers.singleOrNull { it.id == layer.id }?.mask?.surface == reference }
+        // On timeout, report the editor state so an intermittent failure leaves evidence.
+        fun waitFor(step: String, condition: () -> Boolean) = try { compose.waitUntil(10_000, condition) } catch (failure: Throwable) {
+            val current = model.currentPage()?.layers?.singleOrNull { it.id == layer.id }
+            val view = canvas()
+            throw AssertionError("$step: layerPresent=${current != null} maskMatches=${current?.mask?.surface == reference} " +
+                "transferPending=${view.selectionLayerTransferPending} selection=${view.hasActiveSelection()} tool=${view.tool} " +
+                "dialog=${compose.onAllNodesWithText("Cancel").fetchSemanticsNodes().size}", failure)
+        }
+        history(); waitFor("undo removes the masked creation") { model.currentPage()!!.layers.none { it.id == layer.id } }
+        history(true); waitFor("redo restores the same mask") { model.currentPage()!!.layers.singleOrNull { it.id == layer.id }?.mask?.surface == reference }
         compose.activityRule.scenario.recreate(); compose.waitForIdle()
         compose.waitUntil(10_000) { model.currentPage()?.layers?.singleOrNull { it.id == layer.id }?.mask?.surface == reference }
     }
