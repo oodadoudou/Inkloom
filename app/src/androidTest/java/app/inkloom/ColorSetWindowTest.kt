@@ -19,6 +19,7 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performImeAction
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.settings.ColorSetLibrary
@@ -63,7 +64,10 @@ class ColorSetWindowTest {
         fun choose(hex: String) {
             tap("Edit current color")
             compose.onNodeWithContentDescription("Hex color").performTextReplacement(hex)
-            compose.onNodeWithText("Apply").performClick()
+            // Typing opens the keyboard and the imePadding dialog slides; a click injected while it
+            // moves can miss Apply. Close the keyboard like a user and tap the settled button.
+            compose.onNodeWithContentDescription("Hex color").performImeAction()
+            settledTap("Apply color")
             compose.waitUntil(5_000) { findBounds("Choose color") == null }
         }
         choose("#314159")
@@ -467,6 +471,18 @@ class ColorSetWindowTest {
             throw AssertionError("Missing visible color-set target: $label (editable=$editableOnly). ${visibleLabels()}", timeout)
         }
         return requireNotNull(result) { "Missing visible color-set target: $label" }
+    }
+
+    /** Taps [label] once the keyboard is gone and its bounds are unchanged across two reads. */
+    private fun settledTap(label: String) {
+        var settled: Rect? = null
+        compose.waitUntil(5_000) {
+            val keyboard = instrumentation.uiAutomation.windows.any { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+            val first = findBounds(label); SystemClock.sleep(120); val second = findBounds(label)
+            (!keyboard && first != null && first == second).also { if (it) settled = second }
+        }
+        val target = requireNotNull(settled)
+        tapAt(Offset(target.exactCenterX(), target.exactCenterY())); compose.waitForIdle()
     }
 
     private fun findBounds(label: String, editableOnly: Boolean = false): Rect? {
