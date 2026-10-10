@@ -43,7 +43,7 @@ import org.junit.runners.model.Statement
  */
 class DialogLayoutAuditTest {
     private val compose = createAndroidComposeRule<MainActivity>()
-    private val compact = TestRule { base, _ -> object : Statement() {
+    private val compact = TestRule { base, description -> object : Statement() {
         override fun evaluate() {
             fun shell(command: String) = InstrumentationRegistry.getInstrumentation().uiAutomation
                 .executeShellCommand(command).close()
@@ -53,7 +53,7 @@ class DialogLayoutAuditTest {
                 .putString("language", "SIMPLIFIED_CHINESE").putInt("studioWorkspaceVersion", 2)
                 .putBoolean("showBrushPanel", false).putBoolean("showLayerPanel", false).putBoolean("showPageRail", false).commit()
             resetNotebookTestLibrary(context)
-            shell("wm size 720x1280"); shell("wm density 320"); shell("settings put system font_scale 2.0")
+            shell(if (description.methodName.contains("ShortLandscape")) "wm size 1280x720" else "wm size 720x1280"); shell("wm density 320"); shell("settings put system font_scale 2.0")
             SystemClock.sleep(1500)
             try { base.evaluate() } finally {
                 shell("settings put system font_scale 1.0"); shell("wm density reset"); shell("wm size reset")
@@ -303,6 +303,26 @@ class DialogLayoutAuditTest {
             .performScrollToNode(androidx.compose.ui.test.hasText("自定义快捷键"))
         open("自定义快捷键")
         check("Toolbox 快捷键", "完成", "完成", focus = "搜索操作或按键")
+    }
+
+    @Test fun coverCropRemainsReachableInShortLandscape() {
+        val file = imageFixture()
+        try {
+            compose.runOnUiThread { compose.activity.setContent { MaterialTheme {
+                NotebookCoverCropDialog(android.net.Uri.fromFile(file), UiLanguage.SIMPLIFIED_CHINESE, {}, {})
+            } } }
+            compose.waitUntil(5_000) { compose.onAllNodes(androidx.compose.ui.test.hasText("缩放")).fetchSemanticsNodes().isNotEmpty() }
+            check("裁剪封面", "使用封面", "取消")
+        } finally { file.delete() }
+    }
+
+    @Test fun coverCropControlsRemainReachableAtLargeFont() {
+        val file = imageFixture()
+        try {
+            audit("裁剪封面", "使用封面", "取消") {
+                NotebookCoverCropDialog(android.net.Uri.fromFile(file), UiLanguage.SIMPLIFIED_CHINESE, {}, {})
+            }
+        } finally { file.delete() }
     }
 
     private fun open(text: String) {
