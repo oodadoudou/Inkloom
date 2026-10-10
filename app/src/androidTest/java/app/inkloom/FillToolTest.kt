@@ -181,6 +181,43 @@ class FillToolTest {
         assertTrue("a current-layer reference ignores the editing-layer exclusion", fill(400L) in 80..120)
     }
 
+    @Test fun referenceLayerFallbackNeverReintroducesAnExcludedEditingLayer() {
+        var committedWidth = 0
+        fun border() = PixelTileSurface(200, 200).also { surface ->
+            surface.beginWrite("border").use { w ->
+                for (offset in -4..4) for (c in 50..150) {
+                    w.setPixel(c, 50 + offset, Color.BLACK); w.setPixel(c, 150 + offset, Color.BLACK)
+                    w.setPixel(50 + offset, c, Color.BLACK); w.setPixel(150 + offset, c, Color.BLACK)
+                }
+                w.commit().close()
+            }
+        }
+        val view = canvas {
+            tool = EditorTool.FILL; fingerDrawingEnabled = true; pagePaperColor = Color.WHITE
+            pageModelWidth = 200f; pageModelHeight = 200f; activeLayerId = "color"
+            referenceTarget = ReferenceTarget.REFERENCE_LAYERS; referenceLayerIds = setOf("color")
+            layerOrder = listOf("color", "line")
+            setRasterLayerSurfaces(mapOf("color" to border(), "line" to PixelTileSurface(200, 200)))
+            onSparseFillCommitted = { mask, _, _, _ -> committedWidth = mask.nonZeroBounds()?.width ?: 0 }
+        }
+        fun fill(time: Long): Int {
+            send(view, time, MotionEvent.ACTION_DOWN, 100f, 100f); send(view, time + 50L, MotionEvent.ACTION_UP, 100f, 100f)
+            return committedWidth
+        }
+        assertTrue("the editing layer is the only reference layer and bounds the fill", fill(0L) in 80..120)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.excludeActiveLayerFromReference = true }
+        assertEquals("excluding it leaves nothing to refer to, so the fill covers the canvas", 200, fill(100L))
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.referenceLayerIds = emptySet() }
+        assertEquals("no marked reference layer: the fallback also respects the exclusion", 200, fill(200L))
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.excludeActiveLayerFromReference = false }
+        assertTrue("without the exclusion the fallback still uses the editing layer", fill(300L) in 80..120)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.excludeActiveLayerFromReference = true; view.referenceLayerIds = setOf("color", "line")
+            view.setRasterLayerSurfaces(mapOf("color" to border(), "line" to border()))
+        }
+        assertTrue("other reference layers still apply when the editing layer is excluded", fill(400L) in 80..120)
+    }
+
     @Test fun referenceTargetConfinesFillToMarkedLineArtLayer() {
         var committedWidth = 0f
         val color = PixelTileSurface(200, 200)

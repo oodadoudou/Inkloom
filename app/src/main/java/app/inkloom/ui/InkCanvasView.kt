@@ -4677,7 +4677,8 @@ class InkCanvasView(context: Context) : View(context) {
         val referenced = when (referenceTarget) {
             ReferenceTarget.ALL_VISIBLE -> multiple
             ReferenceTarget.ACTIVE_LAYER -> setOf(activeLayerId).intersect(visibleNonDraft)
-            ReferenceTarget.REFERENCE_LAYERS -> referenceLayerIds.intersect(multiple).ifEmpty { setOf(activeLayerId).intersect(visibleNonDraft) }
+            // The fallback to the editing layer must not bring back an explicitly excluded layer.
+            ReferenceTarget.REFERENCE_LAYERS -> referenceLayerIds.intersect(multiple).ifEmpty { setOf(activeLayerId).intersect(multiple) }
         }
         drawPageContent(canvas, includeInteractionOverlays = false, referencedLayerIds = referenced, includePageBackground = includePaper)
         return bitmap
