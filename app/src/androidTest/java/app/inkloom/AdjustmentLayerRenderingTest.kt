@@ -244,4 +244,43 @@ class AdjustmentLayerRenderingTest {
             assets.releaseRasterTileReservation(baseRef)
         }
     }
+
+    @Test fun adjustmentsCorrectRetainedObjectsAndClippedObjectLayersInCanvasExportAndComposite() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val assets = DocumentAssetService(instrumentation.targetContext)
+        val below = InkLayer(id = "below", name = "Below")
+        val objects = InkLayer(id = "objects", name = "Objects")
+        fun shape(id: String, x: Float, color: Long) = app.inkloom.document.PageElement.Shape(x = x, y = 0f, width = 32f, height = 64f,
+            layerId = id, kind = app.inkloom.document.ShapeKind.RECTANGLE, colorArgb = color, fillArgb = color, strokeWidth = 0f)
+        val elements = listOf(shape(below.id, .5f, 0xFF404040), shape(objects.id, 0f, 0xFF404040))
+        for (clipped in listOf(false, true)) {
+            val adjust = InkLayer(id = "adjust", name = "Invert", role = LayerRole.ADJUSTMENT, clippedToBelow = clipped,
+                adjustment = LayerAdjustment(LayerAdjustmentKind.INVERT))
+            val page = InkPage(width = 64f, height = 64f, background = PageBackground.Paper(0xFFFFFFFF),
+                layers = listOf(below, objects, adjust), elements = elements)
+            val inverted = Color.rgb(191, 191, 191); val original = Color.rgb(64, 64, 64)
+            val exported = assets.renderPageBitmap(page, 64)
+            val composite = assets.renderPageCompositeSurface(page, 64, 64)
+            try {
+                assertEquals("object pixels are corrected (clipped=$clipped)", inverted, exported.getPixel(16, 32))
+                assertEquals("objects on other layers follow the clipping scope", if (clipped) original else inverted, exported.getPixel(48, 32))
+                assertEquals(exported.getPixel(16, 32), composite.pixelAt(16, 32))
+                assertEquals(exported.getPixel(48, 32), composite.pixelAt(48, 32))
+                instrumentation.runOnMainSync {
+                    val bitmaps = listOf(below, objects).associate { it.id to app.inkloom.ui.LayerElementBitmaps(assets.renderElementLayerBitmap(page, it.id, 64), null) }
+                    val view = InkCanvasView(instrumentation.targetContext).apply {
+                        layout(0, 0, 64, 64); pagePaperColor = Color.WHITE
+                        setDocumentLayers(page.layers); layerOrder = listOf(below.id, objects.id)
+                        clippedLayers = if (clipped) setOf(adjust.id) else emptySet()
+                        setLayerElementBitmaps(bitmaps)
+                    }
+                    val live = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
+                    try {
+                        view.draw(Canvas(live))
+                        for (x in listOf(16, 48)) assertEquals("canvas matches export at $x", exported.getPixel(x, 32), live.getPixel(x, 32))
+                    } finally { live.recycle(); bitmaps.values.forEach { it.base?.recycle() } }
+                }
+            } finally { exported.recycle() }
+        }
+    }
 }
