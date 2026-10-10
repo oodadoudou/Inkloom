@@ -55,7 +55,7 @@ internal fun BrushSourceEditor(preset:BrushPresetV5,role:BrushSourceRole,workspa
     }
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if(uri!=null)edit { workspace.import(uri) } }
     AlertDialog(onDismissRequest={if(!busy)onDismiss()},title={Text(tr("Source editor","来源编辑"))},
-        text={Column(Modifier.width(440.dp).heightIn(max=600.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+        text={Column(dialogContentWidth(440.dp).heightIn(max=600.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)) {
             Text(tr("Edits use a copy. Images larger than 2048 px are reduced for brush use.","使用独立副本编辑。超过 2048 px 的图片会缩小为笔刷素材。"))
             val group=when(role) {
                 BrushSourceRole.SHAPE -> BrushOptionGroup.TIP

@@ -243,7 +243,7 @@ internal fun CspColorPanel(
         AlertDialog(onDismissRequest = ::cancel, modifier = Modifier.imePadding(),
             properties = DialogProperties(decorFitsSystemWindows = false),
             title = { Text(tr("Color values", "颜色数值")) }, text = {
-            Column(Modifier.width(320.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(dialogContentWidth(320.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (rgbValues) {
                     listOf("R" to 16, "G" to 8, "B" to 0).forEach { (label, shift) ->
                         ColorValueInput(label, (draft.color ushr shift and 255).toFloat(), 255f) { value ->
