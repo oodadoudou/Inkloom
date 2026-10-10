@@ -1,6 +1,10 @@
 package app.inkloom.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -182,7 +186,8 @@ internal fun WorkspaceToolPropertiesPanel(
             }
         }
         HorizontalDivider(color = Color(0xFF595959))
-        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        // Short docked panels and large fonts: every property stays reachable by scrolling.
+        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp)) {
             if (tool in setOf(EditorTool.FILL, EditorTool.SELECT)) WorkspacePropertySwitch(
                 language.text("Exclude draft layers", "排除草稿图层"), settings.excludeDraftLayersFromReference,
             ) { onSettings(settings.copy(excludeDraftLayersFromReference = it)) }
@@ -395,9 +400,11 @@ private fun ToolPaletteOrganizerDialog(settings: AppSettings, onSettings: (AppSe
 @Composable
 private fun WorkspacePropertySwitch(label: String, checked: Boolean, modifier: Modifier = Modifier,
                                     onCheckedChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    // The whole row, including its label, is one switch target for touch and accessibility.
+    Row(modifier.fillMaxWidth().toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange),
+        verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f), color = Ink, fontSize = 11.sp)
-        Switch(checked = checked, onCheckedChange = onCheckedChange, modifier = modifier)
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 
