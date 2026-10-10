@@ -2097,24 +2097,27 @@ class InkCanvasView(context: Context) : View(context) {
         applyColorManagement: Boolean,
     ): Boolean {
         val preview=if(applyColorManagement) colorPreview else null
-        if (!includeElements || layerFilter != null) return false
+        if (!includeElements) return false
+        // Reference sampling must use the same adjustment/group/mask math as the canvas.
+        // The filter controls node visibility, never the tree or clipping-base identity.
+        val reference = layerFilter != null
         val through = boundDocumentLayers?.any { it.role == app.inkloom.document.LayerRole.FOLDER && it.passThrough } == true
         val hasAdjustments = boundDocumentLayers?.any {
             it.role == app.inkloom.document.LayerRole.ADJUSTMENT && it.visible && it.adjustment != null
         } == true
         val hasElements = layerElementBitmaps.isNotEmpty() || mixedElementOverrides.values.any { it != null }
         val customBlend = layerBlendModes.values.any { it.requiresPixelCompositor }
-        if (hasElements && !through && !hasAdjustments && !customBlend && preview==null) return false
-        if (rasterLayerTileSurfaces.isEmpty() && (!hasElements || (!through && !hasAdjustments && !customBlend && preview==null))) return false
+        if (hasElements && !through && !hasAdjustments && !customBlend && preview==null && !reference) return false
+        if (rasterLayerTileSurfaces.isEmpty() && (!hasElements || (!through && !hasAdjustments && !customBlend && preview==null && !reference))) return false
         if (layerMasks.any { (layerId, mask) ->
                 layerId in rasterLayerTileSurfaces && mask.enabled && layerMaskSurfaces[layerId] == null
             }) return false
 
-        val contentIds = rasterLayerTileSurfaces.keys + if (through || hasAdjustments || customBlend || preview!=null)
+        val contentIds = rasterLayerTileSurfaces.keys + if (through || hasAdjustments || customBlend || preview!=null || reference)
             (layerElementBitmaps.keys + mixedElementOverrides.keys) else emptySet()
         val orderedIds = (layerOrder.filter(contentIds::contains) + contentIds.filterNot(layerOrder::contains)).distinct()
         if (orderedIds.isEmpty()) return false
-        val directSourceOverStack = preview==null && !hasElements && !hasAdjustments && boundDocumentLayers?.none { it.role == app.inkloom.document.LayerRole.FOLDER } != false && orderedIds.all { layerId ->
+        val directSourceOverStack = !reference && preview==null && !hasElements && !hasAdjustments && boundDocumentLayers?.none { it.role == app.inkloom.document.LayerRole.FOLDER } != false && orderedIds.all { layerId ->
             (layerOpacities[layerId] ?: 1f) >= .999f &&
                 (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL) == LayerBlendMode.NORMAL &&
                 layerColorReplacements[layerId] == null &&
@@ -2190,7 +2193,7 @@ class InkCanvasView(context: Context) : View(context) {
                 colorReplacement = layerColorReplacements[layerId],
                 mask = layerMasks[layerId]?.takeIf(LayerMask::enabled)?.let { mask ->
                     layerMaskSurfaces[layerId]?.let(mask::expressed) },
-                clipToBaseBelow = layerId in clippedLayers)
+                clipToBaseBelow = layerId in clippedLayers, visible = layerFilter == null || layerId in layerFilter)
         } } finally { contentCache?.endFrame() }
         val nodes = boundDocumentLayers?.let { layers -> LayerCompositingTree.project<PixelProjectionNode>(layers,
             paint = { layer -> if (layer.role == app.inkloom.document.LayerRole.ADJUSTMENT && layer.adjustment != null)
@@ -2198,10 +2201,10 @@ class InkCanvasView(context: Context) : View(context) {
                     layerOpacities[layer.id] ?: layer.opacity,
                     (layerBlendModes[layer.id] ?: layer.blendMode).toPixelBlendMode(),
                     layerMasks[layer.id]?.takeIf { it.enabled }?.let { mask ->
-                        layerMaskSurfaces[layer.id]?.let(mask::expressed) }, layer.visible, layer.id in clippedLayers)
+                        layerMaskSurfaces[layer.id]?.let(mask::expressed) }, layer.visible && (layerFilter == null || layer.id in layerFilter), layer.id in clippedLayers)
             else PixelProjectionNode.Paint((inputs[layer.id] ?: PixelLayerProjectionInput(layer.id,
                 cache.emptySnapshot, opacity = layer.opacity, blendMode = layer.blendMode.toPixelBlendMode(),
-                clipToBaseBelow = layer.clippedToBelow)).copy(visible = layer.visible)) },
+                clipToBaseBelow = layer.clippedToBelow)).copy(visible = layer.visible && (layerFilter == null || layer.id in layerFilter))) },
             group = { layer, children -> PixelProjectionNode.Group(layer.id, children,
                 layerOpacities[layer.id] ?: layer.opacity,
                 (layerBlendModes[layer.id] ?: layer.blendMode).toPixelBlendMode(),

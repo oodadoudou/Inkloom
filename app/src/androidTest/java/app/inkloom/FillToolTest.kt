@@ -22,6 +22,23 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class FillToolTest {
+    @Test fun referenceSelectionIncludesVisibleAdjustmentsAndKeepsExcludedScope() {
+        val ink = app.inkloom.document.InkLayer(id="ink",name="Ink")
+        val adjustment = app.inkloom.document.InkLayer(id="adjust",name="Invert",role=app.inkloom.document.LayerRole.ADJUSTMENT,
+            adjustment=app.inkloom.document.LayerAdjustment(app.inkloom.document.LayerAdjustmentKind.INVERT))
+        val view = canvas {
+            setDocumentLayers(listOf(ink,adjustment)); layerOrder=listOf("ink","adjust")
+            setRasterLayerSurfaces(mapOf("ink" to borderSurface()))
+            pageModelWidth=200f;pageModelHeight=200f;pagePaperColor=Color.WHITE;activeLayerId="ink"
+            bindDocumentSelectionState(app.inkloom.engine.v5.selection.DocumentSelectionRuntime(64).stateFor("reference-adjustments","page",200,200))
+        }
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            assertFalse("Visible inversion turns the black border white for reference selection",view.selectColorRange(Color.BLACK,.05f,false))
+            view.referenceTarget=ReferenceTarget.ACTIVE_LAYER
+            assertTrue("Current layer deliberately excludes the adjustment",view.selectColorRange(Color.BLACK,.05f,false))
+        }
+    }
+
     @Test fun manualFillSubToolsCommitRasterMasks() {
         FillSubTool.entries.filterNot { it == FillSubTool.BUCKET }.forEach { subTool ->
             var committed = false
