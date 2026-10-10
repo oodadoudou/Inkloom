@@ -458,8 +458,8 @@ class InkloomPinchThenWriteTest {
         // Keep the entire initial contact inside the current paper even when system insets or
         // compact toolbars reduce the editor height. The exercised pinch moves this band beyond
         // the original AndroidView bounds, which is the clipping regression this test protects.
-        val startDy = view.height * .24f
-        val endDy = view.height * .30f
+        val startDy = view.height * .215f
+        val endDy = view.height * .223f
         // The native pinch/write test covers proxy routing. Here a local stylus stream creates a
         // deterministic stroke whose transformed rendering is then checked outside layout bounds.
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -559,6 +559,11 @@ class InkloomPinchThenWriteTest {
         val endScreenY = paperCentreY + panY + scale * endDy
         val canvasBottom = location[1] + view.height
         assertTrue("Stroke must map below the canvas layout bottom ($canvasBottom) after zoom ($startScreenY..$endScreenY)", startScreenY > canvasBottom)
+        val visibleViewport = android.graphics.Rect()
+        val proxy = requireNotNull(findInkViewportProxy())
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { proxy.getGlobalVisibleRect(visibleViewport) }
+        assertTrue("The entire probe must remain above system navigation ($endScreenY < ${visibleViewport.bottom})",
+            endScreenY < visibleViewport.bottom)
 
         val pfd = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("screencap -p")
         val rawPng = java.io.FileInputStream(pfd.fileDescriptor).use { it.readBytes() }
