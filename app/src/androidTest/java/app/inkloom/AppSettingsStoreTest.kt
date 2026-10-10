@@ -192,6 +192,12 @@ class AppSettingsStoreTest {
             AppSettingsStore(context).save(AppSettings(excludeLockedLayersFromReference = true, excludeActiveLayerFromReference = true))
             org.junit.Assert.assertTrue(AppSettingsStore(context).load().excludeLockedLayersFromReference)
             org.junit.Assert.assertTrue(AppSettingsStore(context).load().excludeActiveLayerFromReference)
+            AppSettingsStore(context).save(AppSettings(excludePaperFromReference = true,
+                excludeImportedBackgroundFromReference = true, excludeTextFromReference = true))
+            val restored = AppSettingsStore(context).load()
+            assertTrue(restored.excludePaperFromReference)
+            assertTrue(restored.excludeImportedBackgroundFromReference)
+            assertTrue(restored.excludeTextFromReference)
         } finally {
             preferences.edit().clear().commit()
         }

@@ -47,8 +47,24 @@ class ToolWorkspacePanelsWindowTest {
         compose.onNodeWithText("Exclude draft layers").assertExists()
         compose.onNodeWithText("Exclude locked layers").performScrollTo().performClick()
         compose.onNodeWithText("Exclude editing layer").performScrollTo().performClick()
+        compose.onNodeWithText("Exclude paper").performScrollTo().performClick()
+        compose.onNodeWithText("Exclude imported page background").performScrollTo().performClick()
+        compose.onNodeWithText("Exclude text").performScrollTo().performClick()
         compose.waitUntil(5_000) { AppSettingsStore(compose.activity).load().let {
-            it.excludeLockedLayersFromReference && it.excludeActiveLayerFromReference } }
+            it.excludeLockedLayersFromReference && it.excludeActiveLayerFromReference &&
+                it.excludePaperFromReference && it.excludeImportedBackgroundFromReference && it.excludeTextFromReference } }
+        compose.runOnIdle {
+            fun find(view: android.view.View): app.inkloom.ui.InkCanvasView? {
+                if (view is app.inkloom.ui.InkCanvasView && view.isShown) return view
+                if (view is android.view.ViewGroup) for (i in 0 until view.childCount) find(view.getChildAt(i))?.let { return it }
+                return null
+            }
+            val canvas = requireNotNull(find(compose.activity.window.decorView))
+            assertTrue(canvas.excludePaperFromReference)
+            assertTrue(canvas.excludeImportedBackgroundFromReference)
+            assertTrue(canvas.excludeTextFromReference)
+            assertTrue(canvas.renderTextFreeReferenceLayer != null)
+        }
     }
 
     private val compose = createAndroidComposeRule<MainActivity>()

@@ -972,6 +972,9 @@ class InkCanvasView(context: Context) : View(context) {
     var excludeDraftLayersFromReference: Boolean = true
     var excludeLockedLayersFromReference: Boolean = false
     var excludeActiveLayerFromReference: Boolean = false
+    var excludePaperFromReference: Boolean = false
+    var excludeImportedBackgroundFromReference: Boolean = false
+    var excludeTextFromReference: Boolean = false
     var liquifyMode: LiquifyMode = LiquifyMode.PUSH
     var liquifyStrength: Float = .55f
         set(value) { field = value.coerceIn(0f, 1f) }
@@ -1354,6 +1357,7 @@ class InkCanvasView(context: Context) : View(context) {
         protectedLayerIds.addAll(value)
     }
 
+    var pageHasImportedBackground: Boolean = false
     private var backgroundFrame: RectF? = null
     fun setPageBackground(bitmap: Bitmap?, frame: RectF? = null) {
         if (backgroundBitmap === bitmap && backgroundFrame == frame) return
@@ -1364,7 +1368,15 @@ class InkCanvasView(context: Context) : View(context) {
         invalidate()
     }
 
+    private var retainedElements: List<PageElement> = emptyList()
+    private var referenceElementOverrides: Map<String, LayerElementBitmaps> = emptyMap()
+    var renderTextFreeReferenceLayer: ((String, List<PageElement>) -> LayerElementBitmaps)? = null
+
+    private fun retainedLayerContent(layerId: String): LayerElementBitmaps? =
+        referenceElementOverrides[layerId] ?: if (mixedElementOverrides.containsKey(layerId)) mixedElementOverrides[layerId] else layerElementBitmaps[layerId]
+
     fun setLayerElementBitmaps(value: Map<String, LayerElementBitmaps>, elements: List<PageElement>? = null) {
+        if (elements != null) retainedElements = elements
         if(elements != null) mixedElementExpected.toMap().forEach { (layer,edit) ->
             if(elements.filter { it.id in edit.sourceIds } == edit.replacement) {
                 mixedElementOverrides.remove(layer); mixedElementExpected.remove(layer)
@@ -2139,7 +2151,7 @@ class InkCanvasView(context: Context) : View(context) {
             return true
         }
         val firstSurface = orderedIds.firstNotNullOfOrNull { rasterLayerTileSurfaces[it]?.snapshot() }
-            ?: orderedIds.firstNotNullOfOrNull { layerElementBitmaps[it]?.baseSurface ?: layerElementBitmaps[it]?.additionsSurface }
+            ?: orderedIds.firstNotNullOfOrNull { retainedLayerContent(it)?.baseSurface ?: retainedLayerContent(it)?.additionsSurface }
         val geometry = RasterProjectionGeometry(
             firstSurface?.logicalWidth ?: width,
             firstSurface?.logicalHeight ?: height,
@@ -2152,20 +2164,24 @@ class InkCanvasView(context: Context) : View(context) {
                     surface.tileSize != geometry.tileSize || surface.pixelFormat != geometry.pixelFormat
             }) return false
 
-        var cache = rasterLayerProjectionCache
+        var cache = if (reference) null else rasterLayerProjectionCache
         if (cache == null || rasterLayerProjectionGeometry != geometry) {
-            releaseRasterLayerProjection()
+            if (!reference) releaseRasterLayerProjection()
             cache = PixelGroupProjectionCache(
                 width = geometry.width,
                 height = geometry.height,
                 tileSize = geometry.tileSize,
                 format = geometry.pixelFormat,
-                surfaceId = "live-raster-projection-${System.identityHashCode(this)}",
+                surfaceId = "${if (reference) "reference" else "live"}-raster-projection-${System.identityHashCode(this)}",
             )
-            rasterLayerProjectionCache = cache
-            rasterLayerProjectionGeometry = geometry
+            if (!reference) {
+                rasterLayerProjectionCache = cache
+                rasterLayerProjectionGeometry = geometry
+            }
         }
-        val contentCache = if (hasElements) {
+        val contentCache = if (hasElements && reference) {
+            LayerContentProjectionCache(geometry.width, geometry.height, geometry.tileSize, geometry.pixelFormat)
+        } else if (hasElements) {
             if (retainedContentProjectionCache == null || retainedContentProjectionGeometry != geometry) {
                 retainedContentProjectionCache = LayerContentProjectionCache(geometry.width, geometry.height, geometry.tileSize, geometry.pixelFormat)
                 retainedContentProjectionGeometry = geometry
@@ -2183,7 +2199,7 @@ class InkCanvasView(context: Context) : View(context) {
                     ActiveStrokePresentationBlend.SOURCE_ATOP -> PixelActiveDeltaBlend.SOURCE_ATOP
                     else -> PixelActiveDeltaBlend.SOURCE_OVER
                 }) }
-            val elements = if (mixedElementOverrides.containsKey(layerId)) mixedElementOverrides[layerId] else layerElementBitmaps[layerId]
+            val elements = retainedLayerContent(layerId)
             val composed = contentCache?.resolve(layerId, raw, elements?.base, elements?.additions,
                 layerId in alphaLockedLayers && alphaLockBaseContentIds[layerId].orEmpty().isNotEmpty(), elements?.baseSurface, elements?.additionsSurface)
             val content = if (composed != null) PixelLayerProjectionInput(layerId, composed)
@@ -2215,14 +2231,16 @@ class InkCanvasView(context: Context) : View(context) {
         val update = cache.update(nodes)
         lastRasterProjectionRecomposedTileCount = update.recomposedTileCount
         v5RasterProjectionDrawCount++
-        rasterTileRenderer.draw(
+        try { rasterTileRenderer.draw(
             canvas,
             preview?.update(update.snapshot,if(includeBackdrop) colorBackdropPixels?.let { pixels ->
                 val frame=backgroundFrame
                 app.inkloom.color.IccBackdrop(pixels,frame?.left ?: 0f,frame?.top ?: 0f,frame?.right ?: 1f,frame?.bottom ?: 1f)
             } else null) ?: update.snapshot,
             RectF(0f, 0f, width.toFloat(), height.toFloat()),
-        )
+        ) } finally {
+            if (reference) rasterTileRenderer.releaseSurface(update.snapshot.surfaceId)
+        }
         return true
     }
 
@@ -2238,7 +2256,7 @@ class InkCanvasView(context: Context) : View(context) {
         layerId: String,
         includeElements: Boolean,
     ) {
-        val elements = if (includeElements) { if(mixedElementOverrides.containsKey(layerId)) mixedElementOverrides[layerId] else layerElementBitmaps[layerId] } else null
+        val elements = if (includeElements) retainedLayerContent(layerId) else null
         val rasterSurface = rasterLayerTileSurfaces[layerId]
         val baseIds = alphaLockBaseContentIds[layerId].orEmpty()
         val hasCapturedAlpha = layerId in alphaLockedLayers && baseIds.isNotEmpty()
@@ -4686,8 +4704,34 @@ class InkCanvasView(context: Context) : View(context) {
             // The fallback to the editing layer must not bring back an explicitly excluded layer.
             ReferenceTarget.REFERENCE_LAYERS -> referenceLayerIds.intersect(multiple).ifEmpty { setOf(activeLayerId).intersect(multiple) }
         }
-        drawPageContent(canvas, includeInteractionOverlays = false, referencedLayerIds = referenced, includePageBackground = includePaper)
-        return bitmap
+        val temporary = linkedMapOf<String, LayerElementBitmaps>()
+        val previousOverrides = referenceElementOverrides
+        try {
+            if (excludeTextFromReference) {
+                // Pending mixed-object edits may not have reached Compose yet.
+                val effectiveElements = mixedElementExpected.values.fold(retainedElements) { elements, edit ->
+                    elements.filterNot { it.id in edit.sourceIds } + edit.replacement
+                }
+                val textLayers = effectiveElements.filterIsInstance<PageElement.Text>()
+                    .mapTo(linkedSetOf()) { it.layerId }.intersect(referenced)
+                if (textLayers.isNotEmpty()) {
+                    val renderer = checkNotNull(renderTextFreeReferenceLayer) { "Text-free reference renderer is not bound" }
+                    textLayers.forEach { temporary[it] = renderer(it, effectiveElements) }
+                    referenceElementOverrides = temporary
+                }
+            }
+            val includeBackground = includePaper && if (pageHasImportedBackground)
+                !excludeImportedBackgroundFromReference else !excludePaperFromReference
+            drawPageContent(canvas, includeInteractionOverlays = false, referencedLayerIds = referenced,
+                includePageBackground = includeBackground)
+            return bitmap
+        } catch (failure: Throwable) {
+            bitmap.recycle()
+            throw failure
+        } finally {
+            referenceElementOverrides = previousOverrides
+            temporary.values.forEach(LayerElementBitmaps::recycle)
+        }
     }
 
     private fun commitFillGesture() {
@@ -6819,7 +6863,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         layerIds.forEach { layerId ->
             include(rasterLayerTileSurfaces[layerId]?.snapshot())
-            val elements = if (mixedElementOverrides.containsKey(layerId)) mixedElementOverrides[layerId] else layerElementBitmaps[layerId]
+            val elements = retainedLayerContent(layerId)
             include(elements?.baseSurface); include(elements?.additionsSurface)
             listOf(elements?.base to elements?.baseSurface, elements?.additions to elements?.additionsSurface).forEach { (bitmap, surface) ->
                 if (surface == null && bitmap != null && !bitmap.isRecycled) {

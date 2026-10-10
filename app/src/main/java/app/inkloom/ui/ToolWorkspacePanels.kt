@@ -197,6 +197,15 @@ internal fun WorkspaceToolPropertiesPanel(
             if (tool in setOf(EditorTool.FILL, EditorTool.SELECT)) WorkspacePropertySwitch(
                 language.text("Exclude editing layer", "排除编辑中的图层"), settings.excludeActiveLayerFromReference,
             ) { onSettings(settings.copy(excludeActiveLayerFromReference = it)) }
+            if (tool in setOf(EditorTool.FILL, EditorTool.SELECT)) WorkspacePropertySwitch(language.text("Exclude paper", "排除纸张"), settings.excludePaperFromReference) {
+                onSettings(settings.copy(excludePaperFromReference = it))
+            }
+            if (tool in setOf(EditorTool.FILL, EditorTool.SELECT)) WorkspacePropertySwitch(language.text("Exclude imported page background", "排除导入的页面背景"), settings.excludeImportedBackgroundFromReference) {
+                onSettings(settings.copy(excludeImportedBackgroundFromReference = it))
+            }
+            if (tool in setOf(EditorTool.FILL, EditorTool.SELECT)) WorkspacePropertySwitch(language.text("Exclude text", "排除文字"), settings.excludeTextFromReference) {
+                onSettings(settings.copy(excludeTextFromReference = it))
+            }
             when (tool) {
                 EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY -> {
                     WorkspacePropertySlider(language.text("Size", "大小"), "${brushSize.toInt()} px",

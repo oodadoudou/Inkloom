@@ -40,6 +40,20 @@ class AppSettingsBackupCodecTest {
         assertFalse(defaults.excludeLockedLayersFromReference); assertFalse(defaults.excludeActiveLayerFromReference)
     }
 
+    @Test fun `paper imported background and text exclusions round trip and default off`() {
+        val configured = AppSettings(excludePaperFromReference = true,
+            excludeImportedBackgroundFromReference = true, excludeTextFromReference = true)
+        val restored = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(configured)).getOrThrow().settings
+        assertTrue(restored.excludePaperFromReference)
+        assertTrue(restored.excludeImportedBackgroundFromReference)
+        assertTrue(restored.excludeTextFromReference)
+        val old = """{"format":"inkloom-app-settings","version":1,"settings":{}}""".encodeToByteArray()
+        val defaults = AppSettingsBackupCodec.decode(old).getOrThrow().settings
+        assertFalse(defaults.excludePaperFromReference)
+        assertFalse(defaults.excludeImportedBackgroundFromReference)
+        assertFalse(defaults.excludeTextFromReference)
+    }
+
     @Test fun `liquify parameters survive backup`() {
         val settings = AppSettings(liquifyStrengthScale = 1.4f,
             liquifyDistortion = .45f, liquifyMomentum = .7f)

@@ -132,6 +132,9 @@ data class AppSettings(
     val excludeLockedLayersFromReference: Boolean = false,
     /** CSP "Exclude editing layer": refer to other layers while filling the current one. */
     val excludeActiveLayerFromReference: Boolean = false,
+    val excludePaperFromReference: Boolean = false,
+    val excludeImportedBackgroundFromReference: Boolean = false,
+    val excludeTextFromReference: Boolean = false,
     val eyedropperReferenceTarget: ReferenceTarget = ReferenceTarget.ALL_VISIBLE,
     val eyedropperIncludePaper: Boolean = true,
     val correctLineMode: CorrectLineMode = CorrectLineMode.SMOOTH,
@@ -300,6 +303,9 @@ class AppSettingsStore(context: Context) {
             excludeDraftLayersFromReference = preferences.getBoolean("excludeDraftLayersFromReference", true),
             excludeLockedLayersFromReference = preferences.getBoolean("excludeLockedLayersFromReference", false),
             excludeActiveLayerFromReference = preferences.getBoolean("excludeActiveLayerFromReference", false),
+            excludePaperFromReference = preferences.getBoolean("excludePaperFromReference", false),
+            excludeImportedBackgroundFromReference = preferences.getBoolean("excludeImportedBackgroundFromReference", false),
+            excludeTextFromReference = preferences.getBoolean("excludeTextFromReference", false),
             referenceTarget = enumValue(preferences.getString("referenceTarget", null), ReferenceTarget.ALL_VISIBLE),
             eyedropperReferenceTarget = enumValue(preferences.getString("eyedropperReferenceTarget", null), ReferenceTarget.ALL_VISIBLE),
             eyedropperIncludePaper = preferences.getBoolean("eyedropperIncludePaper", true),
@@ -446,6 +452,9 @@ class AppSettingsStore(context: Context) {
             .putBoolean("excludeDraftLayersFromReference", persisted.excludeDraftLayersFromReference)
             .putBoolean("excludeLockedLayersFromReference", persisted.excludeLockedLayersFromReference)
             .putBoolean("excludeActiveLayerFromReference", persisted.excludeActiveLayerFromReference)
+            .putBoolean("excludePaperFromReference", persisted.excludePaperFromReference)
+            .putBoolean("excludeImportedBackgroundFromReference", persisted.excludeImportedBackgroundFromReference)
+            .putBoolean("excludeTextFromReference", persisted.excludeTextFromReference)
             .putString("referenceTarget", persisted.referenceTarget.name)
             .putString("eyedropperReferenceTarget", persisted.eyedropperReferenceTarget.name)
             .putBoolean("eyedropperIncludePaper", persisted.eyedropperIncludePaper)

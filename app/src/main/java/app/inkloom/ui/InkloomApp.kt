@@ -5422,20 +5422,7 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
         page.layers.mapNotNull { layer ->
             val elementIds = page.elements.filter { it.layerId == layer.id }.mapTo(linkedSetOf(), PageElement::id)
             if (elementIds.isEmpty() || !LayerHierarchy.effectiveVisible(page.layers, layer)) return@mapNotNull null
-            val capturedIds = layer.alphaLockBaseContentIds.toSet()
-            val splitAtAlphaLock = layer.alphaLock && capturedIds.isNotEmpty()
-            val baseElementIds = if (splitAtAlphaLock) elementIds.intersect(capturedIds) else elementIds
-            val addedElementIds = if (splitAtAlphaLock) elementIds - capturedIds else emptySet()
-            val renderHeight = (rasterRenderWidth * PageCropTransform.visibleHeight(page) / PageCropTransform.visibleWidth(page)).toInt().coerceAtLeast(1)
-            if (page.colorManagement.highPrecision || page.colorManagement.assignedProfile!=null || page.colorManagement.softProof || rasterRenderWidth.toLong() * renderHeight > 4_194_304L) {
-                layer.id to LayerElementBitmaps(null, null,
-                    baseElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerSurface(page, layer.id, rasterRenderWidth, renderHeight, it) },
-                    addedElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerSurface(page, layer.id, rasterRenderWidth, renderHeight, it) })
-            } else {
-                val base = baseElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerBitmap(page, layer.id, rasterRenderWidth, it) }
-                val additions = addedElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerBitmap(page, layer.id, rasterRenderWidth, it) }
-                layer.id to LayerElementBitmaps(base, additions)
-            }
+            layer.id to renderRetainedLayerElements(assets, page, layer, rasterRenderWidth)
         }.toMap()
     }
     DisposableEffect(layerElementBitmaps) { onDispose { layerElementBitmaps.values.forEach(LayerElementBitmaps::recycle) } }
@@ -5606,6 +5593,11 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
                     android.graphics.RectF(it.left / renderedPage.width, it.top / renderedPage.height,
                         (it.left + it.width) / renderedPage.width, (it.top + it.height) / renderedPage.height) })
                 view.setLayerElementBitmaps(layerElementBitmaps, page.elements)
+                view.pageHasImportedBackground = page.background !is PageBackground.Paper
+                view.renderTextFreeReferenceLayer = { layerId, elements ->
+                    renderRetainedLayerElements(assets, page.copy(elements = elements),
+                        page.layers.first { it.id == layerId }, rasterRenderWidth, excludeText = true)
+                }
                 view.setRasterLayerSurfaces(filterController.presentationSurfaces(rasterLayerSurfaces))
                 view.activeLayerId = activeLayerId
                 view.selectionTransformLayerIds = transformLayerIds
@@ -5849,6 +5841,9 @@ internal fun InkCanvasView.applyBrushConfiguration(
     excludeDraftLayersFromReference = settings.excludeDraftLayersFromReference
     excludeLockedLayersFromReference = settings.excludeLockedLayersFromReference
     excludeActiveLayerFromReference = settings.excludeActiveLayerFromReference
+    excludePaperFromReference = settings.excludePaperFromReference
+    excludeImportedBackgroundFromReference = settings.excludeImportedBackgroundFromReference
+    excludeTextFromReference = settings.excludeTextFromReference
     eyedropperReferenceTarget = settings.eyedropperReferenceTarget
     eyedropperIncludePaper = settings.eyedropperIncludePaper
     fillSensitivity = settings.fillSensitivity
