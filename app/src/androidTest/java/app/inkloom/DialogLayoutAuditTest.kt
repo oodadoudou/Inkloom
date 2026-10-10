@@ -142,6 +142,12 @@ class DialogLayoutAuditTest {
         close("保存")
         section("Views"); open("管理面板布局…"); check("面板布局", null, "完成"); close("完成")
         section("Share"); open("导出当前页"); check("导出页面", "导出", "取消"); close("取消")
+        // Dialogs without their own scroll container that the static scan flagged.
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("形状")).performScrollTo().performClick()
+        check("绘制形状", "绘制", "取消"); close("取消")
+        compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("选择"))[0].performClick(); compose.waitForIdle()
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("选区操作")).performClick(); compose.waitForIdle()
+        open("色域选择…"); check("色域选择", "选择", "取消"); close("取消")
     }
 
     private fun open(text: String) {
