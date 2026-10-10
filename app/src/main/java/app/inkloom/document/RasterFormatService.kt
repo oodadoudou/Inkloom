@@ -34,10 +34,10 @@ internal class RasterFormatService(private val context: Context, private val ass
         val layers: List<InkLayer>, val files: Map<String, String>, val masks: Map<String, String>)
 
     fun export(source: InkPage, uri: Uri, options: PageRasterExportOptions) {
-        // Inkloom's own layered package keeps drafts as drafts; other outputs follow the option.
+        // Inkloom's own layered package always keeps drafts as drafts; other outputs follow the option.
         val page = when {
-            options.includeDraftLayers -> DraftLayerOutput.asOrdinaryLayers(source)
             options.format == RasterFileFormat.LAYERED_PNG -> source
+            options.includeDraftLayers -> DraftLayerOutput.asOrdinaryLayers(source)
             else -> DraftLayerOutput.withoutDrafts(source)
         }
         if(options.format == RasterFileFormat.PNG) { assets.exportPagePng(page, uri, options); return }

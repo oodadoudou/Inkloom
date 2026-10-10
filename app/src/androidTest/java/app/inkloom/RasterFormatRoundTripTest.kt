@@ -101,4 +101,30 @@ class RasterFormatRoundTripTest {
             } finally { file.delete() }
         } finally { assets.releaseRasterTileReservation(draftRef); assets.releaseRasterTileReservation(finalRef) }
     }
+
+    @Test fun layeredPngKeepsDraftFlagsAndPixelsWhetherOrNotDraftsAreIncluded() {
+        val assets=DocumentAssetService(context)
+        fun solid(color:Int,left:Int)=PixelTileSurface(64,64).also { surface ->
+            surface.beginWrite("fixture").use { write -> for(y in 10 until 30) for(x in left until left+20) write.setPixel(x,y,color); write.commit().close() }
+        }
+        val draftRef=assets.saveRasterTileSurface(solid(Color.BLUE,5)); val nestedRef=assets.saveRasterTileSurface(solid(Color.GREEN,35))
+        val sketch=InkLayer(id="sketch",name="Sketch",rasterTileSurface=draftRef,draft=true)
+        val folder=InkLayer(id="folder",name="Roughs",role=LayerRole.FOLDER,draft=true)
+        val nested=InkLayer(id="nested",name="Nested",parentId=folder.id,rasterTileSurface=nestedRef)
+        val page=InkPage(width=64f,height=64f,layers=listOf(sketch,folder,nested))
+        try { for(include in listOf(false,true)) {
+            val file=File(context.cacheDir,"layered-draft-$include.zip")
+            try {
+                assets.exportPageRaster(page,Uri.fromFile(file),PageRasterExportOptions(64,64,false,RasterFileFormat.LAYERED_PNG,includeDraftLayers=include))
+                val restored=assets.importArtwork(Uri.fromFile(file),file.name).pages.single()
+                fun layer(name:String)=restored.layers.single { it.name==name }
+                assertTrue("include=$include keeps the layer draft flag",layer("Sketch").draft)
+                assertTrue("include=$include keeps the folder draft flag",layer("Roughs").draft)
+                assertFalse(layer("Nested").draft)
+                assertTrue("nested layers still inherit the folder draft",LayerHierarchy.effectiveDraft(restored.layers,layer("Nested")))
+                assertEquals(Color.BLUE,assets.loadRasterTileSurface(requireNotNull(layer("Sketch").rasterTileSurface)).pixelAt(10,20))
+                assertEquals(Color.GREEN,assets.loadRasterTileSurface(requireNotNull(layer("Nested").rasterTileSurface)).pixelAt(40,20))
+            } finally { file.delete() }
+        } } finally { assets.releaseRasterTileReservation(draftRef); assets.releaseRasterTileReservation(nestedRef) }
+    }
 }

@@ -2,10 +2,13 @@ package app.inkloom.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import app.inkloom.document.*
 import app.inkloom.settings.UiLanguage
@@ -90,12 +93,17 @@ internal fun PageRasterExportDialog(page: InkPage, language: UiLanguage, onDismi
             if (format in setOf(RasterFileFormat.PSD, RasterFileFormat.OPEN_RASTER, RasterFileFormat.LAYERED_PNG)) Text(tr("Objects export as raster layers. Unsupported layer features report an error.", "对象导出为像素图层。未支持的图层特性会提示原因。"), style = MaterialTheme.typography.bodySmall)
             Row { Checkbox(background, { background = it }, enabled = format != RasterFileFormat.JPEG); Text(tr("Include paper", "包含纸张背景")) }
             if (page.layers.any { it.draft }) {
-                Row { Checkbox(drafts, { drafts = it }); Text(tr("Include draft layers", "包含草稿图层")) }
-                Text(tr("Drafts are left out unless included. Layered PNG keeps them as drafts.",
-                    "默认不输出草稿图层；分层 PNG 会保留其草稿标记。"), style = MaterialTheme.typography.bodySmall)
+                if (format == RasterFileFormat.LAYERED_PNG) Text(tr("Layered PNG keeps draft layers and their draft flags.",
+                    "分层 PNG 会保留草稿图层及其草稿标记。"), style = MaterialTheme.typography.bodySmall)
+                else {
+                    Row(Modifier.toggleable(drafts, role = Role.Checkbox) { drafts = it }, verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(drafts, onCheckedChange = null); Text(tr("Include draft layers", "包含草稿图层"))
+                    }
+                    Text(tr("Drafts are left out unless included.", "默认不输出草稿图层。"), style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
     }, confirmButton = { TextButton(enabled = w != null && h != null && w in 1..8192 && h in 1..8192,
-        onClick = { if (w != null && h != null) onExport(PageRasterExportOptions(w, h, background, format, includeDraftLayers = drafts)) }) { Text(tr("Export", "导出")) } },
+        onClick = { if (w != null && h != null) onExport(PageRasterExportOptions(w, h, background, format, includeDraftLayers = drafts && format != RasterFileFormat.LAYERED_PNG)) }) { Text(tr("Export", "导出")) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) } })
 }
