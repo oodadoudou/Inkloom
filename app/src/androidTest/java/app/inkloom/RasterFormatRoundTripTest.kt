@@ -127,4 +127,24 @@ class RasterFormatRoundTripTest {
             } finally { file.delete() }
         } } finally { assets.releaseRasterTileReservation(draftRef); assets.releaseRasterTileReservation(nestedRef) }
     }
+
+    @Test fun anOmittedClippedFolderWithAnAdjustmentDoesNotBlockInterchangeExport() {
+        val assets=DocumentAssetService(context)
+        val ref=assets.saveRasterTileSurface(PixelTileSurface(64,64).also { s ->
+            s.beginWrite("kept").use { w -> w.setPixel(20,20,Color.RED); w.commit().close() } })
+        val page=InkPage(width=64f,height=64f,layers=listOf(
+            InkLayer(id="base",name="Draft",draft=true),
+            InkLayer(id="group",name="Clipped",role=LayerRole.FOLDER,clippedToBelow=true),
+            InkLayer(id="adjust",name="Adjustment",parentId="group",role=LayerRole.ADJUSTMENT,adjustment=LayerAdjustment()),
+            InkLayer(id="kept",name="Kept",rasterTileSurface=ref)))
+        try { for(format in listOf(RasterFileFormat.PSD,RasterFileFormat.OPEN_RASTER)) {
+            val file=File(context.cacheDir,"omitted-group.${format.extension}")
+            try {
+                assets.exportPageRaster(page,Uri.fromFile(file),PageRasterExportOptions(64,64,false,format))
+                val restored=assets.importArtwork(Uri.fromFile(file),file.name).pages.single()
+                assertEquals("$format exports only the unrelated layer",listOf("Kept"),restored.layers.map { it.name })
+                assertEquals(Color.RED,assets.loadRasterTileSurface(requireNotNull(restored.layers.single().rasterTileSurface)).pixelAt(20,20))
+            } finally { file.delete() }
+        } } finally { assets.releaseRasterTileReservation(ref) }
+    }
 }

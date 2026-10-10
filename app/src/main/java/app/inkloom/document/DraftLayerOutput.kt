@@ -17,6 +17,10 @@ object DraftLayerOutput {
                 else if (baseRemoved) removed += layer.id
             }
         }
+        // An omitted folder leaves with its entire subtree, whatever the flat storage order.
+        val children = page.layers.groupBy(InkLayer::parentId)
+        val pending = ArrayDeque(removed)
+        while (pending.isNotEmpty()) children[pending.removeFirst()].orEmpty().forEach { if (removed.add(it.id)) pending += it.id }
         return page.copy(layers = page.layers.filterNot { it.id in removed }, elements = page.elements.filterNot { it.layerId in removed })
     }
 
