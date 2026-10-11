@@ -1,6 +1,7 @@
 package app.inkloom.ui
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -12,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -51,12 +53,14 @@ internal fun NotebookCoverPicker(
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (mine) items(covers, key = NotebookCoverTemplate::id) { cover ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Card(Modifier.size(92.dp, 120.dp).semantics { contentDescription = "${tr("Use cover", "使用封面")} ${cover.name}" }
-                        .selectable(selected = coverId == cover.id, onClick = { onSelect(CoverStyle.CUSTOM_IMAGE, cover.id) }),
-                        border = if (coverId == cover.id) BorderStroke(2.dp, Ink) else CardDefaults.outlinedCardBorder()) {
-                        NotebookCover(InkDocument(title = title, coverStyle = CoverStyle.CUSTOM_IMAGE, coverImagePath = cover.assetPath), Modifier.fillMaxSize())
+                    SelectionRing(coverId == cover.id) {
+                        Card(Modifier.size(CoverWidth, CoverHeight).semantics { contentDescription = "${tr("Use cover", "使用封面")} ${cover.name}" }
+                            .selectable(selected = coverId == cover.id, onClick = { onSelect(CoverStyle.CUSTOM_IMAGE, cover.id) }),
+                            border = CardDefaults.outlinedCardBorder()) {
+                            NotebookCover(InkDocument(title = title, coverStyle = CoverStyle.CUSTOM_IMAGE, coverImagePath = cover.assetPath), Modifier.fillMaxSize())
+                        }
                     }
-                    Row(Modifier.width(92.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.width(CoverWidth + 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(cover.name, Modifier.weight(1f), fontSize = 10.sp, maxLines = 1)
                         IconButton({ deleting = cover }, Modifier.size(28.dp)) {
                             Icon(Icons.Outlined.DeleteOutline, "${tr("Delete cover", "删除封面")} ${cover.name}", Modifier.size(16.dp))
@@ -65,14 +69,17 @@ internal fun NotebookCoverPicker(
                 }
             } else items(NotebookCoverCatalog.creationStyles) { candidate ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Card(Modifier.size(92.dp, 120.dp)
-                        .semantics { contentDescription = "${tr("Use cover", "使用封面")} ${NotebookCoverCatalog.displayName(candidate, language)}" }
-                        .selectable(selected = coverId == null && style == candidate, onClick = { onSelect(candidate, null) }),
-                        border = if (coverId == null && style == candidate) BorderStroke(2.dp, Ink) else CardDefaults.outlinedCardBorder()) {
-                        NotebookCover(InkDocument(title = title, coverStyle = candidate, coverArgb = NotebookCoverCatalog.defaultArgb(candidate)), Modifier.fillMaxSize())
+                    SelectionRing(coverId == null && style == candidate) {
+                        Card(Modifier.size(CoverWidth, CoverHeight)
+                            .semantics { contentDescription = "${tr("Use cover", "使用封面")} ${NotebookCoverCatalog.displayName(candidate, language)}" }
+                            .selectable(selected = coverId == null && style == candidate, onClick = { onSelect(candidate, null) }),
+                            border = CardDefaults.outlinedCardBorder()) {
+                            NotebookCover(InkDocument(title = title, coverStyle = candidate, coverArgb = NotebookCoverCatalog.defaultArgb(candidate)), Modifier.fillMaxSize())
+                        }
                     }
                     Spacer(Modifier.height(4.dp))
-                    Text(NotebookCoverCatalog.displayName(candidate, language), fontSize = 10.sp)
+                    Text(NotebookCoverCatalog.displayName(candidate, language), fontSize = 11.sp,
+                        color = if (coverId == null && style == candidate) Ink else MutedInk)
                 }
             }
         }
@@ -84,4 +91,16 @@ internal fun NotebookCoverPicker(
             confirmButton = { TextButton({ onDelete(cover.id); deleting = null }) { Text(tr("Delete", "删除")) } },
             dismissButton = { TextButton({ deleting = null }) { Text(tr("Cancel", "取消")) } })
     }
+}
+
+private val CoverWidth = 80.dp
+private val CoverHeight = 104.dp
+
+/**
+ * Marks the chosen cover with a ring separated by a gap, so the selection reads on light and dark
+ * covers alike instead of blending into a cover of the same tone.
+ */
+@Composable
+private fun SelectionRing(selected: Boolean, content: @Composable () -> Unit) {
+    Box(Modifier.border(2.dp, if (selected) Ink else Color.Transparent, RoundedCornerShape(15.dp)).padding(3.dp)) { content() }
 }
