@@ -246,6 +246,9 @@ private class ColorDropDragShadow(private val color: Int) : View.DragShadowBuild
 private fun tr(english: String, simplifiedChinese: String): String = LocalUiLanguage.current.text(english, simplifiedChinese)
 
 @Composable
+private fun pageCount(count: Int): String = tr(if (count == 1) "1 page" else "$count pages", "$count 页")
+
+@Composable
 private fun layerBlendModeLabel(mode: LayerBlendMode): String =
     LayerBlendModeDisplayName.of(mode, LocalUiLanguage.current)
 
@@ -1263,14 +1266,15 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                 listOf(
                     Triple(LibraryLayout.GRID, Icons.Outlined.GridView, tr("Grid layout", "网格布局")),
                     Triple(LibraryLayout.LIST, Icons.Outlined.ViewList, tr("List layout", "列表布局")),
-                    Triple(LibraryLayout.COMPACT_GRID, Icons.Outlined.DensitySmall, tr("Compact grid", "紧凑网格")),
+                    Triple(LibraryLayout.COMPACT_GRID, Icons.Outlined.Apps, tr("Compact grid", "紧凑网格")),
                 ).forEach { (candidate, icon, description) ->
                     IconButton(
                         onClick = { onLayout(candidate) },
                         modifier = Modifier
                             .size(36.dp)
-                            .background(if (layout == candidate) Workspace else Color.Transparent, RoundedCornerShape(8.dp)),
-                    ) { Icon(icon, description, Modifier.size(19.dp), tint = if (layout == candidate) Sage else Ink) }
+                            .background(if (layout == candidate) SageContainer else Color.Transparent, RoundedCornerShape(8.dp))
+                            .semantics { selected = layout == candidate },
+                    ) { Icon(icon, description, Modifier.size(19.dp), tint = if (layout == candidate) Ink else MutedInk) }
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -1300,8 +1304,8 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                 }
             }
             when (layout) {
-                LibraryLayout.LIST -> LazyColumn(state = noteListState, modifier = Modifier.semantics { contentDescription = "Notebook list" }, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(visible, key = { it.id }) { NotebookCard(it, Modifier.libraryDocumentDrag(it).fillMaxWidth().height(220.dp), { note -> if (managingNotes) selectedNoteIds = if (note.id in selectedNoteIds) selectedNoteIds - note.id else selectedNoteIds + note.id else onOpen(note) }, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, activeFolders, onMoveToFolder, selectionMode = managingNotes, selected = it.id in selectedNoteIds, onEditCover = { document ->
+                LibraryLayout.LIST -> LazyColumn(state = noteListState, modifier = Modifier.semantics { contentDescription = "Notebook list" }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(visible, key = { it.id }) { NotebookCard(it, Modifier.libraryDocumentDrag(it).fillMaxWidth().height(104.dp), { note -> if (managingNotes) selectedNoteIds = if (note.id in selectedNoteIds) selectedNoteIds - note.id else selectedNoteIds + note.id else onOpen(note) }, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, activeFolders, onMoveToFolder, selectionMode = managingNotes, selected = it.id in selectedNoteIds, row = true, onEditCover = { document ->
                         editingCoverDocumentId = document.id
                         editingCoverStyle = document.coverStyle
                         editingCoverId = pageTemplates.customCovers.firstOrNull { it.assetPath == document.coverImagePath }?.id
@@ -1316,7 +1320,7 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                     verticalArrangement = Arrangement.spacedBy(if (layout == LibraryLayout.COMPACT_GRID) 10.dp else 16.dp),
                 ) {
                     items(visible, key = { it.id }) {
-                        NotebookCard(it, Modifier.libraryDocumentDrag(it).height(if (layout == LibraryLayout.COMPACT_GRID) 210.dp else 250.dp), { note -> if (managingNotes) selectedNoteIds = if (note.id in selectedNoteIds) selectedNoteIds - note.id else selectedNoteIds + note.id else onOpen(note) }, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, activeFolders, onMoveToFolder, selectionMode = managingNotes, selected = it.id in selectedNoteIds, onEditCover = { document ->
+                        NotebookCard(it, Modifier.libraryDocumentDrag(it).height(if (layout == LibraryLayout.COMPACT_GRID) 210.dp else 250.dp), { note -> if (managingNotes) selectedNoteIds = if (note.id in selectedNoteIds) selectedNoteIds - note.id else selectedNoteIds + note.id else onOpen(note) }, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, activeFolders, onMoveToFolder, selectionMode = managingNotes, selected = it.id in selectedNoteIds, compact = layout == LibraryLayout.COMPACT_GRID, onEditCover = { document ->
                             editingCoverDocumentId = document.id
                             editingCoverStyle = document.coverStyle
                             editingCoverId = pageTemplates.customCovers.firstOrNull { it.assetPath == document.coverImagePath }?.id
@@ -1659,45 +1663,71 @@ private fun BrandMark(subtitle: String? = null) {
 }
 
 @Composable
-private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (InkDocument) -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, folders: List<InkFolder>, onMoveToFolder: (String, String?) -> Unit, selectionMode: Boolean = false, selected: Boolean = false, onEditCover: (InkDocument) -> Unit) {
+private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (InkDocument) -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, folders: List<InkFolder>, onMoveToFolder: (String, String?) -> Unit, selectionMode: Boolean = false, selected: Boolean = false, row: Boolean = false, compact: Boolean = false, onEditCover: (InkDocument) -> Unit) {
     var menu by remember { mutableStateOf(false) }
     var renameOpen by remember { mutableStateOf(false) }
     var tagsOpen by remember { mutableStateOf(false) }
     var title by remember(document.title) { mutableStateOf(document.title) }
     var tags by remember(document.tags) { mutableStateOf(document.tags.joinToString(", ")) }
-    Card(modifier.then(if (selected) Modifier.border(2.dp, Ink, RoundedCornerShape(12.dp)) else Modifier).clickable { onOpen(document) }, colors = CardDefaults.cardColors(containerColor = Paper), border = CardDefaults.outlinedCardBorder()) {
-        Box(Modifier.fillMaxWidth().weight(1f)) {
-            NotebookCover(document, Modifier.fillMaxSize())
-            if (document.pages.any { it.background is PageBackground.Pdf }) Surface(Modifier.padding(12.dp), shape = RoundedCornerShape(4.dp), color = Paper) { Text("PDF", Modifier.padding(7.dp, 4.dp), fontSize = 10.sp) }
-            if (selectionMode) Surface(Modifier.align(Alignment.TopEnd).padding(8.dp), shape = CircleShape, color = if (selected) Ink else Paper) {
-                Icon(if (selected) Icons.Outlined.Check else Icons.Outlined.RadioButtonUnchecked, tr("Select notebook", "选择笔记本"), Modifier.padding(4.dp), tint = if (selected) Paper else Ink)
+    // Shared by the cover card and the list row so both expose the same actions.
+    @Composable
+    fun Actions(modifier: Modifier, overlay: Boolean) {
+        if (selectionMode) Surface(modifier.padding(8.dp), shape = CircleShape, color = if (selected) Ink else Paper, border = if (overlay) null else androidx.compose.foundation.BorderStroke(1.dp, OutlineSoft)) {
+            Icon(if (selected) Icons.Outlined.Check else Icons.Outlined.RadioButtonUnchecked, tr("Select notebook", "选择笔记本"), Modifier.padding(4.dp), tint = if (selected) Paper else Ink)
+        } else Box(modifier) {
+            IconButton(
+                onClick = { menu = true },
+                modifier = Modifier.padding(4.dp),
+            ) {
+                // The scrim sits inside the 48 dp touch target so it stays clear of the card corner.
+                Box(Modifier.size(if (compact) 28.dp else 32.dp).then(if (overlay) Modifier.background(Color.Black.copy(alpha = .48f), CircleShape) else Modifier), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.MoreVert, tr("Document actions", "笔记操作"), Modifier.size(20.dp), tint = if (overlay) Color.White else MutedInk)
+                }
             }
-            if (!selectionMode) Box(Modifier.align(Alignment.TopEnd)) {
-                IconButton(
-                    onClick = { menu = true },
-                    modifier = Modifier.padding(6.dp).size(36.dp).background(Color.Black.copy(alpha = .48f), CircleShape),
-                ) { Icon(Icons.Default.MoreVert, tr("Document actions", "笔记操作"), tint = Color.White) }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    if (document.trashedAt == null) {
-                        DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameOpen = true })
-                        DropdownMenuItem(text = { Text(tr("Change cover", "更换封面")) }, onClick = { menu = false; onEditCover(document) })
-                        DropdownMenuItem(text = { Text(tr("Edit tags", "编辑标签")) }, onClick = { menu = false; tagsOpen = true })
-                        DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(document.id) })
-                        folders.forEach { folder -> DropdownMenuItem(text = { Text("${tr("Move to", "移动到")} ${folder.name}") }, onClick = { menu = false; onMoveToFolder(document.id, folder.id) }) }
-                        if (document.folderId != null) DropdownMenuItem(text = { Text(tr("Remove from folder", "移出文件夹")) }, onClick = { menu = false; onMoveToFolder(document.id, null) })
-                        DropdownMenuItem(text = { Text(if (document.favorite) tr("Remove favorite", "取消收藏") else tr("Favorite", "收藏")) }, onClick = { menu = false; onFavorite(document.id) })
-                        DropdownMenuItem(text = { Text(if (document.archivedAt == null) tr("Archive", "归档") else tr("Unarchive", "取消归档")) }, onClick = { menu = false; onArchive(document.id) })
-                        DropdownMenuItem(text = { Text(tr("Move to Trash", "移到废纸篓")) }, onClick = { menu = false; onTrash(document.id) })
-                    } else {
-                        DropdownMenuItem(text = { Text(tr("Restore", "恢复")) }, onClick = { menu = false; onRestore(document.id) })
-                        DropdownMenuItem(text = { Text(tr("Delete permanently", "永久删除")) }, onClick = { menu = false; onDelete(document.id) })
-                    }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                if (document.trashedAt == null) {
+                    DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameOpen = true })
+                    DropdownMenuItem(text = { Text(tr("Change cover", "更换封面")) }, onClick = { menu = false; onEditCover(document) })
+                    DropdownMenuItem(text = { Text(tr("Edit tags", "编辑标签")) }, onClick = { menu = false; tagsOpen = true })
+                    DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(document.id) })
+                    folders.forEach { folder -> DropdownMenuItem(text = { Text("${tr("Move to", "移动到")} ${folder.name}") }, onClick = { menu = false; onMoveToFolder(document.id, folder.id) }) }
+                    if (document.folderId != null) DropdownMenuItem(text = { Text(tr("Remove from folder", "移出文件夹")) }, onClick = { menu = false; onMoveToFolder(document.id, null) })
+                    DropdownMenuItem(text = { Text(if (document.favorite) tr("Remove favorite", "取消收藏") else tr("Favorite", "收藏")) }, onClick = { menu = false; onFavorite(document.id) })
+                    DropdownMenuItem(text = { Text(if (document.archivedAt == null) tr("Archive", "归档") else tr("Unarchive", "取消归档")) }, onClick = { menu = false; onArchive(document.id) })
+                    DropdownMenuItem(text = { Text(tr("Move to Trash", "移到废纸篓")) }, onClick = { menu = false; onTrash(document.id) })
+                } else {
+                    DropdownMenuItem(text = { Text(tr("Restore", "恢复")) }, onClick = { menu = false; onRestore(document.id) })
+                    DropdownMenuItem(text = { Text(tr("Delete permanently", "永久删除")) }, onClick = { menu = false; onDelete(document.id) })
                 }
             }
         }
-        Column(Modifier.padding(14.dp)) {
-            Row { Text(document.title, fontSize = 17.sp, maxLines = 2, modifier = Modifier.weight(1f)); if (document.favorite) Icon(Icons.Default.Star, null, tint = Ink, modifier = Modifier.size(18.dp)) }
-            Spacer(Modifier.height(6.dp)); Text("${document.pages.size} ${tr("pages · saved locally", "页 · 已保存到本机")}", color = MutedInk, fontSize = 11.sp)
+    }
+    val pdf = document.pages.any { it.background is PageBackground.Pdf }
+    val cardModifier = modifier.then(if (selected) Modifier.border(2.dp, Ink, RoundedCornerShape(12.dp)) else Modifier).clickable { onOpen(document) }
+    if (row) Card(cardModifier, colors = CardDefaults.cardColors(containerColor = Paper), border = CardDefaults.outlinedCardBorder()) {
+        Row(Modifier.fillMaxSize().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            NotebookCover(document, Modifier.fillMaxHeight().aspectRatio(.75f).clip(RoundedCornerShape(6.dp)).border(1.dp, OutlineSoft, RoundedCornerShape(6.dp)))
+            Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(document.title, fontSize = 16.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    if (document.favorite) Icon(Icons.Default.Star, null, tint = Ink, modifier = Modifier.padding(start = 6.dp).size(16.dp))
+                    if (pdf) Surface(Modifier.padding(start = 8.dp), shape = RoundedCornerShape(4.dp), color = Workspace) { Text("PDF", Modifier.padding(6.dp, 2.dp), fontSize = 10.sp) }
+                }
+                Spacer(Modifier.height(4.dp)); Text("${pageCount(document.pages.size)} · ${tr("saved locally", "已保存到本机")}", color = MutedInk, fontSize = 12.sp)
+                if (document.tags.isNotEmpty()) Text(document.tags.take(3).joinToString("  ") { "#$it" }, color = MutedInk, fontSize = 11.sp, maxLines = 1)
+            }
+            Actions(Modifier, overlay = false)
+        }
+    } else Card(cardModifier, colors = CardDefaults.cardColors(containerColor = Paper), border = CardDefaults.outlinedCardBorder()) {
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+            NotebookCover(document, Modifier.fillMaxSize())
+            if (pdf) Surface(Modifier.padding(12.dp), shape = RoundedCornerShape(4.dp), color = Paper) { Text("PDF", Modifier.padding(7.dp, 4.dp), fontSize = 10.sp) }
+            Actions(Modifier.align(Alignment.TopEnd), overlay = true)
+        }
+        // Every card reserves the same title height so neighbouring covers line up.
+        Column(Modifier.padding(if (compact) 10.dp else 14.dp)) {
+            Row { Text(document.title, fontSize = if (compact) 15.sp else 17.sp, maxLines = if (compact) 1 else 2, minLines = if (compact) 1 else 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f)); if (document.favorite) Icon(Icons.Default.Star, null, tint = Ink, modifier = Modifier.size(18.dp)) }
+            Spacer(Modifier.height(if (compact) 4.dp else 6.dp)); Text("${pageCount(document.pages.size)} · ${tr("saved locally", "已保存到本机")}", color = MutedInk, fontSize = 11.sp)
             if (document.tags.isNotEmpty()) Text(document.tags.take(3).joinToString("  ") { "#$it" }, color = MutedInk, fontSize = 10.sp, maxLines = 1)
         }
     }
@@ -2452,7 +2482,7 @@ private fun EditorScreen(
                     Text(tr("Switch notebook", "切换笔记"), Modifier.padding(16.dp), color = MutedInk)
                     documents.filter { it.trashedAt == null }.sortedByDescending { it.updatedAt }.forEach { note ->
                         DropdownMenuItem(
-                            text = { Column { Text(note.title, maxLines = 2); Text(tr("${note.pages.size} pages", "${note.pages.size} 页"), fontSize = 11.sp, color = MutedInk) } },
+                            text = { Column { Text(note.title, maxLines = 2); Text(pageCount(note.pages.size), fontSize = 11.sp, color = MutedInk) } },
                             leadingIcon = { if (note.id == document.id) Icon(Icons.Outlined.Check, null) },
                             onClick = {
                                 notebookSwitcherOpen = false
@@ -4827,7 +4857,7 @@ private fun PageRail(
                         items(transferTargets, key = { it.id }) { target ->
                             ListItem(
                                 headlineContent = { Text(target.title, maxLines = 1) },
-                                supportingContent = { Text(tr("${target.pages.size} pages", "${target.pages.size} 页"), color = MutedInk) },
+                                supportingContent = { Text(pageCount(target.pages.size), color = MutedInk) },
                                 trailingContent = { Row { TextButton(onClick = { onTransfer(document.id, page.id, target.id, false); transferOpen = false }) { Text(tr("Move", "移动")) }; TextButton(onClick = { onTransfer(document.id, page.id, target.id, true); transferOpen = false }) { Text(tr("Copy", "复制")) } } },
                             )
                         }
@@ -4877,7 +4907,7 @@ private fun PageRail(
         text = { LazyColumn(Modifier.dialogContentWidth(360.dp, 560.dp).heightIn(max = 360.dp)) {
             items(transferTargets, key = { it.id }) { target -> ListItem(
                 headlineContent = { Text(target.title, maxLines = 1) },
-                supportingContent = { Text(tr("${target.pages.size} pages", "${target.pages.size} 页")) },
+                supportingContent = { Text(pageCount(target.pages.size)) },
                 trailingContent = { Row {
                     TextButton(onClick = { if (onTransferPages(document.id, selectedPageIds, target.id, false)) { batchTransferOpen = false; managingPages = false; selectedPageIds = emptySet() } }) { Text(tr("Move", "移动")) }
                     TextButton(onClick = { if (onTransferPages(document.id, selectedPageIds, target.id, true)) { batchTransferOpen = false; managingPages = false; selectedPageIds = emptySet() } }) { Text(tr("Copy", "复制")) }
