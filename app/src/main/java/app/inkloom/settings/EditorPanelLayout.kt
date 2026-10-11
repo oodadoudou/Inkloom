@@ -41,11 +41,14 @@ data class FloatingPanels(val node: PanelNode, val rect: PanelRect)
 data class EditorPanelLayout(
     val version: Int = 2,
     val dock: PanelNode = PanelNode.Canvas(),
+    // Pages opens beside the left tool rail instead of covering it. Brushes, colors and layers
+    // stay on the right so the left of the page remains drawable while those windows are open;
+    // colors is wide enough to show all four of its tabs.
     val floating: List<FloatingPanels> = listOf(
-        FloatingPanels(PanelNode.Tabs("pages", listOf(EditorPanel.PAGES)), PanelRect(12f, 12f, 180f, 560f)),
+        FloatingPanels(PanelNode.Tabs("pages", listOf(EditorPanel.PAGES)), PanelRect(128f, 12f, 180f, 560f)),
         FloatingPanels(PanelNode.Tabs("brushes", listOf(EditorPanel.BRUSHES, EditorPanel.SUBTOOLS)), PanelRect(720f, 12f, 340f, 600f)),
         FloatingPanels(PanelNode.Tabs("layers", listOf(EditorPanel.LAYERS, EditorPanel.PROPERTIES)), PanelRect(800f, 80f, 270f, 500f)),
-        FloatingPanels(PanelNode.Tabs("colors", listOf(EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY)), PanelRect(850f, 12f, 280f, 340f)),
+        FloatingPanels(PanelNode.Tabs("colors", listOf(EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY)), PanelRect(850f, 12f, 324f, 340f)),
     ),
     val open: Set<EditorPanel> = emptySet(),
     val placed: Set<EditorPanel> = emptySet(),
