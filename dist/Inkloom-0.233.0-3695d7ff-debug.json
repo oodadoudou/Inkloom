@@ -1,0 +1,22 @@
+{
+  "version": "0.233.0",
+  "versionCode": 233,
+  "variant": "debug",
+  "commit": "3695d7ff60342199ac86ef498bfa2a4aede2502a",
+  "sha256": "c10370f8b5d8aedffc83d3e11c8fd64b502be0384a76483121d8f2fdf49e4300",
+  "bytes": 103746713,
+  "generatedUtc": "2026-10-11T19:50:34.467576+00:00",
+  "verification": {
+    "JVM": "PASS 1029 tests, 0 failures/errors, 8 skipped",
+    "Android15Targeted": "PASS 51 tests, 0 failures/errors in the final run of the classes affected by panel placement (colors, brush quick properties, layer opacity/order, liquify, brush window return, notebook creation). Earlier runs on this UI work: 100/100 for library, notebook creation, panels, tool rail and panel isolation; a 40-class 264-test run whose 8 failures came from a rejected panel arrangement that was reverted before release.",
+    "Android15Full": "NOT CLAIMED: targeted suites only; the 40-class run was not repeated end to end on the final panel positions.",
+    "Review": "Frontend UX pass, four focused commits: pages panel beside the tool rail and full-width color tabs; visible selected cover; library list rows, aligned grid covers, inset card actions, selected layout state and singular page counts; balanced editor top bar, tool-rail scroll fades and a distinct import-pages icon.",
+    "lint": "PASS 0 errors, 114 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS emulator install, versionCode 233, cold start Status ok; launch screenshot inspected; crash buffer empty",
+    "DriveDesktop": "See tasks/APK_DRIVE_SYNC.json; cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING",
+  "evidenceRoot": "app/build/test-results, app/build/outputs/androidTest-results/connected/debug and ignored tasks/ux-review/"
+}
