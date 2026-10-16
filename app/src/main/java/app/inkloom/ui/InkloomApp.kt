@@ -3163,6 +3163,11 @@ private fun EditorScreen(
                             if (link.destinationZoom > 0f) zoom = link.destinationZoom.coerceIn(ViewportTransform.MINIMUM_SCALE, ViewportTransform.MAXIMUM_SCALE)
                         }
                     },
+                    // A page turn, like the navigator arrows: not a jump, and the last page adds nothing.
+                    onPageSwipe = { next ->
+                        val index = document.pages.indexOfFirst { it.id == selectedPage.id }
+                        document.pages.getOrNull(if (next) index + 1 else index - 1)?.takeIf { index >= 0 }?.let { selectPageWithViewport(it.id) }
+                    },
                     documents = documents,
                     onOpenInternalLink = openInternalLink,
                     onInputDiagnostic = { kind, pressure, tilt, buttons -> inputDiagnostic = "$kind  pressure ${"%.3f".format(pressure)}  tilt ${"%.2f".format(Math.toDegrees(tilt.toDouble()))}°  buttons $buttons" },
@@ -5182,7 +5187,7 @@ private inline fun <reified T : Enum<T>> enumOrDefault(name: String, fallback: T
     enumValues<T>().firstOrNull { it.name == name } ?: fallback
 
 @Composable
-private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<String>) -> Unit, onLayerPickPreview: (String?) -> Unit, onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerFilter: (String, String, RasterLayerFilterEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, onBeginQuickShapeEdit: () -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onBackKey: () -> Boolean, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, borrowPaintTipForEraser: Boolean, borrowPaintTipForSmudge: Boolean, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, transformLayerIds: Set<String>, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onSymmetryGuideChange: (SymmetryGuideState) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
+private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<String>) -> Unit, onLayerPickPreview: (String?) -> Unit, onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerFilter: (String, String, RasterLayerFilterEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, onBeginQuickShapeEdit: () -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onBackKey: () -> Boolean, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, borrowPaintTipForEraser: Boolean, borrowPaintTipForSmudge: Boolean, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, transformLayerIds: Set<String>, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onPageSwipe: (Boolean) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onSymmetryGuideChange: (SymmetryGuideState) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val rasterRenderWidth = remember(renderedPage.width, renderedPage.height) {
         CanvasRasterResolution.forDimensions(renderedPage.width, renderedPage.height)
@@ -5601,6 +5606,7 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
                 view.onViewportRotate = onRotate
                 view.pdfGotoLinks = renderedPage.pdfGotoLinks
                 view.onPdfGotoLink = onPdfGotoLink
+                view.onPageSwipe = onPageSwipe
                 view.onUndoGesture = onUndoGesture
                 view.onRedoGesture = onRedoGesture
                 view.onCanvasContact = onCanvasContact
@@ -5715,6 +5721,7 @@ private fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<Str
                 view.onViewportRotate = onRotate
                 view.pdfGotoLinks = renderedPage.pdfGotoLinks
                 view.onPdfGotoLink = onPdfGotoLink
+                view.onPageSwipe = onPageSwipe
                 view.onUndoGesture = onUndoGesture
                 view.onRedoGesture = onRedoGesture
                 view.onCanvasContact = onCanvasContact
@@ -5796,6 +5803,7 @@ internal fun InkCanvasView.applyBrushPresetV5Configuration(
     drawAndHoldEnabled = settings.drawAndHoldEnabled
     drawAndHoldDelayMillis = settings.drawAndHoldDelayMillis
     singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
+    pageSwipeEnabled = settings.swipeToTurnPages
     twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
     threeFingerTapRedo = settings.threeFingerTapRedo
     pressureSensitivity = settings.pressureSensitivity
@@ -5892,6 +5900,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     drawAndHoldEnabled = settings.drawAndHoldEnabled
     drawAndHoldDelayMillis = settings.drawAndHoldDelayMillis
     singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
+    pageSwipeEnabled = settings.swipeToTurnPages
     twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
     threeFingerTapRedo = settings.threeFingerTapRedo
     globalStrokeStabilization = settings.globalStrokeStabilization
@@ -9410,6 +9419,7 @@ private fun SettingsDialog(
                         valueRange = 300f..1500f, steps = 23, modifier = Modifier.semantics { contentDescription = "Draw and hold delay" })
                 }
                 item { SettingSwitch(tr("Single-finger double tap to undo", "单指双击撤销"), tr("Enabled by default. Only blank-canvas taps trigger it; drawing, dragging and links are excluded.", "默认开启；仅空白画布短触生效，书写、拖动和链接均不会触发。"), settings.singleFingerDoubleTapUndo) { onChange(settings.copy(singleFingerDoubleTapUndo = it)) } }
+                item { SettingSwitch(tr("Swipe to turn pages", "滑动翻页"), tr("When the finger is not drawing, flick left or right with one finger at fit-to-page zoom to go to the next or previous page. Slow drags still move the canvas.", "手指不书写时，在适合页面缩放下单指左右快速滑动可翻到下一页或上一页；慢速拖动仍为移动画布。"), settings.swipeToTurnPages) { onChange(settings.copy(swipeToTurnPages = it)) } }
                 item { SettingSwitch(tr("Two-finger tap to undo", "双指轻点撤销"), null, settings.twoFingerDoubleTapUndo) { onChange(settings.copy(twoFingerDoubleTapUndo = it)) } }
                 item { SettingSwitch(tr("Three-finger tap to redo", "三指轻点重做"), null, settings.threeFingerTapRedo) { onChange(settings.copy(threeFingerTapRedo = it)) } }
                 item { SettingSwitch(tr("Two-finger canvas rotation", "双指旋转画布"), null, settings.twoFingerRotation) { onChange(settings.copy(twoFingerRotation = it)) } }

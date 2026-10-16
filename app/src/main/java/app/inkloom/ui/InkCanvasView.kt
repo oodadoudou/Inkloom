@@ -51,6 +51,7 @@ import app.inkloom.engine.v5.android.LayerContentProjectionCache
 import app.inkloom.engine.v5.composite.PixelGroupProjectionCache
 import app.inkloom.engine.v5.composite.PixelProjectionNode
 import app.inkloom.document.LayerCompositingTree
+import app.inkloom.document.PageSwipe
 import app.inkloom.document.LayerCompositingNode
 import app.inkloom.engine.v5.composite.PixelLayerProjectionInput
 import app.inkloom.engine.v5.composite.PixelActiveDeltaBlend
@@ -538,6 +539,11 @@ class InkCanvasView(context: Context) : View(context) {
     private var navigationGestureRotation = 0f
     private var navigationMoved = false
     private var navigationTapEligible = false
+    // One-finger page-turn swipe: eligibility is decided on contact; the pan it caused is undone if it turns.
+    private var navigationSwipeEligible = false
+    private var navigationDownTime = 0L
+    private var navigationSwipePanX = 0f
+    private var navigationSwipePanY = 0f
     private var navigationFirstContactAt = 0L
     /** Once two fingers enter viewport navigation, the gesture remains navigation until the last
      * contact is released. This prevents the remaining finger from becoming an accidental stroke. */
@@ -916,6 +922,9 @@ class InkCanvasView(context: Context) : View(context) {
         }
     var twoFingerDoubleTapUndo: Boolean = true
     var threeFingerTapRedo: Boolean = true
+    /** Turns pages with a one-finger flick at fit zoom; [onPageSwipe] receives true for the next page. */
+    var pageSwipeEnabled: Boolean = false
+    var onPageSwipe: (Boolean) -> Unit = {}
     var twoFingerRotationEnabled: Boolean = false
     var rulerEnabled: Boolean = false
         set(value) { if (field == value) return; field = value; if (!value) rulerGestureMode = null; invalidate() }
@@ -2648,6 +2657,13 @@ class InkCanvasView(context: Context) : View(context) {
                     navigationTapEligible = eventToolType == MotionEvent.TOOL_TYPE_FINGER &&
                         event.getTouchMajor(pointerIndex) < StylusInputClassifier.PALM_TOUCH_MAJOR_PX &&
                         elapsedSinceStylus > StylusInputClassifier.RECENT_STYLUS_WINDOW_MS
+                    // Same finger, palm and recent-pen rules as taps; explicit pan tools and zoomed or
+                    // rotated views keep one-finger drags as pans.
+                    navigationSwipeEligible = pageSwipeEnabled && navigationTapEligible && !forceNavigation &&
+                        !buttonForcesNavigation && !rotateNavigation && !viewportGestureActive &&
+                        viewportScale <= PAGE_SWIPE_MAX_SCALE && kotlin.math.abs(viewportRotationDegrees) < .5f
+                    navigationDownTime = event.eventTime
+                    navigationSwipePanX = 0f; navigationSwipePanY = 0f
                     if (singleFingerDoubleTapUndo && navigationTapEligible) {
                         singleFingerDoubleTapUndoGesture.start(event.eventTime, event.x, event.y)
                     } else singleFingerDoubleTapUndoGesture.cancel()
@@ -2655,6 +2671,7 @@ class InkCanvasView(context: Context) : View(context) {
                 MotionEvent.ACTION_POINTER_DOWN -> {
                     navigationMoved = true
                     navigationTapEligible = false
+                    navigationSwipeEligible = false
                     singleFingerDoubleTapUndoGesture.cancel()
                     if (event.pointerCount == 3 && threeFingerTapRedo) {
                         twoFingerTapUndoGesture.cancel()
@@ -2728,6 +2745,7 @@ class InkCanvasView(context: Context) : View(context) {
                     singleFingerDoubleTapUndoGesture.move(event.x, event.y, transforming = false)
                     if (hypot(event.x - navigationDownX, event.y - navigationDownY) > navigationTouchSlop) navigationMoved = true
                     onViewportPan(event.x - navigationX, event.y - navigationY)
+                    navigationSwipePanX += event.x - navigationX; navigationSwipePanY += event.y - navigationY
                     navigationX = event.x; navigationY = event.y
                 }
                 MotionEvent.ACTION_UP -> {
@@ -2748,13 +2766,23 @@ class InkCanvasView(context: Context) : View(context) {
                             onUndoGesture()
                         }
                         performClick()
-                    } else singleFingerDoubleTapUndoGesture.cancel()
+                    } else {
+                        singleFingerDoubleTapUndoGesture.cancel()
+                        val swipe = if (navigationSwipeEligible && !viewportGestureActive) PageSwipe.classify(event.x - navigationDownX,
+                            event.y - navigationDownY, event.eventTime - navigationDownTime, width.toFloat(), resources.displayMetrics.density) else null
+                        if (swipe != null) {
+                            onViewportPan(-navigationSwipePanX, -navigationSwipePanY)
+                            onPageSwipe(swipe == PageSwipe.Direction.NEXT)
+                        }
+                    }
                     navigationTapEligible = false
+                    navigationSwipeEligible = false
                     stylusHandNavigationContact = false
                     viewportGestureActive = false
                 }
                 MotionEvent.ACTION_CANCEL -> {
                     navigationTapEligible = false
+                    navigationSwipeEligible = false
                     singleFingerDoubleTapUndoGesture.cancel()
                     twoFingerTapUndoGesture.cancel()
                     threeFingerTapRedoGesture.cancel()
@@ -7551,6 +7579,8 @@ class InkCanvasView(context: Context) : View(context) {
         const val DUAL_SCATTER_SEED = 0x27C4915DL
         const val DUAL_ROTATION_SEED = 0x61B8D2A3L
         const val VIEW_ROTATION_DEGREES_PER_PIXEL = .25f
+        /** Page swipes only at (or just above) fit-to-page zoom; zoomed in, one finger pans. */
+        const val PAGE_SWIPE_MAX_SCALE = 1.02f
         const val RULER_TOUCH_RADIUS_DP = 38f
         const val SYMMETRY_TOUCH_RADIUS_DP = 30f
         const val SYMMETRY_HANDLE_DISTANCE_DP = 72f
