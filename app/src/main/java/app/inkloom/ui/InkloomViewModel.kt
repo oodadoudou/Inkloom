@@ -77,13 +77,8 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     private val documentUpgradeErrors = mutableMapOf<String, String>()
 
     init {
+        // A new or emptied Library stays empty: sample notebooks would return after the user deleted them.
         val recovered = store.recover()
-        if (store.list().isEmpty()) {
-            listOf(
-                InkDocument(title = "Distributed Systems", coverArgb = 0xFF202020, pages = List(3) { InkPage(title = "Page ${it + 1}") }),
-                InkDocument(title = "CS336 Reading Notes", coverArgb = 0xFF707070, pages = List(2) { InkPage(title = "Page ${it + 1}") }),
-            ).forEach(store::save)
-        }
         refresh(recovered)
         scheduleAssetGarbageCollection(delayMillis = 0L)
     }

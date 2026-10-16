@@ -17,7 +17,7 @@ android {
         targetSdk = 35
         versionCode = 233
         versionName = "0.233.0"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "app.inkloom.InkloomTestRunner"
         buildConfigField("boolean", "PAINTING_DIAGNOSTICS", "false")
         vectorDrawables.useSupportLibrary = true
         ndk {
@@ -110,6 +110,10 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    // Same version Compose UI test already brings in; declared for the custom InkloomTestRunner.
+    // Keep it equal to the resolved transitive version rather than moving the test runtime.
+    //noinspection GradleDependency
+    androidTestImplementation("androidx.test:runner:1.5.0")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

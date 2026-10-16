@@ -1303,7 +1303,8 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                     }) { Text(if (filter == LibraryFilter.TRASH) tr("Restore", "恢复") else tr("Trash", "废纸篓")) }
                 }
             }
-            when (layout) {
+            if (visible.isEmpty()) LibraryEmptyState(libraryEmptyReason(filter, folderId != null, search.isNotBlank()), search)
+            else when (layout) {
                 LibraryLayout.LIST -> LazyColumn(state = noteListState, modifier = Modifier.semantics { contentDescription = "Notebook list" }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(visible, key = { it.id }) { NotebookCard(it, Modifier.libraryDocumentDrag(it).fillMaxWidth().height(104.dp), { note -> if (managingNotes) selectedNoteIds = if (note.id in selectedNoteIds) selectedNoteIds - note.id else selectedNoteIds + note.id else onOpen(note) }, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, activeFolders, onMoveToFolder, selectionMode = managingNotes, selected = it.id in selectedNoteIds, row = true, onEditCover = { document ->
                         editingCoverDocumentId = document.id
