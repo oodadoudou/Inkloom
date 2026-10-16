@@ -4202,10 +4202,15 @@ private fun EditorScreen(
             onDismissRequest = { linkInsertOpen = false },
             title = { Text(tr("Insert link", "插入链接")) },
             text = { Column(Modifier.dialogContentWidth(360.dp, 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Read inside the dialog window. Choosing a link type ends title entry, so the keyboard
+                // no longer pushes the page list below the fold.
+                val linkFocus = androidx.compose.ui.platform.LocalFocusManager.current
+                val linkKeyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+                fun chooseLinkKind(internal: Boolean) { linkFocus.clearFocus(); linkKeyboard?.hide(); insertInternalLink = internal }
                 OutlinedTextField(insertLinkTitle, { insertLinkTitle = it }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = !insertInternalLink, onClick = { insertInternalLink = false }, label = { Text(tr("Web link", "网页链接")) })
-                    FilterChip(selected = insertInternalLink, onClick = { insertInternalLink = true }, label = { Text(tr("Notebook page", "笔记页面")) })
+                    FilterChip(selected = !insertInternalLink, onClick = { chooseLinkKind(false) }, label = { Text(tr("Web link", "网页链接")) })
+                    FilterChip(selected = insertInternalLink, onClick = { chooseLinkKind(true) }, label = { Text(tr("Notebook page", "笔记页面")) })
                 }
                 if (!insertInternalLink) {
                     OutlinedTextField(insertLinkUrl, { insertLinkUrl = it }, label = { Text(tr("Web, email, or phone address", "网页、邮箱或电话号码")) }, placeholder = { Text("https://example.com") }, isError = insertLinkUrl.isNotBlank() && normalizedLink == null, supportingText = { Text(if (insertLinkUrl.isNotBlank() && normalizedLink == null) tr("Use a valid http, https, mailto, or tel address.", "请输入有效的 http、https、mailto 或 tel 地址。") else tr("Addresses without a scheme open with HTTPS.", "未填写协议的地址将通过 HTTPS 打开。")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
