@@ -1,0 +1,23 @@
+{
+  "version": "0.234.0",
+  "versionCode": 234,
+  "variant": "debug",
+  "commit": "3072e7421a86496b5d8b00571bee4f55ed45100e",
+  "sha256": "e9d01da8a4e48fd3a6c77814bc1e62386e6bc4b98b71a311baaba1818cc330d3",
+  "bytes": 103795865,
+  "generatedUtc": "2026-10-16T17:34:46.439036+00:00",
+  "verification": {
+    "JVM": "PASS 1042 tests, 0 failures/errors, 8 skipped",
+    "Android15Full": "890 tests in one full run: 883 passed; the 7 failures (InkloomPinchThenWriteTest) came from a duplicate New Note button in the empty Library, which was removed, and the class then passed 7/7 with the empty-state test. Not re-run end to end after that fix.",
+    "Android15Targeted": "PASS NavigationContextWindowTest 10/10 twice; 217 tests across dialogs, links, PDF navigation/search, shortcuts, launch, creation, panels and selection; LibraryEmptyStateWindowTest 2/2.",
+    "KnownFlaky": "NotebookCreationWindowTest.libraryBatchSelectionMovesTwoNotebooksToTrashAndRestoresThem intermittently times out finding Gallery while the on-screen keyboard is the active window; it passes on rerun and involves no changed code.",
+    "Review": "Page back/forward history and typed page numbers; link dialog keeps the page list in view; empty Library without sample notebooks and explained empty sections.",
+    "lint": "PASS 0 errors, 114 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS emulator install, versionCode 234, cold start Status ok; launch screenshot inspected; crash buffer empty",
+    "DriveDesktop": "See tasks/APK_DRIVE_SYNC.json; cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING",
+  "evidenceRoot": "app/build/test-results, app/build/outputs/androidTest-results/connected/debug and ignored tasks/ux-review/"
+}
