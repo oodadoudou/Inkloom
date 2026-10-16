@@ -2117,12 +2117,28 @@ private fun EditorScreen(
     fun applyViewport(next: ViewportState) { zoom = next.scale; panX = next.panX; panY = next.panY; viewRotation = next.rotationDegrees }
     val pageViewportStore = remember(document.id) { PageViewportStore() }
     var viewportPageId by remember(document.id) { mutableStateOf(selectedPage.id) }
+    var pageHistory by remember(document.id) { mutableStateOf(app.inkloom.document.PageNavigationHistory()) }
     fun selectPageWithViewport(pageId: String) {
         if (pageId == viewportPageId) { onSelectPage(pageId); return }
         pageViewportStore.save(viewportPageId, ViewportState(zoom, panX, panY, viewRotation))
         applyViewport(pageViewportStore.restore(pageId))
         viewportPageId = pageId
         onSelectPage(pageId)
+    }
+    /** A non-sequential navigation that Back can return from; previous/next page turns are not jumps. */
+    fun jumpToPage(pageId: String) {
+        if (document.pages.none { it.id == pageId }) return
+        pageHistory = pageHistory.jumped(selectedPage.id, pageId)
+        selectPageWithViewport(pageId)
+    }
+    // Links to another page of this notebook are jumps Back can undo; other notebooks open as before.
+    val openInternalLink: (String, String) -> Unit = { documentId, pageId ->
+        if (documentId == document.id) jumpToPage(pageId) else onOpenInternalLink(documentId, pageId)
+    }
+    fun stepPageHistory(forward: Boolean) {
+        val existing = document.pages.map(InkPage::id).toSet()
+        val step = if (forward) pageHistory.goForward(selectedPage.id, existing) else pageHistory.goBack(selectedPage.id, existing)
+        step?.let { (target, next) -> pageHistory = next; selectPageWithViewport(target) }
     }
     LaunchedEffect(selectedPage.id) {
         if (selectedPage.id != viewportPageId) {
@@ -2131,7 +2147,11 @@ private fun EditorScreen(
             viewportPageId = selectedPage.id
         }
     }
-    LaunchedEffect(document.pages.map(InkPage::id)) { pageViewportStore.retainPages(document.pages.map(InkPage::id).toSet()) }
+    LaunchedEffect(document.pages.map(InkPage::id)) {
+        val existing = document.pages.map(InkPage::id).toSet()
+        pageViewportStore.retainPages(existing)
+        pageHistory = pageHistory.retain(existing)
+    }
     fun fitPage() { applyViewport(ViewportState(1f, 0f, 0f, 0f)); exitCanvasNavigation() }
     fun actualSize() {
         val view = canvasView ?: return
@@ -3138,12 +3158,12 @@ private fun EditorScreen(
                         document.pages.firstOrNull { it.id == link.destinationPageId }?.let { target ->
                             searchFocus = null
                             pdfLinkFocus = target.id to PdfGotoLinkNavigation.destinationBounds(link)
-                            selectPageWithViewport(target.id)
+                            jumpToPage(target.id)
                             if (link.destinationZoom > 0f) zoom = link.destinationZoom.coerceIn(ViewportTransform.MINIMUM_SCALE, ViewportTransform.MAXIMUM_SCALE)
                         }
                     },
                     documents = documents,
-                    onOpenInternalLink = onOpenInternalLink,
+                    onOpenInternalLink = openInternalLink,
                     onInputDiagnostic = { kind, pressure, tilt, buttons -> inputDiagnostic = "$kind  pressure ${"%.3f".format(pressure)}  tilt ${"%.2f".format(Math.toDegrees(tilt.toDouble()))}°  buttons $buttons" },
                     onColorSampled = { sampled ->
                         if (editSecondaryColor) changeBackgroundColor(sampled) else changeBrushColor(sampled)
@@ -3348,6 +3368,8 @@ private fun EditorScreen(
                                     onSettingsChange(settings.copy(alignmentGuidesEnabled = true))
                                 } else onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled))
                             }
+                            ShortcutAction.PAGE_BACK -> stepPageHistory(forward = false)
+                            ShortcutAction.PAGE_FORWARD -> stepPageHistory(forward = true)
                             ShortcutAction.PREVIOUS_PAGE -> document.pages.indexOfFirst { it.id == selectedPage.id }.takeIf { it > 0 }?.let { selectPageWithViewport(document.pages[it - 1].id) }
                             ShortcutAction.NEXT_PAGE -> document.pages.indexOfFirst { it.id == selectedPage.id }.takeIf { it in 0 until document.pages.lastIndex }?.let { selectPageWithViewport(document.pages[it + 1].id) }
                             ShortcutAction.TOGGLE_BRUSH_PANEL -> toggleBrushPanel()
@@ -3492,7 +3514,7 @@ private fun EditorScreen(
                                 onDuplicate = { onDuplicateElement(document.id, selectedPage.id, element.id) },
                                 onDelete = { onRemoveElement(document.id, selectedPage.id, element.id); selectedElementId = null },
                                 internalLinkLabel = (element as? PageElement.Link)?.takeIf(InternalLinkTarget::isInternal)?.let { InternalLinkTarget.label(it, documents) },
-                                onOpenInternalLink = onOpenInternalLink,
+                                onOpenInternalLink = openInternalLink,
                                 settings = settings,
                                 activeBrush = activeBrush,
                                 brushSize = brushSize,
@@ -3545,6 +3567,28 @@ private fun EditorScreen(
                     shadowElevation = 5.dp,
                 ) {
                     Row(Modifier.heightIn(min = 38.dp), verticalAlignment = Alignment.CenterVertically) {
+                        // Back and Forward appear only after a jump, and name the page they lead to.
+                        val existingPageIds = document.pages.map(InkPage::id).toSet()
+                        fun pageLabel(pageId: String) = app.inkloom.document.PageNumberLookup.label(document.pages, document.pages.indexOfFirst { it.id == pageId })
+                        val backTarget = pageHistory.backTarget(selectedPage.id, existingPageIds)
+                        val forwardTarget = pageHistory.forwardTarget(selectedPage.id, existingPageIds)
+                        if (backTarget != null) {
+                            val label = pageLabel(backTarget)
+                            val description = tr("Back to page $label", "返回第 $label 页")
+                            TextButton(onClick = { stepPageHistory(forward = false) }, contentPadding = PaddingValues(start = 8.dp, end = 6.dp),
+                                modifier = Modifier.heightIn(min = 38.dp).semantics(mergeDescendants = true) { contentDescription = description }) {
+                                Icon(Icons.Outlined.ArrowBack, null, Modifier.size(16.dp), tint = Ink)
+                                Spacer(Modifier.width(4.dp))
+                                Text(label, fontSize = 11.sp, color = Ink, maxLines = 1)
+                            }
+                        }
+                        if (forwardTarget != null) {
+                            val label = pageLabel(forwardTarget)
+                            IconButton(onClick = { stepPageHistory(forward = true) }, modifier = Modifier.size(38.dp)) {
+                                Icon(Icons.Outlined.ArrowForward, tr("Forward to page $label", "前进到第 $label 页"), Modifier.size(16.dp), tint = Ink)
+                            }
+                        }
+                        if (backTarget != null || forwardTarget != null) VerticalDivider(Modifier.height(20.dp), color = OutlineSoft)
                         Box {
                             val ratio = zoom * (canvasView?.width ?: 0) / PageCropTransform.visibleWidth(selectedPage).coerceAtLeast(1f)
                             val zoomDescription = tr("Quick zoom", "快捷缩放")
@@ -3598,7 +3642,7 @@ private fun EditorScreen(
                     }
                 }
                 if (pageJumpOpen) PageJumpPopup(document.pages, selectedPage.id, navigatorBounds, LocalUiLanguage.current,
-                    onSelect = { selectPageWithViewport(it); pageJumpOpen = false }, onDismiss = { pageJumpOpen = false })
+                    onSelect = { jumpToPage(it); pageJumpOpen = false }, onDismiss = { pageJumpOpen = false })
                 val dockVertical = settings.toolbarDock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT) || (settings.toolbarDock == ToolbarDock.FREE && settings.verticalToolbar)
                 var measuredToolbarWidth by remember(dockVertical) { mutableFloatStateOf(if (dockVertical) 88f else FloatingToolbarPlacement.LONG_EDGE_DP) }
                 var measuredToolbarHeight by remember(dockVertical) { mutableFloatStateOf(if (dockVertical) 600f else FloatingToolbarPlacement.SHORT_EDGE_DP) }
@@ -3803,11 +3847,11 @@ private fun EditorScreen(
                     Surface(Modifier.align(Alignment.TopCenter).padding(top = 12.dp), color = Workspace, shape = RoundedCornerShape(12.dp), shadowElevation = 3.dp) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = { PageSearch.nextIndex(current, documentSearchHits.size, -1)?.let { index ->
-                                val (page, hit) = documentSearchHits[index]; searchFocus = hit; selectPageWithViewport(page.id)
+                                val (page, hit) = documentSearchHits[index]; searchFocus = hit; jumpToPage(page.id)
                             } }) { Icon(Icons.Outlined.KeyboardArrowUp, tr("Previous search match", "上一个搜索命中")) }
                             Text("${current + 1} / ${documentSearchHits.size}", fontSize = 12.sp)
                             IconButton(onClick = { PageSearch.nextIndex(current, documentSearchHits.size, 1)?.let { index ->
-                                val (page, hit) = documentSearchHits[index]; searchFocus = hit; selectPageWithViewport(page.id)
+                                val (page, hit) = documentSearchHits[index]; searchFocus = hit; jumpToPage(page.id)
                             } }) { Icon(Icons.Outlined.KeyboardArrowDown, tr("Next search match", "下一个搜索命中")) }
                             IconButton(onClick = { searchFocus = null }) { Icon(Icons.Outlined.Close, tr("Close search navigation", "关闭搜索导航")) }
                         }
@@ -3969,7 +4013,7 @@ private fun EditorScreen(
                 document, documents, selectedPage.id, assets,
                 onClose = { panelState.show(EditorPanel.PAGES, false) },
                 pageTemplates = pageTemplates,
-                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onInsertNextTo = onInsertPageNextTo, onAppendFiles = { onAppendPageFiles(document.id) }, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage, onTransferPages = onTransferPages,
+                onSelect = ::jumpToPage, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onInsertNextTo = onInsertPageNextTo, onAppendFiles = { onAppendPageFiles(document.id) }, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage, onTransferPages = onTransferPages,
                 onApplyTemplate = onApplyPageTemplate, onApplyTemplates = onApplyPageTemplates, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate, onCreateCustomTemplate = onCreateCustomTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -4306,7 +4350,7 @@ private fun EditorScreen(
                         supportingContent = { Text(tr("Page ${index + 1}", "第 ${index + 1} 页"), color = MutedInk) },
                         leadingContent = { Icon(Icons.Default.Bookmark, null) },
                         trailingContent = { IconButton(onClick = { onToggleBookmark(document.id, page.id) }) { Icon(Icons.Outlined.BookmarkRemove, tr("Remove bookmark", "删除书签")) } },
-                        modifier = Modifier.clickable { selectPageWithViewport(page.id); bookmarksOpen = false },
+                        modifier = Modifier.clickable { jumpToPage(page.id); bookmarksOpen = false },
                     )
                 }
             }
@@ -4374,7 +4418,7 @@ private fun EditorScreen(
                                     }
                                 }
                             },
-                            modifier = Modifier.padding(start = (page.outlineLevel * 18).dp).semantics { selected = page.id == selectedPage.id }.clickable { selectPageWithViewport(page.id); outlineOpen = false },
+                            modifier = Modifier.padding(start = (page.outlineLevel * 18).dp).semantics { selected = page.id == selectedPage.id }.clickable { jumpToPage(page.id); outlineOpen = false },
                             colors = ListItemDefaults.colors(containerColor = if (page.id == selectedPage.id) SageContainer else Color.Transparent),
                         )
                     }
@@ -4456,7 +4500,7 @@ private fun EditorScreen(
                         trailingContent = if (hit.source == PageSearchSource.HANDWRITING && hit.recognizedBlockId != null) {{
                             TextButton(onClick = { handwritingConversionHit = page to hit }) { Text(tr("To text", "转文字")) }
                         }} else null,
-                        modifier = Modifier.clickable { searchFocus = hit; selectPageWithViewport(page.id); searchOpen = false },
+                        modifier = Modifier.clickable { searchFocus = hit; jumpToPage(page.id); searchOpen = false },
                     )
                 } }
             } },
@@ -4473,7 +4517,7 @@ private fun EditorScreen(
                     hit.recognizedBlockId?.let { onConvertHandwriting(document.id, page.id, it, true) }
                     handwritingConversionHit = null
                     searchOpen = false
-                    selectPageWithViewport(page.id)
+                    jumpToPage(page.id)
                 }) { Text(tr("Replace ink", "替换笔迹")) }
             },
             dismissButton = {
@@ -4483,7 +4527,7 @@ private fun EditorScreen(
                         hit.recognizedBlockId?.let { onConvertHandwriting(document.id, page.id, it, false) }
                         handwritingConversionHit = null
                         searchOpen = false
-                        selectPageWithViewport(page.id)
+                        jumpToPage(page.id)
                     }) { Text(tr("Keep ink", "保留笔迹")) }
                 }
             },
@@ -9908,6 +9952,8 @@ private fun shortcutActionLabel(action: ShortcutAction, language: UiLanguage): S
     ShortcutAction.TOGGLE_ALIGNMENT_GUIDES -> language.text("Show / hide alignment guides", "显示／隐藏对齐参考线")
     ShortcutAction.PREVIOUS_PAGE -> language.text("Previous page", "上一页")
     ShortcutAction.NEXT_PAGE -> language.text("Next page", "下一页")
+    ShortcutAction.PAGE_BACK -> language.text("Back to previous view", "返回上一视图")
+    ShortcutAction.PAGE_FORWARD -> language.text("Forward to next view", "前进到下一视图")
     ShortcutAction.TOGGLE_BRUSH_PANEL -> language.text("Show / hide brush panel", "显示／隐藏笔刷栏")
     ShortcutAction.TOGGLE_LAYER_PANEL -> language.text("Show / hide layer panel", "显示／隐藏图层栏")
     ShortcutAction.TOGGLE_PANELS -> language.text("Hide / show panels", "隐藏／显示面板")

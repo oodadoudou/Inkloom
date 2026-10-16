@@ -51,6 +51,8 @@ enum class ShortcutAction {
     TOGGLE_ALIGNMENT_GUIDES,
     PREVIOUS_PAGE,
     NEXT_PAGE,
+    PAGE_BACK,
+    PAGE_FORWARD,
     TOGGLE_BRUSH_PANEL,
     TOGGLE_LAYER_PANEL,
     TOGGLE_PANELS,
@@ -83,7 +85,8 @@ fun ShortcutAction.category(): ShortcutCategory = when (this) {
     ShortcutAction.FIT_PAGE, ShortcutAction.ACTUAL_SIZE,
     ShortcutAction.FIT_WIDTH, ShortcutAction.RESET_VIEW_ROTATION, ShortcutAction.TOGGLE_RULER,
     ShortcutAction.TOGGLE_GRID_SNAP, ShortcutAction.TOGGLE_ALIGNMENT_GUIDES -> ShortcutCategory.CANVAS
-    ShortcutAction.PREVIOUS_PAGE, ShortcutAction.NEXT_PAGE -> ShortcutCategory.PAGES
+    ShortcutAction.PREVIOUS_PAGE, ShortcutAction.NEXT_PAGE,
+    ShortcutAction.PAGE_BACK, ShortcutAction.PAGE_FORWARD -> ShortcutCategory.PAGES
     ShortcutAction.NEW_LAYER, ShortcutAction.MERGE_LAYER_DOWN, ShortcutAction.SELECT_LAYER_ABOVE,
     ShortcutAction.SELECT_LAYER_BELOW -> ShortcutCategory.LAYERS
     ShortcutAction.TOGGLE_BRUSH_PANEL, ShortcutAction.TOGGLE_LAYER_PANEL, ShortcutAction.TOGGLE_PANELS -> ShortcutCategory.PANELS
@@ -165,6 +168,9 @@ object CspShortcutResolver {
         ShortcutBinding(ShortcutAction.OPACITY_INCREASE, ShortcutChord(KeyEvent.KEYCODE_RIGHT_BRACKET, ctrl = true)),
         ShortcutBinding(ShortcutAction.SELECT_LAYER_ABOVE, ShortcutChord(KeyEvent.KEYCODE_RIGHT_BRACKET, alt = true)),
         ShortcutBinding(ShortcutAction.SELECT_LAYER_BELOW, ShortcutChord(KeyEvent.KEYCODE_LEFT_BRACKET, alt = true)),
+        // Alt+Left/Right step through page jumps like a PDF reader's previous/next view.
+        ShortcutBinding(ShortcutAction.PAGE_BACK, ShortcutChord(KeyEvent.KEYCODE_DPAD_LEFT, alt = true)),
+        ShortcutBinding(ShortcutAction.PAGE_FORWARD, ShortcutChord(KeyEvent.KEYCODE_DPAD_RIGHT, alt = true)),
         ShortcutBinding(ShortcutAction.PEN_OR_PENCIL_GROUP, ShortcutChord(KeyEvent.KEYCODE_P)),
         ShortcutBinding(ShortcutAction.BRUSH_GROUP, ShortcutChord(KeyEvent.KEYCODE_B)),
         ShortcutBinding(ShortcutAction.TOGGLE_ERASER, ShortcutChord(KeyEvent.KEYCODE_E)),

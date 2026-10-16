@@ -102,6 +102,30 @@ class NavigationContextWindowTest {
         compose.onNodeWithContentDescription("Actions Notebook").assertIsSelected()
     }
 
+    @Test fun typedPageNumbersAndJumpsCanBeRetracedWithBackAndForward() {
+        // The notebook may reopen at page 30 from an earlier test, so only jumps made here are asserted.
+        openFixtureAtPage30()
+        compose.onNodeWithContentDescription("Jump to page").performClick()
+        compose.onNode(hasContentDescription("Bookmarked") and hasAnyAncestor(hasContentDescription("Page jump panel")), useUnmergedTree = true).assertIsDisplayed()
+        val field = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasContentDescription("Page jump panel")))
+        field.performTextInput("40"); field.performImeAction()
+        compose.onNodeWithText("No page 40 (1–32)").assertIsDisplayed()
+        field.performTextReplacement("5"); field.performImeAction()
+        compose.onNodeWithText("5/32").assertExists()
+        compose.onNodeWithContentDescription("Page jump panel").assertDoesNotExist()
+
+        compose.onNodeWithContentDescription("Back to page 30").performClick()
+        compose.onNodeWithText("30/32").assertExists()
+        compose.onNodeWithContentDescription("Forward to page 5").assertExists()
+        // A page turn is not a jump: it does not clear Forward.
+        compose.onNodeWithContentDescription("Next page").performClick()
+        compose.onNodeWithText("31/32").assertExists()
+        compose.onNodeWithContentDescription("Forward to page 5").performClick()
+        compose.onNodeWithText("5/32").assertExists()
+        compose.onNodeWithContentDescription("Back to page 31").assertExists()
+        compose.onNodeWithContentDescription("Forward to page 5").assertDoesNotExist()
+    }
+
     @Test fun actionsHasOneEntryOnTheRightAndRemembersItsCategory() {
         openFixtureAtPage30()
         compose.onAllNodesWithContentDescription("Actions").assertCountEquals(1)
