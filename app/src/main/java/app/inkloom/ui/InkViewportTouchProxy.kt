@@ -84,6 +84,19 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
             activeDrawingFrame = null
             clearHoverCursor()
         }
+    /**
+     * Continuous pages: offered every contact that starts on a neighbouring page, in this view's
+     * coordinates; returns true when it made that page active. A pen press that activates a page is
+     * swallowed for the rest of its contact so it never paints; a finger only activates on a tap,
+     * so drags starting on a neighbour still scroll.
+     */
+    var activatePageAt: (Float, Float) -> Boolean = { _, _ -> false }
+    private var swallowingPageActivation = false
+    private var fingerTapCandidate = false
+    private var fingerTapDownX = 0f
+    private var fingerTapDownY = 0f
+    private var fingerTapDownTime = 0L
+    private val tapSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop.toFloat()
 
     private val coordinateMapper = PointerPacketMapper()
     private val cursorSurface = LowLatencyCanvasView(context)
@@ -127,6 +140,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         coordinateMapper.snapshot(this, canvas, canvas.viewportState())
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (updatePageActivation(event)) return true
         if (updateImageHold(event)) return true
         val stylusIndex = event.stylusPointerIndex(activeStylusPointerId)
         if (stylusIndex >= 0 && event.actionMasked in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN)) {
@@ -138,6 +152,29 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         val handled = forward(event, retainDrawingFrame = true) { canvas, forwarded -> canvas.dispatchTouchEvent(forwarded) }
         updateContactCursor(event)
         return handled
+    }
+
+    private fun updatePageActivation(event: MotionEvent): Boolean {
+        val terminal = event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL
+        if (swallowingPageActivation) { if (terminal) swallowingPageActivation = false; return true }
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> if (event.isStylusEvent()) {
+                fingerTapCandidate = false
+                if (activatePageAt(event.x, event.y)) { swallowingPageActivation = true; return true }
+            } else {
+                fingerTapCandidate = true
+                fingerTapDownX = event.x; fingerTapDownY = event.y; fingerTapDownTime = event.eventTime
+            }
+            MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> fingerTapCandidate = false
+            MotionEvent.ACTION_MOVE -> if (kotlin.math.hypot(event.x - fingerTapDownX, event.y - fingerTapDownY) > tapSlop) fingerTapCandidate = false
+            MotionEvent.ACTION_UP -> if (fingerTapCandidate && event.eventTime - fingerTapDownTime < android.view.ViewConfiguration.getLongPressTimeout()) {
+                fingerTapCandidate = false
+                // The canvas still sees this tap; make sure it cannot pair with a later tap on the
+                // newly active page into a double-tap undo.
+                if (activatePageAt(event.x, event.y)) post { target?.cancelPendingTapGestures() }
+            }
+        }
+        return false
     }
 
     override fun onHoverEvent(event: MotionEvent): Boolean {

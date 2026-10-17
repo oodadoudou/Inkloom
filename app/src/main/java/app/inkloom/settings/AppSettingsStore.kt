@@ -69,6 +69,8 @@ data class AppSettings(
     val twoFingerRotation: Boolean = true,
     /** One-finger horizontal flick at fit zoom turns the page when the finger is not drawing. */
     val swipeToTurnPages: Boolean = true,
+    /** Pages stacked in one vertical strip instead of one page at a time. */
+    val continuousPages: Boolean = false,
     val symmetryMode: SymmetryMode = SymmetryMode.NONE,
     val symmetryCenterX: Float = .5f,
     val symmetryCenterY: Float = .5f,
@@ -240,6 +242,7 @@ class AppSettingsStore(context: Context) {
             twoFingerDoubleTapUndo = preferences.getBoolean("twoFingerDoubleTapUndo", true),
             threeFingerTapRedo = preferences.getBoolean("threeFingerTapRedo", true),
             swipeToTurnPages = preferences.getBoolean("swipeToTurnPages", true),
+            continuousPages = preferences.getBoolean("continuousPages", false),
             twoFingerRotation = if (migrateCanvasRotation) true else preferences.getBoolean("twoFingerRotation", true),
             symmetryMode = enumValue(preferences.getString("symmetryMode", null), SymmetryMode.NONE),
             symmetryCenterX = preferences.getFloat("symmetryCenterX", .5f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f,
@@ -394,6 +397,7 @@ class AppSettingsStore(context: Context) {
             .putBoolean("twoFingerDoubleTapUndo", persisted.twoFingerDoubleTapUndo)
             .putBoolean("threeFingerTapRedo", persisted.threeFingerTapRedo)
             .putBoolean("swipeToTurnPages", persisted.swipeToTurnPages)
+            .putBoolean("continuousPages", persisted.continuousPages)
             .putBoolean("twoFingerRotation", persisted.twoFingerRotation)
             .putString("symmetryMode", persisted.symmetryMode.name)
             .putFloat("symmetryCenterX", persisted.symmetryCenterX.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f)

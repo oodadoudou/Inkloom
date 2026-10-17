@@ -86,7 +86,7 @@ object AppSettingsBackupCodec {
         put("layerShowProperties", layerShowProperties); put("layerShowCommands", layerShowCommands); put("layerCommandsAtBottom", layerCommandsAtBottom)
         put("toolbarOffsetXDp", toolbarOffsetXDp); put("toolbarOffsetYDp", toolbarOffsetYDp); put("selectionStudioXDp",selectionStudioXDp); put("selectionStudioYDp",selectionStudioYDp); put("verticalToolbar", verticalToolbar); put("toolbarDock", toolbarDock.name)
         put("toolPaletteLayout", ToolPaletteLayout.encode(ToolPaletteLayout.decode(toolPaletteLayout)))
-        put("singleFingerDoubleTapUndo", singleFingerDoubleTapUndo); put("twoFingerDoubleTapUndo", twoFingerDoubleTapUndo); put("threeFingerTapRedo", threeFingerTapRedo); put("twoFingerRotation", twoFingerRotation); put("swipeToTurnPages", swipeToTurnPages)
+        put("singleFingerDoubleTapUndo", singleFingerDoubleTapUndo); put("twoFingerDoubleTapUndo", twoFingerDoubleTapUndo); put("threeFingerTapRedo", threeFingerTapRedo); put("twoFingerRotation", twoFingerRotation); put("swipeToTurnPages", swipeToTurnPages); put("continuousPages", continuousPages)
         put("symmetryMode", symmetryMode.name); put("symmetryCenterX", symmetryCenterX); put("symmetryCenterY", symmetryCenterY); put("symmetryAngleDegrees", symmetryAngleDegrees)
         put("rulerEnabled", rulerEnabled); put("rulerCenterX", rulerCenterX); put("rulerCenterY", rulerCenterY); put("rulerAngleDegrees", rulerAngleDegrees); put("rulerSnapDegrees", rulerSnapDegrees)
         put("gridSnapEnabled", gridSnapEnabled); put("gridSpacing", gridSpacing); put("alignmentGuidesEnabled", alignmentGuidesEnabled); put("verticalGuideX", verticalGuideX); put("horizontalGuideY", horizontalGuideY)
@@ -148,7 +148,7 @@ object AppSettingsBackupCodec {
             verticalToolbar = boolean("verticalToolbar", defaults.verticalToolbar), toolbarDock = enum("toolbarDock", defaults.toolbarDock),
             toolPaletteLayout = ToolPaletteLayout.encode(ToolPaletteLayout.decode(text("toolPaletteLayout").ifBlank { defaults.toolPaletteLayout })),
             singleFingerDoubleTapUndo = boolean("singleFingerDoubleTapUndo", defaults.singleFingerDoubleTapUndo), twoFingerDoubleTapUndo = boolean("twoFingerDoubleTapUndo", defaults.twoFingerDoubleTapUndo), threeFingerTapRedo = boolean("threeFingerTapRedo", defaults.threeFingerTapRedo),
-            twoFingerRotation = boolean("twoFingerRotation", defaults.twoFingerRotation), swipeToTurnPages = boolean("swipeToTurnPages", defaults.swipeToTurnPages),
+            twoFingerRotation = boolean("twoFingerRotation", defaults.twoFingerRotation), swipeToTurnPages = boolean("swipeToTurnPages", defaults.swipeToTurnPages), continuousPages = boolean("continuousPages", defaults.continuousPages),
             symmetryMode = enum("symmetryMode", defaults.symmetryMode), symmetryCenterX = float("symmetryCenterX", defaults.symmetryCenterX).coerceIn(0f, 1f), symmetryCenterY = float("symmetryCenterY", defaults.symmetryCenterY).coerceIn(0f, 1f),
             symmetryAngleDegrees = app.inkloom.document.SymmetryGuideState.normalizeAngle(float("symmetryAngleDegrees", defaults.symmetryAngleDegrees)),
             rulerEnabled = boolean("rulerEnabled", defaults.rulerEnabled),

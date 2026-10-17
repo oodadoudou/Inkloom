@@ -527,7 +527,7 @@ internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<St
                 view.symmetryAssisted = activeDrawingAssist
                 view.twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
                 view.threeFingerTapRedo = settings.threeFingerTapRedo
-                view.twoFingerRotationEnabled = settings.twoFingerRotation
+                view.twoFingerRotationEnabled = settings.twoFingerRotation && !settings.continuousPages
                 view.onInputDiagnostic = onInputDiagnostic
                 view.showStrokeTraceOverlay = settings.showStrokeTraceOverlay
                 view.onColorSampled = onColorSampled
@@ -642,7 +642,7 @@ internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<St
                 view.symmetryAssisted = activeDrawingAssist
                 view.twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
                 view.threeFingerTapRedo = settings.threeFingerTapRedo
-                view.twoFingerRotationEnabled = settings.twoFingerRotation
+                view.twoFingerRotationEnabled = settings.twoFingerRotation && !settings.continuousPages
                 view.onInputDiagnostic = onInputDiagnostic
                 view.showStrokeTraceOverlay = settings.showStrokeTraceOverlay
                 view.onColorSampled = onColorSampled
@@ -702,7 +702,7 @@ internal fun InkCanvasView.applyBrushPresetV5Configuration(
     drawAndHoldEnabled = settings.drawAndHoldEnabled
     drawAndHoldDelayMillis = settings.drawAndHoldDelayMillis
     singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
-    pageSwipeEnabled = settings.swipeToTurnPages
+    pageSwipeEnabled = settings.swipeToTurnPages && !settings.continuousPages
     twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
     threeFingerTapRedo = settings.threeFingerTapRedo
     pressureSensitivity = settings.pressureSensitivity
@@ -799,7 +799,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     drawAndHoldEnabled = settings.drawAndHoldEnabled
     drawAndHoldDelayMillis = settings.drawAndHoldDelayMillis
     singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
-    pageSwipeEnabled = settings.swipeToTurnPages
+    pageSwipeEnabled = settings.swipeToTurnPages && !settings.continuousPages
     twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
     threeFingerTapRedo = settings.threeFingerTapRedo
     globalStrokeStabilization = settings.globalStrokeStabilization

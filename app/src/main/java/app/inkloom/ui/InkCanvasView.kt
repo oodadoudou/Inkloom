@@ -924,6 +924,11 @@ class InkCanvasView(context: Context) : View(context) {
     var threeFingerTapRedo: Boolean = true
     /** Turns pages with a one-finger flick at fit zoom; [onPageSwipe] receives true for the next page. */
     var pageSwipeEnabled: Boolean = false
+    /** Forgets a pending single- or two-finger tap so it cannot complete a double-tap gesture. */
+    fun cancelPendingTapGestures() {
+        singleFingerDoubleTapUndoGesture.cancel()
+        twoFingerTapUndoGesture.cancel()
+    }
     var onPageSwipe: (Boolean) -> Unit = {}
     var twoFingerRotationEnabled: Boolean = false
     var rulerEnabled: Boolean = false

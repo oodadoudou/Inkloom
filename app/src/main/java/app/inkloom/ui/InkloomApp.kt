@@ -38,6 +38,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
@@ -1353,11 +1354,56 @@ private fun EditorScreen(
     var viewportPageId by remember(document.id) { mutableStateOf(selectedPage.id) }
     var pageHistory by remember(document.id) { mutableStateOf(app.inkloom.document.PageNavigationHistory()) }
     fun selectPageWithViewport(pageId: String) {
+        if (settings.continuousPages) {
+            // In the strip the chosen page comes to the window centre at the current zoom.
+            viewportPageId = pageId
+            applyViewport(ViewportState(zoom, panX, 0f, 0f))
+            onSelectPage(pageId)
+            return
+        }
         if (pageId == viewportPageId) { onSelectPage(pageId); return }
         pageViewportStore.save(viewportPageId, ViewportState(zoom, panX, panY, viewRotation))
         applyViewport(pageViewportStore.restore(pageId))
         viewportPageId = pageId
         onSelectPage(pageId)
+    }
+    // Continuous pages: each page's fit-to-window box as the canvas sizes it, in pixels before zoom.
+    val stripGapPx = with(LocalDensity.current) { 24.dp.toPx() }
+    fun stripFitSize(page: InkPage): androidx.compose.ui.geometry.Size {
+        val ratio = (PageCropTransform.visibleWidth(page) / PageCropTransform.visibleHeight(page).coerceAtLeast(1f)).coerceAtLeast(.01f)
+        val width = minOf(viewportWidthPx * .88f, viewportHeightPx * .88f * ratio).coerceAtLeast(1f)
+        return androidx.compose.ui.geometry.Size(width, width / ratio)
+    }
+    fun stripActiveIndex() = document.pages.indexOfFirst { it.id == viewportPageId }
+    /** Makes another strip page live without moving anything on screen. */
+    fun activateStripPage(index: Int, rebasedPanY: Float) {
+        val target = document.pages.getOrNull(index) ?: return
+        if (target.id == viewportPageId) return
+        viewportPageId = target.id
+        applyViewport(ViewportState(zoom, panX, rebasedPanY, 0f))
+        canvasView?.viewportPanY = rebasedPanY
+        onSelectPage(target.id)
+    }
+    /** After the view moves, hands the live canvas to whichever page is now nearest the centre. */
+    fun followStrip() {
+        if (!settings.continuousPages) return
+        ContinuousPageStrip.switchAfterScroll(document.pages.map { stripFitSize(it).height }, stripGapPx, stripActiveIndex(), zoom, panY)
+            ?.let { activateStripPage(it.index, it.rebasedPanY) }
+    }
+    fun stripNeighbours(): List<ContinuousPageStrip.Placement> = if (!settings.continuousPages) emptyList() else
+        ContinuousPageStrip.visibleNeighbours(document.pages.map { stripFitSize(it).height }, stripGapPx, stripActiveIndex(), zoom, panY, viewportHeightPx)
+    /** A tap or pen press on a neighbouring page makes it live; it never paints. */
+    fun stripActivateAt(position: Offset): Boolean {
+        stripNeighbours().forEach { placement ->
+            val size = stripFitSize(document.pages[placement.index])
+            val centerX = viewportWidthPx / 2f + panX
+            val centerY = viewportHeightPx / 2f + panY + placement.centerOffset * zoom
+            if (kotlin.math.abs(position.x - centerX) <= size.width * zoom / 2f && kotlin.math.abs(position.y - centerY) <= size.height * zoom / 2f) {
+                activateStripPage(placement.index, panY + placement.centerOffset * zoom)
+                return true
+            }
+        }
+        return false
     }
     /** A non-sequential navigation that Back can return from; previous/next page turns are not jumps. */
     fun jumpToPage(pageId: String) {
@@ -1895,6 +1941,14 @@ private fun EditorScreen(
                     DropdownMenuItem(text = { Text(tr("Actual size", "实际大小")) }, onClick = { overlays.workspaceMenu = false; actualSize() })
                     DropdownMenuItem(text = { Text(tr("Fit width", "适合宽度")) }, onClick = { overlays.workspaceMenu = false; fitWidth() })
                     DropdownMenuItem(text = { Text(tr("Reset rotation", "重置旋转")) }, onClick = { overlays.workspaceMenu = false; resetViewRotation() })
+                    DropdownMenuItem(text = { Text(tr("Continuous pages", "连续页面")) },
+                        leadingIcon = { Icon(if (settings.continuousPages) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, null) },
+                        onClick = {
+                            overlays.workspaceMenu = false
+                            // The strip is vertical, so it starts unrotated with the current page centred.
+                            onSettingsChange(settings.copy(continuousPages = !settings.continuousPages))
+                            applyViewport(ViewportState(zoom, panX, 0f, 0f))
+                        })
                     HorizontalDivider()
                     DropdownMenuItem(text = { Text(tr("Color management", "色彩管理")) }, onClick = { overlays.workspaceMenu=false;overlays.colorManagementOpen=true })
                     DropdownMenuItem(text = { Text(tr("Canvas & resolution", "画布与分辨率")) }, onClick = { overlays.workspaceMenu = false; overlays.canvasSizeOpen = true })
@@ -2238,7 +2292,8 @@ private fun EditorScreen(
                 selectionActive -> { finishSelectionTool(deselect = true); true }
                 else -> false
             }
-        }, onReleaseInput = { canvasView?.requestFocus() }, onClose = ::closeEditorPanel, canvas = { BoxWithConstraints(
+        }, onReleaseInput = { canvasView?.requestFocus() }, onClose = ::closeEditorPanel, canvas = {
+            BoxWithConstraints(
                 Modifier
                     .fillMaxSize()
                     .clipToBounds()
@@ -2251,6 +2306,18 @@ private fun EditorScreen(
             ) {
                 val toolbarAreaWidth = maxWidth
                 val toolbarAreaHeight = maxHeight
+                // Neighbouring pages of the continuous view, drawn beside the live canvas.
+                stripNeighbours().forEach { placement ->
+                    val neighbour = document.pages[placement.index]
+                    val fit = stripFitSize(neighbour)
+                    val density = LocalDensity.current
+                    key(neighbour.id) {
+                        ContinuousPageNeighbor(neighbour, tr("Page ${placement.index + 1}", "第 ${placement.index + 1} 页"), assets,
+                            renderWidthPx = fit.width.toInt(), scale = zoom, translationX = panX,
+                            translationY = panY + placement.centerOffset * zoom,
+                            modifier = with(density) { Modifier.size(fit.width.toDp(), fit.height.toDp()) })
+                    }
+                }
                 PaperCanvas(
                     onApplyRasterLayerMerge = onApplyRasterLayerMerge,
                     onApplyRasterLayerFilter = onApplyRasterLayerFilter,
@@ -2311,6 +2378,7 @@ private fun EditorScreen(
                             viewportPanY = next.panY
                             viewportRotationDegrees = next.rotationDegrees
                         }
+                        followStrip()
                     },
                     onPinch = { factor, previousFocusX, previousFocusY, currentFocusX, currentFocusY ->
                         val view = canvasView ?: return@PaperCanvas
@@ -2332,6 +2400,7 @@ private fun EditorScreen(
                             viewportPanY = next.panY
                             viewportRotationDegrees = next.rotationDegrees
                         }
+                        followStrip()
                     },
                     onPan = { dx, dy ->
                         val view = canvasView ?: return@PaperCanvas
@@ -2339,6 +2408,7 @@ private fun EditorScreen(
                         val next = ViewportTransform.panByScreen(current, dx, dy, geometry = currentViewportGeometry())
                         applyViewport(next)
                         view.apply { viewportPanX = next.panX; viewportPanY = next.panY }
+                        followStrip()
                     },
                     onRotate = { delta ->
                         val view = canvasView ?: return@PaperCanvas
@@ -2682,6 +2752,7 @@ private fun EditorScreen(
                     factory = { InkViewportTouchProxy(it) },
                     update = { proxy ->
                         proxy.target = canvasView
+                        proxy.activatePageAt = { x, y -> settings.continuousPages && stripActivateAt(Offset(x, y)) }
                         proxy.imageAtPoint = { x, y ->
                             if (imageCanvasTransform != null || modes.handToolEnabled || modes.handToolHeld || modes.rotateToolEnabled || modes.rotateToolHeld || tool == EditorTool.ERASER) null
                             else ImageElementHitTest.find(PageCropTransform.project(selectedPage), x, y)?.id
