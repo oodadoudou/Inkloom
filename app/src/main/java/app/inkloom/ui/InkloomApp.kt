@@ -1145,6 +1145,10 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
         LibraryDocumentQuery.visible(documents, filter, folderId, search)
     }
     LaunchedEffect(filter, folderId, search) { selectedNoteIds = emptySet() }
+    // Choosing another section or folder ends search entry, so the keyboard stops covering the
+    // results; the search text itself is kept.
+    val libraryFocus = androidx.compose.ui.platform.LocalFocusManager.current
+    LaunchedEffect(filter, folderId) { libraryFocus.clearFocus() }
     fun finishDocumentDrag() {
         val documentId = draggingDocumentId
         val position = documentDragPosition
@@ -1217,7 +1221,9 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
             // Compact windows (narrow or large fonts) give the title its own line instead of
             // squeezing it beside five actions until only "You…" remains.
             val libraryActions: @Composable RowScope.() -> Unit = {
-                IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, tr("Settings", "设置")) }
+                // Wide windows keep Settings in the sidebar; only compact windows, whose sidebar is
+                // folded away, need it here.
+                if (compact) IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, tr("Settings", "设置")) }
                 TextButton(onClick = { managingNotes = !managingNotes; selectedNoteIds = emptySet() }) {
                     Text(if (managingNotes) tr("Done", "完成") else tr("Select", "选择"))
                 }
@@ -1255,14 +1261,6 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                     LibraryFilter.TRASH -> tr("Trash", "废纸篓")
                     LibraryFilter.PDF -> "PDF"
                 }, fontSize = 22.sp, modifier = Modifier.weight(1f))
-                if(!compact) {
-                FilterChip(selected = filter == LibraryFilter.ALL, onClick = { filter = LibraryFilter.ALL }, label = { Text(tr("All", "全部")) })
-                Spacer(Modifier.width(8.dp))
-                FilterChip(selected = filter == LibraryFilter.FAVORITES, onClick = { filter = LibraryFilter.FAVORITES }, label = { Text(tr("Favorites", "收藏")) })
-                Spacer(Modifier.width(8.dp))
-                FilterChip(selected = filter == LibraryFilter.PDF, onClick = { filter = LibraryFilter.PDF }, label = { Text("PDF") })
-                Spacer(Modifier.width(12.dp))
-                }
                 listOf(
                     Triple(LibraryLayout.GRID, Icons.Outlined.GridView, tr("Grid layout", "网格布局")),
                     Triple(LibraryLayout.LIST, Icons.Outlined.ViewList, tr("List layout", "列表布局")),
@@ -1543,6 +1541,7 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
         RailItem(Icons.Outlined.Book, tr("Library", "资料库"), filter == LibraryFilter.ALL) { onFilter(LibraryFilter.ALL) }
         RailItem(Icons.Outlined.History, tr("Recents", "最近使用"), filter == LibraryFilter.RECENT) { onFilter(LibraryFilter.RECENT) }
         RailItem(Icons.Outlined.StarBorder, tr("Favorites", "收藏"), filter == LibraryFilter.FAVORITES) { onFilter(LibraryFilter.FAVORITES) }
+        RailItem(Icons.Outlined.PictureAsPdf, "PDF", filter == LibraryFilter.PDF) { onFilter(LibraryFilter.PDF) }
         RailItem(Icons.Outlined.Archive, tr("Archive", "归档"), filter == LibraryFilter.ARCHIVED) { onFilter(LibraryFilter.ARCHIVED) }
         RailItem(Icons.Outlined.Delete, tr("Trash", "废纸篓"), filter == LibraryFilter.TRASH) { onFilter(LibraryFilter.TRASH) }
         HorizontalDivider(Modifier.padding(vertical = 10.dp), color = OutlineSoft)
@@ -6634,8 +6633,6 @@ private fun ToolDock(tool: EditorTool, toolPaletteLayout: String, onTool: (Edito
                 tool = tool,
                 toolPaletteLayout = toolPaletteLayout,
                 onTool = onTool,
-                onUndo = onUndo,
-                onRedo = onRedo,
                 referenceTarget = referenceTarget,
                 onReferenceTarget = onReferenceTarget,
                 correctLineMode = correctLineMode,
@@ -6778,7 +6775,7 @@ private fun ProcreateSidebar(
 }
 
 @Composable
-private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit, liquifyControls: @Composable ColumnScope.() -> Unit) {
+private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (EditorTool) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit, liquifyControls: @Composable ColumnScope.() -> Unit) {
     val dragToolbarDescription = tr("Drag toolbar", "拖动工具栏")
     var toolLibraryLayout by rememberSaveable { mutableStateOf(ToolLibraryLayout.LIST) }
     var toolLibrarySort by rememberSaveable { mutableStateOf(ToolLibrarySort.DEFAULT) }
@@ -7049,8 +7046,6 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
     } else {
         BrushColorPicker(brushColor, onColor, square = true)
     }
-    CompactToolbarIconButton(onClick = onUndo, description = tr("Undo", "撤销")) { Icon(Icons.Outlined.Undo, null, Modifier.size(20.dp)) }
-    CompactToolbarIconButton(onClick = onRedo, description = tr("Redo", "重做")) { Icon(Icons.Outlined.Redo, null, Modifier.size(20.dp)) }
 }
 
 @Composable

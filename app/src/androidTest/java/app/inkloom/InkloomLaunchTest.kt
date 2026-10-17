@@ -7,6 +7,7 @@ import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.ViewGroup
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
@@ -419,14 +420,14 @@ class InkloomLaunchTest {
     }
 
     @Test fun settingsExposeInputAndToolControls() {
-        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNode(hasText("Settings") and hasClickAction()).performClick()
         composeRule.onNodeWithText("Gestures").performClick()
         composeRule.onNodeWithText("Draw with finger").assertIsDisplayed()
         composeRule.onNodeWithText("Single-finger double tap to undo").assertIsDisplayed()
     }
 
     @Test fun settingsExposeConflictSafeFullLibraryBackup() {
-        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNode(hasText("Settings") and hasClickAction()).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Backup").performClick()
         composeRule.onNodeWithText("Export full library backup").assertIsDisplayed()
@@ -434,7 +435,7 @@ class InkloomLaunchTest {
     }
 
     @Test fun shortcutEditorExposesPortableToolboxProfiles() {
-        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNode(hasText("Settings") and hasClickAction()).performClick()
         composeRule.onNodeWithText("Shortcuts").performClick()
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNodeWithText("Search actions or keys").assertIsDisplayed()
@@ -445,7 +446,7 @@ class InkloomLaunchTest {
     }
 
     @Test fun shortcutEditorMapsCspRolesToRealBrushGroups() {
-        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNode(hasText("Settings") and hasClickAction()).performClick()
         composeRule.onNodeWithText("Shortcuts").performClick()
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(14)
@@ -457,7 +458,7 @@ class InkloomLaunchTest {
     }
 
     @Test fun shortcutEditorConfiguresAnArbitraryGroupQuickSlot() {
-        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNode(hasText("Settings") and hasClickAction()).performClick()
         composeRule.onNodeWithText("Shortcuts").performClick()
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(14)
@@ -474,7 +475,7 @@ class InkloomLaunchTest {
     }
 
     @Test fun shortcutEditorConfiguresRotaryBrushSizeControl() {
-        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNode(hasText("Settings") and hasClickAction()).performClick()
         composeRule.onNodeWithText("Shortcuts").performClick()
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(5)

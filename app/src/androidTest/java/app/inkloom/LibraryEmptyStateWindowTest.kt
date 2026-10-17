@@ -40,11 +40,10 @@ class LibraryEmptyStateWindowTest {
     }
 
     @Test fun searchAndTrashExplainWhyTheyAreEmpty() {
-        compose.onNode(hasSetTextAction()).performTextInput("zzz")
-        // The on-screen keyboard may cover the results area while typing; the message replaces it.
-        compose.onNodeWithContentDescription("No notebooks match “zzz”").assertExists()
-        compose.onNode(hasSetTextAction()).performTextClearance()
         compose.onNodeWithText("Trash").performClick()
-        compose.onNodeWithContentDescription("Trash is empty").assertExists()
+        compose.onNodeWithContentDescription("Trash is empty").assertIsDisplayed()
+        // Typed last: the on-screen keyboard covers the lower sidebar and the results area.
+        compose.onNode(hasSetTextAction()).performTextInput("zzz")
+        compose.onNodeWithContentDescription("No notebooks match “zzz”").assertExists()
     }
 }
