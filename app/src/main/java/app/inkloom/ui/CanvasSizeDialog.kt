@@ -68,7 +68,7 @@ internal fun CanvasSizeDialog(page: InkPage, language: UiLanguage, busy: Boolean
 
 @Composable
 internal fun PageRasterExportDialog(page: InkPage, language: UiLanguage, onDismiss: () -> Unit,
-    onExport: (PageRasterExportOptions) -> Unit) {
+    onExport: (PageRasterExportOptions) -> Unit, sharing: Boolean = false) {
     fun tr(en: String, zh: String) = language.text(en, zh)
     var width by remember { mutableStateOf(PageCropTransform.visibleWidth(page).toInt().toString()) }
     var height by remember { mutableStateOf(PageCropTransform.visibleHeight(page).toInt().toString()) }
@@ -77,7 +77,7 @@ internal fun PageRasterExportDialog(page: InkPage, language: UiLanguage, onDismi
     var format by remember { mutableStateOf(RasterFileFormat.PNG) }
     var formatMenu by remember { mutableStateOf(false) }
     val w = width.toIntOrNull(); val h = height.toIntOrNull()
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(tr("Export page", "导出页面")) }, text = {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (sharing) tr("Share page", "分享页面") else tr("Export page", "导出页面")) }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(width, { width = it.filter(Char::isDigit).take(4) }, Modifier.weight(1f), label = { Text(tr("Width (px)", "宽度（px）")) })
@@ -104,6 +104,6 @@ internal fun PageRasterExportDialog(page: InkPage, language: UiLanguage, onDismi
             }
         }
     }, confirmButton = { TextButton(enabled = w != null && h != null && w in 1..8192 && h in 1..8192,
-        onClick = { if (w != null && h != null) onExport(PageRasterExportOptions(w, h, background, format, includeDraftLayers = drafts && format != RasterFileFormat.LAYERED_PNG)) }) { Text(tr("Export", "导出")) } },
+        onClick = { if (w != null && h != null) onExport(PageRasterExportOptions(w, h, background, format, includeDraftLayers = drafts && format != RasterFileFormat.LAYERED_PNG)) }) { Text(if (sharing) tr("Share", "分享") else tr("Export", "导出")) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) } })
 }

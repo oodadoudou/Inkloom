@@ -755,7 +755,21 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
 
     fun currentDocument(): InkDocument? = mutableState.value.selectedDocumentId?.let(store::get)
     fun currentPage(): InkPage? = currentDocument()?.pages?.firstOrNull { it.id == mutableState.value.selectedPageId }
-    fun exportCurrent(uri: Uri) { currentDocument()?.let { assets.exportPdf(it, uri) } }
+    /** Writes a notebook's PDF in the background, so long notebooks do not freeze the window. */
+    fun exportDocumentPdf(documentId: String, uri: Uri, onComplete: (Result<Unit>) -> Unit) =
+        exportInBackground(documentId, onComplete) { assets.exportPdf(it, uri) }
+    fun exportDocumentBundle(documentId: String, uri: Uri, onComplete: (Result<Unit>) -> Unit) =
+        exportInBackground(documentId, onComplete) { assets.exportBundle(it, uri) }
+    fun writeDocumentPdf(documentId: String, file: java.io.File, onComplete: (Result<Unit>) -> Unit) =
+        exportInBackground(documentId, onComplete) { document -> file.outputStream().use { assets.exportPdf(document, it) } }
+    private fun exportInBackground(documentId: String, onComplete: (Result<Unit>) -> Unit, write: (InkDocument) -> Unit) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { write(store.get(documentId) ?: error("This notebook is no longer available")) }
+            }
+            onComplete(result)
+        }
+    }
     fun exportCurrentPage(uri: Uri, options: app.inkloom.document.PageRasterExportOptions = app.inkloom.document.PageRasterExportOptions(), onComplete: (Result<Unit>) -> Unit) {
         val page = currentPage() ?: run {
             onComplete(Result.failure(IllegalStateException("No page is open for export")))
@@ -766,7 +780,6 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             onComplete(result)
         }
     }
-    fun exportCurrentBundle(uri: Uri) { currentDocument()?.let { assets.exportBundle(it, uri) } }
 
     fun exportLibraryBackup(uri: Uri, brushes: List<ImportedBrush>, brushGroups: List<String>, preferences: ByteArray?, onComplete: (Result<Unit>) -> Unit) {
         viewModelScope.launch {

@@ -696,14 +696,50 @@ fun InkloomApp(initialIntent: Intent?) {
             destination = AppDestination.EDITOR
         }.onFailure { importError = it.message }
     }
+    // Export and share report in their own words; the import dialog used to announce export errors.
+    fun exportFinished(result: Result<Unit>, onSuccess: () -> Unit = {
+        Toast.makeText(context, settings.language.text("Export saved.", "已导出。"), Toast.LENGTH_SHORT).show()
+    }) {
+        result.onSuccess { onSuccess() }.onFailure { error ->
+            android.util.Log.e("Inkloom", "Export failed", error)
+            Toast.makeText(context, settings.language.text("Could not export: ${error.message ?: "unknown error"}",
+                "无法导出：${error.message ?: "未知错误"}"), Toast.LENGTH_LONG).show()
+        }
+    }
+    // The file picker returns after the editor or Library chose a notebook; remember which one.
+    var pendingExportDocumentId by rememberSaveable { mutableStateOf<String?>(null) }
+    fun takeExportDocumentId(): String? = (pendingExportDocumentId ?: viewModel.currentDocument()?.id).also { pendingExportDocumentId = null }
     val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        if (uri != null) runCatching { viewModel.exportCurrent(uri) }.onFailure { importError = it.message }
+        val documentId = takeExportDocumentId()
+        if (uri != null && documentId != null) viewModel.exportDocumentPdf(documentId, uri) { exportFinished(it) }
     }
     var pendingRasterExport by remember { mutableStateOf(PageRasterExportOptions()) }
     val imageExportPicker = rememberLauncherForActivityResult(RasterExportContract()) { uri ->
-        if (uri != null) viewModel.exportCurrentPage(uri, pendingRasterExport) { result -> result.onFailure { importError = it.message } }
+        if (uri != null) viewModel.exportCurrentPage(uri, pendingRasterExport) { exportFinished(it) }
     }
-    val bundleExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) runCatching { viewModel.exportCurrentBundle(uri) }.onFailure { importError = it.message } }
+    val bundleExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        val documentId = takeExportDocumentId()
+        if (uri != null && documentId != null) viewModel.exportDocumentBundle(documentId, uri) { exportFinished(it) }
+    }
+    fun shareNotebookPdf(document: InkDocument) {
+        Toast.makeText(context, settings.language.text("Preparing PDF…", "正在准备 PDF…"), Toast.LENGTH_SHORT).show()
+        val file = ShareSheet.newFile(context, document.title, "pdf")
+        viewModel.writeDocumentPdf(document.id, file) { result ->
+            exportFinished(result) { ShareSheet.open(context, file, "application/pdf", settings.language.text("Share PDF", "分享 PDF")) }
+        }
+    }
+    fun shareCurrentPage(options: PageRasterExportOptions) {
+        val title = viewModel.currentDocument()?.title ?: "Inkloom"
+        val file = ShareSheet.newFile(context, "$title page", options.format.extension)
+        viewModel.exportCurrentPage(Uri.fromFile(file), options) { result ->
+            exportFinished(result) { ShareSheet.open(context, file, options.format.mime, settings.language.text("Share page", "分享页面")) }
+        }
+    }
+    fun produceNotebookOutput(document: InkDocument, output: NotebookOutput) = when (output) {
+        NotebookOutput.SHARE_PDF -> shareNotebookPdf(document)
+        NotebookOutput.EXPORT_PDF -> { pendingExportDocumentId = document.id; exportPicker.launch(app.inkloom.document.ShareFileName.of(document.title, "pdf")) }
+        NotebookOutput.EXPORT_PACKAGE -> { pendingExportDocumentId = document.id; bundleExportPicker.launch(app.inkloom.document.ShareFileName.of(document.title, "inkloom.zip")) }
+    }
     val libraryBackupExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) {
             val preferences = runCatching { AppSettingsBackupCodec.encode(settings, colorSetLibrary = colorPaletteStore.load(settings.language.text("Saved colors", "已存颜色")), panelWorkspace = panelState.backup()) }
@@ -934,6 +970,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onDelete = { documentId -> deletionFailed = !viewModel.deletePermanently(documentId) },
             onRename = viewModel::rename,
             onDuplicate = viewModel::duplicateDocument,
+            onNotebookOutput = ::produceNotebookOutput,
             onCreateFolder = viewModel::createFolder,
             onRenameFolder = viewModel::renameFolder,
             onMoveToFolder = viewModel::moveToFolder,
@@ -1041,9 +1078,11 @@ fun InkloomApp(initialIntent: Intent?) {
             onDuplicateElement = viewModel::duplicateElement,
             onInsertImage = { pageImagePicker.launch(arrayOf("image/*")) },
             onScanImage = ::launchPageScanner,
-            onExport = { exportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}.pdf") },
+            onExport = { viewModel.currentDocument()?.let { produceNotebookOutput(it, NotebookOutput.EXPORT_PDF) } },
+            onSharePdf = { viewModel.currentDocument()?.let(::shareNotebookPdf) },
+            onSharePage = ::shareCurrentPage,
             onExportPage = { options -> pendingRasterExport = options; imageExportPicker.launch(RasterExportDestination("${viewModel.currentDocument()?.title ?: "Inkloom"}-page.${options.format.extension}", options.format.mime)) },
-            onExportBundle = { bundleExportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}.inkloom.zip") },
+            onExportBundle = { viewModel.currentDocument()?.let { produceNotebookOutput(it, NotebookOutput.EXPORT_PACKAGE) } },
             assets = viewModel.assets,
             selectionRuntime = viewModel.selectionRuntime,
             settings = settings,
@@ -1088,7 +1127,7 @@ fun InkloomApp(initialIntent: Intent?) {
 }
 
 @Composable
-private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkloom.document.ImagePaperDraft, onSaveImagePaper: (PageTemplate) -> PageTemplate, onCreateCustomTemplate: (String, Int, Int, PageBackground.Paper) -> PageTemplate?, documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long, String?) -> Boolean, onImportCover: (Uri, String, PageCrop) -> NotebookCoverTemplate, onDeleteCover: (String) -> Unit, onChangeCover: (String, CoverStyle, String?) -> Boolean, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onMoveToFolder: (String, String?) -> Unit, onMoveNotesToFolder: (Set<String>, String?) -> Boolean, onRestoreFolder: (String) -> Boolean, onDeleteFolder: (String) -> Unit, onMoveFolders: (Set<String>, String?) -> Boolean, onDeleteFolders: (Set<String>) -> Boolean, onSettings: () -> Unit) {
+private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkloom.document.ImagePaperDraft, onSaveImagePaper: (PageTemplate) -> PageTemplate, onCreateCustomTemplate: (String, Int, Int, PageBackground.Paper) -> PageTemplate?, documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long, String?) -> Boolean, onImportCover: (Uri, String, PageCrop) -> NotebookCoverTemplate, onDeleteCover: (String) -> Unit, onChangeCover: (String, CoverStyle, String?) -> Boolean, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onNotebookOutput: (InkDocument, NotebookOutput) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onMoveToFolder: (String, String?) -> Unit, onMoveNotesToFolder: (Set<String>, String?) -> Boolean, onRestoreFolder: (String) -> Boolean, onDeleteFolder: (String) -> Unit, onMoveFolders: (Set<String>, String?) -> Boolean, onDeleteFolders: (Set<String>) -> Boolean, onSettings: () -> Unit) {
     val folderContext=LocalContext.current
     val activeFolders=remember(folders){folders.filter{it.trashedAt==null}}
     var compactFoldersOpen by remember{mutableStateOf(false)}
@@ -1304,7 +1343,7 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
             if (visible.isEmpty()) LibraryEmptyState(libraryEmptyReason(filter, folderId != null, search.isNotBlank()), search)
             else when (layout) {
                 LibraryLayout.LIST -> LazyColumn(state = noteListState, modifier = Modifier.semantics { contentDescription = "Notebook list" }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(visible, key = { it.id }) { NotebookCard(it, Modifier.libraryDocumentDrag(it).fillMaxWidth().height(104.dp), { note -> if (managingNotes) selectedNoteIds = if (note.id in selectedNoteIds) selectedNoteIds - note.id else selectedNoteIds + note.id else onOpen(note) }, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, activeFolders, onMoveToFolder, selectionMode = managingNotes, selected = it.id in selectedNoteIds, row = true, onEditCover = { document ->
+                    items(visible, key = { it.id }) { NotebookCard(it, Modifier.libraryDocumentDrag(it).fillMaxWidth().height(104.dp), { note -> if (managingNotes) selectedNoteIds = if (note.id in selectedNoteIds) selectedNoteIds - note.id else selectedNoteIds + note.id else onOpen(note) }, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, onNotebookOutput, activeFolders, onMoveToFolder, selectionMode = managingNotes, selected = it.id in selectedNoteIds, row = true, onEditCover = { document ->
                         editingCoverDocumentId = document.id
                         editingCoverStyle = document.coverStyle
                         editingCoverId = pageTemplates.customCovers.firstOrNull { it.assetPath == document.coverImagePath }?.id
@@ -1319,7 +1358,7 @@ private fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.inkl
                     verticalArrangement = Arrangement.spacedBy(if (layout == LibraryLayout.COMPACT_GRID) 10.dp else 16.dp),
                 ) {
                     items(visible, key = { it.id }) {
-                        NotebookCard(it, Modifier.libraryDocumentDrag(it).height(if (layout == LibraryLayout.COMPACT_GRID) 210.dp else 250.dp), { note -> if (managingNotes) selectedNoteIds = if (note.id in selectedNoteIds) selectedNoteIds - note.id else selectedNoteIds + note.id else onOpen(note) }, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, activeFolders, onMoveToFolder, selectionMode = managingNotes, selected = it.id in selectedNoteIds, compact = layout == LibraryLayout.COMPACT_GRID, onEditCover = { document ->
+                        NotebookCard(it, Modifier.libraryDocumentDrag(it).height(if (layout == LibraryLayout.COMPACT_GRID) 210.dp else 250.dp), { note -> if (managingNotes) selectedNoteIds = if (note.id in selectedNoteIds) selectedNoteIds - note.id else selectedNoteIds + note.id else onOpen(note) }, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, onNotebookOutput, activeFolders, onMoveToFolder, selectionMode = managingNotes, selected = it.id in selectedNoteIds, compact = layout == LibraryLayout.COMPACT_GRID, onEditCover = { document ->
                             editingCoverDocumentId = document.id
                             editingCoverStyle = document.coverStyle
                             editingCoverId = pageTemplates.customCovers.firstOrNull { it.assetPath == document.coverImagePath }?.id
@@ -1663,7 +1702,7 @@ private fun BrandMark(subtitle: String? = null) {
 }
 
 @Composable
-private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (InkDocument) -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, folders: List<InkFolder>, onMoveToFolder: (String, String?) -> Unit, selectionMode: Boolean = false, selected: Boolean = false, row: Boolean = false, compact: Boolean = false, onEditCover: (InkDocument) -> Unit) {
+private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (InkDocument) -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onOutput: (InkDocument, NotebookOutput) -> Unit, folders: List<InkFolder>, onMoveToFolder: (String, String?) -> Unit, selectionMode: Boolean = false, selected: Boolean = false, row: Boolean = false, compact: Boolean = false, onEditCover: (InkDocument) -> Unit) {
     var menu by remember { mutableStateOf(false) }
     var renameOpen by remember { mutableStateOf(false) }
     var tagsOpen by remember { mutableStateOf(false) }
@@ -1690,6 +1729,9 @@ private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (Ink
                     DropdownMenuItem(text = { Text(tr("Change cover", "更换封面")) }, onClick = { menu = false; onEditCover(document) })
                     DropdownMenuItem(text = { Text(tr("Edit tags", "编辑标签")) }, onClick = { menu = false; tagsOpen = true })
                     DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(document.id) })
+                    DropdownMenuItem(text = { Text(tr("Share PDF…", "分享 PDF…")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { menu = false; onOutput(document, NotebookOutput.SHARE_PDF) })
+                    DropdownMenuItem(text = { Text(tr("Export PDF…", "导出 PDF…")) }, onClick = { menu = false; onOutput(document, NotebookOutput.EXPORT_PDF) })
+                    DropdownMenuItem(text = { Text(tr("Export Inkloom package…", "导出 Inkloom 文件…")) }, onClick = { menu = false; onOutput(document, NotebookOutput.EXPORT_PACKAGE) })
                     folders.forEach { folder -> DropdownMenuItem(text = { Text("${tr("Move to", "移动到")} ${folder.name}") }, onClick = { menu = false; onMoveToFolder(document.id, folder.id) }) }
                     if (document.folderId != null) DropdownMenuItem(text = { Text(tr("Remove from folder", "移出文件夹")) }, onClick = { menu = false; onMoveToFolder(document.id, null) })
                     DropdownMenuItem(text = { Text(if (document.favorite) tr("Remove favorite", "取消收藏") else tr("Favorite", "收藏")) }, onClick = { menu = false; onFavorite(document.id) })
@@ -1855,6 +1897,8 @@ private fun EditorScreen(
     onInsertImage: () -> Unit,
     onScanImage: () -> Unit,
     onExport: () -> Unit,
+    onSharePdf: () -> Unit,
+    onSharePage: (PageRasterExportOptions) -> Unit,
     onExportPage: (PageRasterExportOptions) -> Unit,
     onExportBundle: () -> Unit,
     assets: DocumentAssetService,
@@ -2086,6 +2130,7 @@ private fun EditorScreen(
     var canvasSizeOpen by remember { mutableStateOf(false) }
     var canvasSizeBusy by remember { mutableStateOf(false) }
     var pageExportOpen by remember { mutableStateOf(false) }
+    var pageShareOpen by remember { mutableStateOf(false) }
     var viewMenu by remember { mutableStateOf(false) }
     var quickZoomMenu by remember { mutableStateOf(false) }
     var workspaceMenu by remember { mutableStateOf(false) }
@@ -2880,7 +2925,11 @@ private fun EditorScreen(
 
                 }
                 5 -> {
-                    DropdownMenuItem(text = { Text(tr("Export PDF", "导出 PDF")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { workspaceMenu = false; onExport() })
+                    // Share sends straight to another app; Export saves a file where the user chooses.
+                    DropdownMenuItem(text = { Text(tr("Share PDF…", "分享 PDF…")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { workspaceMenu = false; onSharePdf() })
+                    DropdownMenuItem(text = { Text(tr("Share current page…", "分享当前页…")) }, leadingIcon = { Icon(Icons.Outlined.Image, null) }, onClick = { workspaceMenu = false; pageShareOpen = true })
+                    HorizontalDivider(color = OutlineSoft)
+                    DropdownMenuItem(text = { Text(tr("Export PDF", "导出 PDF")) }, leadingIcon = { Icon(Icons.Outlined.FileDownload, null) }, onClick = { workspaceMenu = false; onExport() })
                     DropdownMenuItem(text = { Text(tr("Export current page", "导出当前页")) }, onClick = { workspaceMenu = false; pageExportOpen = true })
                     DropdownMenuItem(text = { Text(tr("Export editable Inkloom package", "导出可编辑 Inkloom 文件")) }, onClick = { workspaceMenu = false; onExportBundle() })
                 }
@@ -2888,6 +2937,8 @@ private fun EditorScreen(
         }
         if (pageExportOpen) PageRasterExportDialog(storedPage, settings.language,
             onDismiss = { pageExportOpen = false }, onExport = { options -> pageExportOpen = false; onExportPage(options) })
+        if (pageShareOpen) PageRasterExportDialog(storedPage, settings.language, sharing = true,
+            onDismiss = { pageShareOpen = false }, onExport = { options -> pageShareOpen = false; onSharePage(options) })
         if(colorManagementOpen) ColorManagementDialog(storedPage,settings.language,canvasSizeBusy,
             onDismiss={colorManagementOpen=false},onApply={ next ->
                 val view=canvasView
