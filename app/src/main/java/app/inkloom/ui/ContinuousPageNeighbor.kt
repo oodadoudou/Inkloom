@@ -29,12 +29,12 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 internal fun ContinuousPageNeighbor(page: InkPage, label: String, assets: DocumentAssetService, renderWidthPx: Int,
-    scale: Float, translationX: Float, translationY: Float, modifier: Modifier = Modifier) {
+    scale: Float, translationX: Float, translationY: Float, modifier: Modifier = Modifier, mirrored: Boolean = false) {
     val render by produceState<Bitmap?>(initialValue = null, page, renderWidthPx) {
         value = withContext(Dispatchers.IO) { runCatching { assets.renderPageBitmap(page, renderWidthPx.coerceIn(64, 2048)) }.getOrNull() }
     }
     Box(modifier
-        .graphicsLayer(scaleX = scale, scaleY = scale, translationX = translationX, translationY = translationY)
+        .graphicsLayer(scaleX = if (mirrored) -scale else scale, scaleY = scale, translationX = translationX, translationY = translationY)
         .shadow(3.dp, RoundedCornerShape(4.dp))
         .background(Color.White)
         .semantics { contentDescription = label }) {

@@ -85,9 +85,12 @@ internal class ViewportFrame private constructor(
             val rotation = Math.toRadians(rotationDegrees.toDouble())
             val cosine = cos(rotation).toFloat()
             val sine = sin(rotation).toFloat()
-            val a = scale * cosine
+            // A view-only mirror flips page x about the page centre before scale and rotation,
+            // matching the editor's graphicsLayer with a negative horizontal scale.
+            val mirror = if (viewport.mirrored) -1f else 1f
+            val a = scale * cosine * mirror
             val b = -scale * sine
-            val d = scale * sine
+            val d = scale * sine * mirror
             val e = scale * cosine
             val pageCenterX = pageWidth / 2f
             val pageCenterY = pageHeight / 2f

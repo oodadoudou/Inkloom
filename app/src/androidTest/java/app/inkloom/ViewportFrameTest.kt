@@ -28,25 +28,33 @@ class ViewportFrameTest {
         val rotations = listOf(0f, 30f, 37f, 90f, 180f, -135f)
         val pans = listOf(0f to 0f, 231.5f to -178.25f, -640f to 412f)
 
-        scales.forEach { scale -> rotations.forEach { rotation -> pans.forEach { pan ->
+        listOf(false, true).forEach { mirrored -> scales.forEach { scale -> rotations.forEach { rotation -> pans.forEach { pan ->
             val transform = requireNotNull(ViewportFrame.create(
                 ViewportFrameId(1L), viewportWidth, viewportHeight, pageWidth, pageHeight,
-                ViewportState(scale, pan.first, pan.second, rotation),
+                ViewportState(scale, pan.first, pan.second, rotation, mirrored),
             ))
             points.forEach { page ->
                 val viewport = transform.pageToViewport(PagePoint(page.first, page.second))
                 val roundTrip = transform.viewportToPage(viewport)
                 assertEquals("x at scale=$scale rotation=$rotation pan=$pan", page.first, roundTrip.x, .002f)
                 assertEquals("y at scale=$scale rotation=$rotation pan=$pan", page.second, roundTrip.y, .002f)
+                // The pen mapping and the editor's own conversion must agree, flipped or not.
+                val expected = ViewportTransform.pageToView(page.first, page.second, pageWidth, pageHeight,
+                    ViewportState(scale, pan.first, pan.second, rotation, mirrored))
+                assertEquals("view x mirrored=$mirrored", expected.first + (viewportWidth - pageWidth) / 2f, viewport.x, .01f)
+                assertEquals("view y mirrored=$mirrored", expected.second + (viewportHeight - pageHeight) / 2f, viewport.y, .01f)
             }
-        } } }
+        } } } }
     }
 
     @Test fun rotationMapsCurrentHistoryAndCursorThroughTheSameAffinePair() {
+        listOf(false, true).forEach { mirrored -> mapsHistoryAndCursorThroughTheSameAffinePair(ViewportState(2.35f, 84f, -57f, 37f, mirrored)) }
+    }
+
+    private fun mapsHistoryAndCursorThroughTheSameAffinePair(viewport: ViewportState) {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val source = View(context).apply { layout(0, 0, 1_200, 900) }
         val target = View(context).apply { layout(0, 0, 800, 600) }
-        val viewport = ViewportState(2.35f, 84f, -57f, 37f)
         val mapper = PointerPacketMapper()
         val samples = listOf(420f to 330f, 510f to 390f, 640f to 475f)
         val event = movePacket(samples)

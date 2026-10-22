@@ -1342,6 +1342,8 @@ private fun EditorScreen(
     var panX by remember(document.id) { mutableFloatStateOf(0f) }
     var panY by remember(document.id) { mutableFloatStateOf(0f) }
     var viewRotation by remember(document.id) { mutableFloatStateOf(0f) }
+    // View-only mirror for checking a drawing, as in CSP; never saved into the page.
+    var viewMirrored by remember(document.id) { mutableStateOf(false) }
     var viewportWidthPx by remember { mutableFloatStateOf(0f) }
     var viewportHeightPx by remember { mutableFloatStateOf(0f) }
     fun currentViewportGeometry(): ViewportGeometry? {
@@ -1941,6 +1943,9 @@ private fun EditorScreen(
                     DropdownMenuItem(text = { Text(tr("Actual size", "实际大小")) }, onClick = { overlays.workspaceMenu = false; actualSize() })
                     DropdownMenuItem(text = { Text(tr("Fit width", "适合宽度")) }, onClick = { overlays.workspaceMenu = false; fitWidth() })
                     DropdownMenuItem(text = { Text(tr("Reset rotation", "重置旋转")) }, onClick = { overlays.workspaceMenu = false; resetViewRotation() })
+                    DropdownMenuItem(text = { Text(tr("Flip view horizontally", "水平翻转视图")) },
+                        leadingIcon = { Icon(if (viewMirrored) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, null) },
+                        onClick = { overlays.workspaceMenu = false; viewMirrored = !viewMirrored })
                     DropdownMenuItem(text = { Text(tr("Continuous pages", "连续页面")) },
                         leadingIcon = { Icon(if (settings.continuousPages) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, null) },
                         onClick = {
@@ -2320,6 +2325,7 @@ private fun EditorScreen(
                         ContinuousPageNeighbor(neighbour, tr("Page ${placement.index + 1}", "第 ${placement.index + 1} 页"), assets,
                             renderWidthPx = fit.width.toInt(), scale = zoom, translationX = panX,
                             translationY = panY + placement.centerOffset * zoom,
+                            mirrored = viewMirrored,
                             modifier = with(density) { Modifier.size(fit.width.toDp(), fit.height.toDp()) })
                     }
                 }
@@ -2365,10 +2371,10 @@ private fun EditorScreen(
                     assets = assets,
                     selectionRuntime = selectionRuntime,
                     settings = settings,
-                    viewportState = ViewportState(zoom, panX, panY, viewRotation),
+                    viewportState = ViewportState(zoom, panX, panY, viewRotation, viewMirrored),
                     onZoom = { factor, focusX, focusY ->
                         val view = canvasView ?: return@PaperCanvas
-                        val current = ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees)
+                        val current = view.viewportState()
                         val next = ViewportTransform.zoomAroundScreen(
                             current,
                             factor,
@@ -2390,7 +2396,7 @@ private fun EditorScreen(
                         val centerOffsetX = view.width / 2f
                         val centerOffsetY = view.height / 2f
                         val next = ViewportTransform.pinchByScreen(
-                            ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees),
+                            view.viewportState(),
                             factor,
                             previousFocusX - centerOffsetX,
                             previousFocusY - centerOffsetY,
@@ -2409,7 +2415,7 @@ private fun EditorScreen(
                     },
                     onPan = { dx, dy ->
                         val view = canvasView ?: return@PaperCanvas
-                        val current = ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees)
+                        val current = view.viewportState()
                         val next = ViewportTransform.panByScreen(current, dx, dy, geometry = currentViewportGeometry())
                         applyViewport(next)
                         view.apply { viewportPanX = next.panX; viewportPanY = next.panY }
@@ -2417,7 +2423,7 @@ private fun EditorScreen(
                     },
                     onRotate = { delta ->
                         val view = canvasView ?: return@PaperCanvas
-                        val current = ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees)
+                        val current = view.viewportState()
                         val next = ViewportTransform.rotateBy(current, delta, currentViewportGeometry())
                         applyViewport(next)
                         view.apply {
@@ -2656,6 +2662,7 @@ private fun EditorScreen(
                             ShortcutAction.ACTUAL_SIZE -> actualSize()
                             ShortcutAction.FIT_WIDTH -> fitWidth()
                             ShortcutAction.RESET_VIEW_ROTATION -> resetViewRotation()
+                            ShortcutAction.FLIP_VIEW_HORIZONTAL -> viewMirrored = !viewMirrored
                             ShortcutAction.TOGGLE_RULER -> {
                                 if (activation.trigger == ShortcutTrigger.HOLD) {
                                     modes.rulerBeforeShortcut = settings.rulerEnabled
@@ -2791,7 +2798,7 @@ private fun EditorScreen(
                 if (pageTurnVeil.value > 0f) Box(Modifier
                     .sizeIn(maxWidth = toolbarAreaWidth * .88f, maxHeight = toolbarAreaHeight * .88f)
                     .aspectRatio(PageCropTransform.visibleWidth(selectedPage) / PageCropTransform.visibleHeight(selectedPage).coerceAtLeast(1f))
-                    .graphicsLayer(scaleX = zoom, scaleY = zoom, translationX = panX, translationY = panY, rotationZ = viewRotation)
+                    .graphicsLayer(scaleX = if (viewMirrored) -zoom else zoom, scaleY = zoom, translationX = panX, translationY = panY, rotationZ = viewRotation)
                     .background(Workspace.copy(alpha = pageTurnVeil.value)))
                 // Page objects need their own transformed interaction plane above the stable
                 // full-viewport input proxy. Rendering remains in the canvas/layer compositor;
@@ -2802,7 +2809,7 @@ private fun EditorScreen(
                         .fillMaxHeight(.88f)
                         .aspectRatio((interactionPage.width / interactionPage.height.coerceAtLeast(1f)).coerceIn(.35f, 2.8f))
                         .graphicsLayer(
-                            scaleX = zoom,
+                            scaleX = if (viewMirrored) -zoom else zoom,
                             scaleY = zoom,
                             translationX = panX,
                             translationY = panY,
@@ -2910,7 +2917,12 @@ private fun EditorScreen(
                                 Icon(Icons.Outlined.ArrowForward, tr("Forward to page $label", "前进到第 $label 页"), Modifier.size(16.dp), tint = Ink)
                             }
                         }
-                        if (backTarget != null || forwardTarget != null) VerticalDivider(Modifier.height(20.dp), color = OutlineSoft)
+                        // A flipped view must never be mistaken for the real artwork: say so, one tap restores it.
+                        if (viewMirrored) IconButton(onClick = { viewMirrored = false },
+                            modifier = Modifier.size(38.dp).background(SageContainer, RoundedCornerShape(19.dp))) {
+                            Icon(Icons.Outlined.Flip, tr("View flipped horizontally. Tap to restore", "视图已水平翻转，点按恢复"), Modifier.size(18.dp), tint = Ink)
+                        }
+                        if (backTarget != null || forwardTarget != null || viewMirrored) VerticalDivider(Modifier.height(20.dp), color = OutlineSoft)
                         Box {
                             val ratio = zoom * (canvasView?.width ?: 0) / PageCropTransform.visibleWidth(selectedPage).coerceAtLeast(1f)
                             val zoomDescription = tr("Quick zoom", "快捷缩放")

@@ -678,6 +678,7 @@ private fun shortcutActionLabel(action: ShortcutAction, language: UiLanguage): S
     ShortcutAction.ACTUAL_SIZE -> language.text("Actual size (100%)", "实际大小（100%）")
     ShortcutAction.FIT_WIDTH -> language.text("Fit width", "适合宽度")
     ShortcutAction.RESET_VIEW_ROTATION -> language.text("Reset view rotation", "重置视图旋转")
+    ShortcutAction.FLIP_VIEW_HORIZONTAL -> language.text("Flip view horizontally", "水平翻转视图")
     ShortcutAction.TOGGLE_RULER -> language.text("Show / hide ruler", "显示／隐藏直尺")
     ShortcutAction.TOGGLE_GRID_SNAP -> language.text("Show / hide snap grid", "显示／隐藏吸附网格")
     ShortcutAction.TOGGLE_ALIGNMENT_GUIDES -> language.text("Show / hide alignment guides", "显示／隐藏对齐参考线")

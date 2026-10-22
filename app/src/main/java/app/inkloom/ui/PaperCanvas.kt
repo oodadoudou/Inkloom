@@ -460,7 +460,7 @@ internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<St
     BoxWithConstraints(
         modifier
             .graphicsLayer(
-                scaleX = viewportState.scale,
+                scaleX = if (viewportState.mirrored) -viewportState.scale else viewportState.scale,
                 scaleY = viewportState.scale,
                 translationX = viewportState.panX,
                 translationY = viewportState.panY,
@@ -489,6 +489,7 @@ internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<St
                 view.viewportPanX = viewportState.panX
                 view.viewportPanY = viewportState.panY
                 view.viewportRotationDegrees = viewportState.rotationDegrees
+                view.viewportMirrored = viewportState.mirrored
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onQuickShapeCommitted = { projected ->
                     val committed = PageCropTransform.unproject(projected, page.crop)
@@ -570,6 +571,7 @@ internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<St
                 view.viewportPanX = viewportState.panX
                 view.viewportPanY = viewportState.panY
                 view.viewportRotationDegrees = viewportState.rotationDegrees
+                view.viewportMirrored = viewportState.mirrored
                 view.setDocumentLayers(page.layers)
                 view.setProtectedLayerIds(lockedLayerIds)
                 view.setColorManagement(page.colorManagement)

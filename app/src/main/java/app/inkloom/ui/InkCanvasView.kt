@@ -694,6 +694,8 @@ class InkCanvasView(context: Context) : View(context) {
             onHoverCursorStyleChanged?.invoke()
         }
     var forceNavigation: Boolean = false
+    /** View-only horizontal flip; input maps through it, the page content never changes. */
+    var viewportMirrored: Boolean = false
     var rotateNavigation: Boolean = false
     var externalViewportGestures: Boolean = false
     var viewportScale: Float = 1f
@@ -4604,6 +4606,7 @@ class InkCanvasView(context: Context) : View(context) {
         viewportPanX,
         viewportPanY,
         viewportRotationDegrees,
+        viewportMirrored,
     )
 
 

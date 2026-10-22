@@ -1,6 +1,11 @@
 package app.inkloom.document
 
-data class ViewportState(val scale: Float, val panX: Float, val panY: Float, val rotationDegrees: Float = 0f)
+/**
+ * How the page sits in the window. [mirrored] is a view-only horizontal flip, like Clip Studio's
+ * View > Rotate/Invert > Flip horizontal: the page is mirrored about its own centre before scaling,
+ * rotating and panning, and the artwork itself never changes.
+ */
+data class ViewportState(val scale: Float, val panX: Float, val panY: Float, val rotationDegrees: Float = 0f, val mirrored: Boolean = false)
 
 data class ViewportGeometry(
     val viewportWidth: Float,
@@ -46,7 +51,8 @@ object ViewportTransform {
         val safe = sanitize(viewport)
         val centerX = viewWidth.coerceAtLeast(1f) / 2f
         val centerY = viewHeight.coerceAtLeast(1f) / 2f
-        val scaledX = ((pageX.takeIf(Float::isFinite) ?: centerX) - centerX) * safe.scale
+        val mirror = if (safe.mirrored) -1f else 1f
+        val scaledX = ((pageX.takeIf(Float::isFinite) ?: centerX) - centerX) * safe.scale * mirror
         val scaledY = ((pageY.takeIf(Float::isFinite) ?: centerY) - centerY) * safe.scale
         val (rotatedX, rotatedY) = rotate(scaledX, scaledY, safe.rotationDegrees)
         return centerX + safe.panX + rotatedX to centerY + safe.panY + rotatedY
@@ -71,7 +77,8 @@ object ViewportTransform {
         val sine = kotlin.math.sin(radians).toFloat()
         val unrotatedX = dx * cosine - dy * sine
         val unrotatedY = dx * sine + dy * cosine
-        return localWidth.coerceAtLeast(1f) / 2f + unrotatedX / safe.scale to
+        val mirror = if (safe.mirrored) -1f else 1f
+        return localWidth.coerceAtLeast(1f) / 2f + unrotatedX / safe.scale * mirror to
             localHeight.coerceAtLeast(1f) / 2f + unrotatedY / safe.scale
     }
 
@@ -287,7 +294,7 @@ object ViewportTransform {
         val panX = current.panX.takeIf(Float::isFinite) ?: 0f
         val panY = current.panY.takeIf(Float::isFinite) ?: 0f
         val rotation = current.rotationDegrees.takeIf(Float::isFinite)?.let(::normalizeDegrees) ?: 0f
-        return ViewportState(scale, panX, panY, rotation)
+        return ViewportState(scale, panX, panY, rotation, current.mirrored)
     }
 
     private fun rotate(x: Float, y: Float, degrees: Float): Pair<Float, Float> {
