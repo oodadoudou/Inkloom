@@ -20,7 +20,7 @@ class RasterFilterPresetsTest {
 
     @Test fun importedPresetParametersAreBounded(){
         val values=RasterFilterPresetsCodec.decode("""[{"name":"bad","kind":400,"strength":500,"angle":900,"centerX":-9}]""")
-        assertEquals(15,values.single().kind);assertEquals(20f,values.single().strength,0f);assertEquals(0f,values.single().centerX,0f)
+        assertEquals(RasterFilterPreset.LAST_KIND,values.single().kind);assertEquals(20f,values.single().strength,0f);assertEquals(0f,values.single().centerX,0f)
     }
 
     @Test fun fixedSharpenKindsRoundTripWithoutStrength(){

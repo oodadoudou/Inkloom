@@ -29,16 +29,15 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
     var presetMenu by remember{mutableStateOf(false)}
     val effect=state.effect()
     LaunchedEffect(effect,composite){onPreview(effect,composite)}
-    val names=listOf(tr("Gaussian blur","高斯模糊"),tr("Unsharp mask","USM 锐化"),tr("Denoise","降噪"),tr("Remove stray pixels","清理杂点"),
-        tr("Correct line width","修正线宽"),tr("Wave distortion","波形变形"),tr("Motion blur","动感模糊"),tr("Radial blur","径向模糊"),
-        tr("Lens blur","镜头模糊"),tr("Mosaic","马赛克"),tr("Noise","噪点"),tr("Chromatic aberration","色差"),
-        tr("Convert to drawing color","换为绘画色"),tr("Brightness to opacity","亮度转透明度"),
-        tr("Sharpen","锐化"),tr("Sharpen more","强锐化"))
+    val names=rasterFilterNames(::tr)
     var colorPickerOpen by remember { mutableStateOf(false) }
     if (colorPickerOpen) StandardColorPickerDialog(state.colorArgb or 0xFF000000.toInt(), language,
         onConfirm = { state=state.copy(colorArgb=it or 0xFF000000.toInt());colorPickerOpen=false },
         onDismiss = { colorPickerOpen=false })
     AlertDialog(modifier = Modifier.imePadding(), properties = DialogProperties(decorFitsSystemWindows = false), onDismissRequest={if(!copyBusy)onCancel()},title={Text(tr("Image filter","图像滤镜"))},text={
+        // Docked at the side with a light scrim, as in CSP, so the canvas preview stays visible.
+        val dialogWindow=(androidx.compose.ui.platform.LocalView.current.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
+        SideEffect{dialogWindow?.apply{setGravity(android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL);setDimAmount(.12f)}}
         Column(Modifier.widthIn(min=270.dp,max=420.dp).heightIn(max=520.dp).verticalScroll(rememberScrollState())) {
             Box {
                 TextButton({presetMenu=true}){Text(tr("Presets & favorites","预设与收藏"))}
@@ -50,7 +49,8 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
             Box {
                 var kinds by remember{mutableStateOf(false)}
                 TextButton({kinds=true}){Text(names[state.kind])}
-                DropdownMenu(kinds,{kinds=false}){names.forEachIndexed{i,label->DropdownMenuItem(text={Text(label)},onClick={state=state.copy(kind=i,strength=when(i){2,3,4->1f;5->8f;else->2f});kinds=false})}}
+                DropdownMenu(kinds,{kinds=false}){RasterFilterKindMenuItems(::tr){i->
+                    state=state.copy(kind=i,strength=when(i){2,3,4->1f;5->8f;else->2f},distortion=if(i==28)kotlin.math.abs(state.distortion) else state.distortion);kinds=false}}
             }
             if (state.kind < 12) {
             Text("${tr("Strength","强度")}  ${String.format(Locale.ROOT,"%.1f",state.strength)}")
@@ -60,7 +60,8 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
                 Box(Modifier.size(18.dp).background(Color(state.colorArgb or 0xFF000000.toInt())))
                 Spacer(Modifier.width(8.dp));Text(tr("Drawing color…","绘画色…"))
             }
-            if (state.kind >= 14) Text(tr("Fixed strength; use Unsharp mask for adjustable sharpening.","固定强度；需要调节时请使用 USM 锐化。"),style=MaterialTheme.typography.bodySmall)
+            if (state.kind == 14 || state.kind == 15) Text(tr("Fixed strength; use Unsharp mask for adjustable sharpening.","固定强度；需要调节时请使用 USM 锐化。"),style=MaterialTheme.typography.bodySmall)
+            if (state.kind >= 16) RasterFilterExtraControls(state,{state=it},::tr)
             if (state.kind == 13) Text(tr("White becomes transparent; darker values become black ink. Source opacity is retained.","白色转为透明；深色转为黑色笔迹，原有透明度继续参与。"),style=MaterialTheme.typography.bodySmall)
             if(state.kind==1){Text(tr("Amount","锐化量"));BrushParameterSlider(state.amount,{state=state.copy(amount=it)},valueRange=0f..4f)}
             if(state.kind==4)Row{FilterChip(state.grow,{state=state.copy(grow=true)},label={Text(tr("Thicken","加粗"))});FilterChip(!state.grow,{state=state.copy(grow=false)},label={Text(tr("Thin","变细"))})}

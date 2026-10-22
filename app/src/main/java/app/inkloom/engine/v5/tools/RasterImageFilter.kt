@@ -42,6 +42,16 @@ internal object RasterImageFilter {
         data class ChromaticAberration(override val sigma: Float,val angle:Float=0f) : Effect
         /** Fixed-strength 3x3 sharpening (Sharpen / Sharpen More); it has no user parameters. */
         data class Sharpen(val strong: Boolean) : Effect { override val sigma = 1f }
+        /** CSP Blur / Strong blur / Smoothing with fixed kernels. */
+        data class FixedBlur(val kind: FixedBlurKind) : Effect { override val sigma = 1f }
+        /** CSP Render > Perlin noise: opaque grey noise replaces the selected pixels. */
+        data class PerlinNoise(val scale: Float, val amplitude: Float, val attenuation: Float, val octaves: Int, val seed: Int) : Effect {
+            override val sigma = 1f
+            init {
+                require(scale in 2f..2000f && amplitude in 0f..1f && attenuation in 0f..1f && octaves in 1..8) { "Perlin noise settings are out of range" }
+            }
+        }
+        data class Distort(val kind: DistortKind, val parameters: DistortParameters) : Effect { override val sigma = 1f }
     }
 
     fun apply(
@@ -52,6 +62,8 @@ internal object RasterImageFilter {
     ): PixelTileSurface {
         if (effect is Effect.ConvertToDrawingColor || effect == Effect.BrightnessToOpacity)
             return RasterColorConversion.apply(source, effect, selection, cancelled)
+        if (effect is Effect.FixedBlur || effect is Effect.PerlinNoise || effect is Effect.Distort)
+            return RasterDistortFilter.apply(source, effect, selection, cancelled)
         if(source.pixelFormat.isHighPrecision || effect is Effect.MotionBlur || effect is Effect.RadialBlur ||
             effect is Effect.LensBlur || effect is Effect.Mosaic || effect is Effect.Noise || effect is Effect.ChromaticAberration ||
             effect is Effect.Sharpen)

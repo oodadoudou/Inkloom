@@ -226,6 +226,56 @@ class RasterFilterWindowTest {
         compose.waitUntil(15_000) { fingerprint(reopened) == stronger }
     }
 
+    @Test fun cspDistortRenderAndFixedBlurFiltersApplyFromTheirMenuGroups() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        val view = canvas()
+        val rect = IntArray(2)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.getLocationOnScreen(rect) }
+        val y = rect[1] + view.height * .45f
+        val x1 = rect[0] + view.width * .35f
+        val x2 = rect[0] + view.width * .65f
+        val down = SystemClock.uptimeMillis()
+        event(MotionEvent.ACTION_DOWN, x1, y, down)
+        repeat(16) { index -> event(MotionEvent.ACTION_MOVE, x1 + (x2 - x1) * (index + 1) / 16f, y, down) }
+        event(MotionEvent.ACTION_UP, x2, y, down)
+        compose.waitUntil(15_000) { fingerprint(view) != 0 && !view.hasPendingPaintPublicationForMerge() }
+        val ink = fingerprint(view)
+        fun open(kind: String) {
+            compose.onNodeWithContentDescription("Actions").performClick()
+            compose.onNodeWithContentDescription("Actions Canvas").performClick()
+            compose.onNodeWithText("Image filter…").performClick()
+            compose.onNodeWithText("Gaussian blur").performClick()
+            compose.onNodeWithText("DISTORT").assertExists()
+            compose.onNodeWithText(kind).performScrollTo().performClick()
+        }
+        fun applied(vararg excluded: Int): Int {
+            compose.onNodeWithText("Apply").performClick()
+            var result = 0
+            compose.waitUntil(30_000) {
+                val first = fingerprint(view); SystemClock.sleep(200)
+                result = fingerprint(view)
+                !view.selectionLayerTransferPending && first == result && result !in excluded
+            }
+            return result
+        }
+        open("Twirl")
+        compose.onNodeWithText("Tension", substring = true).assertExists()
+        val twirled = applied(ink)
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        compose.waitUntil(15_000) { fingerprint(view) == ink }
+        open("Perlin noise")
+        compose.onNodeWithText("Replaces the selected pixels with grey noise.").assertExists()
+        val noise = applied(ink, twirled)
+        val snapshot = requireNotNull(view.activeRasterSnapshotForTest())
+        assertTrue("noise covers empty paper", snapshot.pixelAt(2, 2) ushr 24 == 255)
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        compose.waitUntil(15_000) { fingerprint(view) == ink }
+        open("Blur")
+        compose.onNodeWithText("Fixed strength, as in Clip Studio Paint.").assertExists()
+        applied(ink, twirled, noise)
+    }
+
     private fun fingerprint(view: InkCanvasView): Int {
         val snapshot = view.activeRasterSnapshotForTest() ?: return 0
         return snapshot.copyPremultipliedPixels(PixelRect(0, 0, snapshot.logicalWidth, snapshot.logicalHeight)).contentHashCode()
