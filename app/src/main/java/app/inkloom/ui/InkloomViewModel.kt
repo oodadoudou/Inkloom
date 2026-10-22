@@ -252,6 +252,34 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         val crop = store.get(documentId)?.pages?.firstOrNull { it.id == pageId }?.crop ?: PageCrop()
         addElement(documentId, pageId, PageCropTransform.unproject(assets.importPageImage(uri), crop))
     }
+    val fileObjects by lazy { app.inkloom.document.FileObjects(getApplication(), assets) }
+
+    /** CSP Create file object: the linked image goes on a new layer named after its file. */
+    fun insertFileObject(uri: Uri) {
+        val documentId = mutableState.value.selectedDocumentId ?: return
+        val pageId = mutableState.value.selectedPageId ?: return
+        val placed = fileObjects.place(uri)
+        updatePage(documentId, pageId) { page ->
+            val layer = InkLayer(name = placed.source?.name?.substringBeforeLast('.')?.ifBlank { null } ?: "File object")
+            page.copy(layers = page.layers + layer,
+                elements = page.elements + (PageCropTransform.unproject(placed, page.crop) as PageElement.Image).copy(layerId = layer.id))
+        }
+    }
+
+    /** CSP Update file objects: re-reads every changed linked file on the page; returns the updated count and missing names. */
+    fun updateFileObjects(documentId: String, pageId: String, onDone: (Int, List<String>) -> Unit) {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return onDone(0, emptyList())
+        val linked = page.elements.filterIsInstance<PageElement.Image>().filter { it.source != null }
+        viewModelScope.launch {
+            val results = withContext(Dispatchers.IO) { linked.map { it.id to fileObjects.refresh(it) } }
+            val updated = results.mapNotNull { (_, result) -> (result as? app.inkloom.document.FileObjects.Refresh.Updated)?.image }
+            if (updated.isNotEmpty()) updatePage(documentId, pageId) { current ->
+                current.copy(elements = current.elements.map { element -> updated.firstOrNull { it.id == element.id } ?: element })
+            }
+            onDone(updated.size, results.mapNotNull { (it.second as? app.inkloom.document.FileObjects.Refresh.Missing)?.name })
+        }
+    }
+
     fun select(documentId: String) {
         val document = store.get(documentId) ?: return
         mutableState.value = mutableState.value.copy(selectedDocumentId = documentId,

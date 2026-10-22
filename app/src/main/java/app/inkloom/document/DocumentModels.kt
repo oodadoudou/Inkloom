@@ -226,6 +226,10 @@ data class InkLayer(
     val generator: LayerGenerator? = null,
 )
 
+/** Where a file object's image comes from, and the state of that file when it was last read. */
+@Serializable
+data class FileObjectSource(val uri: String, val name: String, val modified: Long = 0L, val size: Long = -1L)
+
 /** CSP's fill, gradient and tone layers. */
 @Serializable
 sealed interface LayerGenerator {
@@ -604,7 +608,9 @@ sealed interface PageElement {
     data class Shape(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float, override val height: Float, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, override val deformation: ElementDeformation? = null, val kind: ShapeKind = ShapeKind.RECTANGLE, val colorArgb: Long = 0xFF111111, val fillArgb: Long? = null, val strokeWidth: Float = 5f, val path: List<ShapeVertex> = emptyList(), val gradientEndArgb: Long? = null, val gradientStartX: Float = 0f, val gradientStartY: Float = .5f, val gradientEndX: Float = 1f, val gradientEndY: Float = .5f, val gradientKind: GradientKind = GradientKind.LINEAR, val gradientEdgeMode: GradientEdgeMode = GradientEdgeMode.CLAMP, val gradientReverse: Boolean = false, val gradientDither: Boolean = true, val gradientEllipseRatio: Float = .6f, val gradientStops: List<GradientColorStop> = emptyList(), val maskAssetPath: String? = null) : PageElement
 
     @Serializable @SerialName("image")
-    data class Image(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float, override val height: Float, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, override val deformation: ElementDeformation? = null, val assetPath: String, val crop: ImageCrop = ImageCrop(), val mask: ImageMask = ImageMask.RECTANGLE, val cornerRadius: Float = 24f) : PageElement
+    data class Image(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float, override val height: Float, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, override val deformation: ElementDeformation? = null, val assetPath: String, val crop: ImageCrop = ImageCrop(), val mask: ImageMask = ImageMask.RECTANGLE, val cornerRadius: Float = 24f,
+        /** CSP file object: the linked file this image was last read from; null for a plain imported image. */
+        val source: FileObjectSource? = null) : PageElement
 
     @Serializable @SerialName("fill")
     data class Fill(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float, override val height: Float, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, override val deformation: ElementDeformation? = null, val colorArgb: Long = 0xFF111111, val maskAssetPath: String) : PageElement

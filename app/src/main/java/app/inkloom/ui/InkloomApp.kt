@@ -730,6 +730,21 @@ fun InkloomApp(initialIntent: Intent?) {
             viewModel.insertImage(uri)
         }.onFailure { importError = it.message }
     }
+    val fileObjectPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching {
+            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            viewModel.insertFileObject(uri)
+        }.onFailure { importError = it.message }
+    }
+    fun updateFileObjects() {
+        val documentId = libraryState.selectedDocumentId ?: return
+        val pageId = libraryState.selectedPageId ?: return
+        viewModel.updateFileObjects(documentId, pageId) { updated, missing ->
+            Toast.makeText(context, settings.language.text(
+                "Updated $updated file objects" + if (missing.isEmpty()) "" else ". Missing: ${missing.joinToString()}",
+                "已更新 $updated 个文件对象" + if (missing.isEmpty()) "" else "。缺失：${missing.joinToString("、")}"), Toast.LENGTH_LONG).show()
+        }
+    }
     var pendingAppendDocumentId by rememberSaveable { mutableStateOf<String?>(null) }
     val appendPageFilesPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         val targetId = pendingAppendDocumentId
@@ -979,6 +994,8 @@ fun InkloomApp(initialIntent: Intent?) {
             onRemoveElement = viewModel::removeElement,
             onDuplicateElement = viewModel::duplicateElement,
             onInsertImage = { pageImagePicker.launch(arrayOf("image/*")) },
+            onPlaceFileObject = { fileObjectPicker.launch(arrayOf("image/*")) },
+            onUpdateFileObjects = ::updateFileObjects,
             onScanImage = ::launchPageScanner,
             onExport = { viewModel.currentDocument()?.let { produceNotebookOutput(it, NotebookOutput.EXPORT_PDF) } },
             onSharePdf = { viewModel.currentDocument()?.let(::shareNotebookPdf) },
@@ -1102,6 +1119,8 @@ private fun EditorScreen(
     onRemoveElement: (String, String, String) -> Unit,
     onDuplicateElement: (String, String, String) -> Unit,
     onInsertImage: () -> Unit,
+    onPlaceFileObject: () -> Unit,
+    onUpdateFileObjects: () -> Unit,
     onScanImage: () -> Unit,
     onExport: () -> Unit,
     onSharePdf: () -> Unit,
@@ -1313,6 +1332,14 @@ private fun EditorScreen(
     }
     fun changeBrushColor(value: Int) = commitDrawingColors(drawingColors.copy(foreground = value), value)
     fun changeBackgroundColor(value: Int) = commitDrawingColors(drawingColors.copy(background = value), value)
+    var fileObjectLayerId by remember(document.id) { mutableStateOf<String?>(null) }
+    val fileObjectSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
+        val layerId = fileObjectLayerId; fileObjectLayerId = null
+        val view = canvasView
+        if (uri != null && layerId != null && view != null) applyPreparedPageEdit(appearanceScope, view, { currentAppearancePage },
+            { page -> app.inkloom.document.FileObjectConversion.prepare(context, maskAssets, page, layerId, uri) },
+            { edit, undo -> onApplyPageGeometry(document.id, edit.before.id, edit, undo) }, { modes.canvasSizeBusy = it }) {}
+    }
     // Fill, gradient and tone layers: the settings being created (no layer ID) or edited.
     var generatedLayerEditor by remember(document.id, selectedPage.id) { mutableStateOf<Pair<app.inkloom.document.LayerGenerator, String?>?>(null) }
     fun createGeneratedLayer(kind: GeneratedLayerKind) { generatedLayerEditor = defaultGenerator(kind, brushColor, backgroundColor) to null }
@@ -1939,6 +1966,8 @@ private fun EditorScreen(
                 0 -> {
                     StudioMenuItem(text = { Text(tr("Search this notebook", "搜索当前笔记")) }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, onClick = { overlays.workspaceMenu = false; overlays.searchOpen = true })
                     StudioMenuItem(text = { Text(tr("Add PDF or image pages", "追加 PDF／图片页面")) }, leadingIcon = { Icon(Icons.Outlined.FileOpen, null) }, onClick = { overlays.workspaceMenu = false; onAppendPageFiles(document.id) })
+                    StudioMenuItem(text = { Text(tr("Place file object…", "置入文件对象…")) }, leadingIcon = { Icon(Icons.Outlined.Image, null) }, onClick = { overlays.workspaceMenu = false; onPlaceFileObject() })
+                    StudioMenuItem(text = { Text(tr("Update file objects", "更新文件对象")) }, onClick = { overlays.workspaceMenu = false; onUpdateFileObjects() })
                     StudioMenuItem(text = { Text(if (selectedPage.bookmarked) tr("Remove page bookmark", "取消本页书签") else tr("Bookmark this page", "收藏本页")) }, leadingIcon = { Icon(if (selectedPage.bookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder, null) }, onClick = { overlays.workspaceMenu = false; onToggleBookmark(document.id, selectedPage.id) })
                     StudioMenuItem(text = { Text(tr("Bookmarks", "书签")) }, leadingIcon = { Icon(Icons.Outlined.Bookmarks, null) }, onClick = { overlays.workspaceMenu = false; overlays.bookmarksOpen = true })
                     StudioMenuItem(text = { Text(tr("Page outline", "页面大纲")) }, leadingIcon = { Icon(Icons.Outlined.FormatListBulleted, null) }, onClick = { overlays.workspaceMenu = false; overlays.outlineOpen = true })
@@ -3436,6 +3465,10 @@ private fun EditorScreen(
                 onEditAdjustment = { adjustmentDialogId = it },
                 onAddGenerated = ::createGeneratedLayer,
                 onEditGenerated = ::editGeneratedLayer,
+                onConvertToFileObject = { layerId ->
+                    fileObjectLayerId = layerId
+                    fileObjectSaver.launch("${selectedPage.layers.firstOrNull { it.id == layerId }?.name ?: "Layer"}.png")
+                },
                 onConvertLayer = { layerId ->
                     selectLayerTarget(layerId)
                     rasterFilterInitialKind = app.inkloom.settings.RasterFilterPreset.CONVERT_LAYER_KIND; rasterFilterDialogOpen = true

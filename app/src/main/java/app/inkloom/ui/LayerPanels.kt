@@ -204,6 +204,7 @@ internal fun LayerPanel(
     onEditGenerated: (String) -> Unit = {},
     onRasterize: (String) -> Unit = {},
     onConvertLayer: (String) -> Unit = {},
+    onConvertToFileObject: (String) -> Unit = {},
     onRename: (String, String) -> Unit,
     onVisibility: (String) -> Unit,
     onSolo: (String) -> Unit,
@@ -255,6 +256,7 @@ internal fun LayerPanel(
             onEditGenerated = onEditGenerated,
             onRasterize = onRasterize,
             onConvertLayer = onConvertLayer,
+            onConvertToFileObject = onConvertToFileObject,
             onRename = onRename,
             onVisibility = onVisibility,
             onSolo = onSolo,
@@ -322,6 +324,7 @@ private fun PaintingLayerPanel(
     onEditGenerated: (String) -> Unit = {},
     onRasterize: (String) -> Unit = {},
     onConvertLayer: (String) -> Unit = {},
+    onConvertToFileObject: (String) -> Unit = {},
     onRename: (String, String) -> Unit,
     onVisibility: (String) -> Unit,
     onSolo: (String) -> Unit,
@@ -683,6 +686,8 @@ private fun PaintingLayerPanel(
                                 if (layer.isPaintSurfaceLayer()) StudioMenuItem(text = { Text(if (layer.alphaLock) tr("Unlock alpha", "解锁透明度") else tr("Lock alpha", "锁定透明度")) }, onClick = { menu = false; onToggleAlphaLock(layer.id) })
                                 if (layer.isPaintSurfaceLayer() && layer.generator == null) StudioMenuItem(text = { Text(tr("Convert layer…", "转换图层…")) },
                                     enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onConvertLayer(layer.id) })
+                                if (layer.isPaintSurfaceLayer() && layer.generator == null && layer.rasterTileSurface != null) StudioMenuItem(text = { Text(tr("Convert to file object…", "转换为文件对象…")) },
+                                    enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onConvertToFileObject(layer.id) })
                                 if (layer.canClipToBelow()) StudioMenuItem(text = { Text(if (layer.clippedToBelow) tr("Stop clipping", "取消剪贴") else tr("Clipping mask", "剪贴蒙版")) }, onClick = { menu = false; onToggleClippedToBelow(layer.id) })
                                 if (layer.role != LayerRole.BACKGROUND) StudioMenuItem(text = { Text(if (layer.reference) tr("Unset reference layer", "取消参考图层") else tr("Set as reference layer", "设为参考图层")) }, onClick = { menu = false; onToggleReference(layer.id) })
                                 if (layer.role != LayerRole.BACKGROUND) StudioMenuItem(text = { Text(if (layer.draft) tr("Unset draft layer", "取消草稿图层") else tr("Set as draft layer", "设为草稿图层")) }, onClick = { menu = false; onToggleDraft(layer.id) })
