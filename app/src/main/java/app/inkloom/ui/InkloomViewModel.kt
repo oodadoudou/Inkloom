@@ -254,6 +254,57 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
     val fileObjects by lazy { app.inkloom.document.FileObjects(getApplication(), assets) }
 
+    // CSP material palette: registered pictures and page templates.
+    private val materialStore = app.inkloom.document.MaterialStore(application.filesDir)
+    private val mutableMaterials = MutableStateFlow(materialStore.list())
+    val materials = mutableMaterials.asStateFlow()
+
+    fun registerLayerAsMaterial(documentId: String, pageId: String, layerId: String, name: String, onDone: (String?) -> Unit) {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return onDone("The page is no longer open")
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) {
+                materialStore.add(app.inkloom.document.MaterialImages.register(assets, getApplication<Application>().cacheDir, page, layerId, name))
+            } }.onSuccess { mutableMaterials.value = it; onDone(null) }.onFailure { onDone(it.message) }
+        }
+    }
+
+    fun registerPageAsTemplate(documentId: String, pageId: String, name: String) {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
+        mutableMaterials.value = materialStore.add(app.inkloom.document.Material(name = name,
+            kind = app.inkloom.document.MaterialKind.TEMPLATE, page = page))
+    }
+
+    /** An image material goes on a new layer, at most half the page wide. */
+    fun placeMaterial(materialId: String) {
+        val material = mutableMaterials.value.firstOrNull { it.id == materialId && it.imageAssetPath != null } ?: return
+        val documentId = mutableState.value.selectedDocumentId ?: return
+        val pageId = mutableState.value.selectedPageId ?: return
+        updatePage(documentId, pageId) { page ->
+            val visibleWidth = PageCropTransform.visibleWidth(page)
+            val width = minOf(material.imageWidth.toFloat(), visibleWidth * .5f).coerceAtLeast(16f)
+            val height = width * material.imageHeight / material.imageWidth.coerceAtLeast(1)
+            val layer = InkLayer(name = material.name)
+            val image = PageElement.Image(x = .25f, y = .2f, width = width, height = height, assetPath = requireNotNull(material.imageAssetPath), layerId = layer.id)
+            page.copy(layers = page.layers + layer, elements = page.elements + (PageCropTransform.unproject(image, page.crop) as PageElement.Image))
+        }
+    }
+
+    /** A new page after the current one, made from a template material. */
+    fun addPageFromTemplate(documentId: String, materialId: String) {
+        val template = mutableMaterials.value.firstOrNull { it.id == materialId }?.page ?: return
+        val currentId = mutableState.value.selectedPageId
+        var added: String? = null
+        update(documentId) { document ->
+            val page = app.inkloom.document.MaterialStore.pageFromTemplate(template, "Page ${document.pages.size + 1}").also { added = it.id }
+            val index = document.pages.indexOfFirst { it.id == currentId }.let { if (it < 0) document.pages.size else it + 1 }
+            document.copy(pages = document.pages.toMutableList().apply { add(index, page) }, updatedAt = System.currentTimeMillis())
+        }
+        added?.let { selectPage(it) }
+    }
+
+    fun deleteMaterial(materialId: String) { mutableMaterials.value = materialStore.delete(materialId); scheduleAssetGarbageCollection() }
+    fun renameMaterial(materialId: String, name: String) { mutableMaterials.value = materialStore.rename(materialId, name) }
+
     /** CSP Create file object: the linked image goes on a new layer named after its file. */
     fun insertFileObject(uri: Uri) {
         val documentId = mutableState.value.selectedDocumentId ?: return
@@ -788,7 +839,8 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             // that as a stale collection attempt and retry on the next scheduled pass; asset GC
             // must never take down the editor process.
             runCatching {
-                assets.garbageCollectUnreferencedAssets(store.list(), mutablePageTemplates.value)
+                assets.garbageCollectUnreferencedAssets(store.list() + app.inkloom.document.MaterialStore.asDocument(materialStore.list()),
+                    mutablePageTemplates.value)
             }
         }
     }

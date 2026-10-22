@@ -730,6 +730,11 @@ fun InkloomApp(initialIntent: Intent?) {
             viewModel.insertImage(uri)
         }.onFailure { importError = it.message }
     }
+    // Materials: opened from the editor with the layer that "Current layer" registers.
+    var materialsLayerId by remember { mutableStateOf<String?>(null) }
+    var materialsBusy by remember { mutableStateOf(false) }
+    var materialsMessage by remember { mutableStateOf<String?>(null) }
+    val materials by viewModel.materials.collectAsState()
     val fileObjectPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
             context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -995,6 +1000,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onDuplicateElement = viewModel::duplicateElement,
             onInsertImage = { pageImagePicker.launch(arrayOf("image/*")) },
             onPlaceFileObject = { fileObjectPicker.launch(arrayOf("image/*")) },
+            onOpenMaterials = { layerId -> materialsMessage = null; materialsLayerId = layerId },
             onUpdateFileObjects = ::updateFileObjects,
             onScanImage = ::launchPageScanner,
             onExport = { viewModel.currentDocument()?.let { produceNotebookOutput(it, NotebookOutput.EXPORT_PDF) } },
@@ -1031,6 +1037,30 @@ fun InkloomApp(initialIntent: Intent?) {
         text = { Text(tr("The notebook is still in Trash. Your pages and saved colors have been kept. Please try again.", "笔记仍在废纸篓中，页面和已保存的颜色均已保留。请重试。")) },
         confirmButton = { TextButton(onClick = { deletionFailed = false }) { Text(tr("OK", "确定")) } },
     )
+    materialsLayerId?.let { layerId ->
+        MaterialsDialog(materials, settings.language, materialsBusy, materialsMessage,
+            onRegisterLayer = { name ->
+                val documentId = libraryState.selectedDocumentId; val pageId = libraryState.selectedPageId
+                if (documentId != null && pageId != null) {
+                    materialsBusy = true
+                    viewModel.registerLayerAsMaterial(documentId, pageId, layerId, name) { error ->
+                        materialsBusy = false
+                        materialsMessage = error ?: settings.language.text("Registered \"$name\"", "已登记“$name”")
+                    }
+                }
+            },
+            onRegisterPage = { name ->
+                val documentId = libraryState.selectedDocumentId; val pageId = libraryState.selectedPageId
+                if (documentId != null && pageId != null) {
+                    viewModel.registerPageAsTemplate(documentId, pageId, name)
+                    materialsMessage = settings.language.text("Registered \"$name\"", "已登记“$name”")
+                }
+            },
+            onPlace = { viewModel.placeMaterial(it.id); materialsLayerId = null },
+            onAddPage = { material -> libraryState.selectedDocumentId?.let { viewModel.addPageFromTemplate(it, material.id) }; materialsLayerId = null },
+            onDelete = { viewModel.deleteMaterial(it.id) },
+            onDismiss = { materialsLayerId = null })
+    }
     if (settingsOpen) SettingsDialog(
         settings = settings,
         brushes = importedBrushes,
@@ -1120,6 +1150,7 @@ private fun EditorScreen(
     onDuplicateElement: (String, String, String) -> Unit,
     onInsertImage: () -> Unit,
     onPlaceFileObject: () -> Unit,
+    onOpenMaterials: (String) -> Unit,
     onUpdateFileObjects: () -> Unit,
     onScanImage: () -> Unit,
     onExport: () -> Unit,
@@ -1968,7 +1999,8 @@ private fun EditorScreen(
                     0 -> {
                         StudioMenuItem(text = { Text(tr("Search this notebook", "搜索当前笔记")) }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, onClick = { overlays.workspaceMenu = false; overlays.searchOpen = true })
                         StudioMenuItem(text = { Text(tr("Add PDF or image pages", "追加 PDF／图片页面")) }, leadingIcon = { Icon(Icons.Outlined.FileOpen, null) }, onClick = { overlays.workspaceMenu = false; onAppendPageFiles(document.id) })
-                        StudioMenuItem(text = { Text(tr("Place file object…", "置入文件对象…")) }, leadingIcon = { Icon(Icons.Outlined.Image, null) }, onClick = { overlays.workspaceMenu = false; onPlaceFileObject() })
+                        StudioMenuItem(text = { Text(tr("Materials…", "素材…")) }, leadingIcon = { Icon(Icons.Outlined.Collections, null) }, onClick = { overlays.workspaceMenu = false; onOpenMaterials(activeLayerId) })
+                    StudioMenuItem(text = { Text(tr("Place file object…", "置入文件对象…")) }, leadingIcon = { Icon(Icons.Outlined.Image, null) }, onClick = { overlays.workspaceMenu = false; onPlaceFileObject() })
                         StudioMenuItem(text = { Text(tr("Update file objects", "更新文件对象")) }, leadingIcon = { Icon(Icons.Outlined.Sync, null) }, onClick = { overlays.workspaceMenu = false; onUpdateFileObjects() })
                         StudioMenuItem(text = { Text(if (selectedPage.bookmarked) tr("Remove page bookmark", "取消本页书签") else tr("Bookmark this page", "收藏本页")) }, leadingIcon = { Icon(if (selectedPage.bookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder, null) }, onClick = { overlays.workspaceMenu = false; onToggleBookmark(document.id, selectedPage.id) })
                         StudioMenuItem(text = { Text(tr("Bookmarks", "书签")) }, leadingIcon = { Icon(Icons.Outlined.Bookmarks, null) }, onClick = { overlays.workspaceMenu = false; overlays.bookmarksOpen = true })
