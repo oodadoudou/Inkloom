@@ -3770,6 +3770,11 @@ private fun EditorScreen(
         onCancel={compositeFilterWorker?.cancel();++compositeFilterGeneration;compositeFilterBusy=false;compositeFilterPreview=null;canvasView?.onRasterFilterFinished?.invoke(false);rasterFilterDialogOpen=false},
         initialKind=rasterFilterInitialKind,
         pageDpi=selectedPage.dpi,
+        referenceLayers=selectedPage.layers.filter{it.isPaintSurfaceLayer() && it.id!=activeLayerId}.map{it.id to it.name},
+        referenceStatistics={id-> withContext(Dispatchers.IO){ runCatching{
+            val page=currentAppearancePage
+            app.inkloom.engine.v5.tools.ColorStatistics.of(maskAssets.renderRasterLayerSurface(page,id,CanvasRasterResolution.forPage(page)).snapshot())
+        }.getOrNull() } },
     )
 
     if (overlays.shapeInsertOpen) StudioDialog(

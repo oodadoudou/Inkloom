@@ -21,7 +21,10 @@ import app.inkloom.settings.*
 @Composable
 internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset>,onPresets:(List<RasterFilterPreset>)->Unit,
     compositePreview:Bitmap?,copyBusy:Boolean,onPreview:(RasterImageFilter.Effect,Boolean)->Unit,
-    onApply:(RasterImageFilter.Effect,Boolean)->Unit,onCancel:()->Unit,initialKind:Int=0,pageDpi:Float=300f) {
+    onApply:(RasterImageFilter.Effect,Boolean)->Unit,onCancel:()->Unit,initialKind:Int=0,pageDpi:Float=300f,
+    /** Layers that can serve as a colour reference (ID to name), and how to read one's statistics. */
+    referenceLayers:List<Pair<String,String>> = emptyList(),
+    referenceStatistics:suspend (String)->app.inkloom.engine.v5.tools.ColorStatistics? = { null }) {
     val language=LocalUiLanguage.current
     fun tr(en:String,zh:String)=language.text(en,zh)
     var state by remember{mutableStateOf(RasterFilterPreset(colorArgb=drawingColor,kind=initialKind))}
@@ -30,7 +33,10 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
     var name by remember{mutableStateOf("")}
     var presetMenu by remember{mutableStateOf(false)}
     var kinds by remember{mutableStateOf(false)}
-    val effect=state.effect()
+    var referenceId by remember{mutableStateOf(referenceLayers.firstOrNull()?.first)}
+    var referenceMenu by remember{mutableStateOf(false)}
+    val reference by produceState<app.inkloom.engine.v5.tools.ColorStatistics?>(null,referenceId){ value=referenceId?.let{referenceStatistics(it)} }
+    val effect=state.effect().let{ if(it is RasterImageFilter.Effect.MatchColor) it.copy(reference=reference) else it }
     LaunchedEffect(effect,composite){onPreview(effect,composite)}
     val names=rasterFilterNames(::tr)
     var colorPickerOpen by remember { mutableStateOf(false) }
@@ -51,7 +57,14 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
             }
             HorizontalDivider(Modifier.padding(vertical=6.dp),color=MaterialTheme.colorScheme.outline)
             RasterFilterBasicControls(state,{state=it},::tr) { colorPickerOpen=true }
-            if (state.kind >= RasterFilterPreset.FIRST_EFFECT_KIND) RasterFilterEffectControls(state,{state=it},::tr,pageDpi)
+            if (state.kind == RasterFilterPreset.MATCH_COLOR_KIND) {
+                StudioDropdownField(referenceLayers.firstOrNull{it.first==referenceId}?.second ?: tr("No other layer","没有其他图层"),referenceMenu,{referenceMenu=it},label=tr("Reference","参考图层")){
+                    referenceLayers.forEach{(id,name)->StudioMenuItem(text={Text(name)},onClick={referenceId=id;referenceMenu=false})}
+                }
+                StudioSliderRow(tr("Strength","强度"),state.matchStrength*100f,0f..100f,{state=state.copy(matchStrength=it/100f)},unit="%")
+                StudioCheckRow(tr("Keep luminance","保持明度"),state.keepLuminance,{state=state.copy(keepLuminance=it)})
+                StudioNote(tr("Moves this layer's colours towards the reference layer's overall colour and contrast.","使此图层的整体色彩与对比度向参考图层靠拢。"))
+            } else if (state.kind >= RasterFilterPreset.FIRST_EFFECT_KIND) RasterFilterEffectControls(state,{state=it},::tr,pageDpi)
             else if (state.kind >= RasterFilterPreset.FIRST_TONAL_KIND) {
                 val kind=RasterFilterPreset.TONAL_KINDS[state.kind-RasterFilterPreset.FIRST_TONAL_KIND]
                 AdjustmentParameters((state.adjustment ?: app.inkloom.document.LayerAdjustment()).copy(kind=kind),channel,{channel=it},{state=state.copy(adjustment=it)},language)

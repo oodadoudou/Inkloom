@@ -320,6 +320,12 @@ class RasterFilterWindowTest {
         assertTrue("the whole layer becomes a normal map", map.pixelAt(2, 2) ushr 24 == 255 && (map.pixelAt(2, 2) and 255) > 240)
         compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
         compose.waitUntil(15_000) { fingerprint(view) == ink }
+        // Match color offers the page's other paint layers as references.
+        open("Match color")
+        compose.onNodeWithText("Reference").assertExists()
+        compose.onNodeWithText("Keep luminance").assertExists()
+        compose.onNodeWithText("Cancel").performClick()
+        compose.waitUntil(15_000) { fingerprint(view) == ink && !view.selectionLayerTransferPending }
         // Tonal correction opens on its first correction and bakes it into the layer.
         open("", menu = "Tonal correction…")
         compose.onNodeWithText("Brightness / Contrast").assertExists()

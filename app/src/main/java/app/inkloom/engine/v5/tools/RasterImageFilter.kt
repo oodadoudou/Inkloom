@@ -69,6 +69,11 @@ internal object RasterImageFilter {
         data class Film(val parameters: FilmParameters) : Effect { override val sigma = 1f }
         /** CSP Layer > Convert layer: expression colour, resolution and shades to tone. */
         data class ConvertLayer(val conversion: LayerConversion) : Effect { override val sigma = 1f }
+        /** Match the layer's colours to a reference layer's statistics; without a reference nothing changes. */
+        data class MatchColor(val reference: ColorStatistics?, val strength: Float = 1f, val keepLuminance: Boolean = false) : Effect {
+            override val sigma = 1f
+            init { require(strength in 0f..1f) { "Match strength must be between 0 and 100%" } }
+        }
     }
 
     fun apply(
@@ -81,6 +86,7 @@ internal object RasterImageFilter {
             return RasterColorConversion.apply(source, effect, selection, cancelled)
         if (effect is Effect.Tonal) return RasterTonalCorrection.apply(source, effect.adjustment, selection)
         if (effect is Effect.ConvertLayer) return RasterLayerConversion.apply(source, effect.conversion, selection, cancelled)
+        if (effect is Effect.MatchColor) return RasterMatchColor.apply(source, effect.reference, effect.strength, effect.keepLuminance, selection, cancelled)
         if (effect is Effect.RemoveJpegNoise || effect is Effect.Crystallize || effect is Effect.NormalMap ||
             effect is Effect.Artistic || effect is Effect.PencilDrawing || effect is Effect.Film)
             return RasterEffectFilter.apply(source, effect, selection, cancelled)

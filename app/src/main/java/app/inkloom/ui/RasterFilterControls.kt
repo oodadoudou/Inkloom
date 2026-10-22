@@ -26,7 +26,7 @@ internal fun rasterFilterNames(tr: (String, String) -> String) = listOf(
     tr("Threshold", "二值化"), tr("Gradient Map", "渐变映射"),
     tr("Remove JPEG noise", "去除 JPEG 噪声"), tr("Crystallize", "水晶"), tr("Normal map", "法线贴图"),
     tr("Artistic", "插画风"), tr("Pencil drawing", "铅笔风"), tr("Film", "照片风（胶片）"),
-    tr("Convert layer", "转换图层"))
+    tr("Convert layer", "转换图层"), tr("Match color", "色彩参考匹配"))
 
 /** CSP's Filter menu groups, each listing preset kind indices. Headers never repeat a filter name. */
 internal fun rasterFilterGroups(tr: (String, String) -> String) = listOf(
@@ -37,7 +37,7 @@ internal fun rasterFilterGroups(tr: (String, String) -> String) = listOf(
     tr("LINE ART", "线稿") to listOf(3, 4),
     tr("EFFECT", "效果") to (RasterFilterPreset.FIRST_EFFECT_KIND until RasterFilterPreset.CONVERT_LAYER_KIND).toList(),
     tr("TONAL CORRECTION", "色调补偿") to (RasterFilterPreset.FIRST_TONAL_KIND..RasterFilterPreset.LAST_TONAL_KIND).toList(),
-    tr("COLOR", "颜色") to listOf(12, 13, RasterFilterPreset.CONVERT_LAYER_KIND))
+    tr("COLOR", "颜色") to listOf(12, 13, RasterFilterPreset.MATCH_COLOR_KIND, RasterFilterPreset.CONVERT_LAYER_KIND))
 
 @Composable
 internal fun RasterFilterKindMenuItems(tr: (String, String) -> String, onKind: (Int) -> Unit) {

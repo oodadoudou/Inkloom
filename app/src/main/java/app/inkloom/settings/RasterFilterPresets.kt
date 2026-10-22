@@ -37,7 +37,9 @@ data class RasterFilterPreset(val id:String=UUID.randomUUID().toString(),val nam
     val filmIntensity:Float=70f,val filmAberration:Float=30f,val filmNoise:Float=30f,
     // Convert layer: expression 0 colour, 1 grey, 2 monochrome; resolution as a fraction; tone pitch in px (0 = no tone).
     val expression:Int=1,val monoThreshold:Float=.5f,val whiteTransparent:Boolean=true,val layerResolution:Float=1f,
-    val tonePitch:Float=0f) {
+    val tonePitch:Float=0f,
+    // Match color: the reference layer's statistics are read when the filter runs.
+    val matchStrength:Float=1f,val keepLuminance:Boolean=false) {
     fun normalized():RasterFilterPreset {
         fun Float.bounded(range:ClosedFloatingPointRange<Float>,fallback:Float)=takeIf{it.isFinite()}?.coerceIn(range)?:fallback
         val lengthMin=wavelengthMin.bounded(2f..2000f,40f);val heightMin=amplitudeMin.bounded(0f..1000f,5f)
@@ -57,7 +59,7 @@ data class RasterFilterPreset(val id:String=UUID.randomUUID().toString(),val nam
         hatchSize=hatchSize.bounded(1f..10f,2f),hatchRoughness=hatchRoughness.bounded(0f..100f,40f),
         filmIntensity=filmIntensity.bounded(0f..100f,70f),filmAberration=filmAberration.bounded(0f..100f,30f),filmNoise=filmNoise.bounded(0f..100f,30f),
         expression=expression.coerceIn(0,2),monoThreshold=monoThreshold.bounded(0f..1f,.5f),layerResolution=layerResolution.bounded(.02f..1f,1f),
-        tonePitch=tonePitch.takeIf{it.isFinite()&&it>=2f}?.coerceAtMost(200f)?:0f)
+        tonePitch=tonePitch.takeIf{it.isFinite()&&it>=2f}?.coerceAtMost(200f)?:0f,matchStrength=matchStrength.bounded(0f..1f,1f))
     }
     internal fun distortParameters()=DistortParameters(distortion,centerX,centerY,radius,shape,angle,tension,count,
         wavelengthMin,wavelengthMax,amplitudeMin,amplitudeMax,horizontalRatio,verticalRatio,mode,wrap,scale,seed)
@@ -83,6 +85,7 @@ data class RasterFilterPreset(val id:String=UUID.randomUUID().toString(),val nam
         FIRST_EFFECT_KIND+5->RasterImageFilter.Effect.Film(FilmParameters(FilmLook.entries[p.mode.coerceIn(0,2)],p.filmIntensity,p.filmAberration,p.filmNoise,p.seed))
         CONVERT_LAYER_KIND->RasterImageFilter.Effect.ConvertLayer(LayerConversion(LayerExpression.entries[p.expression],p.monoThreshold,
             p.whiteTransparent,p.layerResolution,p.tonePitch.takeIf{it>=2f},p.angle))
+        MATCH_COLOR_KIND->RasterImageFilter.Effect.MatchColor(null,p.matchStrength,p.keepLuminance)
         else->RasterImageFilter.Effect.Distort(DISTORT_KINDS[p.kind-FIRST_DISTORT_KIND],p.distortParameters())
     }}
     companion object {
@@ -100,7 +103,9 @@ data class RasterFilterPreset(val id:String=UUID.randomUUID().toString(),val nam
         val FIRST_EFFECT_KIND=LAST_TONAL_KIND+1
         /** CSP Layer > Convert layer, opened from the layer menu. */
         val CONVERT_LAYER_KIND=FIRST_EFFECT_KIND+6
-        val LAST_KIND=CONVERT_LAYER_KIND
+        /** Match color: the dialog supplies the reference layer's statistics. */
+        val MATCH_COLOR_KIND=CONVERT_LAYER_KIND+1
+        val LAST_KIND=MATCH_COLOR_KIND
     }
 }
 object RasterFilterPresetsCodec {
