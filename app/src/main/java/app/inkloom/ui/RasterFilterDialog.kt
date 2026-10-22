@@ -21,7 +21,7 @@ import app.inkloom.settings.*
 @Composable
 internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset>,onPresets:(List<RasterFilterPreset>)->Unit,
     compositePreview:Bitmap?,copyBusy:Boolean,onPreview:(RasterImageFilter.Effect,Boolean)->Unit,
-    onApply:(RasterImageFilter.Effect,Boolean)->Unit,onCancel:()->Unit,initialKind:Int=0) {
+    onApply:(RasterImageFilter.Effect,Boolean)->Unit,onCancel:()->Unit,initialKind:Int=0,pageDpi:Float=300f) {
     val language=LocalUiLanguage.current
     fun tr(en:String,zh:String)=language.text(en,zh)
     var state by remember{mutableStateOf(RasterFilterPreset(colorArgb=drawingColor,kind=initialKind))}
@@ -51,7 +51,7 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
             }
             HorizontalDivider(Modifier.padding(vertical=6.dp),color=MaterialTheme.colorScheme.outline)
             RasterFilterBasicControls(state,{state=it},::tr) { colorPickerOpen=true }
-            if (state.kind >= RasterFilterPreset.FIRST_EFFECT_KIND) RasterFilterEffectControls(state,{state=it},::tr)
+            if (state.kind >= RasterFilterPreset.FIRST_EFFECT_KIND) RasterFilterEffectControls(state,{state=it},::tr,pageDpi)
             else if (state.kind >= RasterFilterPreset.FIRST_TONAL_KIND) {
                 val kind=RasterFilterPreset.TONAL_KINDS[state.kind-RasterFilterPreset.FIRST_TONAL_KIND]
                 AdjustmentParameters((state.adjustment ?: app.inkloom.document.LayerAdjustment()).copy(kind=kind),channel,{channel=it},{state=state.copy(adjustment=it)},language)

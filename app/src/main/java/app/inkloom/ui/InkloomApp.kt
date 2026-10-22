@@ -3436,6 +3436,10 @@ private fun EditorScreen(
                 onEditAdjustment = { adjustmentDialogId = it },
                 onAddGenerated = ::createGeneratedLayer,
                 onEditGenerated = ::editGeneratedLayer,
+                onConvertLayer = { layerId ->
+                    selectLayerTarget(layerId)
+                    rasterFilterInitialKind = app.inkloom.settings.RasterFilterPreset.CONVERT_LAYER_KIND; rasterFilterDialogOpen = true
+                },
                 onRasterize = { layerId ->
                     val view = canvasView
                     val page = currentAppearancePage
@@ -3732,6 +3736,7 @@ private fun EditorScreen(
         },
         onCancel={compositeFilterWorker?.cancel();++compositeFilterGeneration;compositeFilterBusy=false;compositeFilterPreview=null;canvasView?.onRasterFilterFinished?.invoke(false);rasterFilterDialogOpen=false},
         initialKind=rasterFilterInitialKind,
+        pageDpi=selectedPage.dpi,
     )
 
     if (overlays.shapeInsertOpen) StudioDialog(

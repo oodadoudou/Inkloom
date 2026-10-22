@@ -25,7 +25,8 @@ internal fun rasterFilterNames(tr: (String, String) -> String) = listOf(
     tr("Curves", "曲线"), tr("Color Balance", "色彩平衡"), tr("Invert", "反转"), tr("Posterize", "色调分离"),
     tr("Threshold", "二值化"), tr("Gradient Map", "渐变映射"),
     tr("Remove JPEG noise", "去除 JPEG 噪声"), tr("Crystallize", "水晶"), tr("Normal map", "法线贴图"),
-    tr("Artistic", "插画风"), tr("Pencil drawing", "铅笔风"), tr("Film", "照片风（胶片）"))
+    tr("Artistic", "插画风"), tr("Pencil drawing", "铅笔风"), tr("Film", "照片风（胶片）"),
+    tr("Convert layer", "转换图层"))
 
 /** CSP's Filter menu groups, each listing preset kind indices. Headers never repeat a filter name. */
 internal fun rasterFilterGroups(tr: (String, String) -> String) = listOf(
@@ -34,9 +35,9 @@ internal fun rasterFilterGroups(tr: (String, String) -> String) = listOf(
     tr("NOISE & RENDER", "噪点与绘制") to listOf(10, 19, 2, 9, 11),
     tr("DISTORT", "变形类") to listOf(20, 21, 22, 5, 23, 24, 25, 26, 27, 28),
     tr("LINE ART", "线稿") to listOf(3, 4),
-    tr("EFFECT", "效果") to (RasterFilterPreset.FIRST_EFFECT_KIND..RasterFilterPreset.LAST_KIND).toList(),
+    tr("EFFECT", "效果") to (RasterFilterPreset.FIRST_EFFECT_KIND until RasterFilterPreset.CONVERT_LAYER_KIND).toList(),
     tr("TONAL CORRECTION", "色调补偿") to (RasterFilterPreset.FIRST_TONAL_KIND..RasterFilterPreset.LAST_TONAL_KIND).toList(),
-    tr("COLOR", "颜色") to listOf(12, 13))
+    tr("COLOR", "颜色") to listOf(12, 13, RasterFilterPreset.CONVERT_LAYER_KIND))
 
 @Composable
 internal fun RasterFilterKindMenuItems(tr: (String, String) -> String, onKind: (Int) -> Unit) {
@@ -124,7 +125,8 @@ internal fun RasterFilterExtraControls(state: RasterFilterPreset, onState: (Rast
 
 /** Settings for CSP's Effect filters: Remove JPEG noise, Crystallize, Normal map, Artistic, Pencil drawing and Film. */
 @Composable
-internal fun RasterFilterEffectControls(state: RasterFilterPreset, onState: (RasterFilterPreset) -> Unit, tr: (String, String) -> String) {
+internal fun RasterFilterEffectControls(state: RasterFilterPreset, onState: (RasterFilterPreset) -> Unit, tr: (String, String) -> String,
+    pageDpi: Float = 300f) {
     val note = MaterialTheme.typography.bodySmall
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     @Composable fun percent(label: String, value: Float, onValue: (Float) -> Unit) = StudioSliderRow(label, value, 0f..100f, onValue)
@@ -177,6 +179,25 @@ internal fun RasterFilterEffectControls(state: RasterFilterPreset, onState: (Ras
                 percent(tr("Chromatic aberration", "色差"), state.filmAberration) { onState(state.copy(filmAberration = it)) }
                 percent(tr("Noise", "噪点"), state.filmNoise) { onState(state.copy(filmNoise = it)) }
                 StudioButton(tr("New grain", "重新生成颗粒"), { onState(state.copy(seed = state.seed + 1)) })
+            }
+            6 -> {
+                StudioSegmented(listOf(tr("Color", "彩色"), tr("Gray", "灰色"), tr("Monochrome", "黑白")), state.expression,
+                    { onState(state.copy(expression = it)) }, label = tr("Expression color", "表现色"))
+                if (state.expression == 2 && state.tonePitch < 2f) {
+                    percent(tr("Threshold", "阈值"), state.monoThreshold * 100f) { onState(state.copy(monoThreshold = it / 100f)) }
+                    StudioCheckRow(tr("White becomes transparent", "白色转为透明"), state.whiteTransparent, { onState(state.copy(whiteTransparent = it)) })
+                }
+                // Resolution and tone screen are shown in the page's units, as CSP does.
+                StudioSliderRow(tr("Resolution", "分辨率"), state.layerResolution * pageDpi, (pageDpi * .02f).coerceAtLeast(1f)..pageDpi,
+                    { onState(state.copy(layerResolution = (it / pageDpi).coerceIn(.02f, 1f))) }, unit = "dpi")
+                StudioCheckRow(tr("Convert shades to tone", "将灰度转换为网点"), state.tonePitch >= 2f,
+                    { onState(state.copy(tonePitch = if (it) (pageDpi / 60f).coerceIn(2f, 200f) else 0f)) })
+                if (state.tonePitch >= 2f) {
+                    StudioSliderRow(tr("Lines per inch", "网线数"), pageDpi / state.tonePitch, (pageDpi / 200f).coerceAtLeast(5f)..(pageDpi / 2f).coerceAtMost(150f),
+                        { onState(state.copy(tonePitch = (pageDpi / it).coerceIn(2f, 200f))) }, unit = "lpi")
+                    StudioSliderRow(tr("Screen angle", "网屏角度"), state.angle, -90f..90f, { onState(state.copy(angle = it)) }, unit = "°")
+                }
+                Text(tr("Converts this layer's pixels; use Undo to go back.", "转换此图层的像素，可撤销恢复。"), style = note, color = muted)
             }
         }
     }

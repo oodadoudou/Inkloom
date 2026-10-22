@@ -67,6 +67,8 @@ internal object RasterImageFilter {
         data class Artistic(val parameters: ArtisticParameters) : Effect { override val sigma = 1f }
         data class PencilDrawing(val parameters: PencilParameters) : Effect { override val sigma = 1f }
         data class Film(val parameters: FilmParameters) : Effect { override val sigma = 1f }
+        /** CSP Layer > Convert layer: expression colour, resolution and shades to tone. */
+        data class ConvertLayer(val conversion: LayerConversion) : Effect { override val sigma = 1f }
     }
 
     fun apply(
@@ -78,6 +80,7 @@ internal object RasterImageFilter {
         if (effect is Effect.ConvertToDrawingColor || effect == Effect.BrightnessToOpacity)
             return RasterColorConversion.apply(source, effect, selection, cancelled)
         if (effect is Effect.Tonal) return RasterTonalCorrection.apply(source, effect.adjustment, selection)
+        if (effect is Effect.ConvertLayer) return RasterLayerConversion.apply(source, effect.conversion, selection, cancelled)
         if (effect is Effect.RemoveJpegNoise || effect is Effect.Crystallize || effect is Effect.NormalMap ||
             effect is Effect.Artistic || effect is Effect.PencilDrawing || effect is Effect.Film)
             return RasterEffectFilter.apply(source, effect, selection, cancelled)

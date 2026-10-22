@@ -95,6 +95,28 @@ class GeneratedLayerWindowTest {
         return snapshot.copyPremultipliedPixels(app.inkloom.engine.v5.surface.PixelRect(0, 0, snapshot.logicalWidth, snapshot.logicalHeight)).contentHashCode()
     }
 
+    @Test fun convertLayerFromTheLayerMenuMakesItMonochrome() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        val view = canvas()
+        val bounds = pageScreenBounds(view)
+        stroke(Offset(bounds.left + bounds.width() * .1f, bounds.top + bounds.height() * .4f),
+            Offset(bounds.left + bounds.width() * .3f, bounds.top + bounds.height() * .4f))
+        compose.waitUntil(10_000) { pixels(view) != 0 && !view.hasPendingPaintPublicationForMerge() }
+        val ink = pixels(view)
+        val layerName = model().currentPage()!!.layers.first { it.id == view.activeLayerId }.name
+        compose.onNodeWithContentDescription("Layers").performClick()
+        compose.onAllNodesWithContentDescription("Layer actions")[layerRow(layerName)].performClick()
+        compose.onNodeWithText("Convert layer…").performClick()
+        compose.onNodeWithText("Expression color").assertExists()
+        compose.onNodeWithText("Monochrome").performClick()
+        compose.onNodeWithText("Apply").performClick()
+        compose.waitUntil(15_000) { !view.selectionLayerTransferPending && pixels(view) != ink }
+        val snapshot = requireNotNull(view.activeRasterSnapshotForTest())
+        val colours = (0 until snapshot.logicalWidth step 3).flatMap { x -> (0 until snapshot.logicalHeight step 7).map { y -> snapshot.pixelAt(x, y) } }.toSet()
+        assertTrue("only black ink or nothing: $colours", colours.all { it == 0 || it == 0xFF000000.toInt() })
+    }
+
     /** Index of a layer row among the rows' action buttons (rows are listed top layer first). */
     private fun layerRow(name: String): Int {
         val rows = compose.onAllNodesWithContentDescription("Layer actions").fetchSemanticsNodes()
