@@ -644,6 +644,57 @@ class DocumentAssetService(private val context: Context) {
         } catch (failure: Throwable) { close(); throw failure }
     }
 
+    /** Permanent rotate or flip of the whole page, prepared off the UI thread as one undoable edit. */
+    fun prepareCanvasOrientation(page: InkPage, change: CanvasOrientationChange): PreparedPageGeometry {
+        val flip = change.flip
+        require(flip == null || CanvasOrientation.canFlip(page)) { "Pages with an imported PDF or image background can't be flipped" }
+        val rasterReservations = mutableListOf<RasterTileSurfaceRef>()
+        val maskReservations = mutableListOf<String>()
+        var releaseHistory: () -> Unit = {}
+        fun close() { releaseHistory(); rasterReservations.forEach(::releaseRasterTileReservation); maskReservations.forEach(::releaseAssetReservation) }
+        fun saveMask(mask: MaskTileSurfaceSnapshot) = saveMaskTileSurface(mask).also { maskReservations += it.assetPath }
+        try {
+            // The original rasters stay reserved for undo, as for a canvas resize.
+            if (flip != null) page.layers.mapNotNull { it.rasterTileSurface }.forEach { reference ->
+                rasterReservations += saveRasterTileSurface(loadRasterTileSurface(reference), reference)
+            }
+            val after = if (flip == null) {
+                val rotated = CanvasOrientation.rotated(page, change.clockwiseQuarterTurns)
+                rotated.copy(layers = rotated.layers.map { layer ->
+                    layer.copy(mask = layer.mask?.let { mask -> mask.copy(surface = mask.surface?.let { reference ->
+                        saveMask(SavedSelectionGeometry.rotated(loadMaskTileSurface(reference).snapshot(), change.clockwiseQuarterTurns))
+                    }) })
+                })
+            } else page.copy(
+                crop = CanvasOrientation.flippedCrop(page.crop, flip),
+                backgroundFrame = page.backgroundFrame?.let { CanvasOrientation.flippedFrame(it, page.width, page.height, flip) },
+                backgroundSourceCrop = page.backgroundSourceCrop?.let { CanvasOrientation.flippedCrop(it, flip) },
+                layers = page.layers.map { layer ->
+                    layer.copy(
+                        rasterTileSurface = layer.rasterTileSurface?.let { reference ->
+                            val flipped = CanvasOrientation.flippedPixels(loadRasterTileSurface(reference).snapshot(),
+                                CanvasOrientation.storedAxis(flip, layer.rasterRotationQuarterTurns))
+                            saveRasterTileSurface(flipped).also(rasterReservations::add)
+                        },
+                        mask = layer.mask?.let { mask -> mask.copy(surface = mask.surface?.let { reference ->
+                            saveMask(CanvasOrientation.flippedMask(loadMaskTileSurface(reference).snapshot(), flip))
+                        }) })
+                },
+                elements = page.elements.map { CanvasOrientation.flippedElement(it, page.width, page.height, flip) },
+                pdfTextBlocks = page.pdfTextBlocks.map { it.copy(bounds = it.bounds.map { b -> CanvasOrientation.flippedBounds(b, flip) }) },
+                pdfGotoLinks = page.pdfGotoLinks.map { it.copy(bounds = it.bounds.map { b -> CanvasOrientation.flippedBounds(b, flip) }) },
+                recognizedTextBlocks = emptyList(), handwritingIndexFingerprint = "", imageOcrFingerprint = "",
+                savedSelections = page.savedSelections.map { saved ->
+                    val axis = CanvasOrientation.storedAxis(flip, saved.rotationQuarterTurns)
+                    saved.copy(surface = saveMask(CanvasOrientation.flippedMask(loadMaskTileSurface(saved.surface).snapshot(), axis)),
+                        crop = CanvasOrientation.flippedCrop(saved.crop, axis))
+                })
+            releaseHistory = retainHistoryAssets((page.layers + after.layers).mapNotNull { it.mask?.surface?.assetPath } +
+                (page.savedSelections + after.savedSelections).map { it.surface.assetPath })
+            return PreparedPageGeometry(PageGeometryEdit(page, after), ::close)
+        } catch (failure: Throwable) { close(); throw failure }
+    }
+
     /** Same group, mask, clipping and adjustment semantics, with bounded object rasterization. */
     fun renderPageCompositeSurface(source: InkPage, width: Int, height: Int): app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot {
         require(width in 1..8192 && height in 1..8192)

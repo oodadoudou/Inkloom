@@ -949,6 +949,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onClearPageInk = viewModel::clearPageInk,
             onSetPageCrop = viewModel::setPageCrop,
             onApplyPageGeometry = viewModel::applyPageGeometry,
+            onApplyCanvasOrientation = viewModel::applyCanvasOrientation,
             onRotatePage = viewModel::rotatePageClockwise,
             onApplySelectionLayerTransfer = viewModel::applySelectionLayerTransfer,
             onSetSavedSelections = viewModel::setSavedSelections,
@@ -1078,6 +1079,7 @@ private fun EditorScreen(
     onClearPageInk: (String, String) -> Unit,
     onSetPageCrop: (String, String, PageCrop) -> Unit,
     onApplyPageGeometry: (String, String, PageGeometryEdit, Boolean) -> Boolean,
+    onApplyCanvasOrientation: (String, String, PageGeometryEdit, Int, Boolean) -> Boolean,
     onRotatePage: (String, String) -> Unit,
     onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit,
     onSetSavedSelections: (String, String, List<app.inkloom.document.SavedSelection>) -> Unit,
@@ -1957,6 +1959,7 @@ private fun EditorScreen(
                     HorizontalDivider()
                     DropdownMenuItem(text = { Text(tr("Color management", "色彩管理")) }, onClick = { overlays.workspaceMenu=false;overlays.colorManagementOpen=true })
                     DropdownMenuItem(text = { Text(tr("Canvas & resolution", "画布与分辨率")) }, onClick = { overlays.workspaceMenu = false; overlays.canvasSizeOpen = true })
+                    DropdownMenuItem(text = { Text(tr("Rotate or flip canvas…", "旋转／翻转画布…")) }, onClick = { overlays.workspaceMenu = false; overlays.canvasOrientationOpen = true })
 
                 }
                 2 -> {
@@ -2199,6 +2202,12 @@ private fun EditorScreen(
                     }
                 }
             })
+        if (overlays.canvasOrientationOpen) CanvasOrientationDialog(settings.language, app.inkloom.document.CanvasOrientation.canFlip(storedPage),
+            modes.canvasSizeBusy, onDismiss = { overlays.canvasOrientationOpen = false }) { change ->
+            canvasView?.let { view -> applyCanvasOrientation(appearanceScope, view, { currentAppearancePage }, maskAssets, change,
+                apply = { edit, undo -> onApplyCanvasOrientation(document.id, edit.before.id, edit, change.clockwiseQuarterTurns, undo) },
+                setBusy = { modes.canvasSizeBusy = it }) { overlays.canvasOrientationOpen = false; if (change.flip == null) fitPage() } }
+        }
         if (overlays.canvasSizeOpen) CanvasSizeDialog(storedPage, settings.language, modes.canvasSizeBusy,
             onDismiss = { overlays.canvasSizeOpen = false }, onApply = { request ->
                 val view = canvasView

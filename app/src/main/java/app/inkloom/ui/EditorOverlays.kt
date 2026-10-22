@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 internal class EditorOverlays {
     var colorManagementOpen by mutableStateOf(false)
     var canvasSizeOpen by mutableStateOf(false)
+    var canvasOrientationOpen by mutableStateOf(false)
     var pageExportOpen by mutableStateOf(false)
     var pageShareOpen by mutableStateOf(false)
     var quickZoomMenu by mutableStateOf(false)

@@ -581,12 +581,32 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         return true
     }
 
+    /** A canvas rotation also turns the destinations of PDF links that point at the page. */
+    fun applyCanvasOrientation(documentId: String, pageId: String, edit: app.inkloom.document.PageGeometryEdit,
+                               clockwiseQuarterTurns: Int, undo: Boolean): Boolean {
+        val current = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return false
+        val next = edit.apply(current, undo) ?: return false
+        val turns = (if (undo) -clockwiseQuarterTurns else clockwiseQuarterTurns).mod(4)
+        update(documentId) { document ->
+            var pages = document.pages.map { page -> if (page.id == pageId) app.inkloom.document.LayerSoloStructure.reconcile(page, next) else page }
+            repeat(turns) { pages = PdfGotoLinkNavigation.rotateDestinationCoordinates(pages, pageId) }
+            document.copy(pages = pages, updatedAt = System.currentTimeMillis())
+        }
+        return true
+    }
+
     fun setPageCrop(documentId: String, pageId: String, crop: PageCrop) = updatePage(documentId, pageId) { page ->
         page.copy(crop = PageCropTransform.normalized(crop))
     }
-    fun rotatePageClockwise(documentId: String, pageId: String) = update(documentId) { document ->
-        val rotated = document.pages.map { page -> if (page.id == pageId) PageGeometry.rotateClockwise(page) else page }
-        document.copy(pages = PdfGotoLinkNavigation.rotateDestinationCoordinates(rotated, pageId), updatedAt = System.currentTimeMillis())
+    /** Same preparation as the canvas command, so layer masks turn with the page. */
+    fun rotatePageClockwise(documentId: String, pageId: String) {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { assets.prepareCanvasOrientation(page, app.inkloom.document.CanvasOrientationChange.ROTATE_CLOCKWISE) }
+                    .use { prepared -> applyCanvasOrientation(documentId, pageId, prepared.edit, 1, undo = false) }
+            }.onFailure { android.util.Log.e("InkloomPages", "Page rotation failed", it) }
+        }
     }
 
     fun applySelectionLayerTransfer(documentId: String, pageId: String, sourceId: String,
