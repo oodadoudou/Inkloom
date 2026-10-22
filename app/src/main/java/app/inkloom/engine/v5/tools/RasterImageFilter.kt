@@ -52,6 +52,8 @@ internal object RasterImageFilter {
             }
         }
         data class Distort(val kind: DistortKind, val parameters: DistortParameters) : Effect { override val sigma = 1f }
+        /** CSP Edit > Tonal correction applied to pixels, with exactly the math of an adjustment layer. */
+        data class Tonal(val adjustment: app.inkloom.document.LayerAdjustment) : Effect { override val sigma = 1f }
     }
 
     fun apply(
@@ -62,6 +64,7 @@ internal object RasterImageFilter {
     ): PixelTileSurface {
         if (effect is Effect.ConvertToDrawingColor || effect == Effect.BrightnessToOpacity)
             return RasterColorConversion.apply(source, effect, selection, cancelled)
+        if (effect is Effect.Tonal) return RasterTonalCorrection.apply(source, effect.adjustment, selection)
         if (effect is Effect.FixedBlur || effect is Effect.PerlinNoise || effect is Effect.Distort)
             return RasterDistortFilter.apply(source, effect, selection, cancelled)
         if(source.pixelFormat.isHighPrecision || effect is Effect.MotionBlur || effect is Effect.RadialBlur ||

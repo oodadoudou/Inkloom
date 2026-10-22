@@ -20,7 +20,10 @@ internal fun rasterFilterNames(tr: (String, String) -> String) = listOf(
     tr("Blur", "模糊"), tr("Strong blur", "强模糊"), tr("Smoothing", "平滑"), tr("Perlin noise", "柏林噪声"),
     tr("Pinch", "捏合"), tr("Curved surface", "曲面投影"), tr("Wave", "波形"), tr("Twirl", "漩涡"),
     tr("Convert to panorama", "环视转换"), tr("Geometric distortion", "畸变补偿"), tr("Polar coordinates", "极坐标转换"),
-    tr("ZigZag", "锯齿变形"), tr("Fish-eye lens", "鱼眼镜头"))
+    tr("ZigZag", "锯齿变形"), tr("Fish-eye lens", "鱼眼镜头"),
+    tr("Brightness / Contrast", "亮度／对比度"), tr("Hue / Saturation / Luminosity", "色相／饱和度／明度"), tr("Levels", "色阶"),
+    tr("Curves", "曲线"), tr("Color Balance", "色彩平衡"), tr("Invert", "反转"), tr("Posterize", "色调分离"),
+    tr("Threshold", "二值化"), tr("Gradient Map", "渐变映射"))
 
 /** CSP's Filter menu groups, each listing preset kind indices. Headers never repeat a filter name. */
 internal fun rasterFilterGroups(tr: (String, String) -> String) = listOf(
@@ -29,6 +32,7 @@ internal fun rasterFilterGroups(tr: (String, String) -> String) = listOf(
     tr("NOISE & RENDER", "噪点与绘制") to listOf(10, 19, 2, 9, 11),
     tr("DISTORT", "变形类") to listOf(20, 21, 22, 5, 23, 24, 25, 26, 27, 28),
     tr("LINE ART", "线稿") to listOf(3, 4),
+    tr("TONAL CORRECTION", "色调补偿") to (RasterFilterPreset.FIRST_TONAL_KIND..RasterFilterPreset.LAST_KIND).toList(),
     tr("COLOR", "颜色") to listOf(12, 13))
 
 @Composable

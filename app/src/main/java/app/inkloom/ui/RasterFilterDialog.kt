@@ -21,10 +21,11 @@ import app.inkloom.settings.*
 @Composable
 internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset>,onPresets:(List<RasterFilterPreset>)->Unit,
     compositePreview:Bitmap?,copyBusy:Boolean,onPreview:(RasterImageFilter.Effect,Boolean)->Unit,
-    onApply:(RasterImageFilter.Effect,Boolean)->Unit,onCancel:()->Unit) {
+    onApply:(RasterImageFilter.Effect,Boolean)->Unit,onCancel:()->Unit,initialKind:Int=0) {
     val language=LocalUiLanguage.current
     fun tr(en:String,zh:String)=language.text(en,zh)
-    var state by remember{mutableStateOf(RasterFilterPreset(colorArgb=drawingColor))}
+    var state by remember{mutableStateOf(RasterFilterPreset(colorArgb=drawingColor,kind=initialKind))}
+    var channel by remember{mutableIntStateOf(0)}
     var composite by remember{mutableStateOf(false)}
     var name by remember{mutableStateOf("")}
     var presetMenu by remember{mutableStateOf(false)}
@@ -50,9 +51,14 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
             }
             HorizontalDivider(Modifier.padding(vertical=6.dp),color=MaterialTheme.colorScheme.outline)
             RasterFilterBasicControls(state,{state=it},::tr) { colorPickerOpen=true }
-            if (state.kind >= 16) RasterFilterExtraControls(state,{state=it},::tr)
+            if (state.kind >= RasterFilterPreset.FIRST_TONAL_KIND) {
+                val kind=RasterFilterPreset.TONAL_KINDS[state.kind-RasterFilterPreset.FIRST_TONAL_KIND]
+                AdjustmentParameters((state.adjustment ?: app.inkloom.document.LayerAdjustment()).copy(kind=kind),channel,{channel=it},{state=state.copy(adjustment=it)},language)
+                StudioNote(tr("Changes the layer's pixels. Use an adjustment layer to keep the correction editable.","直接修改图层像素；若要保留可编辑性，请使用调整图层。"),Modifier.padding(top=4.dp))
+            } else if (state.kind >= 16) RasterFilterExtraControls(state,{state=it},::tr)
             HorizontalDivider(Modifier.padding(vertical=6.dp),color=MaterialTheme.colorScheme.outline)
             StudioCheckRow(tr("Process visible copy","处理可见画面副本"),composite,{composite=it},enabled=!copyBusy)
+            if(!composite) StudioNote(tr("Applies to the current layer. Process visible copy flattens what you see into a new layer instead.","作用于当前图层；勾选“处理可见画面副本”则把可见画面合并为新图层再处理。"))
             if(composite){
                 compositePreview?.takeUnless{it.isRecycled}?.let{Image(it.asImageBitmap(),tr("Composite preview","合成预览"),Modifier.fillMaxWidth().heightIn(max=160.dp))}
                 if(copyBusy)LinearProgressIndicator(Modifier.fillMaxWidth())

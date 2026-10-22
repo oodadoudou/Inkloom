@@ -1230,6 +1230,7 @@ private fun EditorScreen(
     var activeLayerId by rememberSaveable(document.id, selectedPage.id) { mutableStateOf(LayerIds.INK) }
     var adjustmentDialogId by remember(document.id, selectedPage.id) { mutableStateOf<String?>(null) }
     var rasterFilterDialogOpen by remember(document.id, selectedPage.id) { mutableStateOf(false) }
+    var rasterFilterInitialKind by remember(document.id, selectedPage.id) { mutableIntStateOf(0) }
     var compositeFilterPreview by remember(document.id,selectedPage.id){mutableStateOf<android.graphics.Bitmap?>(null)}
     var compositeFilterBusy by remember{mutableStateOf(false)}
     var compositeFilterWorker by remember{mutableStateOf<kotlinx.coroutines.Job?>(null)}
@@ -1940,7 +1941,9 @@ private fun EditorScreen(
                 1 -> {
                     StudioMenuItem(text = { Text(tr("Image filter…", "图像滤镜…")) },
                         leadingIcon = { Icon(Icons.Outlined.Tune, null) },
-                        onClick = { overlays.workspaceMenu = false; rasterFilterDialogOpen = true })
+                        onClick = { overlays.workspaceMenu = false; rasterFilterInitialKind = 0; rasterFilterDialogOpen = true })
+                    StudioMenuItem(text = { Text(tr("Tonal correction…", "色调补偿…")) },
+                        onClick = { overlays.workspaceMenu = false; rasterFilterInitialKind = app.inkloom.settings.RasterFilterPreset.FIRST_TONAL_KIND; rasterFilterDialogOpen = true })
                     StudioMenuItem(text = { Text(tr("Fit page", "适合页面")) }, leadingIcon = { Icon(Icons.Outlined.CenterFocusStrong, null) }, onClick = { overlays.workspaceMenu = false; fitPage() })
                     StudioMenuItem(text = { Text(tr("Actual size", "实际大小")) }, onClick = { overlays.workspaceMenu = false; actualSize() })
                     StudioMenuItem(text = { Text(tr("Fit width", "适合宽度")) }, onClick = { overlays.workspaceMenu = false; fitWidth() })
@@ -3684,6 +3687,7 @@ private fun EditorScreen(
             }
         },
         onCancel={compositeFilterWorker?.cancel();++compositeFilterGeneration;compositeFilterBusy=false;compositeFilterPreview=null;canvasView?.onRasterFilterFinished?.invoke(false);rasterFilterDialogOpen=false},
+        initialKind=rasterFilterInitialKind,
     )
 
     if (overlays.shapeInsertOpen) StudioDialog(
