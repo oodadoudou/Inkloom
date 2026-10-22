@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.selectable
@@ -210,7 +211,7 @@ internal fun StudioMenuItem(
         .clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(contentPadding),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides content) {
-            leadingIcon?.let { Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) { it() } }
+            leadingIcon?.let { Box(Modifier.sizeIn(minWidth = 18.dp, minHeight = 18.dp), contentAlignment = Alignment.Center) { it() } }
             Box(Modifier.weight(1f)) {
                 androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodyMedium.copy(color = content)) { text() }
             }

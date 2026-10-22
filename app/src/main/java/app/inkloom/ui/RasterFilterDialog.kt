@@ -52,7 +52,8 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
             }
             StudioDropdownField(presets.firstOrNull{it.id==state.id}?.let{(if(it.favorite) "★ " else "")+it.name} ?: tr("None","无"),presetMenu,{presetMenu=it},
                 label=tr("Preset","预设")){
-                presets.sortedByDescending{it.favorite}.forEach{p->StudioMenuItem(text={Text((if(p.favorite) "★ " else "")+p.name)},onClick={state=p;presetMenu=false})}
+                presets.sortedByDescending{it.favorite}.forEach{p->StudioMenuItem(text={Text((if(p.favorite) "★ " else "")+p.name)},
+                    leadingIcon={RasterFilterThumbnail(p)},onClick={state=p;presetMenu=false})}
                 if(presets.isEmpty())StudioMenuItem(text={Text(tr("No saved presets","暂无预设"))},onClick={},enabled=false)
             }
             HorizontalDivider(Modifier.padding(vertical=6.dp),color=MaterialTheme.colorScheme.outline)
