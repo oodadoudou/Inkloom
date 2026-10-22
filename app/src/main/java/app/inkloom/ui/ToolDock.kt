@@ -113,7 +113,7 @@ internal fun LiquifyToolControls(settings: AppSettings, onSettingsChange: (AppSe
 }
 
 @Composable
-internal fun GradientToolControls(settings: AppSettings, brushColor: Int, onBrushColor: (Int) -> Unit, onSettingsChange: (AppSettings) -> Unit, onImport: () -> Unit, onExport: () -> Unit) {
+internal fun GradientToolControls(settings: AppSettings, brushColor: Int, secondaryColor: Int, onBrushColor: (Int) -> Unit, onSettingsChange: (AppSettings) -> Unit, onImport: () -> Unit, onExport: () -> Unit) {
     val stops = GradientColors.normalize(settings.gradientStops).mapIndexed { index, stop ->
         if (index == 0) stop.copy(colorArgb = brushColor.toUInt().toLong()) else stop
     }
@@ -125,6 +125,27 @@ internal fun GradientToolControls(settings: AppSettings, brushColor: Int, onBrus
     var nameAction by remember { mutableStateOf<String?>(null) }
     var enteredName by remember { mutableStateOf("") }
     val selectedPreset = settings.gradientPresets.presets.firstOrNull { it.id == selectedPresetId }
+    val builtIns = app.inkloom.settings.BuiltInGradients.all(brushColor, secondaryColor)
+    val selectedBuiltIn = builtIns.firstOrNull { it.id == selectedPresetId }
+    val gradientLanguage = LocalUiLanguage.current
+    fun builtInName(id: String) = when (id.removePrefix(app.inkloom.settings.BuiltInGradients.ID_PREFIX)) {
+        "main-to-secondary" -> gradientLanguage.text("Drawing colour to background colour", "描绘色到背景色")
+        "main-to-transparent" -> gradientLanguage.text("Drawing colour to transparent", "描绘色到透明色")
+        "sky" -> gradientLanguage.text("Sky", "天空")
+        "sunset" -> gradientLanguage.text("Sunset", "晚霞")
+        "night-sky" -> gradientLanguage.text("Night sky", "夜空")
+        "rainbow" -> gradientLanguage.text("Rainbow", "彩虹")
+        else -> gradientLanguage.text("Black to white", "黑到白")
+    }
+    fun applyPreset(preset: app.inkloom.settings.NamedGradientPreset) {
+        presetMenuOpen = false; selectedPresetId = preset.id
+        val definition = preset.definition
+        onBrushColor(definition.stops.first().colorArgb.toInt())
+        onSettingsChange(settings.copy(gradientKind = definition.kind,
+            gradientEdgeMode = definition.edgeMode, gradientReverse = definition.reverse,
+            gradientDither = definition.dither, gradientEllipseRatio = definition.ellipseRatio,
+            gradientStops = definition.stops))
+    }
     val context = LocalContext.current
     fun editLibrary(change: () -> app.inkloom.settings.GradientPresetLibrary) {
         runCatching { change() }.onSuccess { onSettingsChange(settings.copy(gradientPresets = it)) }
@@ -148,19 +169,18 @@ internal fun GradientToolControls(settings: AppSettings, brushColor: Int, onBrus
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.weight(1f)) {
             OutlinedButton(onClick = { presetMenuOpen = true }, modifier = Modifier.fillMaxWidth().testTag("gradient-preset-choose")) {
-                Text(selectedPreset?.name ?: tr("Choose gradient", "选择渐变"), maxLines = 1)
+                Text(selectedPreset?.name ?: selectedBuiltIn?.let { builtInName(it.id) } ?: tr("Choose gradient", "选择渐变"), maxLines = 1)
             }
             DropdownMenu(expanded = presetMenuOpen, onDismissRequest = { presetMenuOpen = false }) {
+                // Built-ins first, as CSP lists its standard set before your own materials.
+                Text(tr("Built-in", "内置"), Modifier.padding(horizontal = 12.dp, vertical = 4.dp), color = MutedInk, fontSize = 11.sp)
+                builtIns.forEach { preset -> DropdownMenuItem(text = { Text(builtInName(preset.id)) }, onClick = { applyPreset(preset) }) }
+                if (settings.gradientPresets.presets.isNotEmpty()) {
+                    HorizontalDivider()
+                    Text(tr("My gradients", "我的渐变"), Modifier.padding(horizontal = 12.dp, vertical = 4.dp), color = MutedInk, fontSize = 11.sp)
+                }
                 settings.gradientPresets.presets.forEach { preset ->
-                    DropdownMenuItem(text = { Text(preset.name) }, onClick = {
-                        presetMenuOpen = false; selectedPresetId = preset.id
-                        val definition = preset.definition
-                        onBrushColor(definition.stops.first().colorArgb.toInt())
-                        onSettingsChange(settings.copy(gradientKind = definition.kind,
-                            gradientEdgeMode = definition.edgeMode, gradientReverse = definition.reverse,
-                            gradientDither = definition.dither, gradientEllipseRatio = definition.ellipseRatio,
-                            gradientStops = definition.stops))
-                    })
+                    DropdownMenuItem(text = { Text(preset.name) }, onClick = { applyPreset(preset) })
                 }
             }
         }

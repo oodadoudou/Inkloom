@@ -111,6 +111,15 @@ class ToolWorkspacePanelsWindowTest {
         compose.onNodeWithText("Comic shade").performClick()
         compose.waitForIdle()
         assertEquals(1, AppSettingsStore(compose.activity).load().gradientPresets.presets.size)
+        // Built-in gradients apply like saved ones but never enter the user library.
+        compose.onNodeWithTag("gradient-preset-choose").performClick()
+        compose.onNodeWithText("Built-in").assertExists()
+        compose.onNodeWithText("Sky").performClick()
+        compose.waitForIdle()
+        val applied = AppSettingsStore(compose.activity).load()
+        assertEquals(listOf(0xFF2E6FD8L, 0xFF7FB8F0L, 0xFFE8F4FFL).drop(1), applied.gradientStops.drop(1).map { it.colorArgb })
+        assertEquals(1, applied.gradientPresets.presets.size)
+        compose.onNodeWithTag("gradient-preset-choose").assertTextContains("Sky")
     }
 
     @Test fun toolbarReactivatesBrushTabBeforeClosingItAndLeavesSiblingOpen() {
