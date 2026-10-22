@@ -155,6 +155,8 @@ object RasterLayerMerge {
             name = resultName,
             role = bottom.second.role.takeIf { it != LayerRole.FOLDER && it != LayerRole.ADJUSTMENT } ?: LayerRole.CUSTOM,
             adjustment = null,
+            // Merged pixels no longer match a fill, gradient or tone setting.
+            generator = null,
             rasterTileSurface = null,
             rasterRotationQuarterTurns = 0,
             visible = true,
@@ -205,6 +207,7 @@ object RasterLayerMerge {
             val afterIndex = page.layers.take(sourceIndex).count { it.id !in plan.removedLayerIds } + 1
             listOf(LayerAt(afterIndex, source.copy(
                 rasterTileSurface = null,
+                generator = null,
                 rasterRotationQuarterTurns = 0,
                 alphaLock = false,
                 alphaLockBaseContentIds = emptyList(),

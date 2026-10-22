@@ -1347,6 +1347,7 @@ class InkCanvasView(context: Context) : View(context) {
             app.inkloom.document.LayerEditingTarget.Rejection.BACKGROUND -> if (chinese) "纸张不能直接绘画，请选择绘画图层" else "Select a paint layer instead of the paper."
             app.inkloom.document.LayerEditingTarget.Rejection.LOCKED -> if (chinese) "请先解锁此图层或所属文件夹" else "Unlock this layer or its parent folder first."
             app.inkloom.document.LayerEditingTarget.Rejection.HIDDEN -> if (chinese) "请先显示此图层及所属文件夹" else "Show this layer and its parent folder first."
+            app.inkloom.document.LayerEditingTarget.Rejection.GENERATED -> if (chinese) "填充、渐变和网点图层请编辑其设置或蒙版；栅格化后可直接绘画" else "Edit this layer's settings or mask, or rasterize it to paint on it."
         })
         return true
     }

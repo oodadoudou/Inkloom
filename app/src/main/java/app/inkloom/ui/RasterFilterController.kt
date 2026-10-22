@@ -76,6 +76,7 @@ internal class RasterFilterController(
                             LayerHierarchy.effectiveVisible(page.layers, layer)) {
                             "Choose an unlocked, visible pixel layer"
                         }
+                        require(layer.generator == null) { "Rasterize this fill, gradient or tone layer before filtering it" }
                         val surface = runtime.retainedSurface(layerId)
                             ?: withContext(Dispatchers.Default) {
                                 assets.renderRasterLayerSurface(page, layerId, CanvasRasterResolution.forPage(page))

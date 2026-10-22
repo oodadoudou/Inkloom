@@ -86,7 +86,7 @@ internal fun StudioSliderRow(label: String, value: Float, range: ClosedFloatingP
     }
 }
 
-/** A small numeric box; typed values apply on Done or when focus leaves, clamped to [range]. */
+/** A small numeric box; values in [range] apply as typed, and out-of-range input is clamped when editing ends. */
 @Composable
 internal fun StudioNumberField(value: Float, range: ClosedFloatingPointRange<Float>, onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier, decimals: Int = 0, label: String = "", enabled: Boolean = true) {
@@ -97,7 +97,11 @@ internal fun StudioNumberField(value: Float, range: ClosedFloatingPointRange<Flo
     fun commit() { text.replace(',', '.').toFloatOrNull()?.takeIf { it.isFinite() }?.let { typed ->
         val next = typed.coerceIn(range); if (abs(next - value) > 1e-6f) onValueChange(next); text = format(next) } ?: run { text = format(value) } }
     val colors = MaterialTheme.colorScheme
-    BasicTextField(text, { text = it.take(10) }, modifier.width(52.dp).height(26.dp)
+    // Valid numbers inside the range apply as they are typed, so a dialog button pressed right
+    // after typing uses them; anything else is corrected when editing ends.
+    BasicTextField(text, { typed -> text = typed.take(10)
+        text.replace(',', '.').toFloatOrNull()?.takeIf { it.isFinite() && it in range && abs(it - value) > 1e-6f }?.let(onValueChange) },
+        modifier.width(52.dp).height(26.dp)
         .background(colors.surfaceContainerLowest, StudioFieldShape).border(1.dp, if (focused) colors.onSurface else colors.outline, StudioFieldShape)
         .onFocusChanged { if (focused && !it.isFocused) commit(); focused = it.isFocused }
         .semantics { contentDescription = "$label value" },

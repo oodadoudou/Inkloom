@@ -200,6 +200,9 @@ internal fun LayerPanel(
     onAddFolder: () -> Unit,
     onAddAdjustment: (LayerAdjustmentKind) -> Unit,
     onEditAdjustment: (String) -> Unit,
+    onAddGenerated: (GeneratedLayerKind) -> Unit = {},
+    onEditGenerated: (String) -> Unit = {},
+    onRasterize: (String) -> Unit = {},
     onRename: (String, String) -> Unit,
     onVisibility: (String) -> Unit,
     onSolo: (String) -> Unit,
@@ -247,6 +250,9 @@ internal fun LayerPanel(
             onAddFolder = onAddFolder,
             onAddAdjustment = onAddAdjustment,
             onEditAdjustment = onEditAdjustment,
+            onAddGenerated = onAddGenerated,
+            onEditGenerated = onEditGenerated,
+            onRasterize = onRasterize,
             onRename = onRename,
             onVisibility = onVisibility,
             onSolo = onSolo,
@@ -310,6 +316,9 @@ private fun PaintingLayerPanel(
     onAddFolder: () -> Unit,
     onAddAdjustment: (LayerAdjustmentKind) -> Unit,
     onEditAdjustment: (String) -> Unit,
+    onAddGenerated: (GeneratedLayerKind) -> Unit = {},
+    onEditGenerated: (String) -> Unit = {},
+    onRasterize: (String) -> Unit = {},
     onRename: (String, String) -> Unit,
     onVisibility: (String) -> Unit,
     onSolo: (String) -> Unit,
@@ -460,7 +469,7 @@ private fun PaintingLayerPanel(
                 onClip = { onToggleClippedToBelow(activeLayerId) }, onReference = { onToggleReference(activeLayerId) },
                 onDraft = { onToggleDraft(activeLayerId) }, onMask = { onMaskCommand(activeLayerId, it) },
                 onDuplicate = { onDuplicate(activeLayerId) }, onMerge = { onMergeDown(activeLayerId) },
-                onDelete = { onDelete(activeLayerId) }) }
+                onDelete = { onDelete(activeLayerId) }, onGenerated = onAddGenerated) }
             if (settings.layerShowCommands && !settings.layerCommandsAtBottom) commands()
             HorizontalDivider(color = OutlineSoft)
             if (searchOpen) StudioOutlinedTextField(
@@ -567,13 +576,15 @@ private fun PaintingLayerPanel(
                             val thumbnailDescription = when (layer.role) {
                                 LayerRole.FOLDER -> "${tr("Toggle folder", "折叠或展开文件夹")} ${layer.name}"
                                 LayerRole.ADJUSTMENT -> "${tr("Edit adjustment", "编辑调整参数")} ${layer.name}"
-                                else -> "${tr("Layer content", "图层内容")} ${layer.name}"
+                                else -> if (layer.generator != null) "${tr("Edit layer settings", "编辑图层设置")} ${layer.name}"
+                                    else "${tr("Layer content", "图层内容")} ${layer.name}"
                             }
                             Surface(Modifier.size(thumbnailSize).semantics { contentDescription = thumbnailDescription }.clickable {
                                 when (layer.role) {
                                     LayerRole.FOLDER -> onToggleFolderCollapsed(layer.id)
                                     LayerRole.ADJUSTMENT -> if (!LayerHierarchy.effectiveLocked(page.layers, layer)) { onSecondarySelection(emptySet()); onSelect(layer.id); onEditAdjustment(layer.id) }
-                                    else -> { onSecondarySelection(emptySet()); onSelect(layer.id) }
+                                    else -> { onSecondarySelection(emptySet()); onSelect(layer.id)
+                                        if (layer.generator != null && !LayerHierarchy.effectiveLocked(page.layers, layer)) onEditGenerated(layer.id) }
                                 }
                             }, shape = RoundedCornerShape(1.dp), color = Paper, border = androidx.compose.foundation.BorderStroke(
                                 if (layer.id == activeLayerId && editingMaskId != layer.id) 2.dp else 1.dp, if (selected) Ink else MutedInk)) {
@@ -662,6 +673,10 @@ private fun PaintingLayerPanel(
                             DropdownMenu(menu, { menu = false }) {
                                 StudioMenuItem(text = { Text(if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) }, onClick = { menu = false; onLock(layer.id) })
                                 if (layer.role == LayerRole.ADJUSTMENT) StudioMenuItem(text = { Text(tr("Edit adjustment", "编辑调整参数")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditAdjustment(layer.id) })
+                                if (layer.generator != null) {
+                                    StudioMenuItem(text = { Text(tr("Edit layer settings", "编辑图层设置")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditGenerated(layer.id) })
+                                    StudioMenuItem(text = { Text(tr("Rasterize", "栅格化")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onRasterize(layer.id) })
+                                }
                                 if (layer.isPaintSurfaceLayer()) StudioMenuItem(text = { Text(if (layer.alphaLock) tr("Unlock alpha", "解锁透明度") else tr("Lock alpha", "锁定透明度")) }, onClick = { menu = false; onToggleAlphaLock(layer.id) })
                                 if (layer.canClipToBelow()) StudioMenuItem(text = { Text(if (layer.clippedToBelow) tr("Stop clipping", "取消剪贴") else tr("Clipping mask", "剪贴蒙版")) }, onClick = { menu = false; onToggleClippedToBelow(layer.id) })
                                 if (layer.role != LayerRole.BACKGROUND) StudioMenuItem(text = { Text(if (layer.reference) tr("Unset reference layer", "取消参考图层") else tr("Set as reference layer", "设为参考图层")) }, onClick = { menu = false; onToggleReference(layer.id) })

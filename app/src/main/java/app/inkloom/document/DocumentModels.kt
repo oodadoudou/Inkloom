@@ -219,7 +219,30 @@ data class InkLayer(
     val colorReplacement: LayerColorReplacement? = null,
     /** Non-destructive color operation applied to the composited siblings below this layer. */
     val adjustment: LayerAdjustment? = null,
+    /**
+     * Fill, gradient and tone layers: the pixels are rendered from this setting and re-rendered
+     * when it is edited. Brushes do not paint on these layers; rasterizing drops the setting.
+     */
+    val generator: LayerGenerator? = null,
 )
+
+/** CSP's fill, gradient and tone layers. */
+@Serializable
+sealed interface LayerGenerator {
+    @Serializable @SerialName("fill")
+    data class Fill(val colorArgb: Long = 0xFF808080) : LayerGenerator
+    /** Start and end are fractions of the page; the definition carries shape, stops and edges. */
+    @Serializable @SerialName("gradient")
+    data class Gradient(val definition: GradientDefinition, val startX: Float = .5f, val startY: Float = 0f,
+        val endX: Float = .5f, val endY: Float = 1f) : LayerGenerator
+    /** Halftone screen: lines per inch at the page DPI, dot coverage 0..1, screen angle. */
+    @Serializable @SerialName("tone")
+    data class Tone(val linesPerInch: Float = 60f, val density: Float = .3f, val dot: ToneDotShape = ToneDotShape.CIRCLE,
+        val angleDegrees: Float = 45f, val colorArgb: Long = 0xFF000000) : LayerGenerator
+}
+
+@Serializable
+enum class ToneDotShape { CIRCLE, SQUARE, DIAMOND, LINE, CROSS }
 
 /** Serializable snapshot of the guides attached to one paint layer.
  * Enum names are stored as strings so documents remain readable when guide modes expand. */

@@ -1313,6 +1313,12 @@ private fun EditorScreen(
     }
     fun changeBrushColor(value: Int) = commitDrawingColors(drawingColors.copy(foreground = value), value)
     fun changeBackgroundColor(value: Int) = commitDrawingColors(drawingColors.copy(background = value), value)
+    // Fill, gradient and tone layers: the settings being created (no layer ID) or edited.
+    var generatedLayerEditor by remember(document.id, selectedPage.id) { mutableStateOf<Pair<app.inkloom.document.LayerGenerator, String?>?>(null) }
+    fun createGeneratedLayer(kind: GeneratedLayerKind) { generatedLayerEditor = defaultGenerator(kind, brushColor, backgroundColor) to null }
+    fun editGeneratedLayer(layerId: String) {
+        selectedPage.layers.firstOrNull { it.id == layerId }?.generator?.let { generatedLayerEditor = it to layerId }
+    }
     fun swapDrawingColors() = commitDrawingColors(
         drawingColors.let { it.copy(foreground = it.background, background = it.foreground) },
     )
@@ -2218,6 +2224,28 @@ private fun EditorScreen(
                     }
                 }
             })
+        generatedLayerEditor?.let { (initial, editingId) ->
+            GeneratedLayerDialog(initial, editingId != null, settings.language, modes.canvasSizeBusy,
+                onDismiss = { generatedLayerEditor = null }) { generator ->
+                val view = canvasView ?: return@GeneratedLayerDialog
+                var createdId: String? = null
+                val baseName = generatedLayerName(generator, settings.language)
+                applyPreparedPageEdit(appearanceScope, view, { currentAppearancePage }, { page ->
+                    if (editingId != null) app.inkloom.document.GeneratedLayerEdits.update(maskAssets, page, editingId, generator)
+                    else {
+                        val names = page.layers.mapTo(hashSetOf()) { it.name }
+                        val name = generateSequence(1) { it + 1 }.map { "$baseName $it" }.first { it !in names }
+                        app.inkloom.document.GeneratedLayerEdits.create(maskAssets, page, activeLayerId, generator, name,
+                            view.selectionMaskSurfaceSnapshot()).also { prepared ->
+                            createdId = prepared.edit.after.layers.firstOrNull { layer -> page.layers.none { it.id == layer.id } }?.id
+                        }
+                    }
+                }, { edit, undo -> onApplyPageGeometry(document.id, edit.before.id, edit, undo) }, { modes.canvasSizeBusy = it }) {
+                    generatedLayerEditor = null
+                    createdId?.let { id -> view.clearSelection(); selectLayerTarget(id) }
+                }
+            }
+        }
         if (overlays.screenColorPickOpen) ScreenColorPicker(settings.language,
             onPick = { color -> overlays.screenColorPickOpen = false; changeBrushColor(color) },
             onCancel = { overlays.screenColorPickOpen = false })
@@ -3406,6 +3434,16 @@ private fun EditorScreen(
                 onAddFolder = { createLayer(folder = true) },
                 onAddAdjustment = ::createAdjustmentLayer,
                 onEditAdjustment = { adjustmentDialogId = it },
+                onAddGenerated = ::createGeneratedLayer,
+                onEditGenerated = ::editGeneratedLayer,
+                onRasterize = { layerId ->
+                    val view = canvasView
+                    val page = currentAppearancePage
+                    if (view != null) runCatching { app.inkloom.document.GeneratedLayerEdits.rasterize(page, layerId) }.onSuccess { edit ->
+                        if (onApplyPageGeometry(document.id, page.id, edit, false))
+                            view.recordExternalEdit(undo = { onApplyPageGeometry(document.id, page.id, edit, true) }, redo = { onApplyPageGeometry(document.id, page.id, edit, false) })
+                    }
+                },
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onSolo = appearanceEditor::toggleSolo,

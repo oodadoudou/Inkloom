@@ -38,6 +38,7 @@ internal fun LayerQuickActions(
     onLock: () -> Unit, onAlphaLock: () -> Unit, onClip: () -> Unit,
     onReference: () -> Unit, onDraft: () -> Unit, onMask: (LayerMaskCommand) -> Unit,
     onDuplicate: () -> Unit, onMerge: () -> Unit, onDelete: () -> Unit,
+    onGenerated: (GeneratedLayerKind) -> Unit = {},
 ) {
     fun tr(en: String, zh: String) = language.text(en, zh)
     val content = layer?.isPaintSurfaceLayer() == true
@@ -61,6 +62,16 @@ internal fun LayerQuickActions(
                 LayerAdjustmentKind.entries.forEach { kind ->
                     StudioMenuItem(text = { Text(adjustmentName(kind, language)) },
                         onClick = { adjustmentOpen = false; onAdjustment(kind) })
+                }
+            }
+        }
+        Box {
+            var generatedOpen by remember { mutableStateOf(false) }
+            LayerQuickIcon(Icons.Outlined.FormatColorFill, tr("Add fill, gradient or tone layer", "添加填充、渐变或网点图层"), true, false) { generatedOpen = true }
+            DropdownMenu(generatedOpen, { generatedOpen = false }) {
+                listOf(GeneratedLayerKind.FILL to tr("Fill layer", "填充图层"), GeneratedLayerKind.GRADIENT to tr("Gradient layer", "渐变图层"),
+                    GeneratedLayerKind.TONE to tr("Tone layer", "网点图层")).forEach { (kind, label) ->
+                    StudioMenuItem(text = { Text(label) }, onClick = { generatedOpen = false; onGenerated(kind) })
                 }
             }
         }

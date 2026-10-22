@@ -26,14 +26,18 @@ import kotlinx.coroutines.withContext
 internal fun applyPreparedPageEdit(scope: CoroutineScope, view: InkCanvasView, page: () -> InkPage,
     prepare: (InkPage) -> PreparedPageGeometry, apply: (PageGeometryEdit, Boolean) -> Boolean,
     setBusy: (Boolean) -> Unit, onApplied: () -> Unit) {
-    if (view.selectionLayerTransferPending) return
-    view.finishSelectionTransform(apply = true)
-    view.selectionLayerTransferPending = true; setBusy(true)
+    setBusy(true)
     scope.launch {
         var prepared: PreparedPageGeometry? = null
         var published = false
+        var owned = false
         try {
-            kotlinx.coroutines.withTimeout(15_000) { while (view.hasPendingPaintPublicationForMerge()) kotlinx.coroutines.delay(8) }
+            // Another page operation may briefly own the canvas; wait for it rather than dropping the request.
+            kotlinx.coroutines.withTimeout(15_000) {
+                while (view.selectionLayerTransferPending || view.hasPendingPaintPublicationForMerge()) kotlinx.coroutines.delay(8)
+            }
+            view.finishSelectionTransform(apply = true)
+            view.selectionLayerTransferPending = true; owned = true
             val before = page()
             prepared = withContext(Dispatchers.IO) { prepare(before) }
             val transaction = requireNotNull(prepared)
@@ -46,7 +50,8 @@ internal fun applyPreparedPageEdit(scope: CoroutineScope, view: InkCanvasView, p
             Toast.makeText(view.context, failure.message ?: "The page edit failed", Toast.LENGTH_LONG).show()
         } finally {
             if (!published) prepared?.close()
-            view.selectionLayerTransferPending = false; setBusy(false)
+            if (owned) view.selectionLayerTransferPending = false
+            setBusy(false)
         }
     }
 }
