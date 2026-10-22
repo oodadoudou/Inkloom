@@ -549,8 +549,10 @@ class DocumentAssetService(private val context: Context) {
 
     fun prepareCanvasSize(page: InkPage, request: CanvasSizeRequest): PreparedPageGeometry {
         val (width, height) = request.pixels()
+        fun InkPage.withPaper(): InkPage = request.paperColorArgb?.let { color ->
+            (background as? PageBackground.Paper)?.let { copy(background = it.copy(colorArgb = color)) } } ?: this
         if (page.crop == PageCrop() && width.toFloat() == page.width && height.toFloat() == page.height) {
-            return PreparedPageGeometry(PageGeometryEdit(page, page.copy(dpi = request.dpi))) {}
+            return PreparedPageGeometry(PageGeometryEdit(page, page.copy(dpi = request.dpi).withPaper())) {}
         }
         val visible = PageCropTransform.project(page)
         val sx = if (request.mode == CanvasResizeMode.RESAMPLE) width / visible.width else 1f
@@ -640,7 +642,7 @@ class DocumentAssetService(private val context: Context) {
                 savedSelections = visible.savedSelections.map { it.copy(surface = resizedMask(it.surface, it), crop = PageCrop(), rotationQuarterTurns = 0) })
             releaseHistory = retainHistoryAssets((page.layers + after.layers).mapNotNull { it.mask?.surface?.assetPath } +
                 (page.savedSelections + after.savedSelections).map { it.surface.assetPath })
-            return PreparedPageGeometry(PageGeometryEdit(page, after), ::close)
+            return PreparedPageGeometry(PageGeometryEdit(page, after.withPaper()), ::close)
         } catch (failure: Throwable) { close(); throw failure }
     }
 

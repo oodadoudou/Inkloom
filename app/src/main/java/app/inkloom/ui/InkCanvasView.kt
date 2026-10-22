@@ -6598,6 +6598,23 @@ class InkCanvasView(context: Context) : View(context) {
         edit.redo()
     }
 
+    /**
+     * CSP Edit > Clear memory: drops every undo and redo step, releasing the pixels they retain.
+     * The artwork itself is untouched; returns how many steps were cleared.
+     */
+    fun clearHistory(): Int {
+        if (selectionLayerTransferPending || hasActivePaintContact()) return 0
+        finishSelectionTransform(apply = true)
+        val count = editHistory.size
+        editHistory.clear()
+        return count
+    }
+
+    internal val historySize: Int get() = editHistory.size
+
+    /** Selection bounds as fractions of the visible page, or null without a selection. */
+    internal fun selectionPageBounds(): android.graphics.RectF? = selectionBounds()
+
     /** Adds a host-owned page mutation to the same chronological stream as ink edits. */
     fun recordExternalEdit(undo: () -> Unit, redo: () -> Unit, dispose: () -> Unit = {}) {
         editHistory.record(EngineTransaction(undo, redo, dispose))

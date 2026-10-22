@@ -39,6 +39,9 @@ class EngineTransactionJournal(private val capacity: Int = 100) {
         redo.addLast(edit)
     }
 
+    /** Undo and redo steps currently held. */
+    val size: Int @Synchronized get() = undo.size + redo.size
+
     @Synchronized
     fun clear() {
         // Clear ownership before invoking disposal callbacks. A callback may synchronously close

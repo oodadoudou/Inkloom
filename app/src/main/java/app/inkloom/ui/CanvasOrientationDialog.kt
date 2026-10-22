@@ -1,6 +1,5 @@
 package app.inkloom.ui
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Flip
@@ -17,13 +16,9 @@ import app.inkloom.document.CanvasOrientationChange
 import app.inkloom.document.DocumentAssetService
 import app.inkloom.document.InkPage
 import app.inkloom.document.PageGeometryEdit
-import app.inkloom.document.PreparedPageGeometry
 import app.inkloom.settings.UiLanguage
 import app.inkloom.settings.text
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /** CSP Edit > Rotate/Flip canvas. Unlike the view mirror, these change the artwork itself. */
 @Composable
@@ -58,33 +53,6 @@ internal fun CanvasOrientationDialog(language: UiLanguage, canFlip: Boolean, bus
         confirmButton = {}, dismissButton = { TextButton(onDismiss, enabled = !busy) { Text(tr("Cancel", "取消")) } })
 }
 
-/**
- * Prepares the change off the UI thread after pending strokes are published, applies it as one
- * page edit and records one undo step.
- */
 internal fun applyCanvasOrientation(scope: CoroutineScope, view: InkCanvasView, page: () -> InkPage, assets: DocumentAssetService,
-    change: CanvasOrientationChange, apply: (PageGeometryEdit, Boolean) -> Boolean, setBusy: (Boolean) -> Unit, onApplied: () -> Unit) {
-    if (view.selectionLayerTransferPending) return
-    view.finishSelectionTransform(apply = true)
-    view.selectionLayerTransferPending = true; setBusy(true)
-    scope.launch {
-        var prepared: PreparedPageGeometry? = null
-        var published = false
-        try {
-            kotlinx.coroutines.withTimeout(15_000) { while (view.hasPendingPaintPublicationForMerge()) kotlinx.coroutines.delay(8) }
-            val before = page()
-            prepared = withContext(Dispatchers.IO) { assets.prepareCanvasOrientation(before, change) }
-            val transaction = requireNotNull(prepared)
-            check(apply(transaction.edit, false)) { "Page changed during rotate or flip" }
-            view.recordExternalEdit(undo = { apply(transaction.edit, true) }, redo = { apply(transaction.edit, false) }, dispose = transaction::close)
-            published = true
-            onApplied()
-        } catch (failure: Throwable) {
-            android.util.Log.e("InkloomCanvas", "Canvas rotate or flip failed", failure)
-            Toast.makeText(view.context, failure.message ?: "Canvas rotate or flip failed", Toast.LENGTH_LONG).show()
-        } finally {
-            if (!published) prepared?.close()
-            view.selectionLayerTransferPending = false; setBusy(false)
-        }
-    }
-}
+    change: CanvasOrientationChange, apply: (PageGeometryEdit, Boolean) -> Boolean, setBusy: (Boolean) -> Unit, onApplied: () -> Unit) =
+    applyPreparedPageEdit(scope, view, page, { assets.prepareCanvasOrientation(it, change) }, apply, setBusy, onApplied)

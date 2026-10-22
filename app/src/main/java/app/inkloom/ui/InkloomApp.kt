@@ -1960,6 +1960,17 @@ private fun EditorScreen(
                     StudioMenuItem(text = { Text(tr("Color management", "色彩管理")) }, onClick = { overlays.workspaceMenu=false;overlays.colorManagementOpen=true })
                     StudioMenuItem(text = { Text(tr("Canvas & resolution", "画布与分辨率")) }, onClick = { overlays.workspaceMenu = false; overlays.canvasSizeOpen = true })
                     StudioMenuItem(text = { Text(tr("Rotate or flip canvas…", "旋转／翻转画布…")) }, onClick = { overlays.workspaceMenu = false; overlays.canvasOrientationOpen = true })
+                    val needSelection = tr("Make a selection first", "请先创建选区")
+                    StudioMenuItem(text = { Text(tr("Fit canvas to selection", "画布适配选区")) }, onClick = {
+                        overlays.workspaceMenu = false
+                        val view = canvasView
+                        val bounds = view?.selectionPageBounds()
+                        if (view == null || bounds == null || bounds.width() <= 0f || bounds.height() <= 0f)
+                            Toast.makeText(context, needSelection, Toast.LENGTH_SHORT).show()
+                        else applyPreparedPageEdit(appearanceScope, view, { currentAppearancePage }, { prepareFitCanvasToSelection(maskAssets, it, bounds) },
+                            { edit, undo -> onApplyPageGeometry(document.id, edit.before.id, edit, undo) }, { modes.canvasSizeBusy = it }) { view.clearSelection(); fitPage() }
+                    })
+                    StudioMenuItem(text = { Text(tr("Clear undo history…", "清除历史记录…")) }, onClick = { overlays.workspaceMenu = false; overlays.clearHistoryOpen = true })
 
                 }
                 2 -> {
@@ -2202,6 +2213,11 @@ private fun EditorScreen(
                     }
                 }
             })
+        if (overlays.clearHistoryOpen) ClearHistoryDialog(settings.language, canvasView?.historySize ?: 0, { overlays.clearHistoryOpen = false }) {
+            overlays.clearHistoryOpen = false
+            val cleared = canvasView?.clearHistory() ?: 0
+            Toast.makeText(context, settings.language.text("Cleared $cleared steps", "已清除 $cleared 个步骤"), Toast.LENGTH_SHORT).show()
+        }
         if (overlays.canvasOrientationOpen) CanvasOrientationDialog(settings.language, app.inkloom.document.CanvasOrientation.canFlip(storedPage),
             modes.canvasSizeBusy, onDismiss = { overlays.canvasOrientationOpen = false }) { change ->
             canvasView?.let { view -> applyCanvasOrientation(appearanceScope, view, { currentAppearancePage }, maskAssets, change,

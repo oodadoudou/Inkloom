@@ -12,6 +12,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import app.inkloom.document.*
 import app.inkloom.settings.UiLanguage
@@ -28,7 +30,13 @@ internal fun CanvasSizeDialog(page: InkPage, language: UiLanguage, busy: Boolean
     var unitMenu by remember { mutableStateOf(false) }
     var mode by remember { mutableStateOf(CanvasResizeMode.CANVAS) }
     var anchor by remember { mutableStateOf(CanvasAnchor.CENTER) }
-    val request = runCatching { CanvasSizeRequest(width.toFloat(), height.toFloat(), dpi.toFloat(), unit, mode, anchor).also { it.pixels() } }.getOrNull()
+    val paperBackground = page.background as? PageBackground.Paper
+    var paper by remember { mutableStateOf(paperBackground?.colorArgb) }
+    var paperPicker by remember { mutableStateOf(false) }
+    if (paperPicker) StandardColorPickerDialog((paper ?: PaperColorCatalog.WHITE).toInt(), language,
+        onConfirm = { paper = (it.toLong() and 0xFFFFFFFFL) or 0xFF000000L; paperPicker = false }, onDismiss = { paperPicker = false })
+    val request = runCatching { CanvasSizeRequest(width.toFloat(), height.toFloat(), dpi.toFloat(), unit, mode, anchor,
+        paperColorArgb = paper?.takeIf { it != paperBackground?.colorArgb }).also { it.pixels() } }.getOrNull()
     StudioDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text(tr("Canvas & resolution", "画布与分辨率")) },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) {
             val unitLabel = when(unit) { CanvasUnit.PIXELS -> "px"; CanvasUnit.MILLIMETERS -> "mm"; CanvasUnit.CENTIMETERS -> "cm"; CanvasUnit.INCHES -> "in" }
@@ -66,6 +74,23 @@ internal fun CanvasSizeDialog(page: InkPage, language: UiLanguage, busy: Boolean
                             Text(labels[row * 3 + col], style = MaterialTheme.typography.labelMedium)
                         }
                     } } }
+                }
+            }
+            if (paperBackground != null) Row(Modifier.fillMaxWidth().heightIn(min = 36.dp), verticalAlignment = Alignment.CenterVertically) {
+                // CSP's basic canvas settings include the paper colour; it changes only the paper, never the layers.
+                Text(tr("Paper color", "纸张颜色"), Modifier.width(96.dp), style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PaperColorCatalog.options.forEach { option ->
+                        val chosen = paper == option.colorArgb
+                        val swatchName = tr("Paper color ${paperColorName(option)}", "纸张颜色 ${paperColorName(option)}")
+                        Box(Modifier.size(24.dp).background(androidx.compose.ui.graphics.Color(option.colorArgb))
+                            .border(if (chosen) 2.dp else 1.dp, if (chosen) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline)
+                            .selectable(chosen, role = Role.RadioButton) { paper = option.colorArgb }
+                            .semantics { contentDescription = swatchName })
+                    }
+                    StudioButton(tr("Custom…", "自定义…"), { paperPicker = true }) {
+                        Box(Modifier.size(14.dp).background(androidx.compose.ui.graphics.Color(paper ?: PaperColorCatalog.WHITE)))
+                    }
                 }
             }
             request?.pixels()?.let { StudioNote(tr("Result: ${it.first} × ${it.second} px", "结果：${it.first} × ${it.second} px"), Modifier.padding(top = 4.dp)) }

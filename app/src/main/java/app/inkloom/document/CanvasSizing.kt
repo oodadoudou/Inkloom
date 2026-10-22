@@ -11,7 +11,9 @@ import kotlin.math.roundToInt
 
 data class CanvasSizeRequest(val width: Float, val height: Float, val dpi: Float,
     val unit: CanvasUnit = CanvasUnit.PIXELS, val mode: CanvasResizeMode = CanvasResizeMode.CANVAS,
-    val anchor: CanvasAnchor = CanvasAnchor.CENTER) {
+    val anchor: CanvasAnchor = CanvasAnchor.CENTER,
+    /** New paper colour for a paper background; null keeps the current one. */
+    val paperColorArgb: Long? = null) {
     fun pixels(): Pair<Int, Int> {
         require(dpi.isFinite() && dpi in 1f..2400f && width.isFinite() && height.isFinite())
         val w = CanvasSizing.toPixels(width, unit, dpi).roundToInt()

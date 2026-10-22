@@ -90,6 +90,24 @@ class CanvasOrientationWindowTest {
         } finally { assets.releaseAssetReservation(reference.assetPath) }
     }
 
+    @Test fun clearUndoHistoryKeepsTheArtworkAndEmptiesUndo() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        val view = canvas()
+        val bounds = pageScreenBounds(view)
+        val y = bounds.top + bounds.height() * .5f
+        stroke(Offset(bounds.left + bounds.width() * .3f, y), Offset(bounds.left + bounds.width() * .6f, y))
+        compose.waitUntil(10_000) { !empty(view) && !view.hasPendingPaintPublicationForMerge() }
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithContentDescription("Actions Canvas").performClick()
+        compose.onNodeWithText("Clear undo history…").performScrollTo().performClick()
+        compose.onNodeWithText("Clear").performClick()
+        compose.waitUntil(5_000) { view.historySize == 0 }
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        compose.waitForIdle(); SystemClock.sleep(300)
+        assertTrue("The artwork is kept", inkIn(view, .3f, .6f))
+    }
+
     private fun openOrientation() {
         compose.onNodeWithContentDescription("Actions").performClick()
         compose.onNodeWithContentDescription("Actions Canvas").performClick()
