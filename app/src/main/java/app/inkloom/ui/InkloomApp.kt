@@ -2117,6 +2117,11 @@ private fun EditorScreen(
                         onClick = { applyBuiltInWorkspace(BuiltInWorkspace.STUDIO) },
                     )
                     DropdownMenuItem(
+                        text = { Text(tr("Painting workspace", "绘画面板工作区")) },
+                        leadingIcon = { Icon(Icons.Outlined.ViewSidebar, null) },
+                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.PAINTING) },
+                    )
+                    DropdownMenuItem(
                         text = { Text(tr("Reading workspace", "阅读工作区")) },
                         leadingIcon = { Icon(Icons.Outlined.Visibility, null) },
                         onClick = { applyBuiltInWorkspace(BuiltInWorkspace.READING) },
@@ -2773,6 +2778,21 @@ private fun EditorScreen(
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
+                // Page turn cue: a veil over the new page fades out. It takes no input, so drawing
+                // can start at once, and the canvas itself is never faded.
+                val pageTurnVeil = remember(document.id) { androidx.compose.animation.core.Animatable(0f) }
+                var lastShownPageId by remember(document.id) { mutableStateOf(selectedPage.id) }
+                LaunchedEffect(selectedPage.id) {
+                    if (selectedPage.id == lastShownPageId || settings.continuousPages) { lastShownPageId = selectedPage.id; return@LaunchedEffect }
+                    lastShownPageId = selectedPage.id
+                    pageTurnVeil.snapTo(.55f)
+                    pageTurnVeil.animateTo(0f, androidx.compose.animation.core.tween(180))
+                }
+                if (pageTurnVeil.value > 0f) Box(Modifier
+                    .sizeIn(maxWidth = toolbarAreaWidth * .88f, maxHeight = toolbarAreaHeight * .88f)
+                    .aspectRatio(PageCropTransform.visibleWidth(selectedPage) / PageCropTransform.visibleHeight(selectedPage).coerceAtLeast(1f))
+                    .graphicsLayer(scaleX = zoom, scaleY = zoom, translationX = panX, translationY = panY, rotationZ = viewRotation)
+                    .background(Workspace.copy(alpha = pageTurnVeil.value)))
                 // Page objects need their own transformed interaction plane above the stable
                 // full-viewport input proxy. Rendering remains in the canvas/layer compositor;
                 // this transparent plane owns only object hit testing, drag and edit gestures.

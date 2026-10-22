@@ -345,35 +345,11 @@ private fun SelectionStudioAction(icon: ImageVector, label: String, selected: Bo
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SelectionLauncherButton(icon: ImageVector, description: String, onClick: () -> Unit) {
-    val tooltipState = rememberTooltipState()
-    val tooltipScope = rememberCoroutineScope()
-    TooltipBox(
-        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-        tooltip = { PlainTooltip { Text(description, fontSize = 11.sp) } },
-        state = tooltipState,
-    ) {
-        IconButton(
-            onClick = onClick,
-            modifier = Modifier
-                .size(40.dp)
-                .semantics { contentDescription = description }
-                .pointerInput(tooltipState) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            when (event.type) {
-                                PointerEventType.Enter, PointerEventType.Move -> if (event.changes.none { it.pressed } && !tooltipState.isVisible) {
-                                    tooltipScope.launch { tooltipState.show() }
-                                }
-                                PointerEventType.Exit -> tooltipState.dismiss()
-                                else -> Unit
-                            }
-                        }
-                    }
-                },
-        ) { Icon(icon, null, Modifier.size(17.dp), tint = Ink) }
+    HoverTooltip(description) {
+        IconButton(onClick = onClick, modifier = Modifier.size(40.dp).semantics { contentDescription = description }) {
+            Icon(icon, null, Modifier.size(17.dp), tint = Ink)
+        }
     }
 }

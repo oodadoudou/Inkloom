@@ -272,6 +272,11 @@ internal fun ProcreateTopButton(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ) {
+    HoverTooltip(description, longPressShows = onLongClick == null) { ProcreateTopButtonBody(icon, description, selected, onClick, onLongClick) }
+}
+
+@Composable
+private fun ProcreateTopButtonBody(icon: ImageVector, description: String, selected: Boolean, onClick: () -> Unit, onLongClick: (() -> Unit)?) {
     if (onLongClick != null) {
         Box(Modifier.size(42.dp).background(if (selected) SageContainer else Color.Transparent, RoundedCornerShape(8.dp)).combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
@@ -788,14 +793,16 @@ private fun ToolPaletteButton(value: EditorTool, selected: EditorTool, brushes: 
 }
 
 @Composable
-private fun CompactToolbarIconButton(onClick: () -> Unit, description: String, selected: Boolean = false, content: @Composable () -> Unit) {
+private fun CompactToolbarIconButton(onClick: () -> Unit, description: String, selected: Boolean = false, content: @Composable () -> Unit) =
+    // Hover only: the rail keeps long-press for its own gestures.
+    HoverTooltip(description, longPressShows = false) {
     Box(
         Modifier.size(32.dp).background(if (selected) SageContainer else Color.Transparent).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         CompositionLocalProvider(LocalContentColor provides Ink) { Box(Modifier.semantics { contentDescription = description }) { content() } }
     }
-}
+    }
 
 @Composable
 internal fun BrushColorPicker(color: Int, onColor: (Int) -> Unit, square: Boolean = false) {
@@ -875,11 +882,12 @@ private fun hslToColor(alpha: Int, hue: Float, saturation: Float, lightness: Flo
 }
 
 @Composable
-private fun ToolButton(value: EditorTool, icon: ImageVector, label: String, selected: EditorTool, onTool: (EditorTool) -> Unit) {
-    Box(Modifier.size(32.dp).background(if (value == selected) SageContainer else Color.Transparent).clickable { onTool(value) }, contentAlignment = Alignment.Center) {
-        Icon(icon, label, Modifier.size(19.dp), tint = Ink)
+private fun ToolButton(value: EditorTool, icon: ImageVector, label: String, selected: EditorTool, onTool: (EditorTool) -> Unit) =
+    HoverTooltip(label, longPressShows = false) {
+        Box(Modifier.size(32.dp).background(if (value == selected) SageContainer else Color.Transparent).clickable { onTool(value) }, contentAlignment = Alignment.Center) {
+            Icon(icon, label, Modifier.size(19.dp), tint = Ink)
+        }
     }
-}
 
 @Composable
 private fun BrushPresetToolButton(
