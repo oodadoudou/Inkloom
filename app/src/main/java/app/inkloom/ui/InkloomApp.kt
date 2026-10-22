@@ -1942,6 +1942,8 @@ private fun EditorScreen(
                     StudioMenuItem(text = { Text(tr("Image filter…", "图像滤镜…")) },
                         leadingIcon = { Icon(Icons.Outlined.Tune, null) },
                         onClick = { overlays.workspaceMenu = false; rasterFilterInitialKind = 0; rasterFilterDialogOpen = true })
+                    StudioMenuItem(text = { Text(tr("Obtain screen color", "屏幕取色")) }, leadingIcon = { Icon(Icons.Outlined.Colorize, null) },
+                        onClick = { overlays.workspaceMenu = false; overlays.screenColorPickOpen = true })
                     StudioMenuItem(text = { Text(tr("Tonal correction…", "色调补偿…")) },
                         onClick = { overlays.workspaceMenu = false; rasterFilterInitialKind = app.inkloom.settings.RasterFilterPreset.FIRST_TONAL_KIND; rasterFilterDialogOpen = true })
                     StudioMenuItem(text = { Text(tr("Fit page", "适合页面")) }, leadingIcon = { Icon(Icons.Outlined.CenterFocusStrong, null) }, onClick = { overlays.workspaceMenu = false; fitPage() })
@@ -2216,6 +2218,9 @@ private fun EditorScreen(
                     }
                 }
             })
+        if (overlays.screenColorPickOpen) ScreenColorPicker(settings.language,
+            onPick = { color -> overlays.screenColorPickOpen = false; changeBrushColor(color) },
+            onCancel = { overlays.screenColorPickOpen = false })
         if (overlays.clearHistoryOpen) ClearHistoryDialog(settings.language, canvasView?.historySize ?: 0, { overlays.clearHistoryOpen = false }) {
             overlays.clearHistoryOpen = false
             val cleared = canvasView?.clearHistory() ?: 0
@@ -2691,6 +2696,7 @@ private fun EditorScreen(
                             ShortcutAction.FIT_WIDTH -> fitWidth()
                             ShortcutAction.RESET_VIEW_ROTATION -> resetViewRotation()
                             ShortcutAction.FLIP_VIEW_HORIZONTAL -> viewMirrored = !viewMirrored
+                            ShortcutAction.OBTAIN_SCREEN_COLOR -> overlays.screenColorPickOpen = true
                             ShortcutAction.TOGGLE_RULER -> {
                                 if (activation.trigger == ShortcutTrigger.HOLD) {
                                     modes.rulerBeforeShortcut = settings.rulerEnabled
