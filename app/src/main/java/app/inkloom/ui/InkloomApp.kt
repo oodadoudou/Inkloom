@@ -1961,416 +1961,420 @@ private fun EditorScreen(
             }
         }
 
-        if (overlays.workspaceMenu) EditorActionsDialog(settings.language, commandSection, { commandSection = it }, { overlays.workspaceMenu = false }) {
-            when (commandSection) {
-                0 -> {
-                    StudioMenuItem(text = { Text(tr("Search this notebook", "搜索当前笔记")) }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, onClick = { overlays.workspaceMenu = false; overlays.searchOpen = true })
-                    StudioMenuItem(text = { Text(tr("Add PDF or image pages", "追加 PDF／图片页面")) }, leadingIcon = { Icon(Icons.Outlined.FileOpen, null) }, onClick = { overlays.workspaceMenu = false; onAppendPageFiles(document.id) })
-                    StudioMenuItem(text = { Text(tr("Place file object…", "置入文件对象…")) }, leadingIcon = { Icon(Icons.Outlined.Image, null) }, onClick = { overlays.workspaceMenu = false; onPlaceFileObject() })
-                    StudioMenuItem(text = { Text(tr("Update file objects", "更新文件对象")) }, onClick = { overlays.workspaceMenu = false; onUpdateFileObjects() })
-                    StudioMenuItem(text = { Text(if (selectedPage.bookmarked) tr("Remove page bookmark", "取消本页书签") else tr("Bookmark this page", "收藏本页")) }, leadingIcon = { Icon(if (selectedPage.bookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder, null) }, onClick = { overlays.workspaceMenu = false; onToggleBookmark(document.id, selectedPage.id) })
-                    StudioMenuItem(text = { Text(tr("Bookmarks", "书签")) }, leadingIcon = { Icon(Icons.Outlined.Bookmarks, null) }, onClick = { overlays.workspaceMenu = false; overlays.bookmarksOpen = true })
-                    StudioMenuItem(text = { Text(tr("Page outline", "页面大纲")) }, leadingIcon = { Icon(Icons.Outlined.FormatListBulleted, null) }, onClick = { overlays.workspaceMenu = false; overlays.outlineOpen = true })
+        // The Actions menu and page dialogs compile into their own method (see editorDialogs).
+        val actionDialogs: @Composable () -> Unit = {
+            if (overlays.workspaceMenu) EditorActionsDialog(settings.language, commandSection, { commandSection = it }, { overlays.workspaceMenu = false }) {
+                when (commandSection) {
+                    0 -> {
+                        StudioMenuItem(text = { Text(tr("Search this notebook", "搜索当前笔记")) }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, onClick = { overlays.workspaceMenu = false; overlays.searchOpen = true })
+                        StudioMenuItem(text = { Text(tr("Add PDF or image pages", "追加 PDF／图片页面")) }, leadingIcon = { Icon(Icons.Outlined.FileOpen, null) }, onClick = { overlays.workspaceMenu = false; onAppendPageFiles(document.id) })
+                        StudioMenuItem(text = { Text(tr("Place file object…", "置入文件对象…")) }, leadingIcon = { Icon(Icons.Outlined.Image, null) }, onClick = { overlays.workspaceMenu = false; onPlaceFileObject() })
+                        StudioMenuItem(text = { Text(tr("Update file objects", "更新文件对象")) }, leadingIcon = { Icon(Icons.Outlined.Sync, null) }, onClick = { overlays.workspaceMenu = false; onUpdateFileObjects() })
+                        StudioMenuItem(text = { Text(if (selectedPage.bookmarked) tr("Remove page bookmark", "取消本页书签") else tr("Bookmark this page", "收藏本页")) }, leadingIcon = { Icon(if (selectedPage.bookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder, null) }, onClick = { overlays.workspaceMenu = false; onToggleBookmark(document.id, selectedPage.id) })
+                        StudioMenuItem(text = { Text(tr("Bookmarks", "书签")) }, leadingIcon = { Icon(Icons.Outlined.Bookmarks, null) }, onClick = { overlays.workspaceMenu = false; overlays.bookmarksOpen = true })
+                        StudioMenuItem(text = { Text(tr("Page outline", "页面大纲")) }, leadingIcon = { Icon(Icons.Outlined.FormatListBulleted, null) }, onClick = { overlays.workspaceMenu = false; overlays.outlineOpen = true })
 
-                }
-                1 -> {
-                    StudioMenuItem(text = { Text(tr("Image filter…", "图像滤镜…")) },
-                        leadingIcon = { Icon(Icons.Outlined.Tune, null) },
-                        onClick = { overlays.workspaceMenu = false; rasterFilterInitialKind = 0; rasterFilterDialogOpen = true })
-                    StudioMenuItem(text = { Text(tr("Obtain screen color", "屏幕取色")) }, leadingIcon = { Icon(Icons.Outlined.Colorize, null) },
-                        onClick = { overlays.workspaceMenu = false; overlays.screenColorPickOpen = true })
-                    StudioMenuItem(text = { Text(tr("Tonal correction…", "色调补偿…")) },
-                        onClick = { overlays.workspaceMenu = false; rasterFilterInitialKind = app.inkloom.settings.RasterFilterPreset.FIRST_TONAL_KIND; rasterFilterDialogOpen = true })
-                    StudioMenuItem(text = { Text(tr("Fit page", "适合页面")) }, leadingIcon = { Icon(Icons.Outlined.CenterFocusStrong, null) }, onClick = { overlays.workspaceMenu = false; fitPage() })
-                    StudioMenuItem(text = { Text(tr("Actual size", "实际大小")) }, onClick = { overlays.workspaceMenu = false; actualSize() })
-                    StudioMenuItem(text = { Text(tr("Fit width", "适合宽度")) }, onClick = { overlays.workspaceMenu = false; fitWidth() })
-                    StudioMenuItem(text = { Text(tr("Reset rotation", "重置旋转")) }, onClick = { overlays.workspaceMenu = false; resetViewRotation() })
-                    StudioMenuItem(text = { Text(tr("Flip view horizontally", "水平翻转视图")) },
-                        leadingIcon = { Icon(if (viewMirrored) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, null) },
-                        onClick = { overlays.workspaceMenu = false; viewMirrored = !viewMirrored })
-                    StudioMenuItem(text = { Text(tr("Continuous pages", "连续页面")) },
-                        leadingIcon = { Icon(if (settings.continuousPages) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, null) },
-                        onClick = {
-                            overlays.workspaceMenu = false
-                            // The strip is vertical, so it starts unrotated with the current page centred.
-                            onSettingsChange(settings.copy(continuousPages = !settings.continuousPages))
-                            applyViewport(ViewportState(zoom, panX, 0f, 0f))
-                        })
-                    HorizontalDivider()
-                    StudioMenuItem(text = { Text(tr("Color management", "色彩管理")) }, onClick = { overlays.workspaceMenu=false;overlays.colorManagementOpen=true })
-                    StudioMenuItem(text = { Text(tr("Canvas & resolution", "画布与分辨率")) }, onClick = { overlays.workspaceMenu = false; overlays.canvasSizeOpen = true })
-                    StudioMenuItem(text = { Text(tr("Rotate or flip canvas…", "旋转／翻转画布…")) }, onClick = { overlays.workspaceMenu = false; overlays.canvasOrientationOpen = true })
-                    val needSelection = tr("Make a selection first", "请先创建选区")
-                    StudioMenuItem(text = { Text(tr("Fit canvas to selection", "画布适配选区")) }, onClick = {
-                        overlays.workspaceMenu = false
-                        val view = canvasView
-                        val bounds = view?.selectionPageBounds()
-                        if (view == null || bounds == null || bounds.width() <= 0f || bounds.height() <= 0f)
-                            Toast.makeText(context, needSelection, Toast.LENGTH_SHORT).show()
-                        else applyPreparedPageEdit(appearanceScope, view, { currentAppearancePage }, { prepareFitCanvasToSelection(maskAssets, it, bounds) },
-                            { edit, undo -> onApplyPageGeometry(document.id, edit.before.id, edit, undo) }, { modes.canvasSizeBusy = it }) { view.clearSelection(); fitPage() }
-                    })
-                    StudioMenuItem(text = { Text(tr("Clear undo history…", "清除历史记录…")) }, onClick = { overlays.workspaceMenu = false; overlays.clearHistoryOpen = true })
-
-                }
-                2 -> {
-                    listOf(
-                        Triple(EditorTool.EYEDROPPER, Icons.Outlined.Colorize, tr("Eyedropper", "吸管")),
-                        Triple(EditorTool.FILL, Icons.Outlined.FormatColorFill, tr("Fill", "填充")),
-                        Triple(EditorTool.GRADIENT, Icons.Outlined.Gradient, tr("Gradient", "渐变")),
-                        Triple(EditorTool.SMUDGE, Icons.Outlined.BlurOn, tr("Blend", "混色")),
-                        Triple(EditorTool.LIQUIFY, Icons.Outlined.Waves, tr("Liquify", "液化")),
-                        Triple(EditorTool.CORRECT_LINE, Icons.Outlined.AutoFixHigh, tr("Correct line", "线条修正")),
-                        Triple(EditorTool.SHAPE, Icons.Outlined.Category, tr("Shape", "形状")),
-                        Triple(EditorTool.TEXT, Icons.Outlined.Title, tr("Text", "文字")),
-                        Triple(EditorTool.NOTE, Icons.Outlined.StickyNote2, tr("Note", "便笺")),
-                        Triple(EditorTool.LINK, Icons.Outlined.Link, tr("Link", "链接")),
-                        Triple(EditorTool.IMAGE, Icons.Outlined.Image, tr("Image", "图片")),
-                        Triple(EditorTool.LASER, Icons.Outlined.TrackChanges, tr("Laser pointer", "激光笔")),
-                    ).let { tools ->
-                        EditorToolActionGrid(tools) { chosen ->
-                            overlays.workspaceMenu = false
-                            exitCanvasNavigation()
-                            tool = chosen
-                            canvasView?.tool = chosen
-                            when (chosen) {
-                                EditorTool.SHAPE -> overlays.shapeInsertOpen = true
-                                EditorTool.TEXT -> { insertText = ""; overlays.textInsertOpen = true }
-                                EditorTool.NOTE -> { insertText = ""; overlays.stickyInsertOpen = true }
-                                EditorTool.LINK -> { insertLinkTitle = ""; insertLinkUrl = ""; overlays.linkInsertOpen = true }
-                                EditorTool.IMAGE -> { overlays.imageInsertOpen = true; tool = EditorTool.SELECT; canvasView?.tool = EditorTool.SELECT }
-                                EditorTool.SMUDGE -> activateRememberedSmudge()
-                                EditorTool.LIQUIFY -> systemBrushCatalog().firstOrNull(BrushRoleClassifier::isLiquify)?.let(::selectWorkspaceBrush)
-                                else -> Unit
-                            }
-                            syncCanvasInput(prepareAssets = activeBrush != null)
-                        }
                     }
-                    StudioMenuItem(text = { Text(tr("Blend with current brush tip", "用当前笔尖混色")) },
-                        leadingIcon = { Icon(Icons.Outlined.BlurOn, null) }, onClick = {
-                            overlays.workspaceMenu = false
-                            borrowCurrentTipForSmudge()
-                        })
-                    HorizontalDivider()
-
-                }
-                3 -> {
-                    StudioMenuItem(
-                        text = { Text(tr(if (settings.rulerEnabled) "Hide ruler" else "Show ruler", if (settings.rulerEnabled) "隐藏直尺" else "显示直尺")) },
-                        leadingIcon = { Icon(Icons.Outlined.Straighten, null) },
-                        trailingIcon = { if (settings.rulerEnabled) Icon(Icons.Outlined.Check, null) },
-                        onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) },
-                    )
-                    StudioMenuItem(
-                        text = { Text(tr(if (settings.gridSnapEnabled) "Hide snap grid" else "Show snap grid", if (settings.gridSnapEnabled) "隐藏吸附网格" else "显示吸附网格")) },
-                        leadingIcon = { Icon(Icons.Outlined.GridOn, null) },
-                        trailingIcon = { if (settings.gridSnapEnabled) Icon(Icons.Outlined.Check, null) },
-                        onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) },
-                    )
-                    StudioMenuItem(
-                        text = { Text(tr(if (settings.alignmentGuidesEnabled) "Hide alignment guides" else "Show alignment guides", if (settings.alignmentGuidesEnabled) "隐藏对齐参考线" else "显示对齐参考线")) },
-                        leadingIcon = { Icon(Icons.Outlined.AlignHorizontalCenter, null) },
-                        trailingIcon = { if (settings.alignmentGuidesEnabled) Icon(Icons.Outlined.Check, null) },
-                        onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) },
-                    )
-                    HorizontalDivider()
-                    Text(tr("Perspective guide", "透视辅助线"), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = MutedInk, fontSize = 11.sp)
-                    PerspectiveGuideMode.entries.forEach { mode ->
-                        val label = when (mode) {
-                            PerspectiveGuideMode.NONE -> tr("Off", "关闭")
-                            PerspectiveGuideMode.ONE_POINT -> tr("One-point perspective", "一点透视")
-                            PerspectiveGuideMode.TWO_POINT -> tr("Two-point perspective", "两点透视")
-                            PerspectiveGuideMode.THREE_POINT -> tr("Three-point perspective", "三点透视")
-                        }
-                        StudioMenuItem(
-                            text = { Text(label) },
-                            leadingIcon = { Icon(Icons.Outlined.ViewInAr, null) },
-                            trailingIcon = { if (settings.perspectiveGuideMode == mode) Icon(Icons.Outlined.Check, null) },
+                    1 -> {
+                        StudioMenuItem(text = { Text(tr("Image filter…", "图像滤镜…")) },
+                            leadingIcon = { Icon(Icons.Outlined.Tune, null) },
+                            onClick = { overlays.workspaceMenu = false; rasterFilterInitialKind = 0; rasterFilterDialogOpen = true })
+                        StudioMenuItem(text = { Text(tr("Obtain screen color", "屏幕取色")) }, leadingIcon = { Icon(Icons.Outlined.Colorize, null) },
+                            onClick = { overlays.workspaceMenu = false; overlays.screenColorPickOpen = true })
+                        StudioMenuItem(text = { Text(tr("Tonal correction…", "色调补偿…")) },
+                            onClick = { overlays.workspaceMenu = false; rasterFilterInitialKind = app.inkloom.settings.RasterFilterPreset.FIRST_TONAL_KIND; rasterFilterDialogOpen = true })
+                        StudioMenuItem(text = { Text(tr("Fit page", "适合页面")) }, leadingIcon = { Icon(Icons.Outlined.CenterFocusStrong, null) }, onClick = { overlays.workspaceMenu = false; fitPage() })
+                        StudioMenuItem(text = { Text(tr("Actual size", "实际大小")) }, onClick = { overlays.workspaceMenu = false; actualSize() })
+                        StudioMenuItem(text = { Text(tr("Fit width", "适合宽度")) }, onClick = { overlays.workspaceMenu = false; fitWidth() })
+                        StudioMenuItem(text = { Text(tr("Reset rotation", "重置旋转")) }, onClick = { overlays.workspaceMenu = false; resetViewRotation() })
+                        StudioMenuItem(text = { Text(tr("Flip view horizontally", "水平翻转视图")) },
+                            leadingIcon = { Icon(if (viewMirrored) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, null) },
+                            onClick = { overlays.workspaceMenu = false; viewMirrored = !viewMirrored })
+                        StudioMenuItem(text = { Text(tr("Continuous pages", "连续页面")) },
+                            leadingIcon = { Icon(if (settings.continuousPages) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, null) },
                             onClick = {
                                 overlays.workspaceMenu = false
-                                val guide = PerspectiveGuideState.defaultFor(mode)
-                                val points = guide.points
-                                onSettingsChange(settings.copy(
-                                    perspectiveGuideMode = mode,
-                                    perspectiveGuideEditing = mode != PerspectiveGuideMode.NONE,
-                                    specialRulerMode = if (mode == PerspectiveGuideMode.NONE) settings.specialRulerMode else SpecialRulerMode.NONE,
-                                    specialRulerEditing = if (mode == PerspectiveGuideMode.NONE) settings.specialRulerEditing else false,
-                                    perspectivePoint1X = points[0].x,
-                                    perspectivePoint1Y = points[0].y,
-                                    perspectivePoint2X = points[1].x,
-                                    perspectivePoint2Y = points[1].y,
-                                    perspectivePoint3X = points[2].x,
-                                    perspectivePoint3Y = points[2].y,
-                                ))
-                            },
-                        )
-                    }
-                    if (settings.perspectiveGuideMode != PerspectiveGuideMode.NONE) {
-                        StudioMenuItem(
-                            text = { Text(tr("Drawing Assist", "绘图辅助")) },
-                            trailingIcon = { if (settings.perspectiveGuideAssisted) Icon(Icons.Outlined.Check, null) },
-                            onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(perspectiveGuideAssisted = !settings.perspectiveGuideAssisted)) },
-                        )
-                        StudioMenuItem(
-                            text = { Text(tr("Edit vanishing points", "编辑消失点")) },
-                            trailingIcon = { if (settings.perspectiveGuideEditing) Icon(Icons.Outlined.Check, null) },
-                            onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(perspectiveGuideEditing = !settings.perspectiveGuideEditing)) },
-                        )
-                    }
-                    HorizontalDivider()
-                    Text(tr("Special ruler", "特殊尺"), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = MutedInk, fontSize = 11.sp)
-                    SpecialRulerMode.entries.forEach { mode ->
-                        val label = when (mode) {
-                            SpecialRulerMode.NONE -> tr("Off", "关闭")
-                            SpecialRulerMode.PARALLEL -> tr("Parallel ruler", "平行线尺")
-                            SpecialRulerMode.RADIAL -> tr("Radial ruler", "放射线尺")
-                            SpecialRulerMode.CONCENTRIC -> tr("Concentric ruler", "同心圆尺")
-                            SpecialRulerMode.ISOMETRIC -> tr("Isometric guide", "等距辅助线")
-                        }
-                        StudioMenuItem(
-                            text = { Text(label) },
-                            leadingIcon = { Icon(if (mode == SpecialRulerMode.CONCENTRIC) Icons.Outlined.RadioButtonUnchecked else Icons.Outlined.LineAxis, null) },
-                            trailingIcon = { if (settings.specialRulerMode == mode) Icon(Icons.Outlined.Check, null) },
-                            onClick = {
-                                overlays.workspaceMenu = false
-                                onSettingsChange(settings.copy(
-                                    specialRulerMode = mode,
-                                    specialRulerEditing = mode != SpecialRulerMode.NONE,
-                                    specialRulerCenterX = .5f,
-                                    specialRulerCenterY = .5f,
-                                    specialRulerAngleDegrees = 0f,
-                                    perspectiveGuideMode = if (mode == SpecialRulerMode.NONE) settings.perspectiveGuideMode else PerspectiveGuideMode.NONE,
-                                    perspectiveGuideEditing = if (mode == SpecialRulerMode.NONE) settings.perspectiveGuideEditing else false,
-                                ))
-                            },
-                        )
-                    }
-                    if (settings.specialRulerMode != SpecialRulerMode.NONE) {
-                        StudioMenuItem(
-                            text = { Text(tr("Drawing Assist", "绘图辅助")) },
-                            trailingIcon = { if (settings.specialRulerAssisted) Icon(Icons.Outlined.Check, null) },
-                            onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(specialRulerAssisted = !settings.specialRulerAssisted)) },
-                        )
-                        StudioMenuItem(
-                            text = { Text(tr("Edit ruler", "编辑尺子")) },
-                            trailingIcon = { if (settings.specialRulerEditing) Icon(Icons.Outlined.Check, null) },
-                            onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(specialRulerEditing = !settings.specialRulerEditing)) },
-                        )
-                        StudioMenuItem(
-                            text = {
-                                Column(Modifier.width(230.dp)) {
-                                    Text(tr("Guide spacing · ${settings.specialRulerSpacing.toInt()}", "辅助线间距 · ${settings.specialRulerSpacing.toInt()}"), fontSize = 11.sp)
-                                    BrushParameterSlider(settings.specialRulerSpacing, { onSettingsChange(settings.copy(specialRulerSpacing = it)) }, valueRange = 16f..240f)
-                                }
-                            },
-                            onClick = {},
-                        )
-                    }
-                    HorizontalDivider()
-
-                }
-                4 -> {
-                    StudioMenuItem(
-                        text = { Text(tr("Drawing workspace", "绘画工作区")) },
-                        leadingIcon = { Icon(Icons.Outlined.Palette, null) },
-                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.STUDIO) },
-                    )
-                    StudioMenuItem(
-                        text = { Text(tr("Painting workspace", "绘画面板工作区")) },
-                        leadingIcon = { Icon(Icons.Outlined.ViewSidebar, null) },
-                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.PAINTING) },
-                    )
-                    StudioMenuItem(
-                        text = { Text(tr("Reading workspace", "阅读工作区")) },
-                        leadingIcon = { Icon(Icons.Outlined.Visibility, null) },
-                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.READING) },
-                    )
-                    StudioMenuItem(
-                        text = { Text(tr("Views…", "视图…")) },
-                        leadingIcon = { Icon(Icons.Outlined.DashboardCustomize, null) },
-                        onClick = { overlays.workspaceMenu = false; overlays.viewManagerOpen = true },
-                    )
-                    HorizontalDivider()
-                    StudioMenuItem(
-                        text = { Text(if (panelState.layout.locked) tr("Unlock layout", "解锁布局") else tr("Lock layout", "锁定布局")) },
-                        leadingIcon = { Icon(if (panelState.layout.locked) Icons.Outlined.Lock else Icons.Outlined.LockOpen, null) },
-                        onClick = { overlays.workspaceMenu = false; panelState.commit(panelState.layout.copy(locked = !panelState.layout.locked)) },
-                    )
-                    StudioMenuItem(text = { Text(tr("Save panel layout…", "保存面板布局…")) },
-                        leadingIcon = { Icon(Icons.Outlined.Save, null) }, onClick = {
-                            overlays.workspaceMenu = false; renamingPanelLayout = null; panelLayoutName = ""; overlays.savePanelLayoutOpen = true
-                        })
-                    StudioMenuItem(text = { Text(tr("Export workspace layout…", "导出工作区布局…")) },
-                        onClick = { overlays.workspaceMenu = false; workspaceLayoutExportPicker.launch("Inkloom-workspace.${WorkspaceLayoutCodec.FILE_EXTENSION}") })
-                    StudioMenuItem(text = { Text(tr("Import workspace layout…", "导入工作区布局…")) },
-                        onClick = { overlays.workspaceMenu = false; workspaceLayoutImportPicker.launch(arrayOf(WorkspaceLayoutCodec.MIME_TYPE, "text/plain", "application/octet-stream")) })
-                    panelState.namedLayouts.entries.forEach { saved ->
-                        StudioMenuItem(text = { Text(saved.name) },
-                            leadingIcon = { Icon(Icons.Outlined.DashboardCustomize, null) }, onClick = {
-                                overlays.workspaceMenu = false
-                                panelState.restoreNamedLayout(saved.name)?.let(::syncRestoredPanelSettings)
+                                // The strip is vertical, so it starts unrotated with the current page centred.
+                                onSettingsChange(settings.copy(continuousPages = !settings.continuousPages))
+                                applyViewport(ViewportState(zoom, panX, 0f, 0f))
                             })
-                    }
-                    if (panelState.namedLayouts.entries.isNotEmpty()) StudioMenuItem(
-                        text = { Text(tr("Manage panel layouts…", "管理面板布局…")) },
-                        onClick = { overlays.workspaceMenu = false; overlays.managePanelLayoutsOpen = true },
-                    )
+                        HorizontalDivider()
+                        StudioMenuItem(text = { Text(tr("Color management", "色彩管理")) }, onClick = { overlays.workspaceMenu=false;overlays.colorManagementOpen=true })
+                        StudioMenuItem(text = { Text(tr("Canvas & resolution", "画布与分辨率")) }, onClick = { overlays.workspaceMenu = false; overlays.canvasSizeOpen = true })
+                        StudioMenuItem(text = { Text(tr("Rotate or flip canvas…", "旋转／翻转画布…")) }, onClick = { overlays.workspaceMenu = false; overlays.canvasOrientationOpen = true })
+                        val needSelection = tr("Make a selection first", "请先创建选区")
+                        StudioMenuItem(text = { Text(tr("Fit canvas to selection", "画布适配选区")) }, onClick = {
+                            overlays.workspaceMenu = false
+                            val view = canvasView
+                            val bounds = view?.selectionPageBounds()
+                            if (view == null || bounds == null || bounds.width() <= 0f || bounds.height() <= 0f)
+                                Toast.makeText(context, needSelection, Toast.LENGTH_SHORT).show()
+                            else applyPreparedPageEdit(appearanceScope, view, { currentAppearancePage }, { prepareFitCanvasToSelection(maskAssets, it, bounds) },
+                                { edit, undo -> onApplyPageGeometry(document.id, edit.before.id, edit, undo) }, { modes.canvasSizeBusy = it }) { view.clearSelection(); fitPage() }
+                        })
+                        StudioMenuItem(text = { Text(tr("Clear undo history…", "清除历史记录…")) }, onClick = { overlays.workspaceMenu = false; overlays.clearHistoryOpen = true })
 
-                }
-                5 -> {
-                    // Share sends straight to another app; Export saves a file where the user chooses.
-                    StudioMenuItem(text = { Text(tr("Share PDF…", "分享 PDF…")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { overlays.workspaceMenu = false; onSharePdf() })
-                    StudioMenuItem(text = { Text(tr("Share current page…", "分享当前页…")) }, leadingIcon = { Icon(Icons.Outlined.Image, null) }, onClick = { overlays.workspaceMenu = false; overlays.pageShareOpen = true })
-                    HorizontalDivider(color = OutlineSoft)
-                    StudioMenuItem(text = { Text(tr("Export PDF", "导出 PDF")) }, leadingIcon = { Icon(Icons.Outlined.FileDownload, null) }, onClick = { overlays.workspaceMenu = false; onExport() })
-                    StudioMenuItem(text = { Text(tr("Export current page", "导出当前页")) }, onClick = { overlays.workspaceMenu = false; overlays.pageExportOpen = true })
-                    StudioMenuItem(text = { Text(tr("Export editable Inkloom package", "导出可编辑 Inkloom 文件")) }, onClick = { overlays.workspaceMenu = false; onExportBundle() })
+                    }
+                    2 -> {
+                        listOf(
+                            Triple(EditorTool.EYEDROPPER, Icons.Outlined.Colorize, tr("Eyedropper", "吸管")),
+                            Triple(EditorTool.FILL, Icons.Outlined.FormatColorFill, tr("Fill", "填充")),
+                            Triple(EditorTool.GRADIENT, Icons.Outlined.Gradient, tr("Gradient", "渐变")),
+                            Triple(EditorTool.SMUDGE, Icons.Outlined.BlurOn, tr("Blend", "混色")),
+                            Triple(EditorTool.LIQUIFY, Icons.Outlined.Waves, tr("Liquify", "液化")),
+                            Triple(EditorTool.CORRECT_LINE, Icons.Outlined.AutoFixHigh, tr("Correct line", "线条修正")),
+                            Triple(EditorTool.SHAPE, Icons.Outlined.Category, tr("Shape", "形状")),
+                            Triple(EditorTool.TEXT, Icons.Outlined.Title, tr("Text", "文字")),
+                            Triple(EditorTool.NOTE, Icons.Outlined.StickyNote2, tr("Note", "便笺")),
+                            Triple(EditorTool.LINK, Icons.Outlined.Link, tr("Link", "链接")),
+                            Triple(EditorTool.IMAGE, Icons.Outlined.Image, tr("Image", "图片")),
+                            Triple(EditorTool.LASER, Icons.Outlined.TrackChanges, tr("Laser pointer", "激光笔")),
+                        ).let { tools ->
+                            EditorToolActionGrid(tools) { chosen ->
+                                overlays.workspaceMenu = false
+                                exitCanvasNavigation()
+                                tool = chosen
+                                canvasView?.tool = chosen
+                                when (chosen) {
+                                    EditorTool.SHAPE -> overlays.shapeInsertOpen = true
+                                    EditorTool.TEXT -> { insertText = ""; overlays.textInsertOpen = true }
+                                    EditorTool.NOTE -> { insertText = ""; overlays.stickyInsertOpen = true }
+                                    EditorTool.LINK -> { insertLinkTitle = ""; insertLinkUrl = ""; overlays.linkInsertOpen = true }
+                                    EditorTool.IMAGE -> { overlays.imageInsertOpen = true; tool = EditorTool.SELECT; canvasView?.tool = EditorTool.SELECT }
+                                    EditorTool.SMUDGE -> activateRememberedSmudge()
+                                    EditorTool.LIQUIFY -> systemBrushCatalog().firstOrNull(BrushRoleClassifier::isLiquify)?.let(::selectWorkspaceBrush)
+                                    else -> Unit
+                                }
+                                syncCanvasInput(prepareAssets = activeBrush != null)
+                            }
+                        }
+                        StudioMenuItem(text = { Text(tr("Blend with current brush tip", "用当前笔尖混色")) },
+                            leadingIcon = { Icon(Icons.Outlined.BlurOn, null) }, onClick = {
+                                overlays.workspaceMenu = false
+                                borrowCurrentTipForSmudge()
+                            })
+                        HorizontalDivider()
+
+                    }
+                    3 -> {
+                        StudioMenuItem(
+                            text = { Text(tr(if (settings.rulerEnabled) "Hide ruler" else "Show ruler", if (settings.rulerEnabled) "隐藏直尺" else "显示直尺")) },
+                            leadingIcon = { Icon(Icons.Outlined.Straighten, null) },
+                            trailingIcon = { if (settings.rulerEnabled) Icon(Icons.Outlined.Check, null) },
+                            onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) },
+                        )
+                        StudioMenuItem(
+                            text = { Text(tr(if (settings.gridSnapEnabled) "Hide snap grid" else "Show snap grid", if (settings.gridSnapEnabled) "隐藏吸附网格" else "显示吸附网格")) },
+                            leadingIcon = { Icon(Icons.Outlined.GridOn, null) },
+                            trailingIcon = { if (settings.gridSnapEnabled) Icon(Icons.Outlined.Check, null) },
+                            onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) },
+                        )
+                        StudioMenuItem(
+                            text = { Text(tr(if (settings.alignmentGuidesEnabled) "Hide alignment guides" else "Show alignment guides", if (settings.alignmentGuidesEnabled) "隐藏对齐参考线" else "显示对齐参考线")) },
+                            leadingIcon = { Icon(Icons.Outlined.AlignHorizontalCenter, null) },
+                            trailingIcon = { if (settings.alignmentGuidesEnabled) Icon(Icons.Outlined.Check, null) },
+                            onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) },
+                        )
+                        HorizontalDivider()
+                        Text(tr("Perspective guide", "透视辅助线"), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = MutedInk, fontSize = 11.sp)
+                        PerspectiveGuideMode.entries.forEach { mode ->
+                            val label = when (mode) {
+                                PerspectiveGuideMode.NONE -> tr("Off", "关闭")
+                                PerspectiveGuideMode.ONE_POINT -> tr("One-point perspective", "一点透视")
+                                PerspectiveGuideMode.TWO_POINT -> tr("Two-point perspective", "两点透视")
+                                PerspectiveGuideMode.THREE_POINT -> tr("Three-point perspective", "三点透视")
+                            }
+                            StudioMenuItem(
+                                text = { Text(label) },
+                                leadingIcon = { Icon(Icons.Outlined.ViewInAr, null) },
+                                trailingIcon = { if (settings.perspectiveGuideMode == mode) Icon(Icons.Outlined.Check, null) },
+                                onClick = {
+                                    overlays.workspaceMenu = false
+                                    val guide = PerspectiveGuideState.defaultFor(mode)
+                                    val points = guide.points
+                                    onSettingsChange(settings.copy(
+                                        perspectiveGuideMode = mode,
+                                        perspectiveGuideEditing = mode != PerspectiveGuideMode.NONE,
+                                        specialRulerMode = if (mode == PerspectiveGuideMode.NONE) settings.specialRulerMode else SpecialRulerMode.NONE,
+                                        specialRulerEditing = if (mode == PerspectiveGuideMode.NONE) settings.specialRulerEditing else false,
+                                        perspectivePoint1X = points[0].x,
+                                        perspectivePoint1Y = points[0].y,
+                                        perspectivePoint2X = points[1].x,
+                                        perspectivePoint2Y = points[1].y,
+                                        perspectivePoint3X = points[2].x,
+                                        perspectivePoint3Y = points[2].y,
+                                    ))
+                                },
+                            )
+                        }
+                        if (settings.perspectiveGuideMode != PerspectiveGuideMode.NONE) {
+                            StudioMenuItem(
+                                text = { Text(tr("Drawing Assist", "绘图辅助")) },
+                                trailingIcon = { if (settings.perspectiveGuideAssisted) Icon(Icons.Outlined.Check, null) },
+                                onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(perspectiveGuideAssisted = !settings.perspectiveGuideAssisted)) },
+                            )
+                            StudioMenuItem(
+                                text = { Text(tr("Edit vanishing points", "编辑消失点")) },
+                                trailingIcon = { if (settings.perspectiveGuideEditing) Icon(Icons.Outlined.Check, null) },
+                                onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(perspectiveGuideEditing = !settings.perspectiveGuideEditing)) },
+                            )
+                        }
+                        HorizontalDivider()
+                        Text(tr("Special ruler", "特殊尺"), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = MutedInk, fontSize = 11.sp)
+                        SpecialRulerMode.entries.forEach { mode ->
+                            val label = when (mode) {
+                                SpecialRulerMode.NONE -> tr("Off", "关闭")
+                                SpecialRulerMode.PARALLEL -> tr("Parallel ruler", "平行线尺")
+                                SpecialRulerMode.RADIAL -> tr("Radial ruler", "放射线尺")
+                                SpecialRulerMode.CONCENTRIC -> tr("Concentric ruler", "同心圆尺")
+                                SpecialRulerMode.ISOMETRIC -> tr("Isometric guide", "等距辅助线")
+                            }
+                            StudioMenuItem(
+                                text = { Text(label) },
+                                leadingIcon = { Icon(if (mode == SpecialRulerMode.CONCENTRIC) Icons.Outlined.RadioButtonUnchecked else Icons.Outlined.LineAxis, null) },
+                                trailingIcon = { if (settings.specialRulerMode == mode) Icon(Icons.Outlined.Check, null) },
+                                onClick = {
+                                    overlays.workspaceMenu = false
+                                    onSettingsChange(settings.copy(
+                                        specialRulerMode = mode,
+                                        specialRulerEditing = mode != SpecialRulerMode.NONE,
+                                        specialRulerCenterX = .5f,
+                                        specialRulerCenterY = .5f,
+                                        specialRulerAngleDegrees = 0f,
+                                        perspectiveGuideMode = if (mode == SpecialRulerMode.NONE) settings.perspectiveGuideMode else PerspectiveGuideMode.NONE,
+                                        perspectiveGuideEditing = if (mode == SpecialRulerMode.NONE) settings.perspectiveGuideEditing else false,
+                                    ))
+                                },
+                            )
+                        }
+                        if (settings.specialRulerMode != SpecialRulerMode.NONE) {
+                            StudioMenuItem(
+                                text = { Text(tr("Drawing Assist", "绘图辅助")) },
+                                trailingIcon = { if (settings.specialRulerAssisted) Icon(Icons.Outlined.Check, null) },
+                                onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(specialRulerAssisted = !settings.specialRulerAssisted)) },
+                            )
+                            StudioMenuItem(
+                                text = { Text(tr("Edit ruler", "编辑尺子")) },
+                                trailingIcon = { if (settings.specialRulerEditing) Icon(Icons.Outlined.Check, null) },
+                                onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(specialRulerEditing = !settings.specialRulerEditing)) },
+                            )
+                            StudioMenuItem(
+                                text = {
+                                    Column(Modifier.width(230.dp)) {
+                                        Text(tr("Guide spacing · ${settings.specialRulerSpacing.toInt()}", "辅助线间距 · ${settings.specialRulerSpacing.toInt()}"), fontSize = 11.sp)
+                                        BrushParameterSlider(settings.specialRulerSpacing, { onSettingsChange(settings.copy(specialRulerSpacing = it)) }, valueRange = 16f..240f)
+                                    }
+                                },
+                                onClick = {},
+                            )
+                        }
+                        HorizontalDivider()
+
+                    }
+                    4 -> {
+                        StudioMenuItem(
+                            text = { Text(tr("Drawing workspace", "绘画工作区")) },
+                            leadingIcon = { Icon(Icons.Outlined.Palette, null) },
+                            onClick = { applyBuiltInWorkspace(BuiltInWorkspace.STUDIO) },
+                        )
+                        StudioMenuItem(
+                            text = { Text(tr("Painting workspace", "绘画面板工作区")) },
+                            leadingIcon = { Icon(Icons.Outlined.ViewSidebar, null) },
+                            onClick = { applyBuiltInWorkspace(BuiltInWorkspace.PAINTING) },
+                        )
+                        StudioMenuItem(
+                            text = { Text(tr("Reading workspace", "阅读工作区")) },
+                            leadingIcon = { Icon(Icons.Outlined.Visibility, null) },
+                            onClick = { applyBuiltInWorkspace(BuiltInWorkspace.READING) },
+                        )
+                        StudioMenuItem(
+                            text = { Text(tr("Views…", "视图…")) },
+                            leadingIcon = { Icon(Icons.Outlined.DashboardCustomize, null) },
+                            onClick = { overlays.workspaceMenu = false; overlays.viewManagerOpen = true },
+                        )
+                        HorizontalDivider()
+                        StudioMenuItem(
+                            text = { Text(if (panelState.layout.locked) tr("Unlock layout", "解锁布局") else tr("Lock layout", "锁定布局")) },
+                            leadingIcon = { Icon(if (panelState.layout.locked) Icons.Outlined.Lock else Icons.Outlined.LockOpen, null) },
+                            onClick = { overlays.workspaceMenu = false; panelState.commit(panelState.layout.copy(locked = !panelState.layout.locked)) },
+                        )
+                        StudioMenuItem(text = { Text(tr("Save panel layout…", "保存面板布局…")) },
+                            leadingIcon = { Icon(Icons.Outlined.Save, null) }, onClick = {
+                                overlays.workspaceMenu = false; renamingPanelLayout = null; panelLayoutName = ""; overlays.savePanelLayoutOpen = true
+                            })
+                        StudioMenuItem(text = { Text(tr("Export workspace layout…", "导出工作区布局…")) },
+                            onClick = { overlays.workspaceMenu = false; workspaceLayoutExportPicker.launch("Inkloom-workspace.${WorkspaceLayoutCodec.FILE_EXTENSION}") })
+                        StudioMenuItem(text = { Text(tr("Import workspace layout…", "导入工作区布局…")) },
+                            onClick = { overlays.workspaceMenu = false; workspaceLayoutImportPicker.launch(arrayOf(WorkspaceLayoutCodec.MIME_TYPE, "text/plain", "application/octet-stream")) })
+                        panelState.namedLayouts.entries.forEach { saved ->
+                            StudioMenuItem(text = { Text(saved.name) },
+                                leadingIcon = { Icon(Icons.Outlined.DashboardCustomize, null) }, onClick = {
+                                    overlays.workspaceMenu = false
+                                    panelState.restoreNamedLayout(saved.name)?.let(::syncRestoredPanelSettings)
+                                })
+                        }
+                        if (panelState.namedLayouts.entries.isNotEmpty()) StudioMenuItem(
+                            text = { Text(tr("Manage panel layouts…", "管理面板布局…")) },
+                            onClick = { overlays.workspaceMenu = false; overlays.managePanelLayoutsOpen = true },
+                        )
+
+                    }
+                    5 -> {
+                        // Share sends straight to another app; Export saves a file where the user chooses.
+                        StudioMenuItem(text = { Text(tr("Share PDF…", "分享 PDF…")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { overlays.workspaceMenu = false; onSharePdf() })
+                        StudioMenuItem(text = { Text(tr("Share current page…", "分享当前页…")) }, leadingIcon = { Icon(Icons.Outlined.Image, null) }, onClick = { overlays.workspaceMenu = false; overlays.pageShareOpen = true })
+                        HorizontalDivider(color = OutlineSoft)
+                        StudioMenuItem(text = { Text(tr("Export PDF", "导出 PDF")) }, leadingIcon = { Icon(Icons.Outlined.FileDownload, null) }, onClick = { overlays.workspaceMenu = false; onExport() })
+                        StudioMenuItem(text = { Text(tr("Export current page", "导出当前页")) }, onClick = { overlays.workspaceMenu = false; overlays.pageExportOpen = true })
+                        StudioMenuItem(text = { Text(tr("Export editable Inkloom package", "导出可编辑 Inkloom 文件")) }, onClick = { overlays.workspaceMenu = false; onExportBundle() })
+                    }
                 }
             }
-        }
-        if (overlays.pageExportOpen) PageRasterExportDialog(storedPage, settings.language,
-            onDismiss = { overlays.pageExportOpen = false }, onExport = { options -> overlays.pageExportOpen = false; onExportPage(options) })
-        if (overlays.pageShareOpen) PageRasterExportDialog(storedPage, settings.language, sharing = true,
-            onDismiss = { overlays.pageShareOpen = false }, onExport = { options -> overlays.pageShareOpen = false; onSharePage(options) })
-        if(overlays.colorManagementOpen) ColorManagementDialog(storedPage,settings.language,modes.canvasSizeBusy,
-            onDismiss={overlays.colorManagementOpen=false},onApply={ next ->
-                val view=canvasView
-                if(view!=null && !view.selectionLayerTransferPending) {
-                    view.finishSelectionTransform(apply=true);view.selectionLayerTransferPending=true;modes.canvasSizeBusy=true
-                    appearanceScope.launch {
-                        var prepared:PreparedPageGeometry?=null;var published=false
-                        try {
-                            kotlinx.coroutines.withTimeout(15_000) { while(view.hasPendingPaintPublicationForMerge()) kotlinx.coroutines.delay(8) }
-                            val before=currentAppearancePage
-                            prepared=withContext(Dispatchers.IO){maskAssets.prepareColorManagement(before,next)}
-                            val transaction=requireNotNull(prepared)
-                            check(onApplyPageGeometry(document.id,before.id,transaction.edit,false)) { "Page changed during color setup" }
-                            view.recordExternalEdit(undo={onApplyPageGeometry(document.id,before.id,transaction.edit,true)},
-                                redo={onApplyPageGeometry(document.id,before.id,transaction.edit,false)},dispose=transaction::close)
-                            published=true;overlays.colorManagementOpen=false
-                        } catch(failure:Throwable) { Toast.makeText(context,failure.message?:"Color management failed",Toast.LENGTH_LONG).show() }
-                        finally { if(!published)prepared?.close();view.selectionLayerTransferPending=false;modes.canvasSizeBusy=false }
-                    }
-                }
-            })
-        generatedLayerEditor?.let { (initial, editingId) ->
-            GeneratedLayerDialog(initial, editingId != null, settings.language, modes.canvasSizeBusy,
-                onDismiss = { generatedLayerEditor = null }) { generator ->
-                val view = canvasView ?: return@GeneratedLayerDialog
-                var createdId: String? = null
-                val baseName = generatedLayerName(generator, settings.language)
-                applyPreparedPageEdit(appearanceScope, view, { currentAppearancePage }, { page ->
-                    if (editingId != null) app.inkloom.document.GeneratedLayerEdits.update(maskAssets, page, editingId, generator)
-                    else {
-                        val names = page.layers.mapTo(hashSetOf()) { it.name }
-                        val name = generateSequence(1) { it + 1 }.map { "$baseName $it" }.first { it !in names }
-                        app.inkloom.document.GeneratedLayerEdits.create(maskAssets, page, activeLayerId, generator, name,
-                            view.selectionMaskSurfaceSnapshot()).also { prepared ->
-                            createdId = prepared.edit.after.layers.firstOrNull { layer -> page.layers.none { it.id == layer.id } }?.id
+            if (overlays.pageExportOpen) PageRasterExportDialog(storedPage, settings.language,
+                onDismiss = { overlays.pageExportOpen = false }, onExport = { options -> overlays.pageExportOpen = false; onExportPage(options) })
+            if (overlays.pageShareOpen) PageRasterExportDialog(storedPage, settings.language, sharing = true,
+                onDismiss = { overlays.pageShareOpen = false }, onExport = { options -> overlays.pageShareOpen = false; onSharePage(options) })
+            if(overlays.colorManagementOpen) ColorManagementDialog(storedPage,settings.language,modes.canvasSizeBusy,
+                onDismiss={overlays.colorManagementOpen=false},onApply={ next ->
+                    val view=canvasView
+                    if(view!=null && !view.selectionLayerTransferPending) {
+                        view.finishSelectionTransform(apply=true);view.selectionLayerTransferPending=true;modes.canvasSizeBusy=true
+                        appearanceScope.launch {
+                            var prepared:PreparedPageGeometry?=null;var published=false
+                            try {
+                                kotlinx.coroutines.withTimeout(15_000) { while(view.hasPendingPaintPublicationForMerge()) kotlinx.coroutines.delay(8) }
+                                val before=currentAppearancePage
+                                prepared=withContext(Dispatchers.IO){maskAssets.prepareColorManagement(before,next)}
+                                val transaction=requireNotNull(prepared)
+                                check(onApplyPageGeometry(document.id,before.id,transaction.edit,false)) { "Page changed during color setup" }
+                                view.recordExternalEdit(undo={onApplyPageGeometry(document.id,before.id,transaction.edit,true)},
+                                    redo={onApplyPageGeometry(document.id,before.id,transaction.edit,false)},dispose=transaction::close)
+                                published=true;overlays.colorManagementOpen=false
+                            } catch(failure:Throwable) { Toast.makeText(context,failure.message?:"Color management failed",Toast.LENGTH_LONG).show() }
+                            finally { if(!published)prepared?.close();view.selectionLayerTransferPending=false;modes.canvasSizeBusy=false }
                         }
                     }
-                }, { edit, undo -> onApplyPageGeometry(document.id, edit.before.id, edit, undo) }, { modes.canvasSizeBusy = it }) {
-                    generatedLayerEditor = null
-                    createdId?.let { id -> view.clearSelection(); selectLayerTarget(id) }
+                })
+            generatedLayerEditor?.let { (initial, editingId) ->
+                GeneratedLayerDialog(initial, editingId != null, settings.language, modes.canvasSizeBusy,
+                    onDismiss = { generatedLayerEditor = null }) { generator ->
+                    val view = canvasView ?: return@GeneratedLayerDialog
+                    var createdId: String? = null
+                    val baseName = generatedLayerName(generator, settings.language)
+                    applyPreparedPageEdit(appearanceScope, view, { currentAppearancePage }, { page ->
+                        if (editingId != null) app.inkloom.document.GeneratedLayerEdits.update(maskAssets, page, editingId, generator)
+                        else {
+                            val names = page.layers.mapTo(hashSetOf()) { it.name }
+                            val name = generateSequence(1) { it + 1 }.map { "$baseName $it" }.first { it !in names }
+                            app.inkloom.document.GeneratedLayerEdits.create(maskAssets, page, activeLayerId, generator, name,
+                                view.selectionMaskSurfaceSnapshot()).also { prepared ->
+                                createdId = prepared.edit.after.layers.firstOrNull { layer -> page.layers.none { it.id == layer.id } }?.id
+                            }
+                        }
+                    }, { edit, undo -> onApplyPageGeometry(document.id, edit.before.id, edit, undo) }, { modes.canvasSizeBusy = it }) {
+                        generatedLayerEditor = null
+                        createdId?.let { id -> view.clearSelection(); selectLayerTarget(id) }
+                    }
                 }
             }
-        }
-        if (overlays.screenColorPickOpen) ScreenColorPicker(settings.language,
-            onPick = { color -> overlays.screenColorPickOpen = false; changeBrushColor(color) },
-            onCancel = { overlays.screenColorPickOpen = false })
-        if (overlays.clearHistoryOpen) ClearHistoryDialog(settings.language, canvasView?.historySize ?: 0, { overlays.clearHistoryOpen = false }) {
-            overlays.clearHistoryOpen = false
-            val cleared = canvasView?.clearHistory() ?: 0
-            Toast.makeText(context, settings.language.text("Cleared $cleared steps", "已清除 $cleared 个步骤"), Toast.LENGTH_SHORT).show()
-        }
-        if (overlays.canvasOrientationOpen) CanvasOrientationDialog(settings.language, app.inkloom.document.CanvasOrientation.canFlip(storedPage),
-            modes.canvasSizeBusy, onDismiss = { overlays.canvasOrientationOpen = false }) { change ->
-            canvasView?.let { view -> applyCanvasOrientation(appearanceScope, view, { currentAppearancePage }, maskAssets, change,
-                apply = { edit, undo -> onApplyCanvasOrientation(document.id, edit.before.id, edit, change.clockwiseQuarterTurns, undo) },
-                setBusy = { modes.canvasSizeBusy = it }) { overlays.canvasOrientationOpen = false; if (change.flip == null) fitPage() } }
-        }
-        if (overlays.canvasSizeOpen) CanvasSizeDialog(storedPage, settings.language, modes.canvasSizeBusy,
-            onDismiss = { overlays.canvasSizeOpen = false }, onApply = { request ->
-                val view = canvasView
-                if (view != null && !view.selectionLayerTransferPending) {
-                    view.finishSelectionTransform(apply = true)
-                    view.selectionLayerTransferPending = true; modes.canvasSizeBusy = true
-                    appearanceScope.launch {
-                        var prepared: PreparedPageGeometry? = null
-                        var published = false
-                        try {
-                            kotlinx.coroutines.withTimeout(15_000) { while (view.hasPendingPaintPublicationForMerge()) kotlinx.coroutines.delay(8) }
-                            val before = currentAppearancePage
-                            prepared = withContext(Dispatchers.IO) { maskAssets.prepareCanvasSize(before, request) }
-                            val transaction = requireNotNull(prepared)
-                            check(onApplyPageGeometry(document.id, before.id, transaction.edit, false)) { "Page changed during resize" }
-                            view.recordExternalEdit(
-                                undo = { onApplyPageGeometry(document.id, before.id, transaction.edit, true) },
-                                redo = { onApplyPageGeometry(document.id, before.id, transaction.edit, false) }, dispose = transaction::close)
-                            published = true; overlays.canvasSizeOpen = false; fitPage()
-                        } catch (failure: Throwable) {
-                            android.util.Log.e("InkloomCanvas", "Canvas resize failed", failure)
-                            Toast.makeText(context, failure.message ?: "Canvas resize failed", Toast.LENGTH_LONG).show()
-                        } finally {
-                            if (!published) prepared?.close()
-                            view.selectionLayerTransferPending = false; modes.canvasSizeBusy = false
+            if (overlays.screenColorPickOpen) ScreenColorPicker(settings.language,
+                onPick = { color -> overlays.screenColorPickOpen = false; changeBrushColor(color) },
+                onCancel = { overlays.screenColorPickOpen = false })
+            if (overlays.clearHistoryOpen) ClearHistoryDialog(settings.language, canvasView?.historySize ?: 0, { overlays.clearHistoryOpen = false }) {
+                overlays.clearHistoryOpen = false
+                val cleared = canvasView?.clearHistory() ?: 0
+                Toast.makeText(context, settings.language.text("Cleared $cleared steps", "已清除 $cleared 个步骤"), Toast.LENGTH_SHORT).show()
+            }
+            if (overlays.canvasOrientationOpen) CanvasOrientationDialog(settings.language, app.inkloom.document.CanvasOrientation.canFlip(storedPage),
+                modes.canvasSizeBusy, onDismiss = { overlays.canvasOrientationOpen = false }) { change ->
+                canvasView?.let { view -> applyCanvasOrientation(appearanceScope, view, { currentAppearancePage }, maskAssets, change,
+                    apply = { edit, undo -> onApplyCanvasOrientation(document.id, edit.before.id, edit, change.clockwiseQuarterTurns, undo) },
+                    setBusy = { modes.canvasSizeBusy = it }) { overlays.canvasOrientationOpen = false; if (change.flip == null) fitPage() } }
+            }
+            if (overlays.canvasSizeOpen) CanvasSizeDialog(storedPage, settings.language, modes.canvasSizeBusy,
+                onDismiss = { overlays.canvasSizeOpen = false }, onApply = { request ->
+                    val view = canvasView
+                    if (view != null && !view.selectionLayerTransferPending) {
+                        view.finishSelectionTransform(apply = true)
+                        view.selectionLayerTransferPending = true; modes.canvasSizeBusy = true
+                        appearanceScope.launch {
+                            var prepared: PreparedPageGeometry? = null
+                            var published = false
+                            try {
+                                kotlinx.coroutines.withTimeout(15_000) { while (view.hasPendingPaintPublicationForMerge()) kotlinx.coroutines.delay(8) }
+                                val before = currentAppearancePage
+                                prepared = withContext(Dispatchers.IO) { maskAssets.prepareCanvasSize(before, request) }
+                                val transaction = requireNotNull(prepared)
+                                check(onApplyPageGeometry(document.id, before.id, transaction.edit, false)) { "Page changed during resize" }
+                                view.recordExternalEdit(
+                                    undo = { onApplyPageGeometry(document.id, before.id, transaction.edit, true) },
+                                    redo = { onApplyPageGeometry(document.id, before.id, transaction.edit, false) }, dispose = transaction::close)
+                                published = true; overlays.canvasSizeOpen = false; fitPage()
+                            } catch (failure: Throwable) {
+                                android.util.Log.e("InkloomCanvas", "Canvas resize failed", failure)
+                                Toast.makeText(context, failure.message ?: "Canvas resize failed", Toast.LENGTH_LONG).show()
+                            } finally {
+                                if (!published) prepared?.close()
+                                view.selectionLayerTransferPending = false; modes.canvasSizeBusy = false
+                            }
                         }
                     }
-                }
-            })
-        if (overlays.viewManagerOpen) EditorViewManagerDialog(
-            openPanels = panelState.layout.open,
-            onToggle = ::setManagedPanelVisible,
-            onDismiss = { overlays.viewManagerOpen = false },
-        )
-        if (overlays.savePanelLayoutOpen) StudioDialog(
-            onDismissRequest = { overlays.savePanelLayoutOpen = false },
-            title = { Text(if (renamingPanelLayout == null) tr("Save panel layout", "保存面板布局") else tr("Rename panel layout", "重命名面板布局")) },
-            text = {
-                Column {
-                    StudioOutlinedTextField(panelLayoutName, { panelLayoutName = it.take(40) },
-                        label = { Text(tr("Name", "名称")) }, singleLine = true)
-                    if (renamingPanelLayout == null && panelState.namedLayouts.entries.any { it.name.equals(panelLayoutName.trim(), ignoreCase = true) })
-                        Text(tr("Saving will replace this layout", "保存后将替换同名布局"), color = MutedInk, fontSize = 11.sp)
-                }
-            },
-            confirmButton = { TextButton(enabled = panelLayoutName.isNotBlank(), onClick = {
-                val old = renamingPanelLayout
-                if (old == null) panelState.saveNamedLayout(panelLayoutName, settings)
-                else panelState.renameNamedLayout(old, panelLayoutName)
-                overlays.savePanelLayoutOpen = false; renamingPanelLayout = null
-            }) { Text(if (renamingPanelLayout == null) tr("Save", "保存") else tr("Rename", "重命名")) } },
-            dismissButton = { TextButton(onClick = { overlays.savePanelLayoutOpen = false; renamingPanelLayout = null }) { Text(tr("Cancel", "取消")) } },
-        )
-        if (overlays.managePanelLayoutsOpen) StudioDialog(
-            onDismissRequest = { overlays.managePanelLayoutsOpen = false },
-            title = { Text(tr("Panel layouts", "面板布局")) },
-            text = { Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
-                panelState.namedLayouts.entries.forEach { saved ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(modifier = Modifier.weight(1f), onClick = {
-                            panelState.restoreNamedLayout(saved.name)?.let(::syncRestoredPanelSettings)
-                            overlays.managePanelLayoutsOpen = false
-                        }) { Text(saved.name) }
-                        IconButton(onClick = {
-                            overlays.managePanelLayoutsOpen = false; renamingPanelLayout = saved.name
-                            panelLayoutName = saved.name; overlays.savePanelLayoutOpen = true
-                        }) { Icon(Icons.Outlined.Edit, tr("Rename ${saved.name}", "重命名${saved.name}")) }
-                        IconButton(onClick = { deletingPanelLayout = saved.name; overlays.managePanelLayoutsOpen = false }) {
-                            Icon(Icons.Outlined.DeleteOutline, tr("Delete ${saved.name}", "删除${saved.name}"))
+                })
+            if (overlays.viewManagerOpen) EditorViewManagerDialog(
+                openPanels = panelState.layout.open,
+                onToggle = ::setManagedPanelVisible,
+                onDismiss = { overlays.viewManagerOpen = false },
+            )
+            if (overlays.savePanelLayoutOpen) StudioDialog(
+                onDismissRequest = { overlays.savePanelLayoutOpen = false },
+                title = { Text(if (renamingPanelLayout == null) tr("Save panel layout", "保存面板布局") else tr("Rename panel layout", "重命名面板布局")) },
+                text = {
+                    Column {
+                        StudioOutlinedTextField(panelLayoutName, { panelLayoutName = it.take(40) },
+                            label = { Text(tr("Name", "名称")) }, singleLine = true)
+                        if (renamingPanelLayout == null && panelState.namedLayouts.entries.any { it.name.equals(panelLayoutName.trim(), ignoreCase = true) })
+                            Text(tr("Saving will replace this layout", "保存后将替换同名布局"), color = MutedInk, fontSize = 11.sp)
+                    }
+                },
+                confirmButton = { TextButton(enabled = panelLayoutName.isNotBlank(), onClick = {
+                    val old = renamingPanelLayout
+                    if (old == null) panelState.saveNamedLayout(panelLayoutName, settings)
+                    else panelState.renameNamedLayout(old, panelLayoutName)
+                    overlays.savePanelLayoutOpen = false; renamingPanelLayout = null
+                }) { Text(if (renamingPanelLayout == null) tr("Save", "保存") else tr("Rename", "重命名")) } },
+                dismissButton = { TextButton(onClick = { overlays.savePanelLayoutOpen = false; renamingPanelLayout = null }) { Text(tr("Cancel", "取消")) } },
+            )
+            if (overlays.managePanelLayoutsOpen) StudioDialog(
+                onDismissRequest = { overlays.managePanelLayoutsOpen = false },
+                title = { Text(tr("Panel layouts", "面板布局")) },
+                text = { Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                    panelState.namedLayouts.entries.forEach { saved ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(modifier = Modifier.weight(1f), onClick = {
+                                panelState.restoreNamedLayout(saved.name)?.let(::syncRestoredPanelSettings)
+                                overlays.managePanelLayoutsOpen = false
+                            }) { Text(saved.name) }
+                            IconButton(onClick = {
+                                overlays.managePanelLayoutsOpen = false; renamingPanelLayout = saved.name
+                                panelLayoutName = saved.name; overlays.savePanelLayoutOpen = true
+                            }) { Icon(Icons.Outlined.Edit, tr("Rename ${saved.name}", "重命名${saved.name}")) }
+                            IconButton(onClick = { deletingPanelLayout = saved.name; overlays.managePanelLayoutsOpen = false }) {
+                                Icon(Icons.Outlined.DeleteOutline, tr("Delete ${saved.name}", "删除${saved.name}"))
+                            }
                         }
                     }
-                }
-            } },
-            confirmButton = { TextButton(onClick = { overlays.managePanelLayoutsOpen = false }) { Text(tr("Done", "完成")) } },
-        )
-        deletingPanelLayout?.let { name -> StudioDialog(
-            onDismissRequest = { deletingPanelLayout = null },
-            title = { Text(tr("Delete panel layout?", "删除面板布局？")) },
-            text = { Text(name) },
-            confirmButton = { TextButton(onClick = { panelState.deleteNamedLayout(name); deletingPanelLayout = null }) { Text(tr("Delete", "删除")) } },
-            dismissButton = { TextButton(onClick = { deletingPanelLayout = null }) { Text(tr("Cancel", "取消")) } },
-        ) }
+                } },
+                confirmButton = { TextButton(onClick = { overlays.managePanelLayoutsOpen = false }) { Text(tr("Done", "完成")) } },
+            )
+            deletingPanelLayout?.let { name -> StudioDialog(
+                onDismissRequest = { deletingPanelLayout = null },
+                title = { Text(tr("Delete panel layout?", "删除面板布局？")) },
+                text = { Text(name) },
+                confirmButton = { TextButton(onClick = { panelState.deleteNamedLayout(name); deletingPanelLayout = null }) { Text(tr("Delete", "删除")) } },
+                dismissButton = { TextButton(onClick = { deletingPanelLayout = null }) { Text(tr("Cancel", "取消")) } },
+            ) }
+        }
+        actionDialogs()
         HorizontalDivider(color = OutlineSoft)
     Box(Modifier.weight(1f).clipToBounds()) {
         fun closeEditorPanel(panel: EditorPanel) {
@@ -3618,375 +3622,380 @@ private fun EditorScreen(
         })
     }
     }
-    val defaultStickyText = tr("New note", "新便签")
-    if (overlays.textInsertOpen) StudioDialog(
-        onDismissRequest = { overlays.textInsertOpen = false },
-        title = { Text(tr("Insert text", "插入文本")) },
-        text = { StudioOutlinedTextField(insertText, { insertText = it }, minLines = 3, label = { Text(tr("Text", "文本")) }) },
-        confirmButton = { Button(onClick = { if (insertText.isNotBlank()) onElement(document.id, selectedPage.id, PageCropTransform.unproject(PageElement.Text(x = .18f, y = .2f, text = insertText.trim()), selectedPage.crop)); overlays.textInsertOpen = false; tool = EditorTool.SELECT }) { Text(tr("Insert", "插入")) } },
-        dismissButton = { TextButton(onClick = { overlays.textInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
-    )
-    if (overlays.stickyInsertOpen) StudioDialog(
-        onDismissRequest = { overlays.stickyInsertOpen = false },
-        title = { Text(tr("New sticky note", "新建便签")) },
-        text = { StudioOutlinedTextField(insertText, { insertText = it }, minLines = 4, label = { Text(tr("Note", "便签")) }) },
-        confirmButton = { Button(onClick = { onElement(document.id, selectedPage.id, PageCropTransform.unproject(PageElement.Sticky(x = .55f, y = .25f, text = insertText.trim().ifBlank { defaultStickyText }), selectedPage.crop)); overlays.stickyInsertOpen = false; tool = EditorTool.SELECT }) { Text(tr("Insert", "插入")) } },
-        dismissButton = { TextButton(onClick = { overlays.stickyInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
-    )
-    if (overlays.linkInsertOpen) {
-        val normalizedLink = LinkTarget.normalize(insertLinkUrl)
-        val targetDocument = documents.firstOrNull { it.id == insertLinkDocumentId } ?: document
-        val targetPage = targetDocument.pages.firstOrNull { it.id == insertLinkPageId } ?: targetDocument.pages.firstOrNull()
-        val linkPageState = rememberLazyListState()
-        RevealSelectedItem(linkPageState, targetDocument.id, targetPage?.id, targetDocument.pages.indexOfFirst { it.id == targetPage?.id })
-        StudioDialog(
-            modifier = Modifier.imePadding(),
-            properties = DialogProperties(decorFitsSystemWindows = false),
-            onDismissRequest = { overlays.linkInsertOpen = false },
-            title = { Text(tr("Insert link", "插入链接")) },
-            text = { Column(Modifier.dialogContentWidth(360.dp, 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                // Read inside the dialog window. Choosing a link type ends title entry, so the keyboard
-                // no longer pushes the page list below the fold.
-                val linkFocus = androidx.compose.ui.platform.LocalFocusManager.current
-                val linkKeyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-                fun chooseLinkKind(internal: Boolean) { linkFocus.clearFocus(); linkKeyboard?.hide(); overlays.insertInternalLink = internal }
-                StudioOutlinedTextField(insertLinkTitle, { insertLinkTitle = it }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StudioFilterChip(selected = !overlays.insertInternalLink, onClick = { chooseLinkKind(false) }, label = { Text(tr("Web link", "网页链接")) })
-                    StudioFilterChip(selected = overlays.insertInternalLink, onClick = { chooseLinkKind(true) }, label = { Text(tr("Notebook page", "笔记页面")) })
-                }
-                if (!overlays.insertInternalLink) {
-                    StudioOutlinedTextField(insertLinkUrl, { insertLinkUrl = it }, label = { Text(tr("Web, email, or phone address", "网页、邮箱或电话号码")) }, placeholder = { Text("https://example.com") }, isError = insertLinkUrl.isNotBlank() && normalizedLink == null, supportingText = { Text(if (insertLinkUrl.isNotBlank() && normalizedLink == null) tr("Use a valid http, https, mailto, or tel address.", "请输入有效的 http、https、mailto 或 tel 地址。") else tr("Addresses without a scheme open with HTTPS.", "未填写协议的地址将通过 HTTPS 打开。")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                } else {
-                    Text(tr("Notebook", "笔记本"), color = MutedInk, fontSize = 11.sp)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(documents.filter { it.trashedAt == null }, key = InkDocument::id) { candidate ->
-                            StudioFilterChip(selected = candidate.id == targetDocument.id, onClick = {
-                                insertLinkDocumentId = candidate.id
-                                insertLinkPageId = candidate.pages.firstOrNull()?.id.orEmpty()
-                            }, label = { Text(candidate.title, maxLines = 1) })
+    // The editor's dialogs compile into their own method: one Kotlin function this large would
+    // exceed what the Android runtime verifier accepts.
+    val editorDialogs: @Composable () -> Unit = {
+        val defaultStickyText = tr("New note", "新便签")
+        if (overlays.textInsertOpen) StudioDialog(
+            onDismissRequest = { overlays.textInsertOpen = false },
+            title = { Text(tr("Insert text", "插入文本")) },
+            text = { StudioOutlinedTextField(insertText, { insertText = it }, minLines = 3, label = { Text(tr("Text", "文本")) }) },
+            confirmButton = { Button(onClick = { if (insertText.isNotBlank()) onElement(document.id, selectedPage.id, PageCropTransform.unproject(PageElement.Text(x = .18f, y = .2f, text = insertText.trim()), selectedPage.crop)); overlays.textInsertOpen = false; tool = EditorTool.SELECT }) { Text(tr("Insert", "插入")) } },
+            dismissButton = { TextButton(onClick = { overlays.textInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
+        )
+        if (overlays.stickyInsertOpen) StudioDialog(
+            onDismissRequest = { overlays.stickyInsertOpen = false },
+            title = { Text(tr("New sticky note", "新建便签")) },
+            text = { StudioOutlinedTextField(insertText, { insertText = it }, minLines = 4, label = { Text(tr("Note", "便签")) }) },
+            confirmButton = { Button(onClick = { onElement(document.id, selectedPage.id, PageCropTransform.unproject(PageElement.Sticky(x = .55f, y = .25f, text = insertText.trim().ifBlank { defaultStickyText }), selectedPage.crop)); overlays.stickyInsertOpen = false; tool = EditorTool.SELECT }) { Text(tr("Insert", "插入")) } },
+            dismissButton = { TextButton(onClick = { overlays.stickyInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
+        )
+        if (overlays.linkInsertOpen) {
+            val normalizedLink = LinkTarget.normalize(insertLinkUrl)
+            val targetDocument = documents.firstOrNull { it.id == insertLinkDocumentId } ?: document
+            val targetPage = targetDocument.pages.firstOrNull { it.id == insertLinkPageId } ?: targetDocument.pages.firstOrNull()
+            val linkPageState = rememberLazyListState()
+            RevealSelectedItem(linkPageState, targetDocument.id, targetPage?.id, targetDocument.pages.indexOfFirst { it.id == targetPage?.id })
+            StudioDialog(
+                modifier = Modifier.imePadding(),
+                properties = DialogProperties(decorFitsSystemWindows = false),
+                onDismissRequest = { overlays.linkInsertOpen = false },
+                title = { Text(tr("Insert link", "插入链接")) },
+                text = { Column(Modifier.dialogContentWidth(360.dp, 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Read inside the dialog window. Choosing a link type ends title entry, so the keyboard
+                    // no longer pushes the page list below the fold.
+                    val linkFocus = androidx.compose.ui.platform.LocalFocusManager.current
+                    val linkKeyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+                    fun chooseLinkKind(internal: Boolean) { linkFocus.clearFocus(); linkKeyboard?.hide(); overlays.insertInternalLink = internal }
+                    StudioOutlinedTextField(insertLinkTitle, { insertLinkTitle = it }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StudioFilterChip(selected = !overlays.insertInternalLink, onClick = { chooseLinkKind(false) }, label = { Text(tr("Web link", "网页链接")) })
+                        StudioFilterChip(selected = overlays.insertInternalLink, onClick = { chooseLinkKind(true) }, label = { Text(tr("Notebook page", "笔记页面")) })
+                    }
+                    if (!overlays.insertInternalLink) {
+                        StudioOutlinedTextField(insertLinkUrl, { insertLinkUrl = it }, label = { Text(tr("Web, email, or phone address", "网页、邮箱或电话号码")) }, placeholder = { Text("https://example.com") }, isError = insertLinkUrl.isNotBlank() && normalizedLink == null, supportingText = { Text(if (insertLinkUrl.isNotBlank() && normalizedLink == null) tr("Use a valid http, https, mailto, or tel address.", "请输入有效的 http、https、mailto 或 tel 地址。") else tr("Addresses without a scheme open with HTTPS.", "未填写协议的地址将通过 HTTPS 打开。")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    } else {
+                        Text(tr("Notebook", "笔记本"), color = MutedInk, fontSize = 11.sp)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(documents.filter { it.trashedAt == null }, key = InkDocument::id) { candidate ->
+                                StudioFilterChip(selected = candidate.id == targetDocument.id, onClick = {
+                                    insertLinkDocumentId = candidate.id
+                                    insertLinkPageId = candidate.pages.firstOrNull()?.id.orEmpty()
+                                }, label = { Text(candidate.title, maxLines = 1) })
+                            }
+                        }
+                        Text(tr("Page", "页面"), color = MutedInk, fontSize = 11.sp)
+                        LazyColumn(Modifier.heightIn(max = 220.dp).semantics { contentDescription = "Link target pages" }, state = linkPageState) {
+                            items(targetDocument.pages, key = InkPage::id) { candidate ->
+                                ListItem(
+                                    headlineContent = { Text(candidate.title, maxLines = 1) },
+                                    supportingContent = { Text(tr("Page ${targetDocument.pages.indexOf(candidate) + 1}", "第 ${targetDocument.pages.indexOf(candidate) + 1} 页"), color = MutedInk) },
+                                    leadingContent = { if (candidate.bookmarked) Icon(Icons.Default.Bookmark, null) else Icon(Icons.Outlined.Description, null) },
+                                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).semantics { selected = candidate.id == targetPage?.id }.clickable { insertLinkPageId = candidate.id },
+                                    colors = ListItemDefaults.colors(containerColor = if (candidate.id == targetPage?.id) SageContainer else Color.Transparent),
+                                )
+                            }
                         }
                     }
-                    Text(tr("Page", "页面"), color = MutedInk, fontSize = 11.sp)
-                    LazyColumn(Modifier.heightIn(max = 220.dp).semantics { contentDescription = "Link target pages" }, state = linkPageState) {
-                        items(targetDocument.pages, key = InkPage::id) { candidate ->
-                            ListItem(
-                                headlineContent = { Text(candidate.title, maxLines = 1) },
-                                supportingContent = { Text(tr("Page ${targetDocument.pages.indexOf(candidate) + 1}", "第 ${targetDocument.pages.indexOf(candidate) + 1} 页"), color = MutedInk) },
-                                leadingContent = { if (candidate.bookmarked) Icon(Icons.Default.Bookmark, null) else Icon(Icons.Outlined.Description, null) },
-                                modifier = Modifier.clip(RoundedCornerShape(8.dp)).semantics { selected = candidate.id == targetPage?.id }.clickable { insertLinkPageId = candidate.id },
-                                colors = ListItemDefaults.colors(containerColor = if (candidate.id == targetPage?.id) SageContainer else Color.Transparent),
-                            )
-                        }
+                } },
+                confirmButton = { Button(enabled = if (overlays.insertInternalLink) targetPage != null else normalizedLink != null, onClick = {
+                    val link = if (overlays.insertInternalLink) {
+                        val page = targetPage ?: return@Button
+                        PageElement.Link(
+                            x = .18f,
+                            y = .2f,
+                            title = insertLinkTitle.trim().ifBlank { page.title },
+                            targetDocumentId = targetDocument.id,
+                            targetPageId = page.id,
+                        )
+                    } else {
+                        val url = normalizedLink ?: return@Button
+                        PageElement.Link(x = .18f, y = .2f, title = insertLinkTitle.trim().ifBlank { LinkTarget.displayDestination(url, 48) }, url = url)
                     }
-                }
-            } },
-            confirmButton = { Button(enabled = if (overlays.insertInternalLink) targetPage != null else normalizedLink != null, onClick = {
-                val link = if (overlays.insertInternalLink) {
-                    val page = targetPage ?: return@Button
-                    PageElement.Link(
-                        x = .18f,
-                        y = .2f,
-                        title = insertLinkTitle.trim().ifBlank { page.title },
-                        targetDocumentId = targetDocument.id,
-                        targetPageId = page.id,
-                    )
-                } else {
-                    val url = normalizedLink ?: return@Button
-                    PageElement.Link(x = .18f, y = .2f, title = insertLinkTitle.trim().ifBlank { LinkTarget.displayDestination(url, 48) }, url = url)
-                }
-                onElement(document.id, selectedPage.id, PageCropTransform.unproject(link, selectedPage.crop))
-                overlays.linkInsertOpen = false
-                tool = EditorTool.SELECT
-            }) { Text(tr("Insert", "插入")) } },
-            dismissButton = { TextButton(onClick = { overlays.linkInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
-        )
-    }
-    adjustmentDialogId?.let { layerId ->
-        val adjustmentLayer = selectedPage.layers.firstOrNull { it.id == layerId && it.role == LayerRole.ADJUSTMENT }
-        if (adjustmentLayer != null) AdjustmentLayerDialog(
-            layer = adjustmentLayer,
-            onDismiss = { appearanceEditor.cancelAdjustment(layerId); adjustmentDialogId = null },
-            onPreview = { appearanceEditor.previewAdjustment(layerId, it) },
-            onApply = { value ->
-                appearanceEditor.previewAdjustment(layerId, value)
-                appearanceEditor.commitAdjustment(layerId)
-                adjustmentDialogId = null
-            },
-        )
-    }
-    if (rasterFilterDialogOpen) RasterFilterDialog(
-        drawingColor=brushColor, presets=settings.rasterFilterPresets,onPresets={onSettingsChange(settings.copy(rasterFilterPresets=it))},
-        compositePreview=compositeFilterPreview,copyBusy=compositeFilterBusy,
-        onPreview={effect,copy ->
-            compositeFilterWorker?.cancel();val generation=++compositeFilterGeneration
-            compositeFilterBusy=false
-            if(!copy) {
-                compositeFilterPreview=null
-                canvasView?.onRasterFilterPreviewRequested?.invoke(effect)
-            } else {
-                canvasView?.onRasterFilterFinished?.invoke(false)
-                compositeFilterBusy=true
-                compositeFilterWorker=appearanceScope.launch {
-                    var bitmap:android.graphics.Bitmap?=null
-                    try {
-                        val view=canvasView ?: return@launch
-                        kotlinx.coroutines.withTimeout(15_000){while(view.hasPendingPaintPublicationForMerge() || view.selectionLayerTransferPending) kotlinx.coroutines.delay(8)}
-                        val before=currentAppearancePage
-                        val selection=view.selectionMaskSurfaceSnapshot()
-                        bitmap=withContext(Dispatchers.Default){
-                            maskAssets.renderFilteredVisibleCopyPreview(before,effect,selection,cancelled={!isActive})
-                        }
-                        if(generation==compositeFilterGeneration && rasterFilterDialogOpen){compositeFilterPreview=bitmap;bitmap=null}
-                    } catch(_:kotlinx.coroutines.CancellationException){} catch(failure:Throwable){Toast.makeText(context,failure.message?:"Preview failed",Toast.LENGTH_LONG).show()}
-                    finally{bitmap?.recycle();if(generation==compositeFilterGeneration)compositeFilterBusy=false}
-                }
-            }
-        },
-        onApply={effect,copy ->
-            if(!copy){canvasView?.onRasterFilterFinished?.invoke(true);rasterFilterDialogOpen=false}
-            else {
-                compositeFilterWorker?.cancel();++compositeFilterGeneration;compositeFilterBusy=true
-                appearanceScope.launch {
-                    var prepared:PreparedPageGeometry?=null;var published=false
-                    val view=canvasView
-                    try {
-                        requireNotNull(view)
-                        kotlinx.coroutines.withTimeout(15_000){while(view.hasPendingPaintPublicationForMerge() || view.selectionLayerTransferPending)kotlinx.coroutines.delay(8)}
-                        view.selectionLayerTransferPending=true
-                        val before=currentAppearancePage;val selection=view.selectionMaskSurfaceSnapshot()
-                        prepared=withContext(Dispatchers.Default){maskAssets.prepareFilteredVisibleCopy(before,effect,selection){!isActive}}
-                        val transaction=requireNotNull(prepared)
-                        check(onApplyPageGeometry(document.id,before.id,transaction.edit,false)){"Page changed during filter"}
-                        view.recordExternalEdit(undo={onApplyPageGeometry(document.id,before.id,transaction.edit,true)},
-                            redo={onApplyPageGeometry(document.id,before.id,transaction.edit,false)},dispose=transaction::close)
-                        activeLayerId=transaction.edit.after.layers.last().id
-                        published=true;rasterFilterDialogOpen=false;compositeFilterPreview=null
-                    } catch(failure:Throwable){Toast.makeText(context,failure.message?:"Filter failed",Toast.LENGTH_LONG).show()}
-                    finally{if(!published)prepared?.close();view?.selectionLayerTransferPending=false;compositeFilterBusy=false}
-                }
-            }
-        },
-        onCancel={compositeFilterWorker?.cancel();++compositeFilterGeneration;compositeFilterBusy=false;compositeFilterPreview=null;canvasView?.onRasterFilterFinished?.invoke(false);rasterFilterDialogOpen=false},
-        initialKind=rasterFilterInitialKind,
-        pageDpi=selectedPage.dpi,
-        referenceLayers=selectedPage.layers.filter{it.isPaintSurfaceLayer() && it.id!=activeLayerId}.map{it.id to it.name},
-        referenceStatistics={id-> withContext(Dispatchers.IO){ runCatching{
-            val page=currentAppearancePage
-            app.inkloom.engine.v5.tools.ColorStatistics.of(maskAssets.renderRasterLayerSurface(page,id,CanvasRasterResolution.forPage(page)).snapshot())
-        }.getOrNull() } },
-    )
-
-    if (overlays.shapeInsertOpen) StudioDialog(
-        onDismissRequest = { overlays.shapeInsertOpen = false },
-        title = { Text(tr("Draw shape", "绘制形状")) },
-        // Shape choices wrap instead of hiding in a sideways strip; the body scrolls at large fonts.
-        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) { Text(tr("Choose a shape, then drag on the page with the pen. Lines and arrows snap to nearby 45° angles; Freeform follows the pen and closes the polygon automatically.", "选择形状后用笔在页面上拖动。直线和箭头会吸附到邻近的 45° 角；自由形状会跟随笔迹并自动闭合。"), color = MutedInk, fontSize = 12.sp); FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ShapeKind.entries.forEach { kind -> StudioFilterChip(selected = insertShape == kind, onClick = { insertShape = kind }, label = { Text(localizedShapeKind(kind)) }) } } } },
-        confirmButton = { Button(onClick = { overlays.shapeInsertOpen = false; tool = EditorTool.SHAPE; canvasView?.tool = EditorTool.SHAPE }) { Text(tr("Draw", "绘制")) } },
-        dismissButton = { TextButton(onClick = { overlays.shapeInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
-    )
-    if (overlays.imageInsertOpen) StudioDialog(
-        onDismissRequest = { overlays.imageInsertOpen = false },
-        title = { Text(tr("Add page image", "添加页面图片")) },
-        text = { Text(tr("Import an existing image or capture a paper page with the device camera. Image text can then be indexed from Search this note.", "导入现有图片，或用设备相机拍摄纸质页面。随后可在“搜索此笔记”中识别图片文字。")) },
-        confirmButton = { Button(onClick = { overlays.imageInsertOpen = false; onScanImage() }) { Icon(Icons.Outlined.DocumentScanner, null); Spacer(Modifier.width(6.dp)); Text(tr("Scan page", "扫描页面")) } },
-        dismissButton = { Row { TextButton(onClick = { overlays.imageInsertOpen = false }) { Text(tr("Cancel", "取消")) }; TextButton(onClick = { overlays.imageInsertOpen = false; onInsertImage() }) { Text(tr("Import image", "导入图片")) } } },
-    )
-    if (overlays.bookmarksOpen) StudioDialog(
-        onDismissRequest = { overlays.bookmarksOpen = false },
-        title = { Text(tr("Bookmarks", "书签")) },
-        text = {
-            val marked = document.pages.withIndex().filter { it.value.bookmarked }
-            if (marked.isEmpty()) Text(tr("No bookmarked pages yet.", "还没有收藏的页面。"), color = MutedInk)
-            else LazyColumn(Modifier.dialogContentWidth(320.dp, 520.dp).heightIn(max = 420.dp)) {
-                items(marked, key = { it.value.id }) { (index, page) ->
-                    ListItem(
-                        headlineContent = { Text(page.title, maxLines = 1) },
-                        supportingContent = { Text(tr("Page ${index + 1}", "第 ${index + 1} 页"), color = MutedInk) },
-                        leadingContent = { Icon(Icons.Default.Bookmark, null) },
-                        trailingContent = { IconButton(onClick = { onToggleBookmark(document.id, page.id) }) { Icon(Icons.Outlined.BookmarkRemove, tr("Remove bookmark", "删除书签")) } },
-                        modifier = Modifier.clickable { jumpToPage(page.id); overlays.bookmarksOpen = false },
-                    )
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = { overlays.bookmarksOpen = false }) { Text(tr("Done", "完成")) } },
-    )
-    if (overlays.outlineOpen) {
-        val outlineState = rememberLazyListState()
-        LaunchedEffect(document.id, selectedPage.id) {
-            PageOutline.ancestors(document.pages, selectedPage.id).filter(InkPage::outlineCollapsed)
-                .forEach { onTogglePageOutlineCollapsed(document.id, it.id) }
+                    onElement(document.id, selectedPage.id, PageCropTransform.unproject(link, selectedPage.crop))
+                    overlays.linkInsertOpen = false
+                    tool = EditorTool.SELECT
+                }) { Text(tr("Insert", "插入")) } },
+                dismissButton = { TextButton(onClick = { overlays.linkInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
+            )
         }
-        val visibleOutlinePages = PageOutline.visiblePages(document.pages)
-        RevealSelectedItem(outlineState, document.id to visibleOutlinePages.map(InkPage::id), selectedPage.id,
-            visibleOutlinePages.indexOfFirst { it.id == selectedPage.id })
-        StudioDialog(
-            onDismissRequest = { overlays.outlineOpen = false },
-            title = { Text(tr("Page outline", "页面大纲")) },
+        adjustmentDialogId?.let { layerId ->
+            val adjustmentLayer = selectedPage.layers.firstOrNull { it.id == layerId && it.role == LayerRole.ADJUSTMENT }
+            if (adjustmentLayer != null) AdjustmentLayerDialog(
+                layer = adjustmentLayer,
+                onDismiss = { appearanceEditor.cancelAdjustment(layerId); adjustmentDialogId = null },
+                onPreview = { appearanceEditor.previewAdjustment(layerId, it) },
+                onApply = { value ->
+                    appearanceEditor.previewAdjustment(layerId, value)
+                    appearanceEditor.commitAdjustment(layerId)
+                    adjustmentDialogId = null
+                },
+            )
+        }
+        if (rasterFilterDialogOpen) RasterFilterDialog(
+            drawingColor=brushColor, presets=settings.rasterFilterPresets,onPresets={onSettingsChange(settings.copy(rasterFilterPresets=it))},
+            compositePreview=compositeFilterPreview,copyBusy=compositeFilterBusy,
+            onPreview={effect,copy ->
+                compositeFilterWorker?.cancel();val generation=++compositeFilterGeneration
+                compositeFilterBusy=false
+                if(!copy) {
+                    compositeFilterPreview=null
+                    canvasView?.onRasterFilterPreviewRequested?.invoke(effect)
+                } else {
+                    canvasView?.onRasterFilterFinished?.invoke(false)
+                    compositeFilterBusy=true
+                    compositeFilterWorker=appearanceScope.launch {
+                        var bitmap:android.graphics.Bitmap?=null
+                        try {
+                            val view=canvasView ?: return@launch
+                            kotlinx.coroutines.withTimeout(15_000){while(view.hasPendingPaintPublicationForMerge() || view.selectionLayerTransferPending) kotlinx.coroutines.delay(8)}
+                            val before=currentAppearancePage
+                            val selection=view.selectionMaskSurfaceSnapshot()
+                            bitmap=withContext(Dispatchers.Default){
+                                maskAssets.renderFilteredVisibleCopyPreview(before,effect,selection,cancelled={!isActive})
+                            }
+                            if(generation==compositeFilterGeneration && rasterFilterDialogOpen){compositeFilterPreview=bitmap;bitmap=null}
+                        } catch(_:kotlinx.coroutines.CancellationException){} catch(failure:Throwable){Toast.makeText(context,failure.message?:"Preview failed",Toast.LENGTH_LONG).show()}
+                        finally{bitmap?.recycle();if(generation==compositeFilterGeneration)compositeFilterBusy=false}
+                    }
+                }
+            },
+            onApply={effect,copy ->
+                if(!copy){canvasView?.onRasterFilterFinished?.invoke(true);rasterFilterDialogOpen=false}
+                else {
+                    compositeFilterWorker?.cancel();++compositeFilterGeneration;compositeFilterBusy=true
+                    appearanceScope.launch {
+                        var prepared:PreparedPageGeometry?=null;var published=false
+                        val view=canvasView
+                        try {
+                            requireNotNull(view)
+                            kotlinx.coroutines.withTimeout(15_000){while(view.hasPendingPaintPublicationForMerge() || view.selectionLayerTransferPending)kotlinx.coroutines.delay(8)}
+                            view.selectionLayerTransferPending=true
+                            val before=currentAppearancePage;val selection=view.selectionMaskSurfaceSnapshot()
+                            prepared=withContext(Dispatchers.Default){maskAssets.prepareFilteredVisibleCopy(before,effect,selection){!isActive}}
+                            val transaction=requireNotNull(prepared)
+                            check(onApplyPageGeometry(document.id,before.id,transaction.edit,false)){"Page changed during filter"}
+                            view.recordExternalEdit(undo={onApplyPageGeometry(document.id,before.id,transaction.edit,true)},
+                                redo={onApplyPageGeometry(document.id,before.id,transaction.edit,false)},dispose=transaction::close)
+                            activeLayerId=transaction.edit.after.layers.last().id
+                            published=true;rasterFilterDialogOpen=false;compositeFilterPreview=null
+                        } catch(failure:Throwable){Toast.makeText(context,failure.message?:"Filter failed",Toast.LENGTH_LONG).show()}
+                        finally{if(!published)prepared?.close();view?.selectionLayerTransferPending=false;compositeFilterBusy=false}
+                    }
+                }
+            },
+            onCancel={compositeFilterWorker?.cancel();++compositeFilterGeneration;compositeFilterBusy=false;compositeFilterPreview=null;canvasView?.onRasterFilterFinished?.invoke(false);rasterFilterDialogOpen=false},
+            initialKind=rasterFilterInitialKind,
+            pageDpi=selectedPage.dpi,
+            referenceLayers=selectedPage.layers.filter{it.isPaintSurfaceLayer() && it.id!=activeLayerId}.map{it.id to it.name},
+            referenceStatistics={id-> withContext(Dispatchers.IO){ runCatching{
+                val page=currentAppearancePage
+                app.inkloom.engine.v5.tools.ColorStatistics.of(maskAssets.renderRasterLayerSurface(page,id,CanvasRasterResolution.forPage(page)).snapshot())
+            }.getOrNull() } },
+        )
+
+        if (overlays.shapeInsertOpen) StudioDialog(
+            onDismissRequest = { overlays.shapeInsertOpen = false },
+            title = { Text(tr("Draw shape", "绘制形状")) },
+            // Shape choices wrap instead of hiding in a sideways strip; the body scrolls at large fonts.
+            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) { Text(tr("Choose a shape, then drag on the page with the pen. Lines and arrows snap to nearby 45° angles; Freeform follows the pen and closes the polygon automatically.", "选择形状后用笔在页面上拖动。直线和箭头会吸附到邻近的 45° 角；自由形状会跟随笔迹并自动闭合。"), color = MutedInk, fontSize = 12.sp); FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ShapeKind.entries.forEach { kind -> StudioFilterChip(selected = insertShape == kind, onClick = { insertShape = kind }, label = { Text(localizedShapeKind(kind)) }) } } } },
+            confirmButton = { Button(onClick = { overlays.shapeInsertOpen = false; tool = EditorTool.SHAPE; canvasView?.tool = EditorTool.SHAPE }) { Text(tr("Draw", "绘制")) } },
+            dismissButton = { TextButton(onClick = { overlays.shapeInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
+        )
+        if (overlays.imageInsertOpen) StudioDialog(
+            onDismissRequest = { overlays.imageInsertOpen = false },
+            title = { Text(tr("Add page image", "添加页面图片")) },
+            text = { Text(tr("Import an existing image or capture a paper page with the device camera. Image text can then be indexed from Search this note.", "导入现有图片，或用设备相机拍摄纸质页面。随后可在“搜索此笔记”中识别图片文字。")) },
+            confirmButton = { Button(onClick = { overlays.imageInsertOpen = false; onScanImage() }) { Icon(Icons.Outlined.DocumentScanner, null); Spacer(Modifier.width(6.dp)); Text(tr("Scan page", "扫描页面")) } },
+            dismissButton = { Row { TextButton(onClick = { overlays.imageInsertOpen = false }) { Text(tr("Cancel", "取消")) }; TextButton(onClick = { overlays.imageInsertOpen = false; onInsertImage() }) { Text(tr("Import image", "导入图片")) } } },
+        )
+        if (overlays.bookmarksOpen) StudioDialog(
+            onDismissRequest = { overlays.bookmarksOpen = false },
+            title = { Text(tr("Bookmarks", "书签")) },
             text = {
-                LazyColumn(Modifier.dialogContentWidth(360.dp, 560.dp).heightIn(max = 480.dp).semantics { contentDescription = "Page outline list" }, state = outlineState, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    items(visibleOutlinePages, key = { it.id }) { page ->
-                        val index = document.pages.indexOf(page)
-                        val hasChildren = PageOutline.hasChildren(document.pages, index)
+                val marked = document.pages.withIndex().filter { it.value.bookmarked }
+                if (marked.isEmpty()) Text(tr("No bookmarked pages yet.", "还没有收藏的页面。"), color = MutedInk)
+                else LazyColumn(Modifier.dialogContentWidth(320.dp, 520.dp).heightIn(max = 420.dp)) {
+                    items(marked, key = { it.value.id }) { (index, page) ->
                         ListItem(
-                            headlineContent = { Text(page.title, maxLines = 1, fontWeight = if (page.outlineLevel == 0) FontWeight.SemiBold else FontWeight.Normal) },
-                            supportingContent = { Text(listOfNotNull(page.customNumber, page.tags.takeIf { it.isNotEmpty() }?.joinToString(" · ")).joinToString(" · ").ifBlank { tr("Page ${index + 1}", "第 ${index + 1} 页") }, color = MutedInk, maxLines = 1) },
-                            leadingContent = { if (page.bookmarked) Icon(Icons.Default.Bookmark, tr("Bookmarked", "已收藏"), tint = Ink) else Text((index + 1).toString(), color = MutedInk) },
-                            trailingContent = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (hasChildren) IconButton(onClick = { onTogglePageOutlineCollapsed(document.id, page.id) }) { Icon(if (page.outlineCollapsed) Icons.Default.ArrowRight else Icons.Default.ArrowDropDown, if (page.outlineCollapsed) tr("Expand", "展开") else tr("Collapse", "折叠")) }
-                                    Box {
-                                        IconButton(onClick = { outlineMenuPageId = page.id }) { Icon(Icons.Outlined.MoreVert, tr("Edit outline item", "编辑大纲项目")) }
-                                        DropdownMenu(expanded = outlineMenuPageId == page.id, onDismissRequest = { outlineMenuPageId = null }) {
-                                            StudioMenuItem(
-                                                text = { Text(tr("Rename", "重命名")) },
-                                                leadingIcon = { Icon(Icons.Outlined.Edit, null) },
-                                                onClick = { outlineMenuPageId = null; outlineRenamePageId = page.id; outlineRenameText = page.title },
-                                            )
-                                            StudioMenuItem(
-                                                text = { Text(tr("Move up", "上移")) },
-                                                leadingIcon = { Icon(Icons.Outlined.ArrowUpward, null) },
-                                                enabled = index > 0,
-                                                onClick = { outlineMenuPageId = null; onMovePage(document.id, page.id, -1) },
-                                            )
-                                            StudioMenuItem(
-                                                text = { Text(tr("Move down", "下移")) },
-                                                leadingIcon = { Icon(Icons.Outlined.ArrowDownward, null) },
-                                                enabled = index < document.pages.lastIndex,
-                                                onClick = { outlineMenuPageId = null; onMovePage(document.id, page.id, 1) },
-                                            )
-                                            HorizontalDivider()
-                                            StudioMenuItem(
-                                                text = { Text(tr("Promote level", "提升层级")) },
-                                                leadingIcon = { Icon(Icons.Outlined.FormatIndentDecrease, null) },
-                                                enabled = page.outlineLevel > 0,
-                                                onClick = { outlineMenuPageId = null; onChangePageOutlineLevel(document.id, page.id, -1) },
-                                            )
-                                            StudioMenuItem(
-                                                text = { Text(tr("Demote level", "降低层级")) },
-                                                leadingIcon = { Icon(Icons.Outlined.FormatIndentIncrease, null) },
-                                                enabled = index > 0 && page.outlineLevel < 3,
-                                                onClick = { outlineMenuPageId = null; onChangePageOutlineLevel(document.id, page.id, 1) },
-                                            )
-                                        }
-                                    }
-                                }
-                            },
-                            modifier = Modifier.padding(start = (page.outlineLevel * 18).dp).semantics { selected = page.id == selectedPage.id }.clickable { jumpToPage(page.id); overlays.outlineOpen = false },
-                            colors = ListItemDefaults.colors(containerColor = if (page.id == selectedPage.id) SageContainer else Color.Transparent),
+                            headlineContent = { Text(page.title, maxLines = 1) },
+                            supportingContent = { Text(tr("Page ${index + 1}", "第 ${index + 1} 页"), color = MutedInk) },
+                            leadingContent = { Icon(Icons.Default.Bookmark, null) },
+                            trailingContent = { IconButton(onClick = { onToggleBookmark(document.id, page.id) }) { Icon(Icons.Outlined.BookmarkRemove, tr("Remove bookmark", "删除书签")) } },
+                            modifier = Modifier.clickable { jumpToPage(page.id); overlays.bookmarksOpen = false },
                         )
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { overlays.outlineOpen = false }) { Text(tr("Done", "完成")) } },
+            confirmButton = { TextButton(onClick = { overlays.bookmarksOpen = false }) { Text(tr("Done", "完成")) } },
         )
-    }
-    outlineRenamePageId?.let { pageId ->
-        StudioDialog(
-            onDismissRequest = { outlineRenamePageId = null },
-            title = { Text(tr("Rename outline item", "重命名大纲项目")) },
-            text = { StudioOutlinedTextField(outlineRenameText, { outlineRenameText = it }, label = { Text(tr("Page title", "页面标题")) }, singleLine = true) },
-            confirmButton = { Button(enabled = outlineRenameText.isNotBlank(), onClick = { onRenamePage(document.id, pageId, outlineRenameText); outlineRenamePageId = null }) { Text(tr("Save", "保存")) } },
-            dismissButton = { TextButton(onClick = { outlineRenamePageId = null }) { Text(tr("Cancel", "取消")) } },
-        )
-    }
-    if (overlays.searchOpen) {
-        val results = documentSearchHits
-        val unindexedPdfPages = document.pages.count { it.background is PageBackground.Pdf && it.pdfTextIndexVersion == 0 }
-        StudioDialog(
-            onDismissRequest = { overlays.searchOpen = false },
-            title = { Text(tr("Search this note", "搜索此笔记")) },
-            text = { Column(Modifier.dialogContentWidth(340.dp, 560.dp)) {
-                StudioOutlinedTextField(documentQuery, { documentQuery = it; searchFocus = null }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Page, handwriting, image, or PDF text", "页面、手写、图片或 PDF 文字")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    StudioFilterChip(selected = recognitionLanguageTag == "en-US", onClick = { recognitionLanguageTag = "en-US" }, label = { Text("English") })
-                    StudioFilterChip(selected = recognitionLanguageTag == "zh-Hans", onClick = { recognitionLanguageTag = "zh-Hans" }, label = { Text("简体中文") })
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (overlays.outlineOpen) {
+            val outlineState = rememberLazyListState()
+            LaunchedEffect(document.id, selectedPage.id) {
+                PageOutline.ancestors(document.pages, selectedPage.id).filter(InkPage::outlineCollapsed)
+                    .forEach { onTogglePageOutlineCollapsed(document.id, it.id) }
+            }
+            val visibleOutlinePages = PageOutline.visiblePages(document.pages)
+            RevealSelectedItem(outlineState, document.id to visibleOutlinePages.map(InkPage::id), selectedPage.id,
+                visibleOutlinePages.indexOfFirst { it.id == selectedPage.id })
+            StudioDialog(
+                onDismissRequest = { overlays.outlineOpen = false },
+                title = { Text(tr("Page outline", "页面大纲")) },
+                text = {
+                    LazyColumn(Modifier.dialogContentWidth(360.dp, 560.dp).heightIn(max = 480.dp).semantics { contentDescription = "Page outline list" }, state = outlineState, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        items(visibleOutlinePages, key = { it.id }) { page ->
+                            val index = document.pages.indexOf(page)
+                            val hasChildren = PageOutline.hasChildren(document.pages, index)
+                            ListItem(
+                                headlineContent = { Text(page.title, maxLines = 1, fontWeight = if (page.outlineLevel == 0) FontWeight.SemiBold else FontWeight.Normal) },
+                                supportingContent = { Text(listOfNotNull(page.customNumber, page.tags.takeIf { it.isNotEmpty() }?.joinToString(" · ")).joinToString(" · ").ifBlank { tr("Page ${index + 1}", "第 ${index + 1} 页") }, color = MutedInk, maxLines = 1) },
+                                leadingContent = { if (page.bookmarked) Icon(Icons.Default.Bookmark, tr("Bookmarked", "已收藏"), tint = Ink) else Text((index + 1).toString(), color = MutedInk) },
+                                trailingContent = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (hasChildren) IconButton(onClick = { onTogglePageOutlineCollapsed(document.id, page.id) }) { Icon(if (page.outlineCollapsed) Icons.Default.ArrowRight else Icons.Default.ArrowDropDown, if (page.outlineCollapsed) tr("Expand", "展开") else tr("Collapse", "折叠")) }
+                                        Box {
+                                            IconButton(onClick = { outlineMenuPageId = page.id }) { Icon(Icons.Outlined.MoreVert, tr("Edit outline item", "编辑大纲项目")) }
+                                            DropdownMenu(expanded = outlineMenuPageId == page.id, onDismissRequest = { outlineMenuPageId = null }) {
+                                                StudioMenuItem(
+                                                    text = { Text(tr("Rename", "重命名")) },
+                                                    leadingIcon = { Icon(Icons.Outlined.Edit, null) },
+                                                    onClick = { outlineMenuPageId = null; outlineRenamePageId = page.id; outlineRenameText = page.title },
+                                                )
+                                                StudioMenuItem(
+                                                    text = { Text(tr("Move up", "上移")) },
+                                                    leadingIcon = { Icon(Icons.Outlined.ArrowUpward, null) },
+                                                    enabled = index > 0,
+                                                    onClick = { outlineMenuPageId = null; onMovePage(document.id, page.id, -1) },
+                                                )
+                                                StudioMenuItem(
+                                                    text = { Text(tr("Move down", "下移")) },
+                                                    leadingIcon = { Icon(Icons.Outlined.ArrowDownward, null) },
+                                                    enabled = index < document.pages.lastIndex,
+                                                    onClick = { outlineMenuPageId = null; onMovePage(document.id, page.id, 1) },
+                                                )
+                                                HorizontalDivider()
+                                                StudioMenuItem(
+                                                    text = { Text(tr("Promote level", "提升层级")) },
+                                                    leadingIcon = { Icon(Icons.Outlined.FormatIndentDecrease, null) },
+                                                    enabled = page.outlineLevel > 0,
+                                                    onClick = { outlineMenuPageId = null; onChangePageOutlineLevel(document.id, page.id, -1) },
+                                                )
+                                                StudioMenuItem(
+                                                    text = { Text(tr("Demote level", "降低层级")) },
+                                                    leadingIcon = { Icon(Icons.Outlined.FormatIndentIncrease, null) },
+                                                    enabled = index > 0 && page.outlineLevel < 3,
+                                                    onClick = { outlineMenuPageId = null; onChangePageOutlineLevel(document.id, page.id, 1) },
+                                                )
+                                            }
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.padding(start = (page.outlineLevel * 18).dp).semantics { selected = page.id == selectedPage.id }.clickable { jumpToPage(page.id); overlays.outlineOpen = false },
+                                colors = ListItemDefaults.colors(containerColor = if (page.id == selectedPage.id) SageContainer else Color.Transparent),
+                            )
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { overlays.outlineOpen = false }) { Text(tr("Done", "完成")) } },
+            )
+        }
+        outlineRenamePageId?.let { pageId ->
+            StudioDialog(
+                onDismissRequest = { outlineRenamePageId = null },
+                title = { Text(tr("Rename outline item", "重命名大纲项目")) },
+                text = { StudioOutlinedTextField(outlineRenameText, { outlineRenameText = it }, label = { Text(tr("Page title", "页面标题")) }, singleLine = true) },
+                confirmButton = { Button(enabled = outlineRenameText.isNotBlank(), onClick = { onRenamePage(document.id, pageId, outlineRenameText); outlineRenamePageId = null }) { Text(tr("Save", "保存")) } },
+                dismissButton = { TextButton(onClick = { outlineRenamePageId = null }) { Text(tr("Cancel", "取消")) } },
+            )
+        }
+        if (overlays.searchOpen) {
+            val results = documentSearchHits
+            val unindexedPdfPages = document.pages.count { it.background is PageBackground.Pdf && it.pdfTextIndexVersion == 0 }
+            StudioDialog(
+                onDismissRequest = { overlays.searchOpen = false },
+                title = { Text(tr("Search this note", "搜索此笔记")) },
+                text = { Column(Modifier.dialogContentWidth(340.dp, 560.dp)) {
+                    StudioOutlinedTextField(documentQuery, { documentQuery = it; searchFocus = null }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Page, handwriting, image, or PDF text", "页面、手写、图片或 PDF 文字")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        StudioFilterChip(selected = recognitionLanguageTag == "en-US", onClick = { recognitionLanguageTag = "en-US" }, label = { Text("English") })
+                        StudioFilterChip(selected = recognitionLanguageTag == "zh-Hans", onClick = { recognitionLanguageTag = "zh-Hans" }, label = { Text("简体中文") })
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            enabled = !imageOcrRecognizing,
+                            onClick = {
+                                recognitionMessage = null
+                                onRecognizeImages(document.id, selectedPage.id, recognitionLanguageTag) { result ->
+                                    recognitionMessage = result.fold(
+                                        onSuccess = { count -> if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "已识别 $count 行图片文字。" else "Recognized $count image text lines." },
+                                        onFailure = { error -> error.message ?: if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "图片文字识别失败。" else "Image text recognition failed." },
+                                    )
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            if (imageOcrRecognizing) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.DocumentScanner, null)
+                            Spacer(Modifier.width(6.dp)); Text(tr("OCR current page", "识别当前页"))
+                        }
+                    }
                     OutlinedButton(
-                        enabled = !imageOcrRecognizing,
+                        enabled = !documentRecognizing && !imageOcrRecognizing,
                         onClick = {
                             recognitionMessage = null
-                            onRecognizeImages(document.id, selectedPage.id, recognitionLanguageTag) { result ->
+                            onRecognizeDocument(document.id, recognitionLanguageTag) { result ->
                                 recognitionMessage = result.fold(
-                                    onSuccess = { count -> if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "已识别 $count 行图片文字。" else "Recognized $count image text lines." },
-                                    onFailure = { error -> error.message ?: if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "图片文字识别失败。" else "Image text recognition failed." },
+                                    onSuccess = { count -> if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "整本笔记已识别 $count 行内容。" else "Indexed $count text lines across this notebook." },
+                                    onFailure = { error -> error.message ?: if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "整本笔记识别失败。" else "Notebook recognition failed." },
                                 )
                             }
                         },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
-                        if (imageOcrRecognizing) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.DocumentScanner, null)
-                        Spacer(Modifier.width(6.dp)); Text(tr("OCR current page", "识别当前页"))
+                        if (documentRecognizing) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.AutoStories, null)
+                        Spacer(Modifier.width(6.dp)); Text(tr("Index the whole notebook", "识别整本笔记"))
                     }
-                }
-                OutlinedButton(
-                    enabled = !documentRecognizing && !imageOcrRecognizing,
-                    onClick = {
-                        recognitionMessage = null
-                        onRecognizeDocument(document.id, recognitionLanguageTag) { result ->
-                            recognitionMessage = result.fold(
-                                onSuccess = { count -> if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "整本笔记已识别 $count 行内容。" else "Indexed $count text lines across this notebook." },
-                                onFailure = { error -> error.message ?: if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "整本笔记识别失败。" else "Notebook recognition failed." },
-                            )
+                    recognitionMessage?.let { Text(it, Modifier.padding(top = 4.dp), color = MutedInk, fontSize = 12.sp) }
+                    if (unindexedPdfPages > 0) Surface(Modifier.fillMaxWidth().padding(top = 10.dp), color = Workspace, shape = RoundedCornerShape(10.dp)) {
+                        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(if (pdfIndexing) tr("Indexing PDF text…", "正在索引 PDF 文字…") else tr("$unindexedPdfPages PDF pages need a text index.", "$unindexedPdfPages 个 PDF 页面需要建立文字索引。"), Modifier.weight(1f), color = MutedInk, fontSize = 12.sp)
+                            if (pdfIndexing) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                            else TextButton(onClick = { onIndexPdfText(document.id) }) { Text(tr("Index now", "立即索引")) }
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    if (documentRecognizing) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.AutoStories, null)
-                    Spacer(Modifier.width(6.dp)); Text(tr("Index the whole notebook", "识别整本笔记"))
-                }
-                recognitionMessage?.let { Text(it, Modifier.padding(top = 4.dp), color = MutedInk, fontSize = 12.sp) }
-                if (unindexedPdfPages > 0) Surface(Modifier.fillMaxWidth().padding(top = 10.dp), color = Workspace, shape = RoundedCornerShape(10.dp)) {
-                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (pdfIndexing) tr("Indexing PDF text…", "正在索引 PDF 文字…") else tr("$unindexedPdfPages PDF pages need a text index.", "$unindexedPdfPages 个 PDF 页面需要建立文字索引。"), Modifier.weight(1f), color = MutedInk, fontSize = 12.sp)
-                        if (pdfIndexing) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-                        else TextButton(onClick = { onIndexPdfText(document.id) }) { Text(tr("Index now", "立即索引")) }
                     }
-                }
-                Spacer(Modifier.height(10.dp))
-                if (documentQuery.isNotBlank() && results.isEmpty()) Text(tr("No matching page titles, tags, object text, recognized handwriting, image text, or indexed PDF text.", "没有匹配的页面标题、标签、对象文字、已识别手写、图片文字或已索引 PDF 文字。"), color = MutedInk)
-                else LazyColumn(Modifier.heightIn(max = 340.dp)) { items(results, key = { (page, hit) -> "${page.id}:${hit.occurrenceIndex}" }) { (page, hit) ->
-                    ListItem(
-                        headlineContent = { Text(page.title) },
-                        supportingContent = { Text(hit.snippet, maxLines = 2) },
-                        leadingContent = { Text(when (hit.source) { PageSearchSource.PDF -> "PDF"; PageSearchSource.OBJECT -> "OBJ"; PageSearchSource.PAGE -> "PAGE"; PageSearchSource.HANDWRITING -> "INK"; PageSearchSource.IMAGE_OCR -> "OCR" }, color = MutedInk, fontSize = 9.sp) },
-                        trailingContent = if (hit.source == PageSearchSource.HANDWRITING && hit.recognizedBlockId != null) {{
-                            TextButton(onClick = { handwritingConversionHit = page to hit }) { Text(tr("To text", "转文字")) }
-                        }} else null,
-                        modifier = Modifier.clickable { searchFocus = hit; jumpToPage(page.id); overlays.searchOpen = false },
-                    )
-                } }
-            } },
-            confirmButton = { TextButton(onClick = { overlays.searchOpen = false }) { Text(tr("Done", "完成")) } },
-        )
-    }
-    handwritingConversionHit?.let { (page, hit) ->
-        StudioDialog(
-            onDismissRequest = { handwritingConversionHit = null },
-            title = { Text(tr("Convert handwriting to text", "手写转文字")) },
-            text = { Text(tr("Keep the original ink, or replace those strokes with editable text?", "保留原始笔迹，还是用可编辑文字替换这些笔画？")) },
-            confirmButton = {
-                Button(onClick = {
-                    hit.recognizedBlockId?.let { onConvertHandwriting(document.id, page.id, it, true) }
-                    handwritingConversionHit = null
-                    overlays.searchOpen = false
-                    jumpToPage(page.id)
-                }) { Text(tr("Replace ink", "替换笔迹")) }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = { handwritingConversionHit = null }) { Text(tr("Cancel", "取消")) }
-                    TextButton(onClick = {
-                        hit.recognizedBlockId?.let { onConvertHandwriting(document.id, page.id, it, false) }
+                    Spacer(Modifier.height(10.dp))
+                    if (documentQuery.isNotBlank() && results.isEmpty()) Text(tr("No matching page titles, tags, object text, recognized handwriting, image text, or indexed PDF text.", "没有匹配的页面标题、标签、对象文字、已识别手写、图片文字或已索引 PDF 文字。"), color = MutedInk)
+                    else LazyColumn(Modifier.heightIn(max = 340.dp)) { items(results, key = { (page, hit) -> "${page.id}:${hit.occurrenceIndex}" }) { (page, hit) ->
+                        ListItem(
+                            headlineContent = { Text(page.title) },
+                            supportingContent = { Text(hit.snippet, maxLines = 2) },
+                            leadingContent = { Text(when (hit.source) { PageSearchSource.PDF -> "PDF"; PageSearchSource.OBJECT -> "OBJ"; PageSearchSource.PAGE -> "PAGE"; PageSearchSource.HANDWRITING -> "INK"; PageSearchSource.IMAGE_OCR -> "OCR" }, color = MutedInk, fontSize = 9.sp) },
+                            trailingContent = if (hit.source == PageSearchSource.HANDWRITING && hit.recognizedBlockId != null) {{
+                                TextButton(onClick = { handwritingConversionHit = page to hit }) { Text(tr("To text", "转文字")) }
+                            }} else null,
+                            modifier = Modifier.clickable { searchFocus = hit; jumpToPage(page.id); overlays.searchOpen = false },
+                        )
+                    } }
+                } },
+                confirmButton = { TextButton(onClick = { overlays.searchOpen = false }) { Text(tr("Done", "完成")) } },
+            )
+        }
+        handwritingConversionHit?.let { (page, hit) ->
+            StudioDialog(
+                onDismissRequest = { handwritingConversionHit = null },
+                title = { Text(tr("Convert handwriting to text", "手写转文字")) },
+                text = { Text(tr("Keep the original ink, or replace those strokes with editable text?", "保留原始笔迹，还是用可编辑文字替换这些笔画？")) },
+                confirmButton = {
+                    Button(onClick = {
+                        hit.recognizedBlockId?.let { onConvertHandwriting(document.id, page.id, it, true) }
                         handwritingConversionHit = null
                         overlays.searchOpen = false
                         jumpToPage(page.id)
-                    }) { Text(tr("Keep ink", "保留笔迹")) }
-                }
-            },
-        )
+                    }) { Text(tr("Replace ink", "替换笔迹")) }
+                },
+                dismissButton = {
+                    Row {
+                        TextButton(onClick = { handwritingConversionHit = null }) { Text(tr("Cancel", "取消")) }
+                        TextButton(onClick = {
+                            hit.recognizedBlockId?.let { onConvertHandwriting(document.id, page.id, it, false) }
+                            handwritingConversionHit = null
+                            overlays.searchOpen = false
+                            jumpToPage(page.id)
+                        }) { Text(tr("Keep ink", "保留笔迹")) }
+                    }
+                },
+            )
+        }
+        if (importError != null) StudioDialog(onDismissRequest = onDismissError, confirmButton = { TextButton(onClick = onDismissError) { Text(tr("OK", "确定")) } }, title = { Text(tr("Import issue", "导入问题")) }, text = { Text(importError) })
     }
-    if (importError != null) StudioDialog(onDismissRequest = onDismissError, confirmButton = { TextButton(onClick = onDismissError) { Text(tr("OK", "确定")) } }, title = { Text(tr("Import issue", "导入问题")) }, text = { Text(importError) })
+    editorDialogs()
 }

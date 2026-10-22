@@ -1,6 +1,9 @@
 package app.inkloom.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -84,20 +87,30 @@ internal fun StudioDialog(
     Dialog(onDismissRequest, DialogProperties(dismissOnBackPress = properties.dismissOnBackPress,
         dismissOnClickOutside = properties.dismissOnClickOutside, securePolicy = properties.securePolicy,
         usePlatformDefaultWidth = false, decorFitsSystemWindows = properties.decorFitsSystemWindows)) {
-        // The window wraps the panel, so taps beside it still dismiss and the side placement can apply.
         val window = (LocalView.current.parent as? DialogWindowProvider)?.window
-        SideEffect {
-            window?.apply {
-                setLayout(android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-                if (placement == StudioDialogPlacement.SIDE) { setGravity(android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL); setDimAmount(.12f) }
-            }
+        val frame = @Composable { frameModifier: Modifier ->
+            StudioDialogFrame(frameModifier.width(StudioDialogDefaults.width(wide)).heightIn(max = StudioDialogDefaults.maxHeight()),
+                title = title, icon = icon, shape = shape, containerColor = containerColor, body = text,
+                footer = { dismissButton?.invoke(); Spacer(Modifier.width(4.dp)); confirmButton() })
         }
-        StudioDialogFrame(modifier.width(StudioDialogDefaults.width(wide)).heightIn(max = StudioDialogDefaults.maxHeight())
-            .padding(horizontal = if (placement == StudioDialogPlacement.SIDE) 12.dp else 0.dp)
+        if (placement == StudioDialogPlacement.SIDE) {
+            // A full-window layer keeps the panel at the side even when the keyboard relayouts the
+            // window (window gravity does not survive that); taps beside the panel still dismiss.
+            SideEffect { window?.apply { setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT); setDimAmount(.12f) } }
+            Box(Modifier.fillMaxSize().imePadding().pointerInput(properties.dismissOnClickOutside) {
+                detectTapGestures { if (properties.dismissOnClickOutside) onDismissRequest() }
+            }, contentAlignment = Alignment.CenterEnd) {
+                frame(modifier.padding(horizontal = 12.dp).pointerInput(Unit) {
+                    // Taps on the panel, even on plain text, never reach the dismiss layer behind it.
+                    awaitPointerEventScope { while (true) awaitPointerEvent().changes.forEach { it.consume() } }
+                })
+            }
+        } else {
+            // The window wraps the panel, so taps beside it still dismiss.
+            SideEffect { window?.setLayout(android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT) }
             // Only dialogs that draw behind the keyboard reserve room for it, as with Material dialogs.
-            .let { if (properties.decorFitsSystemWindows) it else it.imePadding() },
-            title = title, icon = icon, shape = shape, containerColor = containerColor, body = text,
-            footer = { dismissButton?.invoke(); Spacer(Modifier.width(4.dp)); confirmButton() })
+            frame(modifier.let { if (properties.decorFitsSystemWindows) it else it.imePadding() })
+        }
     }
 }
 
