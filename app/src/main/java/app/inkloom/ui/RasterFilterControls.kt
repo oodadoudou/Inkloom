@@ -23,7 +23,9 @@ internal fun rasterFilterNames(tr: (String, String) -> String) = listOf(
     tr("ZigZag", "锯齿变形"), tr("Fish-eye lens", "鱼眼镜头"),
     tr("Brightness / Contrast", "亮度／对比度"), tr("Hue / Saturation / Luminosity", "色相／饱和度／明度"), tr("Levels", "色阶"),
     tr("Curves", "曲线"), tr("Color Balance", "色彩平衡"), tr("Invert", "反转"), tr("Posterize", "色调分离"),
-    tr("Threshold", "二值化"), tr("Gradient Map", "渐变映射"))
+    tr("Threshold", "二值化"), tr("Gradient Map", "渐变映射"),
+    tr("Remove JPEG noise", "去除 JPEG 噪声"), tr("Crystallize", "水晶"), tr("Normal map", "法线贴图"),
+    tr("Artistic", "插画风"), tr("Pencil drawing", "铅笔风"), tr("Film", "照片风（胶片）"))
 
 /** CSP's Filter menu groups, each listing preset kind indices. Headers never repeat a filter name. */
 internal fun rasterFilterGroups(tr: (String, String) -> String) = listOf(
@@ -32,7 +34,8 @@ internal fun rasterFilterGroups(tr: (String, String) -> String) = listOf(
     tr("NOISE & RENDER", "噪点与绘制") to listOf(10, 19, 2, 9, 11),
     tr("DISTORT", "变形类") to listOf(20, 21, 22, 5, 23, 24, 25, 26, 27, 28),
     tr("LINE ART", "线稿") to listOf(3, 4),
-    tr("TONAL CORRECTION", "色调补偿") to (RasterFilterPreset.FIRST_TONAL_KIND..RasterFilterPreset.LAST_KIND).toList(),
+    tr("EFFECT", "效果") to (RasterFilterPreset.FIRST_EFFECT_KIND..RasterFilterPreset.LAST_KIND).toList(),
+    tr("TONAL CORRECTION", "色调补偿") to (RasterFilterPreset.FIRST_TONAL_KIND..RasterFilterPreset.LAST_TONAL_KIND).toList(),
     tr("COLOR", "颜色") to listOf(12, 13))
 
 @Composable
@@ -114,6 +117,66 @@ internal fun RasterFilterExtraControls(state: RasterFilterPreset, onState: (Rast
             28 -> {
                 distortion(tr("Distortion", "畸变"), 0f..100f); area(); center()
                 Text(tr("Outside the lens becomes transparent.", "镜头以外的区域变为透明。"), Modifier.padding(top = 4.dp), style = note, color = muted)
+            }
+        }
+    }
+}
+
+/** Settings for CSP's Effect filters: Remove JPEG noise, Crystallize, Normal map, Artistic, Pencil drawing and Film. */
+@Composable
+internal fun RasterFilterEffectControls(state: RasterFilterPreset, onState: (RasterFilterPreset) -> Unit, tr: (String, String) -> String) {
+    val note = MaterialTheme.typography.bodySmall
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    @Composable fun percent(label: String, value: Float, onValue: (Float) -> Unit) = StudioSliderRow(label, value, 0f..100f, onValue)
+    Column {
+        when (state.kind - RasterFilterPreset.FIRST_EFFECT_KIND) {
+            0 -> Text(tr("Smooths the 8 × 8 block pattern and ringing that JPEG saving adds, keeping drawn edges.",
+                "平滑 JPEG 保存产生的 8 × 8 块状纹与振铃，保留绘制边缘。"), style = note, color = muted)
+            1 -> {
+                StudioSliderRow(tr("Cell size", "单元大小"), state.cellSize, 2f..200f, { onState(state.copy(cellSize = it)) }, unit = "px")
+                percent(tr("Randomness", "随机性"), state.randomness) { onState(state.copy(randomness = it)) }
+                StudioCheckRow(tr("Tiling", "无缝平铺"), state.tiling, { onState(state.copy(tiling = it)) })
+                StudioButton(tr("New pattern", "重新生成"), { onState(state.copy(seed = state.seed + 1)) })
+            }
+            2 -> {
+                StudioSliderRow(tr("Strength", "强度"), state.normalStrength, 1f..100f, { onState(state.copy(normalStrength = it)) })
+                StudioSegmented(listOf(tr("Y up (OpenGL)", "Y 向上（OpenGL）"), tr("Y down (DirectX)", "Y 向下（DirectX）")), state.mode.coerceAtMost(1),
+                    { onState(state.copy(mode = it)) }, label = tr("Y orientation", "Y 方向"))
+                Text(tr("Brightness is read as height and the whole layer becomes a normal map texture.", "以亮度作为高度，整个图层转换为法线贴图。"), style = note, color = muted)
+            }
+            3 -> {
+                StudioSegmented(listOf(tr("Color and lines", "颜色和线条"), tr("Color only", "仅颜色"), tr("Lines only", "仅线条")), state.artProcess,
+                    { onState(state.copy(artProcess = it)) }, label = tr("Process", "处理"))
+                if (state.artProcess != 1) {
+                    StudioSliderRow(tr("Line width", "线宽"), state.lineWidth, .5f..10f, { onState(state.copy(lineWidth = it)) }, unit = "px")
+                    percent(tr("Line simplicity", "线条简化"), state.lineSimplicity) { onState(state.copy(lineSimplicity = it)) }
+                    percent(tr("Line density", "线条密度"), state.lineDensity) { onState(state.copy(lineDensity = it)) }
+                    percent(tr("Line opacity", "线条不透明度"), state.lineOpacity) { onState(state.copy(lineOpacity = it)) }
+                    percent(tr("Line anti-aliasing", "线条抗锯齿"), state.lineAntiAliasing) { onState(state.copy(lineAntiAliasing = it)) }
+                }
+                if (state.artProcess != 2) {
+                    percent(tr("Color blending", "颜色融合"), state.colorBlending) { onState(state.copy(colorBlending = it)) }
+                    percent(tr("Color blur", "颜色模糊"), state.colorBlur) { onState(state.copy(colorBlur = it)) }
+                    StudioSliderRow(tr("Number of colors", "颜色数"), state.colorCount.toFloat(), 2f..64f, { onState(state.copy(colorCount = it.roundToInt())) })
+                }
+            }
+            4 -> {
+                StudioCheckRow(tr("Show outline", "显示轮廓"), state.pencilOutline, { onState(state.copy(pencilOutline = it)) })
+                StudioCheckRow(tr("Show hatching", "显示排线"), state.pencilHatching, { onState(state.copy(pencilHatching = it)) })
+                if (state.pencilHatching) {
+                    StudioSliderRow(tr("Hatching size", "排线粗细"), state.hatchSize, 1f..10f, { onState(state.copy(hatchSize = it)) })
+                    percent(tr("Hatching roughness", "排线粗糙度"), state.hatchRoughness) { onState(state.copy(hatchRoughness = it)) }
+                    StudioSliderRow(tr("Hatching angle", "排线角度"), state.angle, -180f..180f, { onState(state.copy(angle = it)) }, unit = "°")
+                }
+                StudioCheckRow(tr("Greyscale output", "灰度输出"), state.grayscale, { onState(state.copy(grayscale = it)) })
+            }
+            5 -> {
+                StudioSegmented(listOf(tr("Vintage", "复古"), tr("Modern", "现代"), tr("Warm", "暖色")), state.mode.coerceAtMost(2),
+                    { onState(state.copy(mode = it)) }, label = tr("Look", "风格"))
+                percent(tr("Intensity", "强度"), state.filmIntensity) { onState(state.copy(filmIntensity = it)) }
+                percent(tr("Chromatic aberration", "色差"), state.filmAberration) { onState(state.copy(filmAberration = it)) }
+                percent(tr("Noise", "噪点"), state.filmNoise) { onState(state.copy(filmNoise = it)) }
+                StudioButton(tr("New grain", "重新生成颗粒"), { onState(state.copy(seed = state.seed + 1)) })
             }
         }
     }

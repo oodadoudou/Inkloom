@@ -54,6 +54,19 @@ internal object RasterImageFilter {
         data class Distort(val kind: DistortKind, val parameters: DistortParameters) : Effect { override val sigma = 1f }
         /** CSP Edit > Tonal correction applied to pixels, with exactly the math of an adjustment layer. */
         data class Tonal(val adjustment: app.inkloom.document.LayerAdjustment) : Effect { override val sigma = 1f }
+        /** CSP Filter > Effect > Remove JPEG noise: edge-preserving smoothing on the 8 × 8 block grid. */
+        data object RemoveJpegNoise : Effect { override val sigma = 1f }
+        data class Crystallize(val cellSize: Float, val randomness: Float, val tiling: Boolean, val seed: Int = 1) : Effect {
+            override val sigma = 1f
+            init { require(cellSize in 2f..200f && randomness in 0f..100f) { "Crystallize settings are out of range" } }
+        }
+        data class NormalMap(val strength: Float, val yUp: Boolean = true) : Effect {
+            override val sigma = 1f
+            init { require(strength in 1f..100f) { "Normal map strength must be between 1 and 100" } }
+        }
+        data class Artistic(val parameters: ArtisticParameters) : Effect { override val sigma = 1f }
+        data class PencilDrawing(val parameters: PencilParameters) : Effect { override val sigma = 1f }
+        data class Film(val parameters: FilmParameters) : Effect { override val sigma = 1f }
     }
 
     fun apply(
@@ -65,6 +78,9 @@ internal object RasterImageFilter {
         if (effect is Effect.ConvertToDrawingColor || effect == Effect.BrightnessToOpacity)
             return RasterColorConversion.apply(source, effect, selection, cancelled)
         if (effect is Effect.Tonal) return RasterTonalCorrection.apply(source, effect.adjustment, selection)
+        if (effect is Effect.RemoveJpegNoise || effect is Effect.Crystallize || effect is Effect.NormalMap ||
+            effect is Effect.Artistic || effect is Effect.PencilDrawing || effect is Effect.Film)
+            return RasterEffectFilter.apply(source, effect, selection, cancelled)
         if (effect is Effect.FixedBlur || effect is Effect.PerlinNoise || effect is Effect.Distort)
             return RasterDistortFilter.apply(source, effect, selection, cancelled)
         if(source.pixelFormat.isHighPrecision || effect is Effect.MotionBlur || effect is Effect.RadialBlur ||

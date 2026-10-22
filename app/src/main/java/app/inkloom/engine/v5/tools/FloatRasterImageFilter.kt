@@ -72,7 +72,9 @@ internal object FloatRasterImageFilter {
                     return when(effect){
                         is RasterImageFilter.Effect.ConvertToDrawingColor, RasterImageFilter.Effect.BrightnessToOpacity ->
                             error("Color conversions use their pixel-local pipeline")
-                        is RasterImageFilter.Effect.FixedBlur, is RasterImageFilter.Effect.PerlinNoise, is RasterImageFilter.Effect.Distort, is RasterImageFilter.Effect.Tonal ->
+                        is RasterImageFilter.Effect.FixedBlur, is RasterImageFilter.Effect.PerlinNoise, is RasterImageFilter.Effect.Distort, is RasterImageFilter.Effect.Tonal,
+                        RasterImageFilter.Effect.RemoveJpegNoise, is RasterImageFilter.Effect.Crystallize, is RasterImageFilter.Effect.NormalMap,
+                        is RasterImageFilter.Effect.Artistic, is RasterImageFilter.Effect.PencilDrawing, is RasterImageFilter.Effect.Film ->
                             error("Fixed blurs, noise and distortions use their own pipeline")
                         is RasterImageFilter.Effect.GaussianBlur,is RasterImageFilter.Effect.UnsharpMask -> {
                             val i=((y-key.row*tile)*w+x-key.column*tile)*4;val p=requireNotNull(blurred)

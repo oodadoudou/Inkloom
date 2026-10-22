@@ -51,7 +51,8 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
             }
             HorizontalDivider(Modifier.padding(vertical=6.dp),color=MaterialTheme.colorScheme.outline)
             RasterFilterBasicControls(state,{state=it},::tr) { colorPickerOpen=true }
-            if (state.kind >= RasterFilterPreset.FIRST_TONAL_KIND) {
+            if (state.kind >= RasterFilterPreset.FIRST_EFFECT_KIND) RasterFilterEffectControls(state,{state=it},::tr)
+            else if (state.kind >= RasterFilterPreset.FIRST_TONAL_KIND) {
                 val kind=RasterFilterPreset.TONAL_KINDS[state.kind-RasterFilterPreset.FIRST_TONAL_KIND]
                 AdjustmentParameters((state.adjustment ?: app.inkloom.document.LayerAdjustment()).copy(kind=kind),channel,{channel=it},{state=state.copy(adjustment=it)},language)
                 StudioNote(tr("Changes the layer's pixels. Use an adjustment layer to keep the correction editable.","直接修改图层像素；若要保留可编辑性，请使用调整图层。"),Modifier.padding(top=4.dp))

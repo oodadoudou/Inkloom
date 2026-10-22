@@ -2,7 +2,12 @@ package app.inkloom.settings
 
 import app.inkloom.document.LayerAdjustment
 import app.inkloom.document.LayerAdjustmentKind
+import app.inkloom.engine.v5.tools.ArtisticParameters
+import app.inkloom.engine.v5.tools.ArtisticProcess
 import app.inkloom.engine.v5.tools.DistortKind
+import app.inkloom.engine.v5.tools.FilmLook
+import app.inkloom.engine.v5.tools.FilmParameters
+import app.inkloom.engine.v5.tools.PencilParameters
 import app.inkloom.engine.v5.tools.DistortParameters
 import app.inkloom.engine.v5.tools.FixedBlurKind
 import app.inkloom.engine.v5.tools.RasterImageFilter
@@ -21,7 +26,13 @@ data class RasterFilterPreset(val id:String=UUID.randomUUID().toString(),val nam
     val horizontalRatio:Float=100f,val verticalRatio:Float=100f,val mode:Int=0,val wrap:Boolean=false,val scale:Float=100f,
     val noiseScale:Float=64f,val noiseAmplitude:Float=.5f,val attenuation:Float=.5f,val octaves:Int=4,
     /** Tonal correction settings for kinds from [FIRST_TONAL_KIND]. */
-    val adjustment:LayerAdjustment?=null) {
+    val adjustment:LayerAdjustment?=null,
+    // CSP Filter > Effect settings, in CSP's units (0..100 unless noted).
+    val cellSize:Float=24f,val randomness:Float=70f,val tiling:Boolean=false,val normalStrength:Float=30f,
+    val artProcess:Int=0,val lineWidth:Float=2f,val lineSimplicity:Float=40f,val lineDensity:Float=50f,val lineOpacity:Float=100f,
+    val lineAntiAliasing:Float=50f,val colorBlending:Float=50f,val colorBlur:Float=20f,val colorCount:Int=8,
+    val pencilOutline:Boolean=true,val pencilHatching:Boolean=true,val hatchSize:Float=2f,val hatchRoughness:Float=40f,val grayscale:Boolean=true,
+    val filmIntensity:Float=70f,val filmAberration:Float=30f,val filmNoise:Float=30f) {
     fun normalized():RasterFilterPreset {
         fun Float.bounded(range:ClosedFloatingPointRange<Float>,fallback:Float)=takeIf{it.isFinite()}?.coerceIn(range)?:fallback
         val lengthMin=wavelengthMin.bounded(2f..2000f,40f);val heightMin=amplitudeMin.bounded(0f..1000f,5f)
@@ -33,7 +44,13 @@ data class RasterFilterPreset(val id:String=UUID.randomUUID().toString(),val nam
         amplitudeMin=heightMin,amplitudeMax=amplitudeMax.bounded(heightMin..1000f,20f.coerceAtLeast(heightMin)),
         horizontalRatio=horizontalRatio.bounded(0f..100f,100f),verticalRatio=verticalRatio.bounded(0f..100f,100f),mode=mode.coerceIn(0,2),
         scale=scale.bounded(10f..400f,100f),noiseScale=noiseScale.bounded(2f..2000f,64f),noiseAmplitude=noiseAmplitude.bounded(0f..1f,.5f),
-        attenuation=attenuation.bounded(0f..1f,.5f),octaves=octaves.coerceIn(1,8))
+        attenuation=attenuation.bounded(0f..1f,.5f),octaves=octaves.coerceIn(1,8),
+        cellSize=cellSize.bounded(2f..200f,24f),randomness=randomness.bounded(0f..100f,70f),normalStrength=normalStrength.bounded(1f..100f,30f),
+        artProcess=artProcess.coerceIn(0,2),lineWidth=lineWidth.bounded(.5f..10f,2f),lineSimplicity=lineSimplicity.bounded(0f..100f,40f),
+        lineDensity=lineDensity.bounded(0f..100f,50f),lineOpacity=lineOpacity.bounded(0f..100f,100f),lineAntiAliasing=lineAntiAliasing.bounded(0f..100f,50f),
+        colorBlending=colorBlending.bounded(0f..100f,50f),colorBlur=colorBlur.bounded(0f..100f,20f),colorCount=colorCount.coerceIn(2,64),
+        hatchSize=hatchSize.bounded(1f..10f,2f),hatchRoughness=hatchRoughness.bounded(0f..100f,40f),
+        filmIntensity=filmIntensity.bounded(0f..100f,70f),filmAberration=filmAberration.bounded(0f..100f,30f),filmNoise=filmNoise.bounded(0f..100f,30f))
     }
     internal fun distortParameters()=DistortParameters(distortion,centerX,centerY,radius,shape,angle,tension,count,
         wavelengthMin,wavelengthMax,amplitudeMin,amplitudeMax,horizontalRatio,verticalRatio,mode,wrap,scale,seed)
@@ -49,7 +66,14 @@ data class RasterFilterPreset(val id:String=UUID.randomUUID().toString(),val nam
         16->RasterImageFilter.Effect.FixedBlur(FixedBlurKind.BLUR);17->RasterImageFilter.Effect.FixedBlur(FixedBlurKind.STRONG_BLUR)
         18->RasterImageFilter.Effect.FixedBlur(FixedBlurKind.SMOOTH)
         19->RasterImageFilter.Effect.PerlinNoise(p.noiseScale,p.noiseAmplitude,p.attenuation,p.octaves,p.seed)
-        in FIRST_TONAL_KIND..LAST_KIND->RasterImageFilter.Effect.Tonal((p.adjustment ?: LayerAdjustment()).copy(kind=TONAL_KINDS[p.kind-FIRST_TONAL_KIND]))
+        in FIRST_TONAL_KIND..LAST_TONAL_KIND->RasterImageFilter.Effect.Tonal((p.adjustment ?: LayerAdjustment()).copy(kind=TONAL_KINDS[p.kind-FIRST_TONAL_KIND]))
+        FIRST_EFFECT_KIND->RasterImageFilter.Effect.RemoveJpegNoise
+        FIRST_EFFECT_KIND+1->RasterImageFilter.Effect.Crystallize(p.cellSize,p.randomness,p.tiling,p.seed)
+        FIRST_EFFECT_KIND+2->RasterImageFilter.Effect.NormalMap(p.normalStrength,yUp=p.mode==0)
+        FIRST_EFFECT_KIND+3->RasterImageFilter.Effect.Artistic(ArtisticParameters(ArtisticProcess.entries[p.artProcess],p.lineWidth,p.lineSimplicity,
+            p.lineDensity,p.lineOpacity,p.lineAntiAliasing,p.colorBlending,p.colorBlur,p.colorCount))
+        FIRST_EFFECT_KIND+4->RasterImageFilter.Effect.PencilDrawing(PencilParameters(p.pencilOutline,p.pencilHatching,p.hatchSize,p.hatchRoughness,p.angle,p.grayscale,p.seed))
+        FIRST_EFFECT_KIND+5->RasterImageFilter.Effect.Film(FilmParameters(FilmLook.entries[p.mode.coerceIn(0,2)],p.filmIntensity,p.filmAberration,p.filmNoise,p.seed))
         else->RasterImageFilter.Effect.Distort(DISTORT_KINDS[p.kind-FIRST_DISTORT_KIND],p.distortParameters())
     }}
     companion object {
@@ -62,7 +86,10 @@ data class RasterFilterPreset(val id:String=UUID.randomUUID().toString(),val nam
         val TONAL_KINDS=listOf(LayerAdjustmentKind.BRIGHTNESS_CONTRAST,LayerAdjustmentKind.HUE_SATURATION,LayerAdjustmentKind.LEVELS,
             LayerAdjustmentKind.CURVES,LayerAdjustmentKind.COLOR_BALANCE,LayerAdjustmentKind.INVERT,LayerAdjustmentKind.POSTERIZE,
             LayerAdjustmentKind.THRESHOLD,LayerAdjustmentKind.GRADIENT_MAP)
-        val LAST_KIND=FIRST_TONAL_KIND+TONAL_KINDS.lastIndex
+        val LAST_TONAL_KIND=FIRST_TONAL_KIND+TONAL_KINDS.lastIndex
+        /** Remove JPEG noise, Crystallize, Normal map, Artistic, Pencil drawing and Film. */
+        val FIRST_EFFECT_KIND=LAST_TONAL_KIND+1
+        val LAST_KIND=FIRST_EFFECT_KIND+5
     }
 }
 object RasterFilterPresetsCodec {

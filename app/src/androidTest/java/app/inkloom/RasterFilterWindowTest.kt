@@ -276,6 +276,56 @@ class RasterFilterWindowTest {
         applied(ink, twirled, noise)
     }
 
+    @Test fun cspEffectFiltersAndTonalCorrectionApplyFromTheirGroups() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        val view = canvas()
+        val rect = IntArray(2)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.getLocationOnScreen(rect) }
+        val y = rect[1] + view.height * .45f
+        val down = SystemClock.uptimeMillis()
+        event(MotionEvent.ACTION_DOWN, rect[0] + view.width * .3f, y, down)
+        repeat(16) { index -> event(MotionEvent.ACTION_MOVE, rect[0] + view.width * (.3f + .4f * (index + 1) / 16f), y, down) }
+        event(MotionEvent.ACTION_UP, rect[0] + view.width * .7f, y, down)
+        compose.waitUntil(15_000) { fingerprint(view) != 0 && !view.hasPendingPaintPublicationForMerge() }
+        val ink = fingerprint(view)
+        fun open(kind: String, menu: String = "Image filter…") {
+            compose.onNodeWithContentDescription("Actions").performClick()
+            compose.onNodeWithContentDescription("Actions Canvas").performClick()
+            compose.onNodeWithText(menu).performScrollTo().performClick()
+            if (menu == "Image filter…") {
+                compose.onNodeWithText("Gaussian blur").performClick()
+                compose.onNodeWithText(kind).performScrollTo().performClick()
+            }
+        }
+        fun applied(vararg excluded: Int): Int {
+            compose.onNodeWithText("Apply").performClick()
+            var result = 0
+            compose.waitUntil(30_000) {
+                val first = fingerprint(view); SystemClock.sleep(200)
+                result = fingerprint(view)
+                !view.selectionLayerTransferPending && first == result && result !in excluded
+            }
+            return result
+        }
+        open("Crystallize")
+        compose.onNodeWithText("Cell size").assertExists()
+        applied(ink)
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        compose.waitUntil(15_000) { fingerprint(view) == ink }
+        open("Normal map")
+        compose.onNodeWithText("Y orientation").assertExists()
+        applied(ink)
+        val map = requireNotNull(view.activeRasterSnapshotForTest())
+        assertTrue("the whole layer becomes a normal map", map.pixelAt(2, 2) ushr 24 == 255 && (map.pixelAt(2, 2) and 255) > 240)
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        compose.waitUntil(15_000) { fingerprint(view) == ink }
+        // Tonal correction opens on its first correction and bakes it into the layer.
+        open("", menu = "Tonal correction…")
+        compose.onNodeWithText("Brightness / Contrast").assertExists()
+        compose.onNodeWithText("Gaussian blur").assertDoesNotExist()
+    }
+
     private fun fingerprint(view: InkCanvasView): Int {
         val snapshot = view.activeRasterSnapshotForTest() ?: return 0
         return snapshot.copyPremultipliedPixels(PixelRect(0, 0, snapshot.logicalWidth, snapshot.logicalHeight)).contentHashCode()
