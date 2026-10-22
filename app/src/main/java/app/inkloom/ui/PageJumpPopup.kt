@@ -118,7 +118,7 @@ private fun PageNumberField(pages: List<InkPage>, language: UiLanguage, onSelect
         if (target == null) missing = query.isNotBlank()
         else { keyboard?.hide(); onSelect(target) }
     }
-    OutlinedTextField(query, { query = it.take(32); missing = false },
+    StudioOutlinedTextField(query, { query = it.take(32); missing = false },
         Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
         singleLine = true, isError = missing,
         label = { Text(language.text("Page number", "页码")) },

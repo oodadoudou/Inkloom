@@ -37,7 +37,7 @@ internal fun SavedSelectionsPanel(
     fun t(en: String, zh: String) = language.text(en, zh)
     var renaming by remember { mutableStateOf<SavedSelection?>(null) }
     var renameValue by remember { mutableStateOf("") }
-    AlertDialog(onDismissRequest = onDismiss,
+    StudioDialog(onDismissRequest = onDismiss,
         title = { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(t("Selections", "选区"), Modifier.weight(1f))
             IconButton(onClick = onSave, enabled = canSave,
@@ -78,10 +78,10 @@ internal fun SavedSelectionsPanel(
                                     MaskComposeMode.SUBTRACT to t("Subtract from selection", "从选区减去"),
                                     MaskComposeMode.INTERSECT to t("Intersect selection", "与选区交集"),
                                 ).forEach { (mode, label) ->
-                                    DropdownMenuItem(text = { Text(label) }, onClick = { actionMenu = false; onLoad(entry, mode) })
+                                    StudioMenuItem(text = { Text(label) }, onClick = { actionMenu = false; onLoad(entry, mode) })
                                 }
                                 HorizontalDivider()
-                                DropdownMenuItem(text = { Text(t("Rename", "重命名")) }, onClick = {
+                                StudioMenuItem(text = { Text(t("Rename", "重命名")) }, onClick = {
                                     actionMenu = false; renaming = entry; renameValue = entry.name
                                 })
                             }
@@ -97,9 +97,9 @@ internal fun SavedSelectionsPanel(
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(t("Done", "完成")) } })
     renaming?.let { entry ->
-        AlertDialog(onDismissRequest = { renaming = null },
+        StudioDialog(onDismissRequest = { renaming = null },
             title = { Text(t("Rename selection", "重命名选区")) },
-            text = { OutlinedTextField(renameValue, { renameValue = it }, singleLine = true,
+            text = { StudioOutlinedTextField(renameValue, { renameValue = it }, singleLine = true,
                 label = { Text(t("Name", "名称")) }) },
             confirmButton = { TextButton(onClick = {
                 onRename(entry, renameValue.trim()); renaming = null

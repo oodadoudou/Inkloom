@@ -108,26 +108,26 @@ internal fun ImagePaperPreviewDialog(template: PageTemplate, saveFailed: Boolean
                     Text(tr("Image paper", "图片纸张"), style = MaterialTheme.typography.headlineSmall)
             Column(Modifier.weight(1f, fill = false).heightIn(max = 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ImagePaperThumbnail(background, Modifier.fillMaxWidth().height(180.dp))
-                OutlinedTextField(name, { name = it.take(80) }, label = { Text(tr("Template name", "模板名称")) }, singleLine = true)
-                OutlinedTextField(width, { input ->
+                StudioOutlinedTextField(name, { name = it.take(80) }, label = { Text(tr("Template name", "模板名称")) }, singleLine = true)
+                StudioOutlinedTextField(width, { input ->
                     width = input.filter(Char::isDigit).take(5)
                     if (locked) width.toIntOrNull()?.let { height = (it * template.height / template.width).toInt().coerceAtLeast(1).toString() }
                 }, label = { Text(tr("Width (px)", "宽度 (px)")) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = androidx.compose.ui.text.input.ImeAction.Done), keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { finishEditing() }))
-                OutlinedTextField(height, { input ->
+                StudioOutlinedTextField(height, { input ->
                     height = input.filter(Char::isDigit).take(5)
                     if (locked) height.toIntOrNull()?.let { width = (it * template.width / template.height).toInt().coerceAtLeast(1).toString() }
                 }, label = { Text(tr("Height (px)", "高度 (px)")) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = androidx.compose.ui.text.input.ImeAction.Done), keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { finishEditing() }))
-                Row { Checkbox(locked, { locked = it }); Text(tr("Keep proportions", "保持比例"), Modifier.padding(top = 12.dp)) }
+                Row { StudioCheckbox(locked, { locked = it }); Text(tr("Keep proportions", "保持比例"), Modifier.padding(top = 12.dp)) }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(PaperColorCatalog.WHITE to tr("White", "白色"),
                         PaperColorCatalog.WARM_IVORY to tr("Ivory", "象牙色"),
                         PaperColorCatalog.SOFT_GRAY to tr("Gray", "灰色")).forEach { (value, label) ->
-                        FilterChip(paperColor == value.toLong(), { paperColor = value.toLong() }, label = { Text(label) })
+                        StudioFilterChip(paperColor == value.toLong(), { paperColor = value.toLong() }, label = { Text(label) })
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(!crop, { crop = false }, label = { Text(tr("Fit image", "完整显示")) })
-                    FilterChip(crop, { crop = true }, label = { Text(tr("Fill and crop", "铺满裁切")) })
+                    StudioFilterChip(!crop, { crop = false }, label = { Text(tr("Fit image", "完整显示")) })
+                    StudioFilterChip(crop, { crop = true }, label = { Text(tr("Fill and crop", "铺满裁切")) })
                 }
             }
 

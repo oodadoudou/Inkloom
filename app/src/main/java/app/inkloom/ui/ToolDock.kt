@@ -74,7 +74,7 @@ private fun EraserPresetMenu(selected: EraserPreset, onSelect: (EraserPreset) ->
         TextButton(onClick = { expanded = true }) { Text(selected.displayName()) }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             EraserPreset.entries.forEach { preset ->
-                DropdownMenuItem(
+                StudioMenuItem(
                     text = { Text(preset.displayName()) },
                     leadingIcon = { if (preset == selected) Icon(Icons.Outlined.Check, null) },
                     onClick = { expanded = false; onSelect(preset) },
@@ -90,7 +90,7 @@ private fun EraserPresetPicker(selected: EraserPreset, onSelect: (EraserPreset) 
         EraserPreset.entries.toList().chunked(3).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 row.forEach { preset ->
-                    FilterChip(
+                    StudioFilterChip(
                         selected = selected == preset,
                         onClick = { onSelect(preset) },
                         label = { Text(preset.displayName(), fontSize = 10.sp, maxLines = 1) },
@@ -151,10 +151,10 @@ internal fun GradientToolControls(settings: AppSettings, brushColor: Int, second
         runCatching { change() }.onSuccess { onSettingsChange(settings.copy(gradientPresets = it)) }
             .onFailure { Toast.makeText(context, it.message ?: "Gradient preset operation failed", Toast.LENGTH_LONG).show() }
     }
-    if (nameAction != null) AlertDialog(
+    if (nameAction != null) StudioDialog(
         onDismissRequest = { nameAction = null },
         title = { Text(when (nameAction) { "rename" -> tr("Rename gradient", "重命名渐变"); "duplicate" -> tr("Duplicate gradient", "复制渐变"); else -> tr("Save gradient", "保存渐变") }) },
-        text = { OutlinedTextField(enteredName, { enteredName = it.take(64) }, Modifier.testTag("gradient-preset-name"), singleLine = true, label = { Text(tr("Name", "名称")) }) },
+        text = { StudioOutlinedTextField(enteredName, { enteredName = it.take(64) }, Modifier.testTag("gradient-preset-name"), singleLine = true, label = { Text(tr("Name", "名称")) }) },
         confirmButton = { TextButton(onClick = {
             when (nameAction) {
                 "rename" -> selectedPreset?.let { preset -> editLibrary { settings.gradientPresets.rename(preset.id, enteredName) } }
@@ -174,13 +174,13 @@ internal fun GradientToolControls(settings: AppSettings, brushColor: Int, second
             DropdownMenu(expanded = presetMenuOpen, onDismissRequest = { presetMenuOpen = false }) {
                 // Built-ins first, as CSP lists its standard set before your own materials.
                 Text(tr("Built-in", "内置"), Modifier.padding(horizontal = 12.dp, vertical = 4.dp), color = MutedInk, fontSize = 11.sp)
-                builtIns.forEach { preset -> DropdownMenuItem(text = { Text(builtInName(preset.id)) }, onClick = { applyPreset(preset) }) }
+                builtIns.forEach { preset -> StudioMenuItem(text = { Text(builtInName(preset.id)) }, onClick = { applyPreset(preset) }) }
                 if (settings.gradientPresets.presets.isNotEmpty()) {
                     HorizontalDivider()
                     Text(tr("My gradients", "我的渐变"), Modifier.padding(horizontal = 12.dp, vertical = 4.dp), color = MutedInk, fontSize = 11.sp)
                 }
                 settings.gradientPresets.presets.forEach { preset ->
-                    DropdownMenuItem(text = { Text(preset.name) }, onClick = { applyPreset(preset) })
+                    StudioMenuItem(text = { Text(preset.name) }, onClick = { applyPreset(preset) })
                 }
             }
         }
@@ -199,7 +199,7 @@ internal fun GradientToolControls(settings: AppSettings, brushColor: Int, second
     Text(tr("Shape", "形状"), color = MutedInk, fontSize = 11.sp)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         GradientKind.entries.forEach { kind ->
-            FilterChip(
+            StudioFilterChip(
                 selected = settings.gradientKind == kind,
                 onClick = { onSettingsChange(settings.copy(gradientKind = kind)) },
                 label = { Text(when (kind) {
@@ -216,7 +216,7 @@ internal fun GradientToolControls(settings: AppSettings, brushColor: Int, second
     Text(tr("Edge process", "边缘处理"), color = MutedInk, fontSize = 11.sp)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         GradientEdgeMode.entries.forEach { edge ->
-            FilterChip(
+            StudioFilterChip(
                 selected = settings.gradientEdgeMode == edge,
                 onClick = { onSettingsChange(settings.copy(gradientEdgeMode = edge)) },
                 label = { Text(when (edge) {
@@ -240,7 +240,7 @@ internal fun GradientToolControls(settings: AppSettings, brushColor: Int, second
     }
     if (settings.gradientAngleSnapEnabled) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
         listOf(5f, 15f, 30f, 45f).forEach { step ->
-            FilterChip(selected = settings.gradientAngleSnapDegrees == step, onClick = { onSettingsChange(settings.copy(gradientAngleSnapDegrees = step)) }, label = { Text("${step.toInt()}°", fontSize = 9.sp) })
+            StudioFilterChip(selected = settings.gradientAngleSnapDegrees == step, onClick = { onSettingsChange(settings.copy(gradientAngleSnapDegrees = step)) }, label = { Text("${step.toInt()}°", fontSize = 9.sp) })
         }
     }
     if (settings.gradientKind == GradientKind.ELLIPSE) {
@@ -557,7 +557,7 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
             }
             HorizontalDivider()
             if (toolLibraryLayout == ToolLibraryLayout.LIST) displayedTools.forEach { (value, icon, label) ->
-                DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(icon, null) }, onClick = {
+                StudioMenuItem(text = { Text(label) }, leadingIcon = { Icon(icon, null) }, onClick = {
                     onMoreToolsOpen(false)
                     onTool(value)
                     if (value == EditorTool.CORRECT_LINE) onControlsOpen(true)
@@ -590,26 +590,26 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
                 }
             }
             HorizontalDivider()
-            DropdownMenuItem(
+            StudioMenuItem(
                 text = { Text(tr(if (rulerEnabled) "Hide ruler" else "Show ruler", if (rulerEnabled) "隐藏直尺" else "显示直尺")) },
                 leadingIcon = { Icon(Icons.Outlined.Straighten, null) },
                 trailingIcon = { if (rulerEnabled) Icon(Icons.Outlined.Check, null) },
                 onClick = { onMoreToolsOpen(false); onToggleRuler() },
             )
-            DropdownMenuItem(
+            StudioMenuItem(
                 text = { Text(tr(if (gridSnapEnabled) "Hide snap grid" else "Show snap grid", if (gridSnapEnabled) "隐藏吸附网格" else "显示吸附网格")) },
                 leadingIcon = { Icon(Icons.Outlined.GridOn, null) },
                 trailingIcon = { if (gridSnapEnabled) Icon(Icons.Outlined.Check, null) },
                 onClick = { onMoreToolsOpen(false); onToggleGridSnap() },
             )
-            DropdownMenuItem(
+            StudioMenuItem(
                 text = { Text(tr(if (alignmentGuidesEnabled) "Hide alignment guides" else "Show alignment guides", if (alignmentGuidesEnabled) "隐藏对齐参考线" else "显示对齐参考线")) },
                 leadingIcon = { Icon(Icons.Outlined.AlignHorizontalCenter, null) },
                 trailingIcon = { if (alignmentGuidesEnabled) Icon(Icons.Outlined.Check, null) },
                 onClick = { onMoreToolsOpen(false); onToggleAlignmentGuides() },
             )
             HorizontalDivider()
-            DropdownMenuItem(
+            StudioMenuItem(
                 text = { Text(tr("Symmetry", "对称") + ": " + when (symmetryMode) { SymmetryMode.NONE -> tr("Off", "关"); SymmetryMode.HORIZONTAL -> tr("Horizontal", "水平"); SymmetryMode.VERTICAL -> tr("Vertical", "垂直"); SymmetryMode.QUADRANT -> tr("Quadrant", "四象限"); SymmetryMode.RADIAL_4 -> tr("Radial 4", "径向 4"); SymmetryMode.RADIAL_6 -> tr("Radial 6", "径向 6"); SymmetryMode.RADIAL_8 -> tr("Radial 8", "径向 8") }) },
                 leadingIcon = { Icon(Icons.Outlined.Flip, null) },
                 onClick = {
@@ -653,7 +653,7 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
                     Text(tr("Ruler angle snap", "直尺角度吸附"), color = MutedInk, fontSize = 12.sp)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                         listOf(1f, 5f, 15f, 45f).forEach { step ->
-                            FilterChip(selected = rulerSnapDegrees == step, onClick = { onRulerSnap(step) }, label = { Text("${step.toInt()}°", fontSize = 10.sp) })
+                            StudioFilterChip(selected = rulerSnapDegrees == step, onClick = { onRulerSnap(step) }, label = { Text("${step.toInt()}°", fontSize = 10.sp) })
                         }
                     }
                     OutlinedButton(onClick = onResetRuler, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(6.dp)); Text(tr("Reset ruler", "重置直尺")) }
@@ -663,7 +663,7 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
                     Text(tr("Snap grid spacing", "吸附网格间距"), color = MutedInk, fontSize = 12.sp)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                         listOf(32f, 64f, 96f, 128f).forEach { spacing ->
-                            FilterChip(selected = gridSpacing == spacing, onClick = { onGridSpacing(spacing) }, label = { Text(spacing.toInt().toString(), fontSize = 10.sp) })
+                            StudioFilterChip(selected = gridSpacing == spacing, onClick = { onGridSpacing(spacing) }, label = { Text(spacing.toInt().toString(), fontSize = 10.sp) })
                         }
                     }
                 }
@@ -677,7 +677,7 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
                     Text(tr("Reference", "参照范围"), color = MutedInk, fontSize = 12.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                         ReferenceTarget.entries.forEach { target ->
-                            FilterChip(
+                            StudioFilterChip(
                                 selected = referenceTarget == target,
                                 onClick = { onReferenceTarget(target) },
                                 label = {
@@ -707,7 +707,7 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
                                 CorrectLineMode.CONNECT -> tr("Connect vector lines", "连接矢量线")
                                 CorrectLineMode.CONTROL_POINTS -> tr("Move vector control points", "移动矢量控制点")
                             }
-                            FilterChip(
+                            StudioFilterChip(
                                 selected = correctLineMode == mode,
                                 onClick = { onCorrectLineMode(mode) },
                                 modifier = Modifier.semantics { contentDescription = correctionDescription },
@@ -1037,7 +1037,7 @@ internal fun FillOptionsLauncher(
                         Text(tr("Fill sub tool", "填充子工具"), fontSize = 11.sp)
                         FillSubTool.entries.forEach { option ->
                             Row(Modifier.fillMaxWidth().height(34.dp).clickable { onSubTool(option) }, verticalAlignment = Alignment.CenterVertically) {
-                                RadioButton(subTool == option, { onSubTool(option) })
+                                StudioRadioButton(subTool == option, { onSubTool(option) })
                                 Text(when (option) { FillSubTool.BUCKET -> tr("Refer and fill", "参照并填充"); FillSubTool.ENCLOSE_AND_FILL -> tr("Enclose and fill", "包围并填充"); FillSubTool.LASSO_FILL -> tr("Lasso fill", "套索填充"); FillSubTool.LEFTOVER_PEN -> tr("Leftover pen", "漏涂笔") }, fontSize = 11.sp)
                             }
                         }
@@ -1045,7 +1045,7 @@ internal fun FillOptionsLauncher(
                         Text(tr("Fill target", "填充目标"), fontSize = 11.sp)
                         app.inkloom.settings.FillTargetMode.entries.forEach { option ->
                             Row(Modifier.fillMaxWidth().height(34.dp).clickable { onTargetMode(option) }, verticalAlignment = Alignment.CenterVertically) {
-                                RadioButton(targetMode == option, { onTargetMode(option) })
+                                StudioRadioButton(targetMode == option, { onTargetMode(option) })
                                 Text(when (option) {
                                     app.inkloom.settings.FillTargetMode.TOUCHED_COLOR -> tr("Touched color", "触点颜色")
                                     app.inkloom.settings.FillTargetMode.TRANSPARENT_ONLY -> tr("Transparent area", "透明区域")
@@ -1073,7 +1073,7 @@ internal fun FillOptionsLauncher(
                         Text(tr("Scaling corners", "扩张边角"), fontSize = 11.sp)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             app.inkloom.settings.FillExpansionShape.entries.forEach { shape ->
-                                FilterChip(
+                                StudioFilterChip(
                                     selected = expansionShape == shape,
                                     onClick = { onExpansionShape(shape) },
                                     label = { Text(if (shape == app.inkloom.settings.FillExpansionShape.ROUND) tr("Round", "圆形") else tr("Rectangle", "矩形")) },

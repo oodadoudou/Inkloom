@@ -22,7 +22,6 @@ import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -76,7 +75,7 @@ internal fun EditorViewManagerDialog(
 ) {
     val language = LocalUiLanguage.current
     fun tr(en: String, zh: String) = language.text(en, zh)
-    AlertDialog(
+    StudioDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier.widthIn(max = 400.dp),
         title = { Text(tr("Views", "视图")) },

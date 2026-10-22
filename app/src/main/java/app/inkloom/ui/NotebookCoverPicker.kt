@@ -46,8 +46,8 @@ internal fun NotebookCoverPicker(
             IconButton(onImport, enabled = !importing) { Icon(Icons.Outlined.AddPhotoAlternate, tr("Import cover image", "导入封面图片")) }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(!mine, { onBrowse(); mine = false }, label = { Text(tr("Preset covers", "预设封面")) })
-            FilterChip(mine, { onBrowse(); mine = true }, label = { Text(tr("My covers", "我的封面")) })
+            StudioFilterChip(!mine, { onBrowse(); mine = false }, label = { Text(tr("Preset covers", "预设封面")) })
+            StudioFilterChip(mine, { onBrowse(); mine = true }, label = { Text(tr("My covers", "我的封面")) })
         }
         if (importing) LinearProgressIndicator(Modifier.fillMaxWidth())
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -86,7 +86,7 @@ internal fun NotebookCoverPicker(
         if (mine && covers.isEmpty() && !importing) Text(tr("Import an image to save a reusable cover", "导入图片，保存为可复用封面"), fontSize = 12.sp, color = MutedInk)
     }
     deleting?.let { cover ->
-        AlertDialog(onDismissRequest = { deleting = null }, title = { Text(tr("Delete cover", "删除封面")) },
+        StudioDialog(onDismissRequest = { deleting = null }, title = { Text(tr("Delete cover", "删除封面")) },
             text = { Text(tr("Remove ${cover.name} from My covers? Existing notebooks keep their cover.", "从我的封面中移除 ${cover.name}？已使用它的笔记会保留原封面。")) },
             confirmButton = { TextButton({ onDelete(cover.id); deleting = null }) { Text(tr("Delete", "删除")) } },
             dismissButton = { TextButton({ deleting = null }) { Text(tr("Cancel", "取消")) } })

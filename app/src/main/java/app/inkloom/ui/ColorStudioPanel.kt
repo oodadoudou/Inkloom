@@ -239,7 +239,7 @@ private fun HarmonyPalette(draft: ColorPickerDraft, language: UiLanguage, onPick
             }
             ColorPaletteDropdownMenu(menu, { menu = false }) {
                 ColorHarmony.entries.forEach { candidate ->
-                    DropdownMenuItem(text = { Text(label(candidate)) }, trailingIcon = { if (candidate == mode) Icon(Icons.Outlined.Check, null) }, onClick = { mode = candidate; menu = false })
+                    StudioMenuItem(text = { Text(label(candidate)) }, trailingIcon = { if (candidate == mode) Icon(Icons.Outlined.Check, null) }, onClick = { mode = candidate; menu = false })
                 }
             }
         }
@@ -382,7 +382,7 @@ private fun MixingPalette(
                 StudioIcon(Icons.Outlined.FiberManualRecord, tr("Mixing brush size", "混色笔刷大小")) { sizeMenu = true }
                 ColorPaletteDropdownMenu(sizeMenu, { sizeMenu = false }) {
                     listOf(4f to tr("Small", "小"), 12f to tr("Medium", "中"), 28f to tr("Large", "大")).forEach { (size, label) ->
-                        DropdownMenuItem(text = { Text(label) }, onClick = { onRadius(size); sizeMenu = false })
+                        StudioMenuItem(text = { Text(label) }, onClick = { onRadius(size); sizeMenu = false })
                     }
                     Row(Modifier.width(240.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         BrushParameterSlider(radius, onRadius, Modifier.weight(1f), valueRange = 2f..48f)
@@ -398,18 +398,18 @@ private fun MixingPalette(
             Box {
                 StudioIcon(Icons.Outlined.MoreHoriz, tr("Mixing palette menu", "混色面板菜单")) { menu = true }
                 ColorPaletteDropdownMenu(menu, { menu = false }) {
-                    DropdownMenuItem(text = { Text(tr("Reset view", "复位视图")) }, onClick = { view.resetViewport(); menu = false })
-                    DropdownMenuItem(text = { Text(tr("Color set bar", "常用色条")) }, trailingIcon = { if (showColors) Icon(Icons.Outlined.Check, null) }, onClick = {
+                    StudioMenuItem(text = { Text(tr("Reset view", "复位视图")) }, onClick = { view.resetViewport(); menu = false })
+                    StudioMenuItem(text = { Text(tr("Color set bar", "常用色条")) }, trailingIcon = { if (showColors) Icon(Icons.Outlined.Check, null) }, onClick = {
                         showColors = !showColors; prefs.edit().putBoolean("mixShowColors", showColors).apply()
                     })
-                    DropdownMenuItem(text = { Text(tr("Replace selected color", "替换所选颜色")) }, enabled = library.activeSet?.selectedSwatchId != null, onClick = {
+                    StudioMenuItem(text = { Text(tr("Replace selected color", "替换所选颜色")) }, enabled = library.activeSet?.selectedSwatchId != null, onClick = {
                         val id = library.activeSet?.selectedSwatchId
                         if (id != null) runCatching { paletteStore.update { it.replaceSwatch(MixingColorBarStore.SET_ID, id, color) } }.onSuccess { library = it }.onFailure { storageError = true }
                         menu = false
                     })
-                    DropdownMenuItem(text = { Text(tr("Edit selected color…", "编辑所选颜色…")) }, enabled = library.activeSet?.selectedSwatchId != null,
+                    StudioMenuItem(text = { Text(tr("Edit selected color…", "编辑所选颜色…")) }, enabled = library.activeSet?.selectedSwatchId != null,
                         onClick = { editingSwatchId = library.activeSet?.selectedSwatchId; menu = false })
-                    DropdownMenuItem(text = { Text(tr("Delete selected color", "删除所选颜色")) }, enabled = library.activeSet?.selectedSwatchId != null,
+                    StudioMenuItem(text = { Text(tr("Delete selected color", "删除所选颜色")) }, enabled = library.activeSet?.selectedSwatchId != null,
                         onClick = {
                             library.activeSet?.selectedSwatchId?.let { selectedId ->
                                 runCatching { paletteStore.update { it.removeSwatch(MixingColorBarStore.SET_ID, selectedId) } }
@@ -417,10 +417,10 @@ private fun MixingPalette(
                             }
                             menu = false
                         })
-                    DropdownMenuItem(text = { Text(tr("Reset color bar", "重置常用色条")) }, onClick = { menu = false; resetColors = true })
+                    StudioMenuItem(text = { Text(tr("Reset color bar", "重置常用色条")) }, onClick = { menu = false; resetColors = true })
                     HorizontalDivider()
                     listOf(tr("Transparent", "透明"), tr("White", "白色"), tr("Black", "黑色"), tr("Gray", "灰色"), tr("Beige", "米色")).forEachIndexed { index, label ->
-                        DropdownMenuItem(text = { Text(label) }, trailingIcon = { if (background == index) Icon(Icons.Outlined.Check, null) }, onClick = {
+                        StudioMenuItem(text = { Text(label) }, trailingIcon = { if (background == index) Icon(Icons.Outlined.Check, null) }, onClick = {
                             background = index; prefs.edit().putInt("mixBackground", index).apply(); menu = false
                         })
                     }
@@ -429,7 +429,7 @@ private fun MixingPalette(
         }
         if (storageError) Text(tr("Mixing board could not be saved or restored", "混色画板保存或恢复失败"), color = Ink, fontSize = 11.sp)
     }
-    if (resetColors) AlertDialog(onDismissRequest = { resetColors = false }, title = { Text(tr("Reset color bar", "重置常用色条")) },
+    if (resetColors) StudioDialog(onDismissRequest = { resetColors = false }, title = { Text(tr("Reset color bar", "重置常用色条")) },
         text = { Text(tr("Replace the mixing colors with the original colors?", "将混色区的常用色条恢复为初始颜色？")) },
         confirmButton = { TextButton(onClick = {
             runCatching { paletteStore.reset() }.onSuccess { library = it }.onFailure { storageError = true }

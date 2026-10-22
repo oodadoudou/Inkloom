@@ -68,7 +68,7 @@ internal fun LayerPropertiesBar(
                     contentDescription = language.text("Layer blend modes", "图层混合模式列表")
                 }) {
                 if (layer?.role == app.inkloom.document.LayerRole.FOLDER) {
-                    DropdownMenuItem(text = { Text(language.text("Through", "穿透"), fontSize = 13.sp) },
+                    StudioMenuItem(text = { Text(language.text("Through", "穿透"), fontSize = 13.sp) },
                         trailingIcon = { if (layer.passThrough) Icon(Icons.Outlined.Check, null, Modifier.size(16.dp)) },
                         onClick = { modesOpen = false; onThrough() })
                     HorizontalDivider(color = OutlineSoft)
@@ -76,7 +76,7 @@ internal fun LayerPropertiesBar(
                 layerBlendGroups.forEachIndexed { index, group ->
                     if (index > 0) HorizontalDivider(color = OutlineSoft)
                     group.forEach { mode ->
-                        DropdownMenuItem(
+                        StudioMenuItem(
                             text = { Text(LayerBlendModeDisplayName.of(mode, language), fontSize = 13.sp) },
                             trailingIcon = { if (mode == layer?.blendMode && !layer.passThrough) Icon(Icons.Outlined.Check, null, Modifier.size(16.dp)) },
                             onClick = { modesOpen = false; onMode(mode) },
@@ -121,14 +121,14 @@ private fun LayerOpacityNumberDialog(
         onAction(LayerOpacityAction.Commit)
         onClose()
     }
-    AlertDialog(
+    StudioDialog(
         onDismissRequest = ::cancel,
         modifier = Modifier.widthIn(max = 320.dp),
         title = { Text(language.text("Layer opacity", "图层不透明度")) },
         text = {
             val keyboard = LocalSoftwareKeyboardController.current
             val focus = LocalFocusManager.current
-            OutlinedTextField(input, { next ->
+            StudioOutlinedTextField(input, { next ->
                 if (next.text.length <= 3 && next.text.all(Char::isDigit)) {
                     input = next
                     next.text.toIntOrNull()?.takeIf { it in 0..100 }?.let { onAction(LayerOpacityAction.Preview(it / 100f)) }

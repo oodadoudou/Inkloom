@@ -539,7 +539,7 @@ fun InkloomApp(initialIntent: Intent?) {
     folderImportProgress?.let { progress ->
         BrushFolderImportProgressDialog(progress, settings.language) { stopFolderImport.set(true) }
     }
-    folderImportReport?.let { report -> AlertDialog(onDismissRequest={folderImportReport=null},title={Text(settings.language.text("Folder import result", "文件夹导入结果"))},
+    folderImportReport?.let { report -> StudioDialog(onDismissRequest={folderImportReport=null},title={Text(settings.language.text("Folder import result", "文件夹导入结果"))},
         text={Column(Modifier.heightIn(max=420.dp).verticalScroll(rememberScrollState())) {Text(report)}},confirmButton={TextButton(onClick={folderImportReport=null}) {Text(settings.language.text("Done", "完成"))}}) }
     fun retryBrushImport(failure: BrushImportFailure) {
         importScope.launch {
@@ -819,7 +819,7 @@ fun InkloomApp(initialIntent: Intent?) {
                 viewModel.restoreLibraryBackup(uri, recoverIntactItems = true) { result -> handleBackupRestore(uri, result, offerRecovery = false) }
             })
     }
-    pdfImportProgress?.let { progress -> AlertDialog(
+    pdfImportProgress?.let { progress -> StudioDialog(
         onDismissRequest = {},
         title = { Text(if (progress.addingPages) tr("Adding pages", "正在追加页面") else tr("Importing PDF", "正在导入 PDF")) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1003,12 +1003,12 @@ fun InkloomApp(initialIntent: Intent?) {
     }
     }
     libraryState.legacyFillMigrationError?.let { reason ->
-        AlertDialog(onDismissRequest = viewModel::dismissLegacyFillMigrationError,
+        StudioDialog(onDismissRequest = viewModel::dismissLegacyFillMigrationError,
             title = { Text(tr("Some old fills could not be converted", "部分旧填充暂时无法转换")) },
             text = { Text(tr("Your original notebook has been preserved.\n\n", "原笔记内容已保留。\n\n") + reason) },
             confirmButton = { TextButton(onClick = viewModel::dismissLegacyFillMigrationError) { Text(tr("OK", "确定")) } })
     }
-    if (deletionFailed) AlertDialog(
+    if (deletionFailed) StudioDialog(
         onDismissRequest = { deletionFailed = false },
         title = { Text(tr("Couldn’t delete notebook", "无法删除笔记")) },
         text = { Text(tr("The notebook is still in Trash. Your pages and saved colors have been kept. Please try again.", "笔记仍在废纸篓中，页面和已保存的颜色均已保留。请重试。")) },
@@ -1770,7 +1770,7 @@ private fun EditorScreen(
                         modifier = Modifier.width(320.dp).heightIn(max = 440.dp)) {
                         Text(tr("Switch notebook", "切换笔记"), Modifier.padding(16.dp), color = MutedInk)
                         documents.filter { it.trashedAt == null }.sortedByDescending { it.updatedAt }.forEach { note ->
-                            DropdownMenuItem(
+                            StudioMenuItem(
                                 text = { Column { Text(note.title, maxLines = 2); Text(pageCount(note.pages.size), fontSize = 11.sp, color = MutedInk) } },
                                 leadingIcon = { if (note.id == document.id) Icon(Icons.Outlined.Check, null) },
                                 onClick = {
@@ -1930,25 +1930,25 @@ private fun EditorScreen(
         if (overlays.workspaceMenu) EditorActionsDialog(settings.language, commandSection, { commandSection = it }, { overlays.workspaceMenu = false }) {
             when (commandSection) {
                 0 -> {
-                    DropdownMenuItem(text = { Text(tr("Search this notebook", "搜索当前笔记")) }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, onClick = { overlays.workspaceMenu = false; overlays.searchOpen = true })
-                    DropdownMenuItem(text = { Text(tr("Add PDF or image pages", "追加 PDF／图片页面")) }, leadingIcon = { Icon(Icons.Outlined.FileOpen, null) }, onClick = { overlays.workspaceMenu = false; onAppendPageFiles(document.id) })
-                    DropdownMenuItem(text = { Text(if (selectedPage.bookmarked) tr("Remove page bookmark", "取消本页书签") else tr("Bookmark this page", "收藏本页")) }, leadingIcon = { Icon(if (selectedPage.bookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder, null) }, onClick = { overlays.workspaceMenu = false; onToggleBookmark(document.id, selectedPage.id) })
-                    DropdownMenuItem(text = { Text(tr("Bookmarks", "书签")) }, leadingIcon = { Icon(Icons.Outlined.Bookmarks, null) }, onClick = { overlays.workspaceMenu = false; overlays.bookmarksOpen = true })
-                    DropdownMenuItem(text = { Text(tr("Page outline", "页面大纲")) }, leadingIcon = { Icon(Icons.Outlined.FormatListBulleted, null) }, onClick = { overlays.workspaceMenu = false; overlays.outlineOpen = true })
+                    StudioMenuItem(text = { Text(tr("Search this notebook", "搜索当前笔记")) }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, onClick = { overlays.workspaceMenu = false; overlays.searchOpen = true })
+                    StudioMenuItem(text = { Text(tr("Add PDF or image pages", "追加 PDF／图片页面")) }, leadingIcon = { Icon(Icons.Outlined.FileOpen, null) }, onClick = { overlays.workspaceMenu = false; onAppendPageFiles(document.id) })
+                    StudioMenuItem(text = { Text(if (selectedPage.bookmarked) tr("Remove page bookmark", "取消本页书签") else tr("Bookmark this page", "收藏本页")) }, leadingIcon = { Icon(if (selectedPage.bookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder, null) }, onClick = { overlays.workspaceMenu = false; onToggleBookmark(document.id, selectedPage.id) })
+                    StudioMenuItem(text = { Text(tr("Bookmarks", "书签")) }, leadingIcon = { Icon(Icons.Outlined.Bookmarks, null) }, onClick = { overlays.workspaceMenu = false; overlays.bookmarksOpen = true })
+                    StudioMenuItem(text = { Text(tr("Page outline", "页面大纲")) }, leadingIcon = { Icon(Icons.Outlined.FormatListBulleted, null) }, onClick = { overlays.workspaceMenu = false; overlays.outlineOpen = true })
 
                 }
                 1 -> {
-                    DropdownMenuItem(text = { Text(tr("Image filter…", "图像滤镜…")) },
+                    StudioMenuItem(text = { Text(tr("Image filter…", "图像滤镜…")) },
                         leadingIcon = { Icon(Icons.Outlined.Tune, null) },
                         onClick = { overlays.workspaceMenu = false; rasterFilterDialogOpen = true })
-                    DropdownMenuItem(text = { Text(tr("Fit page", "适合页面")) }, leadingIcon = { Icon(Icons.Outlined.CenterFocusStrong, null) }, onClick = { overlays.workspaceMenu = false; fitPage() })
-                    DropdownMenuItem(text = { Text(tr("Actual size", "实际大小")) }, onClick = { overlays.workspaceMenu = false; actualSize() })
-                    DropdownMenuItem(text = { Text(tr("Fit width", "适合宽度")) }, onClick = { overlays.workspaceMenu = false; fitWidth() })
-                    DropdownMenuItem(text = { Text(tr("Reset rotation", "重置旋转")) }, onClick = { overlays.workspaceMenu = false; resetViewRotation() })
-                    DropdownMenuItem(text = { Text(tr("Flip view horizontally", "水平翻转视图")) },
+                    StudioMenuItem(text = { Text(tr("Fit page", "适合页面")) }, leadingIcon = { Icon(Icons.Outlined.CenterFocusStrong, null) }, onClick = { overlays.workspaceMenu = false; fitPage() })
+                    StudioMenuItem(text = { Text(tr("Actual size", "实际大小")) }, onClick = { overlays.workspaceMenu = false; actualSize() })
+                    StudioMenuItem(text = { Text(tr("Fit width", "适合宽度")) }, onClick = { overlays.workspaceMenu = false; fitWidth() })
+                    StudioMenuItem(text = { Text(tr("Reset rotation", "重置旋转")) }, onClick = { overlays.workspaceMenu = false; resetViewRotation() })
+                    StudioMenuItem(text = { Text(tr("Flip view horizontally", "水平翻转视图")) },
                         leadingIcon = { Icon(if (viewMirrored) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, null) },
                         onClick = { overlays.workspaceMenu = false; viewMirrored = !viewMirrored })
-                    DropdownMenuItem(text = { Text(tr("Continuous pages", "连续页面")) },
+                    StudioMenuItem(text = { Text(tr("Continuous pages", "连续页面")) },
                         leadingIcon = { Icon(if (settings.continuousPages) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, null) },
                         onClick = {
                             overlays.workspaceMenu = false
@@ -1957,9 +1957,9 @@ private fun EditorScreen(
                             applyViewport(ViewportState(zoom, panX, 0f, 0f))
                         })
                     HorizontalDivider()
-                    DropdownMenuItem(text = { Text(tr("Color management", "色彩管理")) }, onClick = { overlays.workspaceMenu=false;overlays.colorManagementOpen=true })
-                    DropdownMenuItem(text = { Text(tr("Canvas & resolution", "画布与分辨率")) }, onClick = { overlays.workspaceMenu = false; overlays.canvasSizeOpen = true })
-                    DropdownMenuItem(text = { Text(tr("Rotate or flip canvas…", "旋转／翻转画布…")) }, onClick = { overlays.workspaceMenu = false; overlays.canvasOrientationOpen = true })
+                    StudioMenuItem(text = { Text(tr("Color management", "色彩管理")) }, onClick = { overlays.workspaceMenu=false;overlays.colorManagementOpen=true })
+                    StudioMenuItem(text = { Text(tr("Canvas & resolution", "画布与分辨率")) }, onClick = { overlays.workspaceMenu = false; overlays.canvasSizeOpen = true })
+                    StudioMenuItem(text = { Text(tr("Rotate or flip canvas…", "旋转／翻转画布…")) }, onClick = { overlays.workspaceMenu = false; overlays.canvasOrientationOpen = true })
 
                 }
                 2 -> {
@@ -1995,7 +1995,7 @@ private fun EditorScreen(
                             syncCanvasInput(prepareAssets = activeBrush != null)
                         }
                     }
-                    DropdownMenuItem(text = { Text(tr("Blend with current brush tip", "用当前笔尖混色")) },
+                    StudioMenuItem(text = { Text(tr("Blend with current brush tip", "用当前笔尖混色")) },
                         leadingIcon = { Icon(Icons.Outlined.BlurOn, null) }, onClick = {
                             overlays.workspaceMenu = false
                             borrowCurrentTipForSmudge()
@@ -2004,19 +2004,19 @@ private fun EditorScreen(
 
                 }
                 3 -> {
-                    DropdownMenuItem(
+                    StudioMenuItem(
                         text = { Text(tr(if (settings.rulerEnabled) "Hide ruler" else "Show ruler", if (settings.rulerEnabled) "隐藏直尺" else "显示直尺")) },
                         leadingIcon = { Icon(Icons.Outlined.Straighten, null) },
                         trailingIcon = { if (settings.rulerEnabled) Icon(Icons.Outlined.Check, null) },
                         onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) },
                     )
-                    DropdownMenuItem(
+                    StudioMenuItem(
                         text = { Text(tr(if (settings.gridSnapEnabled) "Hide snap grid" else "Show snap grid", if (settings.gridSnapEnabled) "隐藏吸附网格" else "显示吸附网格")) },
                         leadingIcon = { Icon(Icons.Outlined.GridOn, null) },
                         trailingIcon = { if (settings.gridSnapEnabled) Icon(Icons.Outlined.Check, null) },
                         onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) },
                     )
-                    DropdownMenuItem(
+                    StudioMenuItem(
                         text = { Text(tr(if (settings.alignmentGuidesEnabled) "Hide alignment guides" else "Show alignment guides", if (settings.alignmentGuidesEnabled) "隐藏对齐参考线" else "显示对齐参考线")) },
                         leadingIcon = { Icon(Icons.Outlined.AlignHorizontalCenter, null) },
                         trailingIcon = { if (settings.alignmentGuidesEnabled) Icon(Icons.Outlined.Check, null) },
@@ -2031,7 +2031,7 @@ private fun EditorScreen(
                             PerspectiveGuideMode.TWO_POINT -> tr("Two-point perspective", "两点透视")
                             PerspectiveGuideMode.THREE_POINT -> tr("Three-point perspective", "三点透视")
                         }
-                        DropdownMenuItem(
+                        StudioMenuItem(
                             text = { Text(label) },
                             leadingIcon = { Icon(Icons.Outlined.ViewInAr, null) },
                             trailingIcon = { if (settings.perspectiveGuideMode == mode) Icon(Icons.Outlined.Check, null) },
@@ -2055,12 +2055,12 @@ private fun EditorScreen(
                         )
                     }
                     if (settings.perspectiveGuideMode != PerspectiveGuideMode.NONE) {
-                        DropdownMenuItem(
+                        StudioMenuItem(
                             text = { Text(tr("Drawing Assist", "绘图辅助")) },
                             trailingIcon = { if (settings.perspectiveGuideAssisted) Icon(Icons.Outlined.Check, null) },
                             onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(perspectiveGuideAssisted = !settings.perspectiveGuideAssisted)) },
                         )
-                        DropdownMenuItem(
+                        StudioMenuItem(
                             text = { Text(tr("Edit vanishing points", "编辑消失点")) },
                             trailingIcon = { if (settings.perspectiveGuideEditing) Icon(Icons.Outlined.Check, null) },
                             onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(perspectiveGuideEditing = !settings.perspectiveGuideEditing)) },
@@ -2076,7 +2076,7 @@ private fun EditorScreen(
                             SpecialRulerMode.CONCENTRIC -> tr("Concentric ruler", "同心圆尺")
                             SpecialRulerMode.ISOMETRIC -> tr("Isometric guide", "等距辅助线")
                         }
-                        DropdownMenuItem(
+                        StudioMenuItem(
                             text = { Text(label) },
                             leadingIcon = { Icon(if (mode == SpecialRulerMode.CONCENTRIC) Icons.Outlined.RadioButtonUnchecked else Icons.Outlined.LineAxis, null) },
                             trailingIcon = { if (settings.specialRulerMode == mode) Icon(Icons.Outlined.Check, null) },
@@ -2095,17 +2095,17 @@ private fun EditorScreen(
                         )
                     }
                     if (settings.specialRulerMode != SpecialRulerMode.NONE) {
-                        DropdownMenuItem(
+                        StudioMenuItem(
                             text = { Text(tr("Drawing Assist", "绘图辅助")) },
                             trailingIcon = { if (settings.specialRulerAssisted) Icon(Icons.Outlined.Check, null) },
                             onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(specialRulerAssisted = !settings.specialRulerAssisted)) },
                         )
-                        DropdownMenuItem(
+                        StudioMenuItem(
                             text = { Text(tr("Edit ruler", "编辑尺子")) },
                             trailingIcon = { if (settings.specialRulerEditing) Icon(Icons.Outlined.Check, null) },
                             onClick = { overlays.workspaceMenu = false; onSettingsChange(settings.copy(specialRulerEditing = !settings.specialRulerEditing)) },
                         )
-                        DropdownMenuItem(
+                        StudioMenuItem(
                             text = {
                                 Column(Modifier.width(230.dp)) {
                                     Text(tr("Guide spacing · ${settings.specialRulerSpacing.toInt()}", "辅助线间距 · ${settings.specialRulerSpacing.toInt()}"), fontSize = 11.sp)
@@ -2119,48 +2119,48 @@ private fun EditorScreen(
 
                 }
                 4 -> {
-                    DropdownMenuItem(
+                    StudioMenuItem(
                         text = { Text(tr("Drawing workspace", "绘画工作区")) },
                         leadingIcon = { Icon(Icons.Outlined.Palette, null) },
                         onClick = { applyBuiltInWorkspace(BuiltInWorkspace.STUDIO) },
                     )
-                    DropdownMenuItem(
+                    StudioMenuItem(
                         text = { Text(tr("Painting workspace", "绘画面板工作区")) },
                         leadingIcon = { Icon(Icons.Outlined.ViewSidebar, null) },
                         onClick = { applyBuiltInWorkspace(BuiltInWorkspace.PAINTING) },
                     )
-                    DropdownMenuItem(
+                    StudioMenuItem(
                         text = { Text(tr("Reading workspace", "阅读工作区")) },
                         leadingIcon = { Icon(Icons.Outlined.Visibility, null) },
                         onClick = { applyBuiltInWorkspace(BuiltInWorkspace.READING) },
                     )
-                    DropdownMenuItem(
+                    StudioMenuItem(
                         text = { Text(tr("Views…", "视图…")) },
                         leadingIcon = { Icon(Icons.Outlined.DashboardCustomize, null) },
                         onClick = { overlays.workspaceMenu = false; overlays.viewManagerOpen = true },
                     )
                     HorizontalDivider()
-                    DropdownMenuItem(
+                    StudioMenuItem(
                         text = { Text(if (panelState.layout.locked) tr("Unlock layout", "解锁布局") else tr("Lock layout", "锁定布局")) },
                         leadingIcon = { Icon(if (panelState.layout.locked) Icons.Outlined.Lock else Icons.Outlined.LockOpen, null) },
                         onClick = { overlays.workspaceMenu = false; panelState.commit(panelState.layout.copy(locked = !panelState.layout.locked)) },
                     )
-                    DropdownMenuItem(text = { Text(tr("Save panel layout…", "保存面板布局…")) },
+                    StudioMenuItem(text = { Text(tr("Save panel layout…", "保存面板布局…")) },
                         leadingIcon = { Icon(Icons.Outlined.Save, null) }, onClick = {
                             overlays.workspaceMenu = false; renamingPanelLayout = null; panelLayoutName = ""; overlays.savePanelLayoutOpen = true
                         })
-                    DropdownMenuItem(text = { Text(tr("Export workspace layout…", "导出工作区布局…")) },
+                    StudioMenuItem(text = { Text(tr("Export workspace layout…", "导出工作区布局…")) },
                         onClick = { overlays.workspaceMenu = false; workspaceLayoutExportPicker.launch("Inkloom-workspace.${WorkspaceLayoutCodec.FILE_EXTENSION}") })
-                    DropdownMenuItem(text = { Text(tr("Import workspace layout…", "导入工作区布局…")) },
+                    StudioMenuItem(text = { Text(tr("Import workspace layout…", "导入工作区布局…")) },
                         onClick = { overlays.workspaceMenu = false; workspaceLayoutImportPicker.launch(arrayOf(WorkspaceLayoutCodec.MIME_TYPE, "text/plain", "application/octet-stream")) })
                     panelState.namedLayouts.entries.forEach { saved ->
-                        DropdownMenuItem(text = { Text(saved.name) },
+                        StudioMenuItem(text = { Text(saved.name) },
                             leadingIcon = { Icon(Icons.Outlined.DashboardCustomize, null) }, onClick = {
                                 overlays.workspaceMenu = false
                                 panelState.restoreNamedLayout(saved.name)?.let(::syncRestoredPanelSettings)
                             })
                     }
-                    if (panelState.namedLayouts.entries.isNotEmpty()) DropdownMenuItem(
+                    if (panelState.namedLayouts.entries.isNotEmpty()) StudioMenuItem(
                         text = { Text(tr("Manage panel layouts…", "管理面板布局…")) },
                         onClick = { overlays.workspaceMenu = false; overlays.managePanelLayoutsOpen = true },
                     )
@@ -2168,12 +2168,12 @@ private fun EditorScreen(
                 }
                 5 -> {
                     // Share sends straight to another app; Export saves a file where the user chooses.
-                    DropdownMenuItem(text = { Text(tr("Share PDF…", "分享 PDF…")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { overlays.workspaceMenu = false; onSharePdf() })
-                    DropdownMenuItem(text = { Text(tr("Share current page…", "分享当前页…")) }, leadingIcon = { Icon(Icons.Outlined.Image, null) }, onClick = { overlays.workspaceMenu = false; overlays.pageShareOpen = true })
+                    StudioMenuItem(text = { Text(tr("Share PDF…", "分享 PDF…")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { overlays.workspaceMenu = false; onSharePdf() })
+                    StudioMenuItem(text = { Text(tr("Share current page…", "分享当前页…")) }, leadingIcon = { Icon(Icons.Outlined.Image, null) }, onClick = { overlays.workspaceMenu = false; overlays.pageShareOpen = true })
                     HorizontalDivider(color = OutlineSoft)
-                    DropdownMenuItem(text = { Text(tr("Export PDF", "导出 PDF")) }, leadingIcon = { Icon(Icons.Outlined.FileDownload, null) }, onClick = { overlays.workspaceMenu = false; onExport() })
-                    DropdownMenuItem(text = { Text(tr("Export current page", "导出当前页")) }, onClick = { overlays.workspaceMenu = false; overlays.pageExportOpen = true })
-                    DropdownMenuItem(text = { Text(tr("Export editable Inkloom package", "导出可编辑 Inkloom 文件")) }, onClick = { overlays.workspaceMenu = false; onExportBundle() })
+                    StudioMenuItem(text = { Text(tr("Export PDF", "导出 PDF")) }, leadingIcon = { Icon(Icons.Outlined.FileDownload, null) }, onClick = { overlays.workspaceMenu = false; onExport() })
+                    StudioMenuItem(text = { Text(tr("Export current page", "导出当前页")) }, onClick = { overlays.workspaceMenu = false; overlays.pageExportOpen = true })
+                    StudioMenuItem(text = { Text(tr("Export editable Inkloom package", "导出可编辑 Inkloom 文件")) }, onClick = { overlays.workspaceMenu = false; onExportBundle() })
                 }
             }
         }
@@ -2242,12 +2242,12 @@ private fun EditorScreen(
             onToggle = ::setManagedPanelVisible,
             onDismiss = { overlays.viewManagerOpen = false },
         )
-        if (overlays.savePanelLayoutOpen) AlertDialog(
+        if (overlays.savePanelLayoutOpen) StudioDialog(
             onDismissRequest = { overlays.savePanelLayoutOpen = false },
             title = { Text(if (renamingPanelLayout == null) tr("Save panel layout", "保存面板布局") else tr("Rename panel layout", "重命名面板布局")) },
             text = {
                 Column {
-                    OutlinedTextField(panelLayoutName, { panelLayoutName = it.take(40) },
+                    StudioOutlinedTextField(panelLayoutName, { panelLayoutName = it.take(40) },
                         label = { Text(tr("Name", "名称")) }, singleLine = true)
                     if (renamingPanelLayout == null && panelState.namedLayouts.entries.any { it.name.equals(panelLayoutName.trim(), ignoreCase = true) })
                         Text(tr("Saving will replace this layout", "保存后将替换同名布局"), color = MutedInk, fontSize = 11.sp)
@@ -2261,7 +2261,7 @@ private fun EditorScreen(
             }) { Text(if (renamingPanelLayout == null) tr("Save", "保存") else tr("Rename", "重命名")) } },
             dismissButton = { TextButton(onClick = { overlays.savePanelLayoutOpen = false; renamingPanelLayout = null }) { Text(tr("Cancel", "取消")) } },
         )
-        if (overlays.managePanelLayoutsOpen) AlertDialog(
+        if (overlays.managePanelLayoutsOpen) StudioDialog(
             onDismissRequest = { overlays.managePanelLayoutsOpen = false },
             title = { Text(tr("Panel layouts", "面板布局")) },
             text = { Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
@@ -2283,7 +2283,7 @@ private fun EditorScreen(
             } },
             confirmButton = { TextButton(onClick = { overlays.managePanelLayoutsOpen = false }) { Text(tr("Done", "完成")) } },
         )
-        deletingPanelLayout?.let { name -> AlertDialog(
+        deletingPanelLayout?.let { name -> StudioDialog(
             onDismissRequest = { deletingPanelLayout = null },
             title = { Text(tr("Delete panel layout?", "删除面板布局？")) },
             text = { Text(name) },
@@ -2940,7 +2940,7 @@ private fun EditorScreen(
                             }
                             DropdownMenu(expanded = overlays.quickZoomMenu, onDismissRequest = { overlays.quickZoomMenu = false }) {
                                 listOf(75, 90, 100, 110, 125).forEach { percent ->
-                                    DropdownMenuItem(text = { Text("$percent%") }, onClick = {
+                                    StudioMenuItem(text = { Text("$percent%") }, onClick = {
                                         val view = canvasView
                                         if (view != null && view.width > 0) {
                                             val target = percent / 100f * PageCropTransform.visibleWidth(selectedPage) / view.width
@@ -2949,7 +2949,7 @@ private fun EditorScreen(
                                         overlays.quickZoomMenu = false
                                     })
                                 }
-                                DropdownMenuItem(text = { Text(tr("Fit page", "适合页面")) }, onClick = { fitPage(); overlays.quickZoomMenu = false })
+                                StudioMenuItem(text = { Text(tr("Fit page", "适合页面")) }, onClick = { fitPage(); overlays.quickZoomMenu = false })
                             }
                         }
 
@@ -3211,7 +3211,7 @@ private fun EditorScreen(
                         Modifier.padding(horizontal = 14.dp, vertical = 8.dp), color = Ink,
                     )
                 }
-                if (layerPickCandidates.isNotEmpty()) AlertDialog(
+                if (layerPickCandidates.isNotEmpty()) StudioDialog(
                     onDismissRequest = { layerPickCandidates = emptyList() },
                     title = { Text(tr("Choose layer", "选择图层")) },
                     text = { Column { layerPickCandidates.forEach { id ->
@@ -3318,7 +3318,7 @@ private fun EditorScreen(
                         Row(Modifier.padding(horizontal = 8.dp).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                             TextButton(onClick = { finishImageTransform(false) }) { Text(tr("Cancel transform", "取消变换")) }
                             ImageTransformMode.entries.forEach { mode ->
-                                FilterChip(selected = imageTransformMode == mode, onClick = { imageTransformMode = mode; session.mode = mode },
+                                StudioFilterChip(selected = imageTransformMode == mode, onClick = { imageTransformMode = mode; session.mode = mode },
                                     label = { Text(if (mode == ImageTransformMode.FREEFORM) tr("Freeform", "自由变换") else tr("Uniform", "等比变换")) })
                             }
                             Text("${session.current.width.toInt()} × ${session.current.height.toInt()} · ${session.current.rotationDegrees.toInt()}°", Modifier.padding(8.dp), fontSize = 11.sp)
@@ -3519,17 +3519,17 @@ private fun EditorScreen(
     }
     }
     val defaultStickyText = tr("New note", "新便签")
-    if (overlays.textInsertOpen) AlertDialog(
+    if (overlays.textInsertOpen) StudioDialog(
         onDismissRequest = { overlays.textInsertOpen = false },
         title = { Text(tr("Insert text", "插入文本")) },
-        text = { OutlinedTextField(insertText, { insertText = it }, minLines = 3, label = { Text(tr("Text", "文本")) }) },
+        text = { StudioOutlinedTextField(insertText, { insertText = it }, minLines = 3, label = { Text(tr("Text", "文本")) }) },
         confirmButton = { Button(onClick = { if (insertText.isNotBlank()) onElement(document.id, selectedPage.id, PageCropTransform.unproject(PageElement.Text(x = .18f, y = .2f, text = insertText.trim()), selectedPage.crop)); overlays.textInsertOpen = false; tool = EditorTool.SELECT }) { Text(tr("Insert", "插入")) } },
         dismissButton = { TextButton(onClick = { overlays.textInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
     )
-    if (overlays.stickyInsertOpen) AlertDialog(
+    if (overlays.stickyInsertOpen) StudioDialog(
         onDismissRequest = { overlays.stickyInsertOpen = false },
         title = { Text(tr("New sticky note", "新建便签")) },
-        text = { OutlinedTextField(insertText, { insertText = it }, minLines = 4, label = { Text(tr("Note", "便签")) }) },
+        text = { StudioOutlinedTextField(insertText, { insertText = it }, minLines = 4, label = { Text(tr("Note", "便签")) }) },
         confirmButton = { Button(onClick = { onElement(document.id, selectedPage.id, PageCropTransform.unproject(PageElement.Sticky(x = .55f, y = .25f, text = insertText.trim().ifBlank { defaultStickyText }), selectedPage.crop)); overlays.stickyInsertOpen = false; tool = EditorTool.SELECT }) { Text(tr("Insert", "插入")) } },
         dismissButton = { TextButton(onClick = { overlays.stickyInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
     )
@@ -3539,7 +3539,7 @@ private fun EditorScreen(
         val targetPage = targetDocument.pages.firstOrNull { it.id == insertLinkPageId } ?: targetDocument.pages.firstOrNull()
         val linkPageState = rememberLazyListState()
         RevealSelectedItem(linkPageState, targetDocument.id, targetPage?.id, targetDocument.pages.indexOfFirst { it.id == targetPage?.id })
-        AlertDialog(
+        StudioDialog(
             modifier = Modifier.imePadding(),
             properties = DialogProperties(decorFitsSystemWindows = false),
             onDismissRequest = { overlays.linkInsertOpen = false },
@@ -3550,18 +3550,18 @@ private fun EditorScreen(
                 val linkFocus = androidx.compose.ui.platform.LocalFocusManager.current
                 val linkKeyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
                 fun chooseLinkKind(internal: Boolean) { linkFocus.clearFocus(); linkKeyboard?.hide(); overlays.insertInternalLink = internal }
-                OutlinedTextField(insertLinkTitle, { insertLinkTitle = it }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                StudioOutlinedTextField(insertLinkTitle, { insertLinkTitle = it }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = !overlays.insertInternalLink, onClick = { chooseLinkKind(false) }, label = { Text(tr("Web link", "网页链接")) })
-                    FilterChip(selected = overlays.insertInternalLink, onClick = { chooseLinkKind(true) }, label = { Text(tr("Notebook page", "笔记页面")) })
+                    StudioFilterChip(selected = !overlays.insertInternalLink, onClick = { chooseLinkKind(false) }, label = { Text(tr("Web link", "网页链接")) })
+                    StudioFilterChip(selected = overlays.insertInternalLink, onClick = { chooseLinkKind(true) }, label = { Text(tr("Notebook page", "笔记页面")) })
                 }
                 if (!overlays.insertInternalLink) {
-                    OutlinedTextField(insertLinkUrl, { insertLinkUrl = it }, label = { Text(tr("Web, email, or phone address", "网页、邮箱或电话号码")) }, placeholder = { Text("https://example.com") }, isError = insertLinkUrl.isNotBlank() && normalizedLink == null, supportingText = { Text(if (insertLinkUrl.isNotBlank() && normalizedLink == null) tr("Use a valid http, https, mailto, or tel address.", "请输入有效的 http、https、mailto 或 tel 地址。") else tr("Addresses without a scheme open with HTTPS.", "未填写协议的地址将通过 HTTPS 打开。")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    StudioOutlinedTextField(insertLinkUrl, { insertLinkUrl = it }, label = { Text(tr("Web, email, or phone address", "网页、邮箱或电话号码")) }, placeholder = { Text("https://example.com") }, isError = insertLinkUrl.isNotBlank() && normalizedLink == null, supportingText = { Text(if (insertLinkUrl.isNotBlank() && normalizedLink == null) tr("Use a valid http, https, mailto, or tel address.", "请输入有效的 http、https、mailto 或 tel 地址。") else tr("Addresses without a scheme open with HTTPS.", "未填写协议的地址将通过 HTTPS 打开。")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 } else {
                     Text(tr("Notebook", "笔记本"), color = MutedInk, fontSize = 11.sp)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(documents.filter { it.trashedAt == null }, key = InkDocument::id) { candidate ->
-                            FilterChip(selected = candidate.id == targetDocument.id, onClick = {
+                            StudioFilterChip(selected = candidate.id == targetDocument.id, onClick = {
                                 insertLinkDocumentId = candidate.id
                                 insertLinkPageId = candidate.pages.firstOrNull()?.id.orEmpty()
                             }, label = { Text(candidate.title, maxLines = 1) })
@@ -3670,22 +3670,22 @@ private fun EditorScreen(
         onCancel={compositeFilterWorker?.cancel();++compositeFilterGeneration;compositeFilterBusy=false;compositeFilterPreview=null;canvasView?.onRasterFilterFinished?.invoke(false);rasterFilterDialogOpen=false},
     )
 
-    if (overlays.shapeInsertOpen) AlertDialog(
+    if (overlays.shapeInsertOpen) StudioDialog(
         onDismissRequest = { overlays.shapeInsertOpen = false },
         title = { Text(tr("Draw shape", "绘制形状")) },
         // Shape choices wrap instead of hiding in a sideways strip; the body scrolls at large fonts.
-        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) { Text(tr("Choose a shape, then drag on the page with the pen. Lines and arrows snap to nearby 45° angles; Freeform follows the pen and closes the polygon automatically.", "选择形状后用笔在页面上拖动。直线和箭头会吸附到邻近的 45° 角；自由形状会跟随笔迹并自动闭合。"), color = MutedInk, fontSize = 12.sp); FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ShapeKind.entries.forEach { kind -> FilterChip(selected = insertShape == kind, onClick = { insertShape = kind }, label = { Text(localizedShapeKind(kind)) }) } } } },
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) { Text(tr("Choose a shape, then drag on the page with the pen. Lines and arrows snap to nearby 45° angles; Freeform follows the pen and closes the polygon automatically.", "选择形状后用笔在页面上拖动。直线和箭头会吸附到邻近的 45° 角；自由形状会跟随笔迹并自动闭合。"), color = MutedInk, fontSize = 12.sp); FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ShapeKind.entries.forEach { kind -> StudioFilterChip(selected = insertShape == kind, onClick = { insertShape = kind }, label = { Text(localizedShapeKind(kind)) }) } } } },
         confirmButton = { Button(onClick = { overlays.shapeInsertOpen = false; tool = EditorTool.SHAPE; canvasView?.tool = EditorTool.SHAPE }) { Text(tr("Draw", "绘制")) } },
         dismissButton = { TextButton(onClick = { overlays.shapeInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
     )
-    if (overlays.imageInsertOpen) AlertDialog(
+    if (overlays.imageInsertOpen) StudioDialog(
         onDismissRequest = { overlays.imageInsertOpen = false },
         title = { Text(tr("Add page image", "添加页面图片")) },
         text = { Text(tr("Import an existing image or capture a paper page with the device camera. Image text can then be indexed from Search this note.", "导入现有图片，或用设备相机拍摄纸质页面。随后可在“搜索此笔记”中识别图片文字。")) },
         confirmButton = { Button(onClick = { overlays.imageInsertOpen = false; onScanImage() }) { Icon(Icons.Outlined.DocumentScanner, null); Spacer(Modifier.width(6.dp)); Text(tr("Scan page", "扫描页面")) } },
         dismissButton = { Row { TextButton(onClick = { overlays.imageInsertOpen = false }) { Text(tr("Cancel", "取消")) }; TextButton(onClick = { overlays.imageInsertOpen = false; onInsertImage() }) { Text(tr("Import image", "导入图片")) } } },
     )
-    if (overlays.bookmarksOpen) AlertDialog(
+    if (overlays.bookmarksOpen) StudioDialog(
         onDismissRequest = { overlays.bookmarksOpen = false },
         title = { Text(tr("Bookmarks", "书签")) },
         text = {
@@ -3714,7 +3714,7 @@ private fun EditorScreen(
         val visibleOutlinePages = PageOutline.visiblePages(document.pages)
         RevealSelectedItem(outlineState, document.id to visibleOutlinePages.map(InkPage::id), selectedPage.id,
             visibleOutlinePages.indexOfFirst { it.id == selectedPage.id })
-        AlertDialog(
+        StudioDialog(
             onDismissRequest = { overlays.outlineOpen = false },
             title = { Text(tr("Page outline", "页面大纲")) },
             text = {
@@ -3732,31 +3732,31 @@ private fun EditorScreen(
                                     Box {
                                         IconButton(onClick = { outlineMenuPageId = page.id }) { Icon(Icons.Outlined.MoreVert, tr("Edit outline item", "编辑大纲项目")) }
                                         DropdownMenu(expanded = outlineMenuPageId == page.id, onDismissRequest = { outlineMenuPageId = null }) {
-                                            DropdownMenuItem(
+                                            StudioMenuItem(
                                                 text = { Text(tr("Rename", "重命名")) },
                                                 leadingIcon = { Icon(Icons.Outlined.Edit, null) },
                                                 onClick = { outlineMenuPageId = null; outlineRenamePageId = page.id; outlineRenameText = page.title },
                                             )
-                                            DropdownMenuItem(
+                                            StudioMenuItem(
                                                 text = { Text(tr("Move up", "上移")) },
                                                 leadingIcon = { Icon(Icons.Outlined.ArrowUpward, null) },
                                                 enabled = index > 0,
                                                 onClick = { outlineMenuPageId = null; onMovePage(document.id, page.id, -1) },
                                             )
-                                            DropdownMenuItem(
+                                            StudioMenuItem(
                                                 text = { Text(tr("Move down", "下移")) },
                                                 leadingIcon = { Icon(Icons.Outlined.ArrowDownward, null) },
                                                 enabled = index < document.pages.lastIndex,
                                                 onClick = { outlineMenuPageId = null; onMovePage(document.id, page.id, 1) },
                                             )
                                             HorizontalDivider()
-                                            DropdownMenuItem(
+                                            StudioMenuItem(
                                                 text = { Text(tr("Promote level", "提升层级")) },
                                                 leadingIcon = { Icon(Icons.Outlined.FormatIndentDecrease, null) },
                                                 enabled = page.outlineLevel > 0,
                                                 onClick = { outlineMenuPageId = null; onChangePageOutlineLevel(document.id, page.id, -1) },
                                             )
-                                            DropdownMenuItem(
+                                            StudioMenuItem(
                                                 text = { Text(tr("Demote level", "降低层级")) },
                                                 leadingIcon = { Icon(Icons.Outlined.FormatIndentIncrease, null) },
                                                 enabled = index > 0 && page.outlineLevel < 3,
@@ -3776,10 +3776,10 @@ private fun EditorScreen(
         )
     }
     outlineRenamePageId?.let { pageId ->
-        AlertDialog(
+        StudioDialog(
             onDismissRequest = { outlineRenamePageId = null },
             title = { Text(tr("Rename outline item", "重命名大纲项目")) },
-            text = { OutlinedTextField(outlineRenameText, { outlineRenameText = it }, label = { Text(tr("Page title", "页面标题")) }, singleLine = true) },
+            text = { StudioOutlinedTextField(outlineRenameText, { outlineRenameText = it }, label = { Text(tr("Page title", "页面标题")) }, singleLine = true) },
             confirmButton = { Button(enabled = outlineRenameText.isNotBlank(), onClick = { onRenamePage(document.id, pageId, outlineRenameText); outlineRenamePageId = null }) { Text(tr("Save", "保存")) } },
             dismissButton = { TextButton(onClick = { outlineRenamePageId = null }) { Text(tr("Cancel", "取消")) } },
         )
@@ -3787,14 +3787,14 @@ private fun EditorScreen(
     if (overlays.searchOpen) {
         val results = documentSearchHits
         val unindexedPdfPages = document.pages.count { it.background is PageBackground.Pdf && it.pdfTextIndexVersion == 0 }
-        AlertDialog(
+        StudioDialog(
             onDismissRequest = { overlays.searchOpen = false },
             title = { Text(tr("Search this note", "搜索此笔记")) },
             text = { Column(Modifier.dialogContentWidth(340.dp, 560.dp)) {
-                OutlinedTextField(documentQuery, { documentQuery = it; searchFocus = null }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Page, handwriting, image, or PDF text", "页面、手写、图片或 PDF 文字")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                StudioOutlinedTextField(documentQuery, { documentQuery = it; searchFocus = null }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Page, handwriting, image, or PDF text", "页面、手写、图片或 PDF 文字")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    FilterChip(selected = recognitionLanguageTag == "en-US", onClick = { recognitionLanguageTag = "en-US" }, label = { Text("English") })
-                    FilterChip(selected = recognitionLanguageTag == "zh-Hans", onClick = { recognitionLanguageTag = "zh-Hans" }, label = { Text("简体中文") })
+                    StudioFilterChip(selected = recognitionLanguageTag == "en-US", onClick = { recognitionLanguageTag = "en-US" }, label = { Text("English") })
+                    StudioFilterChip(selected = recognitionLanguageTag == "zh-Hans", onClick = { recognitionLanguageTag = "zh-Hans" }, label = { Text("简体中文") })
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
@@ -3856,7 +3856,7 @@ private fun EditorScreen(
         )
     }
     handwritingConversionHit?.let { (page, hit) ->
-        AlertDialog(
+        StudioDialog(
             onDismissRequest = { handwritingConversionHit = null },
             title = { Text(tr("Convert handwriting to text", "手写转文字")) },
             text = { Text(tr("Keep the original ink, or replace those strokes with editable text?", "保留原始笔迹，还是用可编辑文字替换这些笔画？")) },
@@ -3881,5 +3881,5 @@ private fun EditorScreen(
             },
         )
     }
-    if (importError != null) AlertDialog(onDismissRequest = onDismissError, confirmButton = { TextButton(onClick = onDismissError) { Text(tr("OK", "确定")) } }, title = { Text(tr("Import issue", "导入问题")) }, text = { Text(importError) })
+    if (importError != null) StudioDialog(onDismissRequest = onDismissError, confirmButton = { TextButton(onClick = onDismissError) { Text(tr("OK", "确定")) } }, title = { Text(tr("Import issue", "导入问题")) }, text = { Text(importError) })
 }

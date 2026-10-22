@@ -344,22 +344,22 @@ internal fun PageRail(
                         Spacer(Modifier.size(26.dp))
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(text = { Text(tr("Insert page before", "在此页前插入页面")) }, onClick = { menu = false; onInsertNextTo(document.id, page.id, false) })
-                        DropdownMenuItem(text = { Text(tr("Insert page after", "在此页后插入页面")) }, onClick = { menu = false; onInsertNextTo(document.id, page.id, true) })
-                        DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(document.id, page.id) })
-                        DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameOpen = true })
-                        DropdownMenuItem(text = { Text(tr("Number and tags", "页码与标签")) }, onClick = { menu = false; metadataOpen = true })
-                        DropdownMenuItem(text = { Text(tr("Move up", "上移")) }, enabled = document.pages.first().id != page.id, onClick = { menu = false; onMove(document.id, page.id, -1) })
-                        DropdownMenuItem(text = { Text(tr("Move down", "下移")) }, enabled = document.pages.last().id != page.id, onClick = { menu = false; onMove(document.id, page.id, 1) })
-                        DropdownMenuItem(text = { Text(tr("Move or copy to note", "移动或复制到笔记")) }, enabled = transferTargets.isNotEmpty(), onClick = { menu = false; transferOpen = true })
-                        DropdownMenuItem(text = { Text(tr("Increase outline indent", "增加大纲缩进")) }, enabled = pageIndex > 0 && page.outlineLevel < 3 && page.outlineLevel <= document.pages[pageIndex - 1].outlineLevel, onClick = { menu = false; onOutlineLevel(document.id, page.id, 1) })
-                        DropdownMenuItem(text = { Text(tr("Decrease outline indent", "减少大纲缩进")) }, enabled = page.outlineLevel > 0, onClick = { menu = false; onOutlineLevel(document.id, page.id, -1) })
-                        if (hasOutlineChildren) DropdownMenuItem(text = { Text(if (page.outlineCollapsed) tr("Expand outline children", "展开子页面") else tr("Collapse outline children", "折叠子页面")) }, onClick = { menu = false; onOutlineCollapsed(document.id, page.id) })
-                        DropdownMenuItem(text = { Text(tr("Page template", "页面模板")) }, onClick = { menu = false; templateOpen = true })
-                        DropdownMenuItem(text = { Text(tr("Crop page", "裁剪页面")) }, onClick = { menu = false; cropDraft = page.crop; cropOpen = true })
-                        DropdownMenuItem(text = { Text(tr("Rotate 90° clockwise", "顺时针旋转 90°")) }, onClick = { menu = false; onRotate(document.id, page.id) })
-                        DropdownMenuItem(text = { Text(if (page.bookmarked) tr("Remove bookmark", "取消收藏") else tr("Bookmark", "收藏")) }, onClick = { menu = false; onToggleBookmark(document.id, page.id) })
-                        DropdownMenuItem(
+                        StudioMenuItem(text = { Text(tr("Insert page before", "在此页前插入页面")) }, onClick = { menu = false; onInsertNextTo(document.id, page.id, false) })
+                        StudioMenuItem(text = { Text(tr("Insert page after", "在此页后插入页面")) }, onClick = { menu = false; onInsertNextTo(document.id, page.id, true) })
+                        StudioMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(document.id, page.id) })
+                        StudioMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameOpen = true })
+                        StudioMenuItem(text = { Text(tr("Number and tags", "页码与标签")) }, onClick = { menu = false; metadataOpen = true })
+                        StudioMenuItem(text = { Text(tr("Move up", "上移")) }, enabled = document.pages.first().id != page.id, onClick = { menu = false; onMove(document.id, page.id, -1) })
+                        StudioMenuItem(text = { Text(tr("Move down", "下移")) }, enabled = document.pages.last().id != page.id, onClick = { menu = false; onMove(document.id, page.id, 1) })
+                        StudioMenuItem(text = { Text(tr("Move or copy to note", "移动或复制到笔记")) }, enabled = transferTargets.isNotEmpty(), onClick = { menu = false; transferOpen = true })
+                        StudioMenuItem(text = { Text(tr("Increase outline indent", "增加大纲缩进")) }, enabled = pageIndex > 0 && page.outlineLevel < 3 && page.outlineLevel <= document.pages[pageIndex - 1].outlineLevel, onClick = { menu = false; onOutlineLevel(document.id, page.id, 1) })
+                        StudioMenuItem(text = { Text(tr("Decrease outline indent", "减少大纲缩进")) }, enabled = page.outlineLevel > 0, onClick = { menu = false; onOutlineLevel(document.id, page.id, -1) })
+                        if (hasOutlineChildren) StudioMenuItem(text = { Text(if (page.outlineCollapsed) tr("Expand outline children", "展开子页面") else tr("Collapse outline children", "折叠子页面")) }, onClick = { menu = false; onOutlineCollapsed(document.id, page.id) })
+                        StudioMenuItem(text = { Text(tr("Page template", "页面模板")) }, onClick = { menu = false; templateOpen = true })
+                        StudioMenuItem(text = { Text(tr("Crop page", "裁剪页面")) }, onClick = { menu = false; cropDraft = page.crop; cropOpen = true })
+                        StudioMenuItem(text = { Text(tr("Rotate 90° clockwise", "顺时针旋转 90°")) }, onClick = { menu = false; onRotate(document.id, page.id) })
+                        StudioMenuItem(text = { Text(if (page.bookmarked) tr("Remove bookmark", "取消收藏") else tr("Bookmark", "收藏")) }, onClick = { menu = false; onToggleBookmark(document.id, page.id) })
+                        StudioMenuItem(
                             text = { Text(tr("Clear unlocked paint", "清除未锁定绘画内容")) },
                             enabled = page.layers.any { layer ->
                                 layer.isPaintSurfaceLayer() &&
@@ -368,11 +368,11 @@ internal fun PageRail(
                             },
                             onClick = { menu = false; clearOpen = true },
                         )
-                        DropdownMenuItem(text = { Text(tr("Delete", "删除")) }, enabled = document.pages.size > 1, onClick = { menu = false; onDelete(document.id, page.id) })
+                        StudioMenuItem(text = { Text(tr("Delete", "删除")) }, enabled = document.pages.size > 1, onClick = { menu = false; onDelete(document.id, page.id) })
                     }
                 }
             }
-            if (renameOpen) AlertDialog(onDismissRequest = { renameOpen = false }, title = { Text(tr("Rename page", "重命名页面")) }, text = { OutlinedTextField(title, { title = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onRename(document.id, page.id, title); renameOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { renameOpen = false }) { Text(tr("Cancel", "取消")) } })
+            if (renameOpen) StudioDialog(onDismissRequest = { renameOpen = false }, title = { Text(tr("Rename page", "重命名页面")) }, text = { StudioOutlinedTextField(title, { title = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onRename(document.id, page.id, title); renameOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { renameOpen = false }) { Text(tr("Cancel", "取消")) } })
             if (metadataOpen) PageMetadataDialog(page, LocalUiLanguage.current,
                 onSave = { number, changed -> onMetadata(document.id, page.id, number, changed) }, onDismiss = { metadataOpen = false })
             if (templateOpen) PageTemplatePickerDialog(
@@ -388,15 +388,15 @@ internal fun PageRail(
                 onSaveCurrent = { templateName = page.title; templateOpen = false; saveTemplateNameOpen = true },
                 onDelete = onDeleteTemplate, onCreateCustomTemplate = onCreateCustomTemplate,
             )
-            if (saveTemplateNameOpen) AlertDialog(
+            if (saveTemplateNameOpen) StudioDialog(
                 onDismissRequest = { saveTemplateNameOpen = false },
                 title = { Text(tr("Save page as template", "将页面保存为模板")) },
-                text = { OutlinedTextField(templateName, { templateName = it }, label = { Text(tr("Template name", "模板名称")) }, singleLine = true) },
+                text = { StudioOutlinedTextField(templateName, { templateName = it }, label = { Text(tr("Template name", "模板名称")) }, singleLine = true) },
                 confirmButton = { TextButton(onClick = { onSaveAsTemplate(document.id, page.id, templateName); saveTemplateNameOpen = false }) { Text(tr("Save", "保存")) } },
                 dismissButton = { TextButton(onClick = { saveTemplateNameOpen = false }) { Text(tr("Cancel", "取消")) } },
             )
-            if (clearOpen) AlertDialog(onDismissRequest = { clearOpen = false }, title = { Text(tr("Clear page paint?", "清除页面绘画内容？")) }, text = { Text(tr("All pixels on unlocked raster layers will be removed. Locked layers are preserved.", "将删除所有未锁定栅格图层中的像素，锁定图层会保留。")) }, confirmButton = { TextButton(onClick = { onClearInk(document.id, page.id); clearOpen = false }) { Text(tr("Clear", "清除")) } }, dismissButton = { TextButton(onClick = { clearOpen = false }) { Text(tr("Cancel", "取消")) } })
-            if (cropOpen) AlertDialog(
+            if (clearOpen) StudioDialog(onDismissRequest = { clearOpen = false }, title = { Text(tr("Clear page paint?", "清除页面绘画内容？")) }, text = { Text(tr("All pixels on unlocked raster layers will be removed. Locked layers are preserved.", "将删除所有未锁定栅格图层中的像素，锁定图层会保留。")) }, confirmButton = { TextButton(onClick = { onClearInk(document.id, page.id); clearOpen = false }) { Text(tr("Clear", "清除")) } }, dismissButton = { TextButton(onClick = { clearOpen = false }) { Text(tr("Cancel", "取消")) } })
+            if (cropOpen) StudioDialog(
                 onDismissRequest = { cropOpen = false },
                 title = { Text(tr("Crop page", "裁剪页面")) },
                 text = {
@@ -412,7 +412,7 @@ internal fun PageRail(
                 confirmButton = { Button(onClick = { onCrop(document.id, page.id, cropDraft); cropOpen = false }) { Text(tr("Apply", "应用")) } },
                 dismissButton = { TextButton(onClick = { cropOpen = false }) { Text(tr("Cancel", "取消")) } },
             )
-            if (transferOpen) AlertDialog(
+            if (transferOpen) StudioDialog(
                 onDismissRequest = { transferOpen = false },
                 title = { Text(tr("Move or copy page", "移动或复制页面")) },
                 text = {
@@ -464,7 +464,7 @@ internal fun PageRail(
         onSetDefault = { templateId, paperColor -> onSetDefaultTemplate(document.id, templateId, paperColor) },
         onDelete = onDeleteTemplate, onCreateCustomTemplate = onCreateCustomTemplate,
     )
-    if (batchTransferOpen) AlertDialog(
+    if (batchTransferOpen) StudioDialog(
         onDismissRequest = { batchTransferOpen = false },
         title = { Text(tr("Move or copy ${selectedPageIds.size} pages", "移动或复制 ${selectedPageIds.size} 页")) },
         text = { LazyColumn(Modifier.dialogContentWidth(360.dp, 560.dp).heightIn(max = 360.dp)) {
@@ -536,7 +536,7 @@ internal fun PageTemplatePickerDialog(
                 ?: PaperColorCatalog.WHITE,
         )
     }
-    AlertDialog(
+    StudioDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {

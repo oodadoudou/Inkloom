@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -19,7 +18,7 @@ import app.inkloom.ui.theme.MutedInk
 
 @Composable
 internal fun BrushFolderImportProgressDialog(progress: String, language: UiLanguage, onStop: () -> Unit) {
-    AlertDialog(
+    StudioDialog(
         onDismissRequest = {},
         title = { Text(language.text("Importing brushes", "正在导入笔刷")) },
         text = {
@@ -36,7 +35,7 @@ internal fun BrushFolderImportProgressDialog(progress: String, language: UiLangu
 
 @Composable
 internal fun DamagedBackupRecoveryDialog(issues: List<String>, language: UiLanguage, onDismiss: () -> Unit, onRecover: () -> Unit) {
-    AlertDialog(
+    StudioDialog(
         onDismissRequest = onDismiss,
         title = { Text(language.text("Backup is damaged", "备份已损坏")) },
         text = {

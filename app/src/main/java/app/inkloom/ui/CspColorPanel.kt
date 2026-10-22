@@ -240,7 +240,7 @@ internal fun CspColorPanel(
             preview(original.color)
             editStart = null
         }
-        AlertDialog(onDismissRequest = ::cancel, modifier = Modifier.imePadding(),
+        StudioDialog(onDismissRequest = ::cancel, modifier = Modifier.imePadding(),
             properties = DialogProperties(decorFitsSystemWindows = false),
             title = { Text(tr("Color values", "颜色数值")) }, text = {
             Column(Modifier.dialogContentWidth(320.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -286,7 +286,7 @@ private fun ColorValueInput(label: String, value: Float, maximum: Float, onValue
     // A preview update must not overwrite a newer keystroke or an intentionally empty entry.
     LaunchedEffect(value, focused) { if (!focused && entry.toFloatOrNull()?.let { abs(it - value) > .005f } != false) entry = value.roundToInt().toString() }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(entry, { text -> entry = text; text.toFloatOrNull()?.takeIf { it.isFinite() && it in 0f..maximum }?.let(onValue) },
+        StudioOutlinedTextField(entry, { text -> entry = text; text.toFloatOrNull()?.takeIf { it.isFinite() && it in 0f..maximum }?.let(onValue) },
             Modifier.width(88.dp).onFocusChanged { focused = it.isFocused }.semantics { contentDescription = "Color value $label" }, label = { Text(label) }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }))

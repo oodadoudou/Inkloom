@@ -53,7 +53,7 @@ internal fun SelectionStrokeDialog(
     val width = widthText.toFloatOrNull()?.takeIf { it.isFinite() && it in .25f..256f }
     if (pickerOpen) StandardColorPickerDialog(color, language,
         onConfirm = { color = it; pickerOpen = false }, onDismiss = { pickerOpen = false })
-    AlertDialog(
+    StudioDialog(
         modifier = Modifier.imePadding(),
         properties = DialogProperties(decorFitsSystemWindows = false),
         onDismissRequest = { close(onDismiss) },
@@ -63,7 +63,7 @@ internal fun SelectionStrokeDialog(
             SideEffect { dialogFocus = focus; dialogKeyboard = keyboard }
             Column(Modifier.widthIn(max = 380.dp).heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(widthText, { widthText = it }, label = { Text(tr("Width (px)", "宽度（像素）")) },
+            StudioOutlinedTextField(widthText, { widthText = it }, label = { Text(tr("Width (px)", "宽度（像素）")) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { close {} }), singleLine = true,
                 isError = width == null, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Stroke width" })
@@ -74,7 +74,7 @@ internal fun SelectionStrokeDialog(
                         SelectionStrokePlacement.CENTER -> tr("Center", "居中")
                         SelectionStrokePlacement.OUTSIDE -> tr("Outside", "外侧")
                     }
-                    FilterChip(placement == option, { placement = option }, label = { Text(label) },
+                    StudioFilterChip(placement == option, { placement = option }, label = { Text(label) },
                         modifier = Modifier.semantics { contentDescription = "Stroke ${option.name.lowercase()}" })
                 }
             }

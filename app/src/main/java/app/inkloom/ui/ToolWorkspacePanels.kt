@@ -355,7 +355,7 @@ private fun ToolPaletteOrganizerDialog(settings: AppSettings, onSettings: (AppSe
         EditorTool.LIQUIFY -> language.text("Liquify", "液化")
         EditorTool.CORRECT_LINE -> language.text("Correct line", "线条修正")
     }
-    AlertDialog(
+    StudioDialog(
         onDismissRequest=onDismiss,
         title={Text(language.text("Customize tool rail", "自定义工具栏"))},
         text={Column(Modifier.dialogContentWidth(300.dp, 420.dp).heightIn(max=560.dp)) {

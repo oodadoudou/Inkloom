@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
@@ -15,8 +16,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import app.inkloom.engine.v5.tools.RasterImageFilter
 import app.inkloom.settings.*
-import java.util.Locale
 
+/** CSP-style filter window docked at the side, so the live preview on the canvas stays visible. */
 @Composable
 internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset>,onPresets:(List<RasterFilterPreset>)->Unit,
     compositePreview:Bitmap?,copyBusy:Boolean,onPreview:(RasterImageFilter.Effect,Boolean)->Unit,
@@ -27,6 +28,7 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
     var composite by remember{mutableStateOf(false)}
     var name by remember{mutableStateOf("")}
     var presetMenu by remember{mutableStateOf(false)}
+    var kinds by remember{mutableStateOf(false)}
     val effect=state.effect()
     LaunchedEffect(effect,composite){onPreview(effect,composite)}
     val names=rasterFilterNames(::tr)
@@ -34,59 +36,63 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
     if (colorPickerOpen) StandardColorPickerDialog(state.colorArgb or 0xFF000000.toInt(), language,
         onConfirm = { state=state.copy(colorArgb=it or 0xFF000000.toInt());colorPickerOpen=false },
         onDismiss = { colorPickerOpen=false })
-    AlertDialog(modifier = Modifier.imePadding(), properties = DialogProperties(decorFitsSystemWindows = false), onDismissRequest={if(!copyBusy)onCancel()},title={Text(tr("Image filter","图像滤镜"))},text={
-        // Docked at the side with a light scrim, as in CSP, so the canvas preview stays visible.
-        val dialogWindow=(androidx.compose.ui.platform.LocalView.current.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
-        SideEffect{dialogWindow?.apply{setGravity(android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL);setDimAmount(.12f)}}
-        Column(Modifier.widthIn(min=270.dp,max=420.dp).heightIn(max=520.dp).verticalScroll(rememberScrollState())) {
-            Box {
-                TextButton({presetMenu=true}){Text(tr("Presets & favorites","预设与收藏"))}
-                DropdownMenu(presetMenu,{presetMenu=false}){
-                    presets.sortedByDescending{it.favorite}.forEach{p->DropdownMenuItem(text={Text((if(p.favorite) "★ " else "")+p.name)},onClick={state=p;presetMenu=false})}
-                    if(presets.isEmpty())DropdownMenuItem(text={Text(tr("No saved presets","暂无预设"))},onClick={},enabled=false)
-                }
+    StudioDialog(properties = DialogProperties(decorFitsSystemWindows = false), placement = StudioDialogPlacement.SIDE,
+        onDismissRequest={if(!copyBusy)onCancel()},title={Text(tr("Image filter","图像滤镜"))},text={
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+            StudioDropdownField(names[state.kind],kinds,{kinds=it},label=tr("Filter","滤镜")){
+                RasterFilterKindMenuItems(::tr){i->
+                    state=state.copy(kind=i,strength=when(i){2,3,4->1f;5->8f;else->2f},distortion=if(i==28)kotlin.math.abs(state.distortion) else state.distortion);kinds=false}
             }
-            Box {
-                var kinds by remember{mutableStateOf(false)}
-                TextButton({kinds=true}){Text(names[state.kind])}
-                DropdownMenu(kinds,{kinds=false}){RasterFilterKindMenuItems(::tr){i->
-                    state=state.copy(kind=i,strength=when(i){2,3,4->1f;5->8f;else->2f},distortion=if(i==28)kotlin.math.abs(state.distortion) else state.distortion);kinds=false}}
+            StudioDropdownField(presets.firstOrNull{it.id==state.id}?.let{(if(it.favorite) "★ " else "")+it.name} ?: tr("None","无"),presetMenu,{presetMenu=it},
+                label=tr("Preset","预设")){
+                presets.sortedByDescending{it.favorite}.forEach{p->StudioMenuItem(text={Text((if(p.favorite) "★ " else "")+p.name)},onClick={state=p;presetMenu=false})}
+                if(presets.isEmpty())StudioMenuItem(text={Text(tr("No saved presets","暂无预设"))},onClick={},enabled=false)
             }
-            if (state.kind < 12) {
-            Text("${tr("Strength","强度")}  ${String.format(Locale.ROOT,"%.1f",state.strength)}")
-            BrushParameterSlider(state.strength,{state=state.copy(strength=it)},valueRange=1f..if(state.kind in listOf(2,4))3f else 20f)
-            }
-            if (state.kind == 12) TextButton({colorPickerOpen=true}) {
-                Box(Modifier.size(18.dp).background(Color(state.colorArgb or 0xFF000000.toInt())))
-                Spacer(Modifier.width(8.dp));Text(tr("Drawing color…","绘画色…"))
-            }
-            if (state.kind == 14 || state.kind == 15) Text(tr("Fixed strength; use Unsharp mask for adjustable sharpening.","固定强度；需要调节时请使用 USM 锐化。"),style=MaterialTheme.typography.bodySmall)
+            HorizontalDivider(Modifier.padding(vertical=6.dp),color=MaterialTheme.colorScheme.outline)
+            RasterFilterBasicControls(state,{state=it},::tr) { colorPickerOpen=true }
             if (state.kind >= 16) RasterFilterExtraControls(state,{state=it},::tr)
-            if (state.kind == 13) Text(tr("White becomes transparent; darker values become black ink. Source opacity is retained.","白色转为透明；深色转为黑色笔迹，原有透明度继续参与。"),style=MaterialTheme.typography.bodySmall)
-            if(state.kind==1){Text(tr("Amount","锐化量"));BrushParameterSlider(state.amount,{state=state.copy(amount=it)},valueRange=0f..4f)}
-            if(state.kind==4)Row{FilterChip(state.grow,{state=state.copy(grow=true)},label={Text(tr("Thicken","加粗"))});FilterChip(!state.grow,{state=state.copy(grow=false)},label={Text(tr("Thin","变细"))})}
-            if(state.kind==5){Text(tr("Wavelength","波长"));BrushParameterSlider(state.wavelength,{state=state.copy(wavelength=it)},valueRange=16f..512f)}
-            if(state.kind==6 || state.kind==11){Text("${tr("Angle","角度")} ${state.angle.toInt()}°");BrushParameterSlider(state.angle,{state=state.copy(angle=it)},valueRange=-180f..180f)}
-            if(state.kind==7){
-                Row{FilterChip(!state.zoom,{state=state.copy(zoom=false)},label={Text(tr("Spin","旋转"))});FilterChip(state.zoom,{state=state.copy(zoom=true)},label={Text(tr("Zoom","缩放"))})}
-                Text("X ${(state.centerX*100).toInt()}%");BrushParameterSlider(state.centerX,{state=state.copy(centerX=it)},valueRange=0f..1f)
-                Text("Y ${(state.centerY*100).toInt()}%");BrushParameterSlider(state.centerY,{state=state.copy(centerY=it)},valueRange=0f..1f)
-            }
-            if(state.kind==10){Row{Checkbox(state.monochrome,{state=state.copy(monochrome=it)});Text(tr("Monochrome","单色"))};TextButton({state=state.copy(seed=state.seed+1)}){Text(tr("New noise","重新生成噪点"))}}
-            Row{Checkbox(composite,{composite=it},enabled=!copyBusy);Text(tr("Process visible copy","处理可见画面副本"))}
+            HorizontalDivider(Modifier.padding(vertical=6.dp),color=MaterialTheme.colorScheme.outline)
+            StudioCheckRow(tr("Process visible copy","处理可见画面副本"),composite,{composite=it},enabled=!copyBusy)
             if(composite){
-                compositePreview?.takeUnless{it.isRecycled}?.let{Image(it.asImageBitmap(),tr("Composite preview","合成预览"),Modifier.fillMaxWidth().heightIn(max=180.dp))}
+                compositePreview?.takeUnless{it.isRecycled}?.let{Image(it.asImageBitmap(),tr("Composite preview","合成预览"),Modifier.fillMaxWidth().heightIn(max=160.dp))}
                 if(copyBusy)LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text(tr("Preview is scaled. Apply creates a pixel layer at authored resolution; source layers stay editable.","预览按比例缩小；应用后按原尺寸创建像素图层，原图层保留。"),style=MaterialTheme.typography.bodySmall)
+                Text(tr("Preview is scaled. Apply creates a pixel layer at authored resolution; source layers stay editable.","预览按比例缩小；应用后按原尺寸创建像素图层，原图层保留。"),
+                    style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Row(horizontalArrangement=Arrangement.spacedBy(4.dp)){
-                OutlinedTextField(name,{name=it.take(48)},Modifier.weight(1f),singleLine=true,label={Text(tr("Preset name","预设名称"))})
-                TextButton({val p=state.copy(id=java.util.UUID.randomUUID().toString(),name=name.trim());onPresets((presets+p).takeLast(100));state=p},enabled=name.isNotBlank()){Text(tr("Save","保存"))}
+            Row(Modifier.padding(top=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){
+                StudioTextField(name,{name=it.take(48)},tr("Preset name","预设名称"),Modifier.weight(1f))
+                StudioButton(tr("Save","保存"),{val p=state.copy(id=java.util.UUID.randomUUID().toString(),name=name.trim());onPresets((presets+p).takeLast(100));state=p},enabled=name.isNotBlank())
             }
-            presets.firstOrNull{it.id==state.id}?.let{saved->Row{
-                TextButton({onPresets(presets.map{if(it.id==saved.id)it.copy(favorite=!it.favorite)else it})}){Text(if(saved.favorite) "★" else "☆")}
-                TextButton({onPresets(presets.filterNot{it.id==saved.id})}){Text(tr("Delete preset","删除预设"))}
+            presets.firstOrNull{it.id==state.id}?.let{saved->Row(Modifier.padding(top=6.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)){
+                StudioButton(if(saved.favorite) tr("★ Favorite","★ 已收藏") else tr("☆ Favorite","☆ 收藏"),{onPresets(presets.map{if(it.id==saved.id)it.copy(favorite=!it.favorite)else it})})
+                StudioButton(tr("Delete preset","删除预设"),{onPresets(presets.filterNot{it.id==saved.id})})
             }}
         }
     },confirmButton={TextButton({onApply(effect,composite)},enabled=!copyBusy){Text(tr("Apply","应用"))}},dismissButton={TextButton(onCancel,enabled=!copyBusy){Text(tr("Cancel","取消"))}})
+}
+
+/** Settings for the original sixteen filters (kinds 0–15). */
+@Composable
+private fun RasterFilterBasicControls(state:RasterFilterPreset,onState:(RasterFilterPreset)->Unit,tr:(String,String)->String,onPickColor:()->Unit) {
+    val note=MaterialTheme.typography.bodySmall
+    val muted=MaterialTheme.colorScheme.onSurfaceVariant
+    if (state.kind < 12) StudioSliderRow(tr("Strength","强度"),state.strength,1f..if(state.kind in listOf(2,4))3f else 20f,{onState(state.copy(strength=it))})
+    if (state.kind == 12) StudioButton(tr("Drawing color…","绘画色…"),onPickColor) {
+        Box(Modifier.size(14.dp).background(Color(state.colorArgb or 0xFF000000.toInt())))
+    }
+    if (state.kind == 14 || state.kind == 15) Text(tr("Fixed strength; use Unsharp mask for adjustable sharpening.","固定强度；需要调节时请使用 USM 锐化。"),style=note,color=muted)
+    if (state.kind == 13) Text(tr("White becomes transparent; darker values become black ink. Source opacity is retained.","白色转为透明；深色转为黑色笔迹，原有透明度继续参与。"),style=note,color=muted)
+    if(state.kind==1)StudioSliderRow(tr("Amount","锐化量"),state.amount,0f..4f,{onState(state.copy(amount=it))},decimals=2)
+    if(state.kind==4)StudioSegmented(listOf(tr("Thicken","加粗"),tr("Thin","变细")),if(state.grow)0 else 1,{onState(state.copy(grow=it==0))},label=tr("Direction","方向"))
+    if(state.kind==5)StudioSliderRow(tr("Wavelength","波长"),state.wavelength,16f..512f,{onState(state.copy(wavelength=it))},unit="px")
+    if(state.kind==6 || state.kind==11)StudioSliderRow(tr("Angle","角度"),state.angle,-180f..180f,{onState(state.copy(angle=it))},unit="°")
+    if(state.kind==7){
+        StudioSegmented(listOf(tr("Spin","旋转"),tr("Zoom","缩放")),if(state.zoom)1 else 0,{onState(state.copy(zoom=it==1))},label=tr("Type","类型"))
+        StudioSliderRow(tr("Center X","中心 X"),state.centerX*100f,0f..100f,{onState(state.copy(centerX=it/100f))},unit="%")
+        StudioSliderRow(tr("Center Y","中心 Y"),state.centerY*100f,0f..100f,{onState(state.copy(centerY=it/100f))},unit="%")
+    }
+    if(state.kind==10){
+        StudioCheckRow(tr("Monochrome","单色"),state.monochrome,{onState(state.copy(monochrome=it))})
+        StudioButton(tr("New noise","重新生成噪点"),{onState(state.copy(seed=state.seed+1))})
+    }
 }

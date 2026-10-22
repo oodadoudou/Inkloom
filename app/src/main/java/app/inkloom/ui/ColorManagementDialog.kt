@@ -34,25 +34,32 @@ internal fun ColorManagementDialog(page:InkPage,language:UiLanguage,busy:Boolean
             error=null
         } catch(failure:Throwable){error=failure.message} finally{importing=false} }
     } }
-    AlertDialog(onDismissRequest={if(!busy && !importing)onDismiss()},title={Text(tr("Color management","色彩管理"))},text={
-        Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-            Row { Checkbox(state.highPrecision,{state=state.copy(highPrecision=it)});Text(tr("Wide gamut · 16-bit float","宽色域 · 16 位浮点")) }
-            Text(tr("Editable pixels stay in linear sRGB. Profile changes affect presentation and output.","可编辑像素保存在线性 sRGB；配置影响显示与输出。"),style=MaterialTheme.typography.bodySmall)
+    StudioDialog(onDismissRequest={if(!busy && !importing)onDismiss()},title={Text(tr("Color management","色彩管理"))},text={
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+            var intentMenu by remember{mutableStateOf(false)}
+            fun intentName(intent:ColorRenderingIntent)=when(intent){ColorRenderingIntent.PERCEPTUAL->tr("Perceptual","可感知");ColorRenderingIntent.RELATIVE->tr("Relative colorimetric","相对比色")
+                ColorRenderingIntent.SATURATION->tr("Saturation","饱和度");ColorRenderingIntent.ABSOLUTE->tr("Absolute colorimetric","绝对比色")}
+            StudioCheckRow(tr("Wide gamut · 16-bit float","宽色域 · 16 位浮点"),state.highPrecision,{state=state.copy(highPrecision=it)})
+            StudioNote(tr("Editable pixels stay in linear sRGB. Profile changes affect presentation and output.","可编辑像素保存在线性 sRGB；配置影响显示与输出。"))
+            StudioSection(tr("Profiles","配置文件"))
             listOf(tr("Assign RGB profile","指定 RGB 配置"),tr("Convert output profile","转换输出配置"),tr("Proof profile","软打样配置"),tr("CMYK printer profile","CMYK 印刷配置")).forEachIndexed { i,label ->
                 val path=when(i){0->state.assignedProfile;1->state.outputProfile;2->state.proofProfile;else->state.cmykProfile}
-                Row {
-                    TextButton({slot=i;picker.launch(arrayOf("application/vnd.iccprofile","application/octet-stream","*/*"))},Modifier.weight(1f),enabled=!busy && !importing){Text(label+if(path!=null) " ✓" else "")}
-                    if(path!=null) TextButton({state=when(i){0->state.copy(assignedProfile=null);1->state.copy(outputProfile=null);2->state.copy(proofProfile=null,softProof=false);else->state.copy(cmykProfile=null)}}){Text(tr("Reset","重置"))}
+                Row(Modifier.fillMaxWidth().heightIn(min=36.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                    Text(label,Modifier.width(132.dp),style=MaterialTheme.typography.bodySmall,maxLines=2)
+                    Text(path?.substringAfterLast('/')?:tr("None","无"),Modifier.weight(1f),style=MaterialTheme.typography.bodySmall,
+                        color=if(path!=null) MaterialTheme.colorScheme.onSurface else studioMuted(),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    StudioButton(tr("Choose…","选择…"),{slot=i;picker.launch(arrayOf("application/vnd.iccprofile","application/octet-stream","*/*"))},enabled=!busy && !importing)
+                    if(path!=null) StudioButton(tr("Reset","重置"),{state=when(i){0->state.copy(assignedProfile=null);1->state.copy(outputProfile=null);2->state.copy(proofProfile=null,softProof=false);else->state.copy(cmykProfile=null)}})
                 }
             }
-            Row { RgbOutputSpace.entries.forEach { space -> FilterChip(state.outputSpace==space,{state=state.copy(outputSpace=space,outputProfile=null)},label={Text(if(space==RgbOutputSpace.SRGB) "sRGB" else "Display P3")}) } }
-            Row { Checkbox(state.softProof,{state=state.copy(softProof=it)},enabled=state.proofProfile!=null);Text(tr("Soft proof preview","软打样预览")) }
-            ColorRenderingIntent.entries.forEach { intent -> Row {
-                RadioButton(state.intent==intent,{state=state.copy(intent=intent)})
-                Text(when(intent){ColorRenderingIntent.PERCEPTUAL->tr("Perceptual","可感知");ColorRenderingIntent.RELATIVE->tr("Relative colorimetric","相对比色");ColorRenderingIntent.SATURATION->tr("Saturation","饱和度");ColorRenderingIntent.ABSOLUTE->tr("Absolute colorimetric","绝对比色")})
-            } }
-            Text(tr("PNG embeds RGB ICC. CMYK TIFF requires a printer profile and includes paper.","PNG 嵌入 RGB ICC；CMYK TIFF 需要印刷配置并包含纸张。"),style=MaterialTheme.typography.bodySmall)
-            error?.let{Text(it,color=MaterialTheme.colorScheme.error)}
+            StudioSection(tr("Output","输出"))
+            StudioSegmented(listOf("sRGB","Display P3"),RgbOutputSpace.entries.indexOf(state.outputSpace),{state=state.copy(outputSpace=RgbOutputSpace.entries[it],outputProfile=null)},label=tr("RGB space","RGB 空间"))
+            StudioDropdownField(intentName(state.intent),intentMenu,{intentMenu=it},label=tr("Rendering intent","渲染意图")) {
+                ColorRenderingIntent.entries.forEach { intent -> StudioMenuItem(text={Text(intentName(intent))},onClick={state=state.copy(intent=intent);intentMenu=false}) }
+            }
+            StudioCheckRow(tr("Soft proof preview","软打样预览"),state.softProof,{state=state.copy(softProof=it)},enabled=state.proofProfile!=null)
+            StudioNote(tr("PNG embeds RGB ICC. CMYK TIFF requires a printer profile and includes paper.","PNG 嵌入 RGB ICC；CMYK TIFF 需要印刷配置并包含纸张。"),Modifier.padding(top=4.dp))
+            error?.let{Text(it,style=MaterialTheme.typography.bodySmall)}
         }
     },confirmButton={TextButton({onApply(state)},enabled=!busy && !importing){Text(tr("Apply","应用"))}},dismissButton={TextButton(onDismiss,enabled=!busy && !importing){Text(tr("Cancel","取消"))}})
 }

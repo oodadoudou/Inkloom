@@ -95,17 +95,17 @@ fun BrushEditorV1Dialog(
                             Box {
                                 TextButton(onClick = { moreOpen = true }) { Text(tr("Actions", "操作")) }
                                 DropdownMenu(moreOpen, { moreOpen = false }) {
-                                    DropdownMenuItem(text = { Text(tr("Save As", "另存为")) },
+                                    StudioMenuItem(text = { Text(tr("Save As", "另存为")) },
                                         onClick = { moreOpen = false; saveAsOpen = true })
                                     if (!source.isFactory) {
-                                        DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = {
+                                        StudioMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = {
                                             moreOpen = false
                                             saveAs(session.commitAsNew(session.current.identity.name + tr(" - Copy", " - 副本")).preset)
                                         })
                                         onResetToFactory?.let { reset ->
-                                            DropdownMenuItem(text = { Text(tr("Reset", "重置")) }, onClick = { moreOpen = false; reset() })
+                                            StudioMenuItem(text = { Text(tr("Reset", "重置")) }, onClick = { moreOpen = false; reset() })
                                         }
-                                        DropdownMenuItem(text = { Text(tr("Delete", "删除"), color = MaterialTheme.colorScheme.error) },
+                                        StudioMenuItem(text = { Text(tr("Delete", "删除"), color = MaterialTheme.colorScheme.error) },
                                             onClick = { moreOpen = false; onDelete() })
                                     }
                                 }
@@ -201,10 +201,10 @@ fun BrushEditorV1Dialog(
     }
     sourceRole?.let { role -> BrushSourceEditor(session.current,role,sources,language,
         onDismiss={sourceRole=null},onApply={session=session.withValue(it);sourceRole=null}) }
-    if (saveAsOpen) AlertDialog(
+    if (saveAsOpen) StudioDialog(
         onDismissRequest = { saveAsOpen = false },
         title = { Text(tr("Save brush as", "笔刷另存为")) },
-        text = { OutlinedTextField(saveAsName, { saveAsName = it },
+        text = { StudioOutlinedTextField(saveAsName, { saveAsName = it },
             label = { Text(tr("Brush name", "笔刷名称")) }, singleLine = true) },
         confirmButton = { TextButton(enabled = saveAsName.isNotBlank(), onClick = {
             val result = if (source.isFactory) session.commit(saveAsName.trim()) else session.commitAsNew(saveAsName.trim())
@@ -233,7 +233,7 @@ private fun BrushOptionRow(
             TextButton(onClick={expanded=true}) { Text(language.text(english[current.toInt()],names[current.toInt()])) }
             DropdownMenu(expanded,{expanded=false}) {
                 english.forEachIndexed { ordinal, name ->
-                    DropdownMenuItem(text={Text(language.text(name,names[ordinal]))},onClick={onValue(option.apply(value,ordinal.toFloat()));expanded=false})
+                    StudioMenuItem(text={Text(language.text(name,names[ordinal]))},onClick={onValue(option.apply(value,ordinal.toFloat()));expanded=false})
                 }
             }
         }
@@ -280,8 +280,8 @@ private fun BrushOptionRow(
     if (numericOpen) {
         val parsed = numeric.toFloatOrNull()?.div(displayScale)?.takeIf { it.isFinite() && it in option.valueRange }
         val apply = { if (parsed != null) { onValue(option.apply(value, parsed)); numericOpen = false } }
-        AlertDialog(onDismissRequest = { numericOpen = false }, title = { Text(label) },
-            text = { OutlinedTextField(numeric, { numeric = it }, singleLine = true,
+        StudioDialog(onDismissRequest = { numericOpen = false }, title = { Text(label) },
+            text = { StudioOutlinedTextField(numeric, { numeric = it }, singleLine = true,
                 isError = parsed == null,
                 supportingText = { Text("${option.valueRange.start * displayScale} – ${option.valueRange.endInclusive * displayScale}") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),

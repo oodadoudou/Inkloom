@@ -189,12 +189,12 @@ internal fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.ink
             if (compact) {
                 TextButton({compactFoldersOpen=true},modifier=Modifier.semantics{contentDescription="Manage folders"}){Icon(Icons.Outlined.FolderOpen,null);Spacer(Modifier.width(6.dp));Text(tr("Folders","文件夹"))}
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item { FilterChip(selected = filter == LibraryFilter.ALL, onClick = { filter = LibraryFilter.ALL }, label = { Text(tr("Library", "资料库")) }) }
-                    item { FilterChip(selected = filter == LibraryFilter.RECENT, onClick = { filter = LibraryFilter.RECENT }, label = { Text(tr("Recents", "最近使用")) }) }
-                    item { FilterChip(selected = filter == LibraryFilter.FAVORITES, onClick = { filter = LibraryFilter.FAVORITES }, label = { Text(tr("Favorites", "收藏")) }) }
-                    item { FilterChip(selected = filter == LibraryFilter.ARCHIVED, onClick = { filter = LibraryFilter.ARCHIVED }, label = { Text(tr("Archive", "归档")) }) }
-                    item { FilterChip(selected = filter == LibraryFilter.TRASH, onClick = { filter = LibraryFilter.TRASH }, label = { Text(tr("Trash", "废纸篓")) }) }
-                    item { FilterChip(selected = filter == LibraryFilter.PDF, onClick = { filter = LibraryFilter.PDF }, label = { Text("PDF") }) }
+                    item { StudioFilterChip(selected = filter == LibraryFilter.ALL, onClick = { filter = LibraryFilter.ALL }, label = { Text(tr("Library", "资料库")) }) }
+                    item { StudioFilterChip(selected = filter == LibraryFilter.RECENT, onClick = { filter = LibraryFilter.RECENT }, label = { Text(tr("Recents", "最近使用")) }) }
+                    item { StudioFilterChip(selected = filter == LibraryFilter.FAVORITES, onClick = { filter = LibraryFilter.FAVORITES }, label = { Text(tr("Favorites", "收藏")) }) }
+                    item { StudioFilterChip(selected = filter == LibraryFilter.ARCHIVED, onClick = { filter = LibraryFilter.ARCHIVED }, label = { Text(tr("Archive", "归档")) }) }
+                    item { StudioFilterChip(selected = filter == LibraryFilter.TRASH, onClick = { filter = LibraryFilter.TRASH }, label = { Text(tr("Trash", "废纸篓")) }) }
+                    item { StudioFilterChip(selected = filter == LibraryFilter.PDF, onClick = { filter = LibraryFilter.PDF }, label = { Text("PDF") }) }
                 }
             }
             // Compact windows (narrow or large fonts) give the title its own line instead of
@@ -229,7 +229,7 @@ internal fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.ink
                 libraryActions()
             }
             Spacer(Modifier.height(26.dp))
-            OutlinedTextField(value = search, onValueChange = { search = it }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Search notes", "搜索笔记")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            StudioOutlinedTextField(value = search, onValueChange = { search = it }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Search notes", "搜索笔记")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(20.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(when (filter) {
@@ -320,7 +320,7 @@ internal fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.ink
             }
         }
     }
-    if (batchMoveOpen) AlertDialog(
+    if (batchMoveOpen) StudioDialog(
         onDismissRequest = { batchMoveOpen = false },
         title = { Text(tr("Move selected notebooks", "移动所选笔记本")) },
         text = { Column {
@@ -358,11 +358,20 @@ internal fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.ink
         // in a subsequently opened notebook dialog. Typing begins when the user taps it.
         LaunchedEffect(Unit) { finishName() }
         Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp), contentAlignment = Alignment.Center) {
-        Surface(Modifier.widthIn(max = 560.dp), shape = MaterialTheme.shapes.extraLarge, color = Paper, contentColor = Ink) {
-        Column(Modifier.focusRequester(creationFocus).focusable().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(tr("Create notebook", "新建笔记本"), style = MaterialTheme.typography.headlineSmall)
-            Column(Modifier.weight(1f, fill = false).heightIn(max = 570.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                OutlinedTextField(newNoteTitle, { newNoteTitle = it.take(120); newNoteCreateFailed = false }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        StudioDialogFrame(Modifier.width(StudioDialogDefaults.width(wide = true)).heightIn(max = StudioDialogDefaults.maxHeight()),
+            title = { Text(tr("Create notebook", "新建笔记本")) },
+            footer = {
+                TextButton(onClick = { finishName(); newNoteOpen = false }) { Text(tr("Cancel", "取消")) }
+                Spacer(Modifier.width(4.dp))
+                TextButton(enabled = !coverImporting, onClick = {
+                    finishName()
+                    if (onNewNote(newNoteTitle, newNoteCover, newNoteTemplateId, newNotePaperColor, newNoteCoverId)) newNoteOpen = false
+                    else newNoteCreateFailed = true
+                }) { Text(tr("Create", "创建")) }
+            }) {
+        Column(Modifier.focusRequester(creationFocus).focusable(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                StudioOutlinedTextField(newNoteTitle, { newNoteTitle = it.take(120); newNoteCreateFailed = false }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
                     keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { finishName() }))
                 NotebookCoverPicker(newNoteTitle, pageTemplates.customCovers, newNoteCover, newNoteCoverId, coverImporting, LocalUiLanguage.current,
@@ -379,8 +388,8 @@ internal fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.ink
                     TextButton(onClick = { finishName(); customNoteTemplateOpen = true }) { Text(tr("Custom paper", "自定义纸张")) }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(!customNoteTemplatesSelected, { finishName(); customNoteTemplatesSelected = false }, label = { Text(tr("Presets", "预设")) })
-                    FilterChip(customNoteTemplatesSelected, { finishName(); customNoteTemplatesSelected = true }, label = { Text(tr("My templates", "我的模板")) })
+                    StudioFilterChip(!customNoteTemplatesSelected, { finishName(); customNoteTemplatesSelected = false }, label = { Text(tr("Presets", "预设")) })
+                    StudioFilterChip(customNoteTemplatesSelected, { finishName(); customNoteTemplatesSelected = true }, label = { Text(tr("My templates", "我的模板")) })
                 }
                 if (customNoteTemplatesSelected && imagePaperImporter != null) {
                     TextButton(enabled = !imagePaperImporter.loading, onClick = { finishName(); imagePaperImporter.launch() }) {
@@ -435,22 +444,13 @@ internal fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.ink
 
             }
             if (newNoteCreateFailed) Text(tr("Could not create this notebook. Check the selected cover and try again.", "无法创建笔记，请检查所选封面后重试。"), style = MaterialTheme.typography.bodySmall)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { finishName(); newNoteOpen = false }) { Text(tr("Cancel", "取消")) }
-                Spacer(Modifier.width(8.dp))
-                Button(enabled = !coverImporting, onClick = {
-                    finishName()
-                    if (onNewNote(newNoteTitle, newNoteCover, newNoteTemplateId, newNotePaperColor, newNoteCoverId)) newNoteOpen = false
-                    else newNoteCreateFailed = true
-                }) { Text(tr("Create", "创建")) }
-            }
         }
         }
         }
     }
     editingCoverDocumentId?.let { documentId ->
         val document = documents.firstOrNull { it.id == documentId }
-        if (document != null && coverCropCandidate == null) AlertDialog(
+        if (document != null && coverCropCandidate == null) StudioDialog(
             onDismissRequest = { if (!coverImporting) editingCoverDocumentId = null },
             title = { Text(tr("Change cover", "更换封面")) },
             text = {
@@ -559,8 +559,8 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
                     if (!managingFolders) Box {
                         IconButton(onClick = { folderMenuId = folder.id }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.MoreVert, tr("Folder actions", "文件夹操作"), modifier = Modifier.size(14.dp)) }
                         DropdownMenu(expanded = folderMenuId == folder.id, onDismissRequest = { folderMenuId = null }) {
-                            DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { folderMenuId = null; renameFolderId = folder.id; renameFolderName = folder.name })
-                            DropdownMenuItem(text = { Text(tr("Delete folder", "删除文件夹")) }, onClick = { folderMenuId=null;selectedFolderIds=setOf(folder.id);deleteFoldersOpen=true })
+                            StudioMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { folderMenuId = null; renameFolderId = folder.id; renameFolderName = folder.name })
+                            StudioMenuItem(text = { Text(tr("Delete folder", "删除文件夹")) }, onClick = { folderMenuId=null;selectedFolderIds=setOf(folder.id);deleteFoldersOpen=true })
                         }
                     }
                 }
@@ -568,7 +568,7 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
         }
         RailItem(Icons.Outlined.Settings, tr("Settings", "设置"), false, onClick = onSettings)
     }
-    if (moveFoldersOpen) AlertDialog(
+    if (moveFoldersOpen) StudioDialog(
         onDismissRequest = { moveFoldersOpen = false },
         title = { Text(tr("Move selected folders", "移动所选文件夹")) },
         text = { Column {
@@ -587,7 +587,7 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
         } },
         confirmButton = { TextButton(onClick = { moveFoldersOpen = false }) { Text(tr("Cancel", "取消")) } },
     )
-    if (deleteFoldersOpen) AlertDialog(
+    if (deleteFoldersOpen) StudioDialog(
         onDismissRequest = { deleteFoldersOpen = false },
         title = { Text(tr("Delete selected folders?", "删除所选文件夹？")) },
         text = { Column {
@@ -600,11 +600,11 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
         }) { Text(tr("Delete", "删除")) } },
         dismissButton = { TextButton(onClick = { deleteFoldersOpen = false }) { Text(tr("Cancel", "取消")) } },
     )
-    if (newFolderOpen) AlertDialog(onDismissRequest = { newFolderOpen = false }, title = { Text(tr("New folder", "新建文件夹")) }, text = { OutlinedTextField(value = folderName, onValueChange = { folderName = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onCreateFolder(folderName, folderId); folderName = ""; newFolderOpen = false }) { Text(tr("Create", "创建")) } }, dismissButton = { TextButton(onClick = { newFolderOpen = false }) { Text(tr("Cancel", "取消")) } })
-    if (renameFolderId != null) AlertDialog(
+    if (newFolderOpen) StudioDialog(onDismissRequest = { newFolderOpen = false }, title = { Text(tr("New folder", "新建文件夹")) }, text = { StudioOutlinedTextField(value = folderName, onValueChange = { folderName = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onCreateFolder(folderName, folderId); folderName = ""; newFolderOpen = false }) { Text(tr("Create", "创建")) } }, dismissButton = { TextButton(onClick = { newFolderOpen = false }) { Text(tr("Cancel", "取消")) } })
+    if (renameFolderId != null) StudioDialog(
         onDismissRequest = { renameFolderId = null },
         title = { Text(tr("Rename folder", "重命名文件夹")) },
-        text = { OutlinedTextField(renameFolderName, { renameFolderName = it }, singleLine = true) },
+        text = { StudioOutlinedTextField(renameFolderName, { renameFolderName = it }, singleLine = true) },
         confirmButton = { TextButton(onClick = { renameFolderId?.let { onRenameFolder(it, renameFolderName) }; renameFolderId = null }) { Text(tr("Save", "保存")) } },
         dismissButton = { TextButton(onClick = { renameFolderId = null }) { Text(tr("Cancel", "取消")) } },
     )
@@ -665,21 +665,21 @@ private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (Ink
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 if (document.trashedAt == null) {
-                    DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameOpen = true })
-                    DropdownMenuItem(text = { Text(tr("Change cover", "更换封面")) }, onClick = { menu = false; onEditCover(document) })
-                    DropdownMenuItem(text = { Text(tr("Edit tags", "编辑标签")) }, onClick = { menu = false; tagsOpen = true })
-                    DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(document.id) })
-                    DropdownMenuItem(text = { Text(tr("Share PDF…", "分享 PDF…")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { menu = false; onOutput(document, NotebookOutput.SHARE_PDF) })
-                    DropdownMenuItem(text = { Text(tr("Export PDF…", "导出 PDF…")) }, onClick = { menu = false; onOutput(document, NotebookOutput.EXPORT_PDF) })
-                    DropdownMenuItem(text = { Text(tr("Export Inkloom package…", "导出 Inkloom 文件…")) }, onClick = { menu = false; onOutput(document, NotebookOutput.EXPORT_PACKAGE) })
-                    folders.forEach { folder -> DropdownMenuItem(text = { Text("${tr("Move to", "移动到")} ${folder.name}") }, onClick = { menu = false; onMoveToFolder(document.id, folder.id) }) }
-                    if (document.folderId != null) DropdownMenuItem(text = { Text(tr("Remove from folder", "移出文件夹")) }, onClick = { menu = false; onMoveToFolder(document.id, null) })
-                    DropdownMenuItem(text = { Text(if (document.favorite) tr("Remove favorite", "取消收藏") else tr("Favorite", "收藏")) }, onClick = { menu = false; onFavorite(document.id) })
-                    DropdownMenuItem(text = { Text(if (document.archivedAt == null) tr("Archive", "归档") else tr("Unarchive", "取消归档")) }, onClick = { menu = false; onArchive(document.id) })
-                    DropdownMenuItem(text = { Text(tr("Move to Trash", "移到废纸篓")) }, onClick = { menu = false; onTrash(document.id) })
+                    StudioMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameOpen = true })
+                    StudioMenuItem(text = { Text(tr("Change cover", "更换封面")) }, onClick = { menu = false; onEditCover(document) })
+                    StudioMenuItem(text = { Text(tr("Edit tags", "编辑标签")) }, onClick = { menu = false; tagsOpen = true })
+                    StudioMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(document.id) })
+                    StudioMenuItem(text = { Text(tr("Share PDF…", "分享 PDF…")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { menu = false; onOutput(document, NotebookOutput.SHARE_PDF) })
+                    StudioMenuItem(text = { Text(tr("Export PDF…", "导出 PDF…")) }, onClick = { menu = false; onOutput(document, NotebookOutput.EXPORT_PDF) })
+                    StudioMenuItem(text = { Text(tr("Export Inkloom package…", "导出 Inkloom 文件…")) }, onClick = { menu = false; onOutput(document, NotebookOutput.EXPORT_PACKAGE) })
+                    folders.forEach { folder -> StudioMenuItem(text = { Text("${tr("Move to", "移动到")} ${folder.name}") }, onClick = { menu = false; onMoveToFolder(document.id, folder.id) }) }
+                    if (document.folderId != null) StudioMenuItem(text = { Text(tr("Remove from folder", "移出文件夹")) }, onClick = { menu = false; onMoveToFolder(document.id, null) })
+                    StudioMenuItem(text = { Text(if (document.favorite) tr("Remove favorite", "取消收藏") else tr("Favorite", "收藏")) }, onClick = { menu = false; onFavorite(document.id) })
+                    StudioMenuItem(text = { Text(if (document.archivedAt == null) tr("Archive", "归档") else tr("Unarchive", "取消归档")) }, onClick = { menu = false; onArchive(document.id) })
+                    StudioMenuItem(text = { Text(tr("Move to Trash", "移到废纸篓")) }, onClick = { menu = false; onTrash(document.id) })
                 } else {
-                    DropdownMenuItem(text = { Text(tr("Restore", "恢复")) }, onClick = { menu = false; onRestore(document.id) })
-                    DropdownMenuItem(text = { Text(tr("Delete permanently", "永久删除")) }, onClick = { menu = false; onDelete(document.id) })
+                    StudioMenuItem(text = { Text(tr("Restore", "恢复")) }, onClick = { menu = false; onRestore(document.id) })
+                    StudioMenuItem(text = { Text(tr("Delete permanently", "永久删除")) }, onClick = { menu = false; onDelete(document.id) })
                 }
             }
         }
@@ -713,8 +713,8 @@ private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (Ink
             if (document.tags.isNotEmpty()) Text(document.tags.take(3).joinToString("  ") { "#$it" }, color = MutedInk, fontSize = 10.sp, maxLines = 1)
         }
     }
-    if (renameOpen) AlertDialog(onDismissRequest = { renameOpen = false }, title = { Text(tr("Rename note", "重命名笔记")) }, text = { OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onRename(document.id, title); renameOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { renameOpen = false }) { Text(tr("Cancel", "取消")) } })
-    if (tagsOpen) AlertDialog(onDismissRequest = { tagsOpen = false }, title = { Text(tr("Note tags", "笔记标签")) }, text = { OutlinedTextField(value = tags, onValueChange = { tags = it }, supportingText = { Text(tr("Separate tags with commas", "使用逗号分隔标签")) }) }, confirmButton = { TextButton(onClick = { onTags(document.id, tags.split(',')); tagsOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { tagsOpen = false }) { Text(tr("Cancel", "取消")) } })
+    if (renameOpen) StudioDialog(onDismissRequest = { renameOpen = false }, title = { Text(tr("Rename note", "重命名笔记")) }, text = { StudioOutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onRename(document.id, title); renameOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { renameOpen = false }) { Text(tr("Cancel", "取消")) } })
+    if (tagsOpen) StudioDialog(onDismissRequest = { tagsOpen = false }, title = { Text(tr("Note tags", "笔记标签")) }, text = { StudioOutlinedTextField(value = tags, onValueChange = { tags = it }, supportingText = { Text(tr("Separate tags with commas", "使用逗号分隔标签")) }) }, confirmButton = { TextButton(onClick = { onTags(document.id, tags.split(',')); tagsOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { tagsOpen = false }) { Text(tr("Cancel", "取消")) } })
 }
 
 @Composable

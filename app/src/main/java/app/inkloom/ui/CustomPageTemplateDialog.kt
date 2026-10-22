@@ -51,28 +51,28 @@ internal fun CustomPageTemplateDialog(
     val valid = w != null && h != null && w in 32..20_000 && h in 32..20_000 && color != null
     val defaultName = tr("Custom paper", "自定义纸张")
     val displayed = paper.copy(colorArgb = color ?: paper.colorArgb)
-    AlertDialog(
+    StudioDialog(
         onDismissRequest = onDismiss,
         title = { Text(defaultName) },
         text = {
             Column(Modifier.widthIn(max = 440.dp).heightIn(max = 510.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(name, { name = it.take(80); error = false }, Modifier.fillMaxWidth(), singleLine = true,
+                StudioOutlinedTextField(name, { name = it.take(80); error = false }, Modifier.fillMaxWidth(), singleLine = true,
                     label = { Text(tr("Template name", "模板名称")) }, placeholder = { Text(defaultName) })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(width, { width = it.filter(Char::isDigit).take(5); error = false }, Modifier.weight(1f),
+                    StudioOutlinedTextField(width, { width = it.filter(Char::isDigit).take(5); error = false }, Modifier.weight(1f),
                         label = { Text(tr("Width (px)", "宽度（px）")) }, singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = w == null || w !in 32..20_000)
                     IconButton(onClick = { val previous = width; width = height; height = previous }) {
                         Icon(Icons.Outlined.SwapHoriz, tr("Swap width and height", "交换宽高"))
                     }
-                    OutlinedTextField(height, { height = it.filter(Char::isDigit).take(5); error = false }, Modifier.weight(1f),
+                    StudioOutlinedTextField(height, { height = it.filter(Char::isDigit).take(5); error = false }, Modifier.weight(1f),
                         label = { Text(tr("Height (px)", "高度（px）")) }, singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = h == null || h !in 32..20_000)
                 }
                 Text(tr("32–20,000 px per side", "每边 32–20,000 px"), style = MaterialTheme.typography.bodySmall)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PaperPattern.entries.forEach { pattern -> item {
-                        FilterChip(selected = paper.pattern == pattern, onClick = {
+                        StudioFilterChip(selected = paper.pattern == pattern, onClick = {
                             paper = paper.copy(pattern = pattern,
                                 density = if (paper.pattern == PaperPattern.PLAIN) PaperDensity.MEDIUM else paper.density)
                         }, label = { Text(when (pattern) {
@@ -86,7 +86,7 @@ internal fun CustomPageTemplateDialog(
                 }
                 if (paper.pattern != PaperPattern.PLAIN) LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PaperDensity.entries.forEach { density -> item {
-                        FilterChip(paper.density == density, { paper = paper.copy(density = density) }, label = {
+                        StudioFilterChip(paper.density == density, { paper = paper.copy(density = density) }, label = {
                             Text(when (density) {
                                 PaperDensity.DENSE -> tr("Dense", "密集")
                                 PaperDensity.MEDIUM -> tr("Medium", "适中")
@@ -103,7 +103,7 @@ internal fun CustomPageTemplateDialog(
                             .clickable { hex = "%06X".format(option.colorArgb and 0xffffff) })
                     }
                 }
-                OutlinedTextField(hex, { hex = it.removePrefix("#").filter { c -> c in "0123456789abcdefABCDEF" }.take(6).uppercase() }, Modifier.fillMaxWidth(),
+                StudioOutlinedTextField(hex, { hex = it.removePrefix("#").filter { c -> c in "0123456789abcdefABCDEF" }.take(6).uppercase() }, Modifier.fillMaxWidth(),
                     label = { Text(tr("Paper color (RGB hex)", "纸色（RGB 十六进制）")) }, prefix = { Text("#") }, singleLine = true, isError = color == null)
                 Canvas(Modifier.fillMaxWidth().height(112.dp).semantics { contentDescription = tr("Custom paper preview", "自定义纸张预览") }) {
                     // Intermediate input ("", "1", etc.) is not a canvas size. A near-zero

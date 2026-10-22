@@ -95,7 +95,7 @@ internal fun SelectionStudioPanel(
     if (featherOpen) {
         val finish by rememberUpdatedState(onFinishFeather)
         DisposableEffect(Unit) { onDispose { finish(false) } }
-        AlertDialog(
+        StudioDialog(
             onDismissRequest = { onFinishFeather(false); featherOpen = false },
             title = { Text(tr("Feather selection", "羽化选区")) },
             text = { Column {
@@ -108,7 +108,7 @@ internal fun SelectionStudioPanel(
             dismissButton = { TextButton(onClick = { onFinishFeather(false); featherOpen = false }) { Text(tr("Cancel feather", "取消羽化")) } },
         )
     }
-    if (colorRangeOpen) AlertDialog(
+    if (colorRangeOpen) StudioDialog(
         onDismissRequest = { colorRangeOpen = false },
         title = { Text(tr("Color range", "色域选择")) },
         text = { Column(Modifier.dialogContentWidth(320.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -120,14 +120,14 @@ internal fun SelectionStudioPanel(
             Text("${tr("Tolerance", "容差")} ${(colorRangeTolerance * 100).toInt()}%")
             BrushParameterSlider(colorRangeTolerance, { colorRangeTolerance = it }, valueRange = 0f..1f)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(colorRangeAlpha, { colorRangeAlpha = it })
+                StudioCheckbox(colorRangeAlpha, { colorRangeAlpha = it })
                 Text(tr("Include transparency difference", "包含透明度差异"), fontSize = 12.sp)
             }
         } },
         confirmButton = { TextButton(onClick = { if (onColorRange(colorRangeTolerance, colorRangeAlpha)) colorRangeOpen = false }) { Text(tr("Select", "选择")) } },
         dismissButton = { TextButton(onClick = { colorRangeOpen = false }) { Text(tr("Cancel", "取消")) } },
     )
-    if (optionsOpen) AlertDialog(
+    if (optionsOpen) StudioDialog(
         onDismissRequest = { optionsOpen = false },
         title = { Text(tr("Selection settings", "选区设置")) },
         text = { Column(Modifier.dialogContentWidth(320.dp).heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
@@ -160,7 +160,7 @@ internal fun SelectionStudioPanel(
                                     SelectionFilter.CURRENT_COLOR -> tr("Current color", "当前颜色")
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    RadioButton(selected = filter == option, onClick = { onFilter(option) })
+                                    StudioRadioButton(selected = filter == option, onClick = { onFilter(option) })
                                     TextButton(onClick = { onFilter(option) }) { Text(label) }
                                 }
                             }
@@ -177,7 +177,7 @@ internal fun SelectionStudioPanel(
                             Text(tr("Interpolation", "插值"), fontSize = 12.sp)
                             app.inkloom.engine.v5.tools.SelectionInterpolation.entries.forEach { method ->
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    RadioButton(selected = interpolation == method, onClick = { onInterpolation(method) })
+                                    StudioRadioButton(selected = interpolation == method, onClick = { onInterpolation(method) })
                                     TextButton(onClick = { onInterpolation(method) }) { Text(when (method) {
                                         app.inkloom.engine.v5.tools.SelectionInterpolation.NEAREST -> tr("Nearest neighbor", "最近邻")
                                         app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR -> tr("Bilinear", "双线性")
@@ -188,7 +188,7 @@ internal fun SelectionStudioPanel(
                         } },
         confirmButton = { TextButton(onClick = { optionsOpen = false }) { Text(tr("Done", "完成")) } },
     )
-    if (launcherSettingsOpen) AlertDialog(
+    if (launcherSettingsOpen) StudioDialog(
         onDismissRequest = { launcherSettingsOpen = false },
         title = { Text(tr("Selection shortcuts", "选区快捷操作")) },
         text = { Column(Modifier.dialogContentWidth(320.dp).heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
@@ -272,35 +272,35 @@ internal fun SelectionStudioPanel(
                     SelectionLauncherButton(Icons.Outlined.MoreHoriz, tr("Selection actions", "选区操作")) { settingsOpen = true }
                     DropdownMenu(settingsOpen, { settingsOpen = false }) {
                         if (!launcherVisible) {
-                            DropdownMenuItem(text = { Text(tr("Add", "添加")) }, onClick = { settingsOpen = false; onMode(SelectionMode.ADD) })
-                            DropdownMenuItem(text = { Text(tr("Remove", "移除")) }, onClick = { settingsOpen = false; onMode(SelectionMode.SUBTRACT) })
-                            DropdownMenuItem(text = { Text(tr("Invert", "反选")) }, enabled = hasSelection, onClick = { settingsOpen = false; onInvert() })
-                            DropdownMenuItem(text = { Text(tr("Copy & Paste", "复制并粘贴")) }, enabled = hasSelection, onClick = { settingsOpen = false; onCopy() })
-                            DropdownMenuItem(text = { Text(tr("Feather", "羽化")) }, enabled = hasSelection, onClick = { settingsOpen = false; featherOpen = onBeginFeather() })
-                            DropdownMenuItem(text = { Text(tr("Save & Load", "保存与载入")) }, onClick = { settingsOpen = false; onSaveLoad() })
-                            DropdownMenuItem(text = { Text(tr("Color Fill", "颜色填充")) }, onClick = { settingsOpen = false; onColorFill() })
-                            DropdownMenuItem(text = { Text(tr("Transform", "变换")) }, enabled = hasSelection, onClick = { settingsOpen = false; onTransform() })
+                            StudioMenuItem(text = { Text(tr("Add", "添加")) }, onClick = { settingsOpen = false; onMode(SelectionMode.ADD) })
+                            StudioMenuItem(text = { Text(tr("Remove", "移除")) }, onClick = { settingsOpen = false; onMode(SelectionMode.SUBTRACT) })
+                            StudioMenuItem(text = { Text(tr("Invert", "反选")) }, enabled = hasSelection, onClick = { settingsOpen = false; onInvert() })
+                            StudioMenuItem(text = { Text(tr("Copy & Paste", "复制并粘贴")) }, enabled = hasSelection, onClick = { settingsOpen = false; onCopy() })
+                            StudioMenuItem(text = { Text(tr("Feather", "羽化")) }, enabled = hasSelection, onClick = { settingsOpen = false; featherOpen = onBeginFeather() })
+                            StudioMenuItem(text = { Text(tr("Save & Load", "保存与载入")) }, onClick = { settingsOpen = false; onSaveLoad() })
+                            StudioMenuItem(text = { Text(tr("Color Fill", "颜色填充")) }, onClick = { settingsOpen = false; onColorFill() })
+                            StudioMenuItem(text = { Text(tr("Transform", "变换")) }, enabled = hasSelection, onClick = { settingsOpen = false; onTransform() })
                         }
-                        DropdownMenuItem(text = { Text(tr("Clear", "清除")) }, onClick = { settingsOpen = false; onClear() })
-                        DropdownMenuItem(text = { Text(tr("Cut & Paste", "剪切并粘贴")) }, enabled = hasSelection, onClick = { settingsOpen = false; onCut() })
-                        DropdownMenuItem(text = { Text(tr("Delete selected pixels", "删除所选像素")) }, enabled = hasSelection, onClick = { settingsOpen = false; onDelete() })
-                        DropdownMenuItem(text = { Text(tr("Clear outside selection", "删除选区外内容")) }, enabled = hasSelection, onClick = { settingsOpen = false; onDeleteOutside() })
-                        DropdownMenuItem(text = { Text(tr("Select all", "全部选择")) }, onClick = { settingsOpen = false; onSelectAll() })
-                        DropdownMenuItem(text = { Text(tr("Copy to clipboard", "复制到剪贴板")) }, enabled = hasSelection, onClick = { settingsOpen = false; onClipboardCopy() })
-                        DropdownMenuItem(text = { Text(tr("Paste", "粘贴")) }, onClick = { settingsOpen = false; onPaste() })
-                        DropdownMenuItem(text = { Text(tr("Paste to shown position", "粘贴至显示位置")) }, onClick = { settingsOpen = false; onPasteAtView() })
-                        DropdownMenuItem(text = { Text(tr("Fill selection", "填充选区")) }, enabled = hasSelection, onClick = { settingsOpen = false; onFill() })
-                        DropdownMenuItem(text = { Text(tr("Stroke selection…", "选区描边…")) }, enabled = hasSelection, onClick = { settingsOpen = false; strokeOpen = true })
-                        DropdownMenuItem(text = { Text(tr("Quick mask", "快速蒙版")) }, trailingIcon = { if (quickMask) Icon(Icons.Outlined.Check, null) }, onClick = { settingsOpen = false; onQuickMask() })
+                        StudioMenuItem(text = { Text(tr("Clear", "清除")) }, onClick = { settingsOpen = false; onClear() })
+                        StudioMenuItem(text = { Text(tr("Cut & Paste", "剪切并粘贴")) }, enabled = hasSelection, onClick = { settingsOpen = false; onCut() })
+                        StudioMenuItem(text = { Text(tr("Delete selected pixels", "删除所选像素")) }, enabled = hasSelection, onClick = { settingsOpen = false; onDelete() })
+                        StudioMenuItem(text = { Text(tr("Clear outside selection", "删除选区外内容")) }, enabled = hasSelection, onClick = { settingsOpen = false; onDeleteOutside() })
+                        StudioMenuItem(text = { Text(tr("Select all", "全部选择")) }, onClick = { settingsOpen = false; onSelectAll() })
+                        StudioMenuItem(text = { Text(tr("Copy to clipboard", "复制到剪贴板")) }, enabled = hasSelection, onClick = { settingsOpen = false; onClipboardCopy() })
+                        StudioMenuItem(text = { Text(tr("Paste", "粘贴")) }, onClick = { settingsOpen = false; onPaste() })
+                        StudioMenuItem(text = { Text(tr("Paste to shown position", "粘贴至显示位置")) }, onClick = { settingsOpen = false; onPasteAtView() })
+                        StudioMenuItem(text = { Text(tr("Fill selection", "填充选区")) }, enabled = hasSelection, onClick = { settingsOpen = false; onFill() })
+                        StudioMenuItem(text = { Text(tr("Stroke selection…", "选区描边…")) }, enabled = hasSelection, onClick = { settingsOpen = false; strokeOpen = true })
+                        StudioMenuItem(text = { Text(tr("Quick mask", "快速蒙版")) }, trailingIcon = { if (quickMask) Icon(Icons.Outlined.Check, null) }, onClick = { settingsOpen = false; onQuickMask() })
                         HorizontalDivider()
-                        DropdownMenuItem(text = { Text(tr("New selection", "新建选区")) }, onClick = { settingsOpen = false; onMode(SelectionMode.REPLACE) })
-                        DropdownMenuItem(text = { Text(tr("Intersect", "交集")) }, onClick = { settingsOpen = false; onMode(SelectionMode.INTERSECT) })
-                        DropdownMenuItem(text = { Text(tr("Brush selection", "画笔选区")) }, onClick = { settingsOpen = false; onShape(SelectionShape.BRUSH) })
-                        DropdownMenuItem(text = { Text(tr("Smart border selection", "智能边界选区")) }, onClick = { settingsOpen = false; onShape(SelectionShape.SMART_BORDER) })
-                        DropdownMenuItem(text = { Text(tr("Color range…", "色域选择…")) }, onClick = { settingsOpen = false; colorRangeOpen = true })
-                        DropdownMenuItem(text = { Text(tr("Selection settings", "选区设置")) }, onClick = { settingsOpen = false; optionsOpen = true })
-                        DropdownMenuItem(text = { Text(if (launcherVisible) tr("Hide actions", "隐藏操作") else tr("Show actions", "显示操作")) }, onClick = { settingsOpen = false; onLauncherVisible(!launcherVisible) })
-                        DropdownMenuItem(text = { Text(tr("Arrange selection shortcuts", "排列选区快捷操作")) }, onClick = { settingsOpen = false; launcherSettingsOpen = true })
+                        StudioMenuItem(text = { Text(tr("New selection", "新建选区")) }, onClick = { settingsOpen = false; onMode(SelectionMode.REPLACE) })
+                        StudioMenuItem(text = { Text(tr("Intersect", "交集")) }, onClick = { settingsOpen = false; onMode(SelectionMode.INTERSECT) })
+                        StudioMenuItem(text = { Text(tr("Brush selection", "画笔选区")) }, onClick = { settingsOpen = false; onShape(SelectionShape.BRUSH) })
+                        StudioMenuItem(text = { Text(tr("Smart border selection", "智能边界选区")) }, onClick = { settingsOpen = false; onShape(SelectionShape.SMART_BORDER) })
+                        StudioMenuItem(text = { Text(tr("Color range…", "色域选择…")) }, onClick = { settingsOpen = false; colorRangeOpen = true })
+                        StudioMenuItem(text = { Text(tr("Selection settings", "选区设置")) }, onClick = { settingsOpen = false; optionsOpen = true })
+                        StudioMenuItem(text = { Text(if (launcherVisible) tr("Hide actions", "隐藏操作") else tr("Show actions", "显示操作")) }, onClick = { settingsOpen = false; onLauncherVisible(!launcherVisible) })
+                        StudioMenuItem(text = { Text(tr("Arrange selection shortcuts", "排列选区快捷操作")) }, onClick = { settingsOpen = false; launcherSettingsOpen = true })
                     }
                 }
             }

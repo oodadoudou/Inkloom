@@ -25,7 +25,7 @@ internal fun EditorActionsDialog(language: UiLanguage, section: Int, onSection: 
     onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     val labels = listOf("Notebook" to "笔记", "Canvas" to "画布", "Tools" to "工具",
         "Guides" to "辅助", "Views" to "视图", "Share" to "分享")
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(language.text("Actions", "操作")) },
+    StudioDialog(onDismissRequest = onDismiss, title = { Text(language.text("Actions", "操作")) },
         confirmButton = { TextButton(onClick = onDismiss) { Text(language.text("Done", "完成")) } },
         text = { Column(Modifier.widthIn(max = 520.dp)) {
             // Categories wrap on narrow windows or large fonts so none is hidden off-screen.

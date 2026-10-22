@@ -7,8 +7,6 @@ import androidx.compose.material.icons.outlined.Flip
 import androidx.compose.material.icons.outlined.Rotate90DegreesCcw
 import androidx.compose.material.icons.outlined.Rotate90DegreesCw
 import androidx.compose.material.icons.outlined.RotateRight
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,11 +30,11 @@ import kotlinx.coroutines.withContext
 internal fun CanvasOrientationDialog(language: UiLanguage, canFlip: Boolean, busy: Boolean,
     onDismiss: () -> Unit, onChoose: (CanvasOrientationChange) -> Unit) {
     fun tr(en: String, zh: String) = language.text(en, zh)
-    AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text(tr("Rotate or flip canvas", "旋转／翻转画布")) },
+    StudioDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text(tr("Rotate or flip canvas", "旋转／翻转画布")) },
         text = { Column {
             CanvasOrientationChange.entries.forEach { change ->
                 val flip = change.flip != null
-                DropdownMenuItem(
+                StudioMenuItem(
                     text = { Text(when (change) {
                         CanvasOrientationChange.ROTATE_CLOCKWISE -> tr("Rotate 90° clockwise", "顺时针旋转 90°")
                         CanvasOrientationChange.ROTATE_180 -> tr("Rotate 180°", "旋转 180°")

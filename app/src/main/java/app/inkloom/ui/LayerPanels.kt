@@ -66,63 +66,63 @@ internal fun LayerMaskMenuItems(
     if (layer.role == LayerRole.BACKGROUND) return
     val mask = layer.mask
     if (mask == null) {
-        DropdownMenuItem(
+        StudioMenuItem(
             text = { Text(tr("Mask selection", "蒙版选区")) },
             leadingIcon = { Icon(Icons.Outlined.FilterAlt, null) },
             onClick = { onCommand(LayerMaskCommand.CREATE_MASK_SELECTION) },
         )
-        DropdownMenuItem(
+        StudioMenuItem(
             text = { Text(tr("Mask outside selection", "蒙版选区外")) },
             leadingIcon = { Icon(Icons.Outlined.FilterAltOff, null) },
             onClick = { onCommand(LayerMaskCommand.CREATE_MASK_OUTSIDE_SELECTION) },
         )
     } else {
-        DropdownMenuItem(
+        StudioMenuItem(
             text = { Text(tr("Edit layer mask", "编辑图层蒙版")) },
             leadingIcon = { Icon(Icons.Outlined.Brush, null) },
             onClick = { onCommand(LayerMaskCommand.EDIT) },
         )
-        DropdownMenuItem(text = { Text(tr("Reveal all", "全部显示")) }, onClick = { onCommand(LayerMaskCommand.FILL_WHITE) })
-        DropdownMenuItem(text = { Text(tr("Hide all", "全部隐藏")) }, onClick = { onCommand(LayerMaskCommand.FILL_BLACK) })
-        DropdownMenuItem(text = { Text(tr("Hide current selection", "隐藏当前选区")) }, onClick = { onCommand(LayerMaskCommand.HIDE_SELECTION) })
-        DropdownMenuItem(text = { Text(tr("Reveal current selection", "显示当前选区")) }, onClick = { onCommand(LayerMaskCommand.REVEAL_SELECTION) })
-        DropdownMenuItem(
+        StudioMenuItem(text = { Text(tr("Reveal all", "全部显示")) }, onClick = { onCommand(LayerMaskCommand.FILL_WHITE) })
+        StudioMenuItem(text = { Text(tr("Hide all", "全部隐藏")) }, onClick = { onCommand(LayerMaskCommand.FILL_BLACK) })
+        StudioMenuItem(text = { Text(tr("Hide current selection", "隐藏当前选区")) }, onClick = { onCommand(LayerMaskCommand.HIDE_SELECTION) })
+        StudioMenuItem(text = { Text(tr("Reveal current selection", "显示当前选区")) }, onClick = { onCommand(LayerMaskCommand.REVEAL_SELECTION) })
+        StudioMenuItem(
             text = { Text(if (mask.enabled) tr("Disable layer mask", "停用图层蒙版") else tr("Enable layer mask", "启用图层蒙版")) },
             onClick = { onCommand(LayerMaskCommand.TOGGLE_ENABLED) },
         )
-        DropdownMenuItem(
+        StudioMenuItem(
             text = { Text(if (mask.linked) tr("Unlink mask from layer", "解除蒙版与图层链接") else tr("Link mask to layer", "链接蒙版与图层")) },
             leadingIcon = { Icon(if (mask.linked) Icons.Outlined.LinkOff else Icons.Outlined.Link, null) },
             onClick = { onCommand(LayerMaskCommand.TOGGLE_LINKED) },
         )
-        DropdownMenuItem(
+        StudioMenuItem(
             text = { Text(tr("Show or hide mask overlay", "显示或隐藏蒙版覆盖")) },
             onClick = { onCommand(LayerMaskCommand.TOGGLE_OVERLAY) },
         )
-        DropdownMenuItem(
+        StudioMenuItem(
             text = { Text(tr("Mask gradients and threshold", "蒙版渐变与阈值")) },
             onClick = onExpression,
         )
-        DropdownMenuItem(text = { Text(tr("Invert layer mask", "反相图层蒙版")) }, onClick = { onCommand(LayerMaskCommand.INVERT) })
-        if (mask.surface != null) DropdownMenuItem(
+        StudioMenuItem(text = { Text(tr("Invert layer mask", "反相图层蒙版")) }, onClick = { onCommand(LayerMaskCommand.INVERT) })
+        if (mask.surface != null) StudioMenuItem(
             text = { Text(tr("Load mask as selection", "从蒙版载入选区")) },
             onClick = { onCommand(LayerMaskCommand.LOAD_AS_SELECTION) },
         )
-        if (layer.role != LayerRole.ADJUSTMENT) DropdownMenuItem(
+        if (layer.role != LayerRole.ADJUSTMENT) StudioMenuItem(
             text = { Text(tr("Apply layer mask", "应用图层蒙版")) },
             onClick = { onCommand(LayerMaskCommand.APPLY) },
         )
         transferTargets.forEach { target ->
-            DropdownMenuItem(
+            StudioMenuItem(
                 text = { Text("${tr("Copy mask to", "复制蒙版到")} ${target.name}") },
                 onClick = { onTransfer(target.id, true) },
             )
-            DropdownMenuItem(
+            StudioMenuItem(
                 text = { Text("${tr("Move mask to", "移动蒙版到")} ${target.name}") },
                 onClick = { onTransfer(target.id, false) },
             )
         }
-        DropdownMenuItem(text = { Text(tr("Delete layer mask", "删除图层蒙版")) }, onClick = { onCommand(LayerMaskCommand.DELETE) })
+        StudioMenuItem(text = { Text(tr("Delete layer mask", "删除图层蒙版")) }, onClick = { onCommand(LayerMaskCommand.DELETE) })
     }
 }
 
@@ -389,39 +389,39 @@ private fun PaintingLayerPanel(
                         Icon(Icons.Outlined.Tune, tr("Layer list display", "图层列表显示"), tint = Ink)
                     }
                     DropdownMenu(displayMenuOpen, { displayMenuOpen = false }) {
-                        DropdownMenuItem(
+                        StudioMenuItem(
                             text = { Text(tr("Two layer lists", "双图层列表")) },
-                            leadingIcon = { Checkbox(settings.layerPanelDualList, null) },
+                            leadingIcon = { StudioCheckbox(settings.layerPanelDualList, null) },
                             onClick = { onSettingsChange(settings.copy(layerPanelDualList = !settings.layerPanelDualList)) },
                         )
-                        DropdownMenuItem(
+                        StudioMenuItem(
                             text = { Text(tr("Show thumbnails", "显示缩略图")) },
-                            leadingIcon = { Checkbox(settings.layerShowThumbnails, null) },
+                            leadingIcon = { StudioCheckbox(settings.layerShowThumbnails, null) },
                             onClick = { onSettingsChange(settings.copy(layerShowThumbnails = !settings.layerShowThumbnails)) },
                         )
-                        DropdownMenuItem(
+                        StudioMenuItem(
                             text = { Text(tr("Show opacity and blend mode", "显示透明度和混合模式")) },
-                            leadingIcon = { Checkbox(settings.layerShowDetails, null) },
+                            leadingIcon = { StudioCheckbox(settings.layerShowDetails, null) },
                             onClick = { onSettingsChange(settings.copy(layerShowDetails = !settings.layerShowDetails)) },
                         )
-                        DropdownMenuItem(text = { Text(tr("Show properties bar", "显示属性栏")) },
-                            leadingIcon = { Checkbox(settings.layerShowProperties, null) },
+                        StudioMenuItem(text = { Text(tr("Show properties bar", "显示属性栏")) },
+                            leadingIcon = { StudioCheckbox(settings.layerShowProperties, null) },
                             onClick = { onSettingsChange(settings.copy(layerShowProperties = !settings.layerShowProperties)) })
-                        DropdownMenuItem(text = { Text(tr("Show command bar", "显示命令栏")) },
-                            leadingIcon = { Checkbox(settings.layerShowCommands, null) },
+                        StudioMenuItem(text = { Text(tr("Show command bar", "显示命令栏")) },
+                            leadingIcon = { StudioCheckbox(settings.layerShowCommands, null) },
                             onClick = { onSettingsChange(settings.copy(layerShowCommands = !settings.layerShowCommands)) })
-                        DropdownMenuItem(text = { Text(tr("Commands at bottom", "命令栏置于底部")) },
-                            leadingIcon = { Checkbox(settings.layerCommandsAtBottom, null) },
+                        StudioMenuItem(text = { Text(tr("Commands at bottom", "命令栏置于底部")) },
+                            leadingIcon = { StudioCheckbox(settings.layerCommandsAtBottom, null) },
                             onClick = { onSettingsChange(settings.copy(layerCommandsAtBottom = !settings.layerCommandsAtBottom)) })
                         HorizontalDivider()
                         LayerRowDensity.entries.forEach { density ->
-                            DropdownMenuItem(
+                            StudioMenuItem(
                                 text = { Text(when (density) {
                                     LayerRowDensity.COMPACT -> tr("Compact rows", "紧凑行")
                                     LayerRowDensity.COMFORTABLE -> tr("Comfortable rows", "标准行")
                                     LayerRowDensity.LARGE -> tr("Large rows", "大号行")
                                 }) },
-                                leadingIcon = { RadioButton(settings.layerRowDensity == density, null) },
+                                leadingIcon = { StudioRadioButton(settings.layerRowDensity == density, null) },
                                 onClick = { onSettingsChange(settings.copy(layerRowDensity = density)); displayMenuOpen = false },
                             )
                         }
@@ -440,11 +440,11 @@ private fun PaintingLayerPanel(
                             mergeMenuOpen = false
                             onMerge(RasterLayerMergeRequest(operation, activeLayerId, selectedLayerIds + activeLayerId))
                         }
-                        DropdownMenuItem(text = { Text(tr("Transfer to lower layer", "转移到下一图层")) }, onClick = { request(RasterLayerMergeOperation.TRANSFER_TO_LOWER) })
-                        DropdownMenuItem(text = { Text(tr("Merge selected layers", "合并所选图层")) }, enabled = selectedLayerIds.isNotEmpty(), onClick = { request(RasterLayerMergeOperation.MERGE_SELECTED) })
-                        DropdownMenuItem(text = { Text(tr("Merge visible layers", "合并可见图层")) }, onClick = { request(RasterLayerMergeOperation.MERGE_VISIBLE) })
-                        DropdownMenuItem(text = { Text(tr("Merge visible to new layer", "合并可见图层副本")) }, onClick = { request(RasterLayerMergeOperation.MERGE_VISIBLE_COPY) })
-                        DropdownMenuItem(text = { Text(tr("Flatten image", "平面化图像")) }, onClick = { request(RasterLayerMergeOperation.FLATTEN) })
+                        StudioMenuItem(text = { Text(tr("Transfer to lower layer", "转移到下一图层")) }, onClick = { request(RasterLayerMergeOperation.TRANSFER_TO_LOWER) })
+                        StudioMenuItem(text = { Text(tr("Merge selected layers", "合并所选图层")) }, enabled = selectedLayerIds.isNotEmpty(), onClick = { request(RasterLayerMergeOperation.MERGE_SELECTED) })
+                        StudioMenuItem(text = { Text(tr("Merge visible layers", "合并可见图层")) }, onClick = { request(RasterLayerMergeOperation.MERGE_VISIBLE) })
+                        StudioMenuItem(text = { Text(tr("Merge visible to new layer", "合并可见图层副本")) }, onClick = { request(RasterLayerMergeOperation.MERGE_VISIBLE_COPY) })
+                        StudioMenuItem(text = { Text(tr("Flatten image", "平面化图像")) }, onClick = { request(RasterLayerMergeOperation.FLATTEN) })
                     }
                 }
             }
@@ -463,7 +463,7 @@ private fun PaintingLayerPanel(
                 onDelete = { onDelete(activeLayerId) }) }
             if (settings.layerShowCommands && !settings.layerCommandsAtBottom) commands()
             HorizontalDivider(color = OutlineSoft)
-            if (searchOpen) OutlinedTextField(
+            if (searchOpen) StudioOutlinedTextField(
                 value = layerSearch,
                 onValueChange = { layerSearch = it },
                 modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp, vertical = 3.dp),
@@ -636,7 +636,7 @@ private fun PaintingLayerPanel(
                             }
                             DropdownMenu(paletteColorMenu, { paletteColorMenu = false }) {
                                 LayerPaletteColor.entries.forEach { color ->
-                                    DropdownMenuItem(
+                                    StudioMenuItem(
                                         text = { Text(layerPaletteColorName(color)) },
                                         leadingIcon = {
                                             Box(Modifier.size(16.dp).background(layerPaletteColor(color), CircleShape)
@@ -654,23 +654,23 @@ private fun PaintingLayerPanel(
                                     app.inkloom.engine.v5.surface.MaskComposeMode.SUBTRACT to tr("Subtract from selection", "从选区减去"),
                                     app.inkloom.engine.v5.surface.MaskComposeMode.INTERSECT to tr("Intersect selection", "与选区相交"),
                                 ).forEach { (mode, label) ->
-                                    DropdownMenuItem(text = { Text(label) },
+                                    StudioMenuItem(text = { Text(label) },
                                         enabled = mode == app.inkloom.engine.v5.surface.MaskComposeMode.REPLACE || hasSelection,
                                         onClick = { contentsMenu = false; onSelectContents(layer.id, mode) })
                                 }
                             }
                             DropdownMenu(menu, { menu = false }) {
-                                DropdownMenuItem(text = { Text(if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) }, onClick = { menu = false; onLock(layer.id) })
-                                if (layer.role == LayerRole.ADJUSTMENT) DropdownMenuItem(text = { Text(tr("Edit adjustment", "编辑调整参数")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditAdjustment(layer.id) })
-                                if (layer.isPaintSurfaceLayer()) DropdownMenuItem(text = { Text(if (layer.alphaLock) tr("Unlock alpha", "解锁透明度") else tr("Lock alpha", "锁定透明度")) }, onClick = { menu = false; onToggleAlphaLock(layer.id) })
-                                if (layer.canClipToBelow()) DropdownMenuItem(text = { Text(if (layer.clippedToBelow) tr("Stop clipping", "取消剪贴") else tr("Clipping mask", "剪贴蒙版")) }, onClick = { menu = false; onToggleClippedToBelow(layer.id) })
-                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(if (layer.reference) tr("Unset reference layer", "取消参考图层") else tr("Set as reference layer", "设为参考图层")) }, onClick = { menu = false; onToggleReference(layer.id) })
-                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(if (layer.draft) tr("Unset draft layer", "取消草稿图层") else tr("Set as draft layer", "设为草稿图层")) }, onClick = { menu = false; onToggleDraft(layer.id) })
-                                if (layer.isPaintSurfaceLayer()) DropdownMenuItem(text = { Text(if (layer.drawingAssist) tr("Turn off Drawing Assist", "关闭绘图辅助") else tr("Turn on Drawing Assist", "开启绘图辅助")) }, onClick = { menu = false; onToggleDrawingAssist(layer.id) })
-                                if (layer.isPaintSurfaceLayer() || layer.role == LayerRole.FOLDER) DropdownMenuItem(text = { Text(tr("Select contents", "选取内容")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; contentsMenu = true })
-                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Mask", "蒙版")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; maskMenu = true })
-                                DropdownMenuItem(text = { Text(tr("Palette color", "图层颜色标签")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; paletteColorMenu = true })
-                                if (layer.isPaintSurfaceLayer()) DropdownMenuItem(
+                                StudioMenuItem(text = { Text(if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) }, onClick = { menu = false; onLock(layer.id) })
+                                if (layer.role == LayerRole.ADJUSTMENT) StudioMenuItem(text = { Text(tr("Edit adjustment", "编辑调整参数")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditAdjustment(layer.id) })
+                                if (layer.isPaintSurfaceLayer()) StudioMenuItem(text = { Text(if (layer.alphaLock) tr("Unlock alpha", "解锁透明度") else tr("Lock alpha", "锁定透明度")) }, onClick = { menu = false; onToggleAlphaLock(layer.id) })
+                                if (layer.canClipToBelow()) StudioMenuItem(text = { Text(if (layer.clippedToBelow) tr("Stop clipping", "取消剪贴") else tr("Clipping mask", "剪贴蒙版")) }, onClick = { menu = false; onToggleClippedToBelow(layer.id) })
+                                if (layer.role != LayerRole.BACKGROUND) StudioMenuItem(text = { Text(if (layer.reference) tr("Unset reference layer", "取消参考图层") else tr("Set as reference layer", "设为参考图层")) }, onClick = { menu = false; onToggleReference(layer.id) })
+                                if (layer.role != LayerRole.BACKGROUND) StudioMenuItem(text = { Text(if (layer.draft) tr("Unset draft layer", "取消草稿图层") else tr("Set as draft layer", "设为草稿图层")) }, onClick = { menu = false; onToggleDraft(layer.id) })
+                                if (layer.isPaintSurfaceLayer()) StudioMenuItem(text = { Text(if (layer.drawingAssist) tr("Turn off Drawing Assist", "关闭绘图辅助") else tr("Turn on Drawing Assist", "开启绘图辅助")) }, onClick = { menu = false; onToggleDrawingAssist(layer.id) })
+                                if (layer.isPaintSurfaceLayer() || layer.role == LayerRole.FOLDER) StudioMenuItem(text = { Text(tr("Select contents", "选取内容")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; contentsMenu = true })
+                                if (layer.role != LayerRole.BACKGROUND) StudioMenuItem(text = { Text(tr("Mask", "蒙版")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; maskMenu = true })
+                                StudioMenuItem(text = { Text(tr("Palette color", "图层颜色标签")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) }, onClick = { menu = false; paletteColorMenu = true })
+                                if (layer.isPaintSurfaceLayer()) StudioMenuItem(
                                     text = { Text(tr("Layer color replacement", "图层着色")) },
                                     onClick = {
                                         menu = false
@@ -679,17 +679,17 @@ private fun PaintingLayerPanel(
                                         colorLayer = layer
                                     },
                                 )
-                                DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
-                                if (layer.role == LayerRole.FOLDER) DropdownMenuItem(text = { Text(if (layer.collapsed) tr("Expand folder", "展开文件夹") else tr("Collapse folder", "折叠文件夹")) }, onClick = { menu = false; onToggleFolderCollapsed(layer.id) })
-                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Group layer", "编组图层")) }, onClick = { menu = false; onGroupSelected(layer.id, setOf(layer.id)) })
-                                if (layer.role == LayerRole.FOLDER) DropdownMenuItem(text = { Text(tr("Ungroup layer folder", "解除图层分组")) }, onClick = { menu = false; onUngroup(layer.id) })
-                                if (layer.parentId != null) DropdownMenuItem(text = { Text(tr("Move out of folder", "移出文件夹")) }, onClick = { menu = false; moveInto(layer, null) })
-                                folderTargets.forEach { folder -> DropdownMenuItem(text = { Text("${tr("Move into", "移入")} ${folder.name}") }, onClick = { menu = false; moveInto(layer, folder) }) }
-                                DropdownMenuItem(text = { Text(tr("Move up", "上移")) }, enabled = siblingDrop(layer, 1) != null, onClick = { menu = false; siblingDrop(layer, 1)?.let { onRelocate(layer.id, setOf(layer.id), it) } })
-                                DropdownMenuItem(text = { Text(tr("Move down", "下移")) }, enabled = siblingDrop(layer, -1) != null, onClick = { menu = false; siblingDrop(layer, -1)?.let { onRelocate(layer.id, setOf(layer.id), it) } })
-                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(layer.id) })
-                                if (layer.isPaintSurfaceLayer()) DropdownMenuItem(text = { Text(tr("Merge down", "向下合并")) }, onClick = { menu = false; onMergeDown(layer.id) })
-                                if (layer.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER, LayerRole.ADJUSTMENT)) DropdownMenuItem(text = { Text(tr("Delete", "删除")) }, onClick = { menu = false; onDelete(layer.id) })
+                                StudioMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
+                                if (layer.role == LayerRole.FOLDER) StudioMenuItem(text = { Text(if (layer.collapsed) tr("Expand folder", "展开文件夹") else tr("Collapse folder", "折叠文件夹")) }, onClick = { menu = false; onToggleFolderCollapsed(layer.id) })
+                                if (layer.role != LayerRole.BACKGROUND) StudioMenuItem(text = { Text(tr("Group layer", "编组图层")) }, onClick = { menu = false; onGroupSelected(layer.id, setOf(layer.id)) })
+                                if (layer.role == LayerRole.FOLDER) StudioMenuItem(text = { Text(tr("Ungroup layer folder", "解除图层分组")) }, onClick = { menu = false; onUngroup(layer.id) })
+                                if (layer.parentId != null) StudioMenuItem(text = { Text(tr("Move out of folder", "移出文件夹")) }, onClick = { menu = false; moveInto(layer, null) })
+                                folderTargets.forEach { folder -> StudioMenuItem(text = { Text("${tr("Move into", "移入")} ${folder.name}") }, onClick = { menu = false; moveInto(layer, folder) }) }
+                                StudioMenuItem(text = { Text(tr("Move up", "上移")) }, enabled = siblingDrop(layer, 1) != null, onClick = { menu = false; siblingDrop(layer, 1)?.let { onRelocate(layer.id, setOf(layer.id), it) } })
+                                StudioMenuItem(text = { Text(tr("Move down", "下移")) }, enabled = siblingDrop(layer, -1) != null, onClick = { menu = false; siblingDrop(layer, -1)?.let { onRelocate(layer.id, setOf(layer.id), it) } })
+                                if (layer.role != LayerRole.BACKGROUND) StudioMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(layer.id) })
+                                if (layer.isPaintSurfaceLayer()) StudioMenuItem(text = { Text(tr("Merge down", "向下合并")) }, onClick = { menu = false; onMergeDown(layer.id) })
+                                if (layer.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER, LayerRole.ADJUSTMENT)) StudioMenuItem(text = { Text(tr("Delete", "删除")) }, onClick = { menu = false; onDelete(layer.id) })
                             }
                         }
                     }
@@ -728,14 +728,14 @@ private fun PaintingLayerPanel(
             }
         }
     }
-    renameLayer?.let { layer -> AlertDialog(
+    renameLayer?.let { layer -> StudioDialog(
         onDismissRequest = { renameLayer = null },
         title = { Text(tr("Rename layer", "重命名图层")) },
-        text = { OutlinedTextField(renameValue, { renameValue = it }, label = { Text(tr("Layer name", "图层名称")) }, singleLine = true) },
+        text = { StudioOutlinedTextField(renameValue, { renameValue = it }, label = { Text(tr("Layer name", "图层名称")) }, singleLine = true) },
         confirmButton = { TextButton(onClick = { onRename(layer.id, renameValue); renameLayer = null }) { Text(tr("Save", "保存")) } },
         dismissButton = { TextButton(onClick = { renameLayer = null }) { Text(tr("Cancel", "取消")) } },
     ) }
-    colorLayer?.let { layer -> AlertDialog(
+    colorLayer?.let { layer -> StudioDialog(
         onDismissRequest = { colorLayer = null },
         title = { Text(tr("Layer color replacement", "图层着色")) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -761,7 +761,7 @@ private fun PaintingLayerPanel(
             TextButton(onClick = { colorLayer = null }) { Text(tr("Cancel", "取消")) }
         } },
     ) }
-    expressionLayer?.let { layer -> AlertDialog(
+    expressionLayer?.let { layer -> StudioDialog(
         onDismissRequest = { expressionLayer = null },
         title = { Text(tr("Mask expression", "蒙版表达")) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

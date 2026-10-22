@@ -134,14 +134,14 @@ internal fun BrushPanel(
 @Composable
 internal fun BrushMoveToGroupDialog(brush: ImportedBrush, groups: List<String>, onDismiss: () -> Unit, onMove: (String) -> Unit) {
     var groupName by remember(brush.id) { mutableStateOf(brush.groupName) }
-    AlertDialog(
+    StudioDialog(
         onDismissRequest = onDismiss,
         title = { Text(tr("Move brush", "移动笔刷")) },
         text = {
             Column(Modifier.dialogContentWidth(320.dp, 440.dp)) {
                 Text(brush.name, fontSize = 13.sp)
                 Spacer(Modifier.height(10.dp))
-                OutlinedTextField(
+                StudioOutlinedTextField(
                     value = groupName,
                     onValueChange = { groupName = it.take(BrushGroupOperations.MAX_PATH_LENGTH) },
                     label = { Text(tr("Group", "分组")) },
@@ -150,7 +150,7 @@ internal fun BrushMoveToGroupDialog(brush: ImportedBrush, groups: List<String>, 
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (groups.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(top = 8.dp)) {
-                    groups.forEach { group -> item(group) { FilterChip(selected = groupName.equals(group, true), onClick = { groupName = group }, label = { Text(group, maxLines = 1) }) } }
+                    groups.forEach { group -> item(group) { StudioFilterChip(selected = groupName.equals(group, true), onClick = { groupName = group }, label = { Text(group, maxLines = 1) }) } }
                 }
                 TextButton(onClick = { onMove("") }) { Text(tr("Move to Ungrouped", "移到未分组")) }
             }
@@ -170,14 +170,14 @@ internal fun BrushBatchGroupDialog(
 ) {
     var groupName by remember(operation) { mutableStateOf("") }
     val moving = operation == BrushBatchGroupOperation.MOVE
-    AlertDialog(
+    StudioDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (moving) tr("Move selected brushes", "移动所选笔刷") else tr("Copy selected brushes", "复制所选笔刷")) },
         text = {
             Column(Modifier.dialogContentWidth(320.dp, 440.dp)) {
                 Text("$count ${tr("brushes selected", "支笔刷已选择")}", color = MutedInk, fontSize = 12.sp)
                 Spacer(Modifier.height(10.dp))
-                OutlinedTextField(
+                StudioOutlinedTextField(
                     value = groupName,
                     onValueChange = { groupName = it.take(BrushGroupOperations.MAX_PATH_LENGTH) },
                     label = { Text(tr("Destination group", "目标分组")) },
@@ -186,7 +186,7 @@ internal fun BrushBatchGroupDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (groups.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(top = 8.dp)) {
-                    groups.forEach { group -> item(group) { FilterChip(selected = groupName.equals(group, true), onClick = { groupName = group }, label = { Text(group, maxLines = 1) }) } }
+                    groups.forEach { group -> item(group) { StudioFilterChip(selected = groupName.equals(group, true), onClick = { groupName = group }, label = { Text(group, maxLines = 1) }) } }
                 }
                 TextButton(onClick = { onApply("") }) { Text(if (moving) tr("Move to Ungrouped", "移到未分组") else tr("Copy to Ungrouped", "复制到未分组")) }
             }
@@ -610,31 +610,31 @@ private fun ProcreateBrushLibrary(
                 Box {
                     IconButton(onClick = { addMenu = true }, modifier = Modifier.size(38.dp)) { Icon(Icons.Outlined.Add, tr("Add brush or group", "添加笔刷或分组"), tint = Ink) }
                     DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
-                        DropdownMenuItem(text = { Text(tr("Create new brush", "新建笔刷")) }, leadingIcon = { Icon(Icons.Outlined.Brush, null) }, onClick = {
+                        StudioMenuItem(text = { Text(tr("Create new brush", "新建笔刷")) }, leadingIcon = { Icon(Icons.Outlined.Brush, null) }, onClick = {
                             addMenu = false
                             val group = selectedCategory.takeIf { it in systemCategories || it in importedCategories }
                             val created = BrushPresetV5Import.createUserRecord(ImportedBrush(name = newBrushName, format = BrushFormat.INKLOOM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = listOf(createdInInkloom), groupName = group.orEmpty()))
                             onReplaceBrushes(brushes + created)
                             editBrush = created
                         })
-                        DropdownMenuItem(text = { Text(tr("Import from files", "从文件导入")) }, leadingIcon = { Icon(Icons.Outlined.FileDownload, null) }, onClick = {
+                        StudioMenuItem(text = { Text(tr("Import from files", "从文件导入")) }, leadingIcon = { Icon(Icons.Outlined.FileDownload, null) }, onClick = {
                             addMenu = false
                             onImportBrushes(selectedCategory.takeIf { it != allLabel && it != ungroupedLabel && it != recentCategory })
                         })
-                        DropdownMenuItem(text = { Text(tr("Import folder", "导入文件夹")) }, leadingIcon = { Icon(Icons.Outlined.FolderOpen, null) }, onClick = { addMenu = false; onImportBrushFolder() })
-                        DropdownMenuItem(
+                        StudioMenuItem(text = { Text(tr("Import folder", "导入文件夹")) }, leadingIcon = { Icon(Icons.Outlined.FolderOpen, null) }, onClick = { addMenu = false; onImportBrushFolder() })
+                        StudioMenuItem(
                             text = { Text(tr("Import issues ($brushImportFailureCount)", "导入问题（$brushImportFailureCount）")) },
                             leadingIcon = { Icon(Icons.Outlined.ErrorOutline, null) },
                             enabled = brushImportFailureCount > 0,
                             onClick = { addMenu = false; onOpenBrushImportFailures() },
                         )
-                        DropdownMenuItem(text = { Text(tr("Manage brush sets", "管理笔刷组")) }, leadingIcon = { Icon(Icons.Outlined.CreateNewFolder, null) }, onClick = { addMenu = false; manageGroups = true })
+                        StudioMenuItem(text = { Text(tr("Manage brush sets", "管理笔刷组")) }, leadingIcon = { Icon(Icons.Outlined.CreateNewFolder, null) }, onClick = { addMenu = false; manageGroups = true })
                     }
                 }
             }
             HorizontalDivider(color = OutlineSoft)
             if (brushSearchOpen) {
-                OutlinedTextField(
+                StudioOutlinedTextField(
                     value = brushSearch,
                     onValueChange = { brushSearch = it },
                     placeholder = { Text(tr("Brush name, set, or format", "搜索笔刷名称、分组或格式"), fontSize = 11.sp) },
@@ -759,12 +759,12 @@ private fun ProcreateBrushLibrary(
                                 }
                             }
                             DropdownMenu(expanded = menuGroup == category, onDismissRequest = { menuGroup = null }) {
-                                DropdownMenuItem(text = { Text(tr("Rename group", "重命名分组")) }, onClick = {
+                                StudioMenuItem(text = { Text(tr("Rename group", "重命名分组")) }, onClick = {
                                     menuGroup = null
                                     renameGroup = category
                                     renameGroupValue = category
                                 })
-                                DropdownMenuItem(text = { Text(tr("Duplicate group", "复制分组")) }, onClick = {
+                                StudioMenuItem(text = { Text(tr("Duplicate group", "复制分组")) }, onClick = {
                                     menuGroup = null
                                     val parent = BrushGroupOperations.parent(category)
                                     val base = "${BrushGroupOperations.displayName(category)} $groupCopySuffix"
@@ -779,7 +779,7 @@ private fun ProcreateBrushLibrary(
                                     onReplaceGroups(BrushGroupOperations.reconcileRegisteredGroups(registeredGroups + candidate, updated))
                                     selectedCategory = candidate
                                 })
-                                DropdownMenuItem(text = { Text(tr("Delete group", "删除分组"), color = MaterialTheme.colorScheme.error) }, onClick = {
+                                StudioMenuItem(text = { Text(tr("Delete group", "删除分组"), color = MaterialTheme.colorScheme.error) }, onClick = {
                                     menuGroup = null
                                     deleteGroup = category
                                 })
@@ -874,7 +874,7 @@ private fun ProcreateBrushLibrary(
             },
         )
     }
-    if (confirmBatchDelete) AlertDialog(
+    if (confirmBatchDelete) StudioDialog(
         onDismissRequest = { confirmBatchDelete = false },
         title = { Text(tr("Delete selected brushes?", "删除所选笔刷？")) },
         text = { Text(tr("System brushes stay in their built-in sets. Selected imported brushes will be removed; existing strokes remain unchanged.", "系统笔刷会保留在默认分组中；所选导入笔刷将被删除，已有笔画不受影响。")) },
@@ -886,7 +886,7 @@ private fun ProcreateBrushLibrary(
         dismissButton = { TextButton(onClick = { confirmBatchDelete = false }) { Text(tr("Cancel", "取消")) } },
     )
     menuBrush?.let { brush ->
-        AlertDialog(
+        StudioDialog(
             onDismissRequest = { menuBrush = null },
             title = { Text(brush.name) },
             text = { Text(tr("Edit, move, export or remove this brush.", "编辑、移动、导出或移除此笔刷。")) },
@@ -912,10 +912,10 @@ private fun ProcreateBrushLibrary(
         )
     }
     renameGroup?.let { oldName ->
-        AlertDialog(
+        StudioDialog(
             onDismissRequest = { renameGroup = null },
             title = { Text(tr("Rename brush group", "重命名笔刷分组")) },
-            text = { OutlinedTextField(renameGroupValue, { renameGroupValue = it.take(BrushGroupOperations.MAX_PATH_LENGTH) }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
+            text = { StudioOutlinedTextField(renameGroupValue, { renameGroupValue = it.take(BrushGroupOperations.MAX_PATH_LENGTH) }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
             confirmButton = { Button(onClick = {
                 val updated = BrushGroupOperations.rename(brushes, oldName, renameGroupValue)
                 onReplaceBrushes(updated)
@@ -928,7 +928,7 @@ private fun ProcreateBrushLibrary(
     }
     deleteGroup?.let { group ->
         val count = brushes.count { BrushGroupOperations.isWithin(it.groupName, group) }
-        AlertDialog(
+        StudioDialog(
             onDismissRequest = { deleteGroup = null },
             title = { Text(tr("Delete brush group?", "删除笔刷分组？")) },
             text = { Text(tr("This removes the group and its $count brushes. Existing strokes are unchanged.", "这会移除该分组及其中的 $count 支笔刷。已有笔画不会改变。")) },
@@ -1053,7 +1053,7 @@ internal fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit
     val normalizedNewGroup = if (normalizedParent.isNotBlank() && '/' !in newGroupPath) {
         BrushGroupOperations.normalize("$normalizedParent/$normalizedInputGroup")
     } else normalizedInputGroup
-    AlertDialog(
+    StudioDialog(
         modifier = Modifier.imePadding(),
         properties = DialogProperties(decorFitsSystemWindows = false),
         onDismissRequest = onDismiss,
@@ -1061,7 +1061,7 @@ internal fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit
         text = {
             Column(Modifier.dialogContentWidth(320.dp, 440.dp).verticalScroll(rememberScrollState())) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
+                    StudioOutlinedTextField(
                         value = newGroupPath,
                         onValueChange = { newGroupPath = it.take(BrushGroupOperations.MAX_PATH_LENGTH) },
                         label = { Text(tr("New group path", "新建分组路径")) },
@@ -1085,7 +1085,7 @@ internal fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit
                     Text(tr("No groups yet. Create an empty group above or move a brush into a new path.", "还没有分组。可在上方创建空组，或将笔刷移动到新路径。"), color = MutedInk)
                 } else {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
-                        groups.forEach { group -> item(group) { FilterChip(selected = selected == group, onClick = { selected = group }, label = { Text(group, maxLines = 1) }) } }
+                        groups.forEach { group -> item(group) { StudioFilterChip(selected = selected == group, onClick = { selected = group }, label = { Text(group, maxLines = 1) }) } }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         val selectedIndex = groups.indexOf(selected)
@@ -1093,7 +1093,7 @@ internal fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit
                         Spacer(Modifier.width(6.dp))
                         OutlinedButton(onClick = { onMove(selected, 1) }, enabled = selectedIndex in 0 until groups.lastIndex) { Text(tr("Later", "后移")); Spacer(Modifier.width(5.dp)); Icon(Icons.Outlined.ArrowForward, null, Modifier.size(16.dp)) }
                     }
-                    OutlinedTextField(
+                    StudioOutlinedTextField(
                         value = replacement,
                         onValueChange = { replacement = it.take(BrushGroupOperations.MAX_PATH_LENGTH) },
                         label = { Text(tr("Rename selected group", "重命名所选分组")) },
@@ -1120,7 +1120,7 @@ internal fun BrushImportFailuresDialog(
     onClear: () -> Unit,
 ) {
     val formatter = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
-    AlertDialog(
+    StudioDialog(
         onDismissRequest = onDismiss,
         title = { Text(language.text("Brush import issues", "笔刷导入问题")) },
         text = {
@@ -1177,7 +1177,7 @@ internal fun BrushVersionHistoryDialog(
     onDelete: (BrushVersion) -> Unit,
 ) {
     val formatter = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
-    AlertDialog(
+    StudioDialog(
         onDismissRequest = onDismiss,
         title = { Text(tr("Version history", "版本历史")) },
         text = {
@@ -1278,14 +1278,14 @@ private fun ImportedBrushTile(
                         Icon(Icons.Default.MoreVert, tr("Brush actions", "笔刷操作"), Modifier.size(15.dp))
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(text = { Text(tr("Sub tool detail", "子工具详情")) }, onClick = { menu = false; onEdit() })
-                        DropdownMenuItem(text = { Text(if (brush.favorite) tr("Remove favorite", "取消收藏") else tr("Favorite", "收藏")) }, onClick = { menu = false; onFavorite() })
-                        DropdownMenuItem(text = { Text(tr("Move to group", "移到分组")) }, onClick = { menu = false; onMove() })
-                        DropdownMenuItem(text = { Text(tr("Version history", "版本历史")) }, onClick = { menu = false; onHistory() })
-                        DropdownMenuItem(text = { Text(tr("Conversion report", "转换报告")) }, onClick = { menu = false; onReport() })
-                        DropdownMenuItem(text = { Text(tr("Export Inkloom preset", "导出 Inkloom 预设")) }, onClick = { menu = false; onExport() })
-                        DropdownMenuItem(text = { Text(if (brush.hidden) tr("Unhide", "取消隐藏") else tr("Hide", "隐藏")) }, onClick = { menu = false; onHide() })
-                        DropdownMenuItem(text = { Text(tr("Remove from library", "从笔刷库移除")) }, onClick = { menu = false; onDelete() })
+                        StudioMenuItem(text = { Text(tr("Sub tool detail", "子工具详情")) }, onClick = { menu = false; onEdit() })
+                        StudioMenuItem(text = { Text(if (brush.favorite) tr("Remove favorite", "取消收藏") else tr("Favorite", "收藏")) }, onClick = { menu = false; onFavorite() })
+                        StudioMenuItem(text = { Text(tr("Move to group", "移到分组")) }, onClick = { menu = false; onMove() })
+                        StudioMenuItem(text = { Text(tr("Version history", "版本历史")) }, onClick = { menu = false; onHistory() })
+                        StudioMenuItem(text = { Text(tr("Conversion report", "转换报告")) }, onClick = { menu = false; onReport() })
+                        StudioMenuItem(text = { Text(tr("Export Inkloom preset", "导出 Inkloom 预设")) }, onClick = { menu = false; onExport() })
+                        StudioMenuItem(text = { Text(if (brush.hidden) tr("Unhide", "取消隐藏") else tr("Hide", "隐藏")) }, onClick = { menu = false; onHide() })
+                        StudioMenuItem(text = { Text(tr("Remove from library", "从笔刷库移除")) }, onClick = { menu = false; onDelete() })
                     }
                 }
             }
@@ -1380,12 +1380,12 @@ private fun ImportedBrushRow(
                 Box {
                     IconButton(onClick = { menu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, tr("Brush actions", "笔刷操作"), modifier = Modifier.size(15.dp)) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(text = { Text(tr("Conversion report", "转换报告")) }, onClick = { menu = false; onReport() })
-                        DropdownMenuItem(text = { Text(tr("Version history", "版本历史")) }, onClick = { menu = false; onHistory() })
-                        DropdownMenuItem(text = { Text(tr("Move to group", "移到分组")) }, onClick = { menu = false; onMove() })
-                        DropdownMenuItem(text = { Text(tr("Export Inkloom preset", "导出 Inkloom 预设")) }, onClick = { menu = false; onExport() })
-                        DropdownMenuItem(text = { Text(if (brush.hidden) tr("Unhide", "取消隐藏") else tr("Hide", "隐藏")) }, onClick = { menu = false; onHide() })
-                        DropdownMenuItem(text = { Text(tr("Remove from library", "从笔刷库移除")) }, onClick = { menu = false; onDelete() })
+                        StudioMenuItem(text = { Text(tr("Conversion report", "转换报告")) }, onClick = { menu = false; onReport() })
+                        StudioMenuItem(text = { Text(tr("Version history", "版本历史")) }, onClick = { menu = false; onHistory() })
+                        StudioMenuItem(text = { Text(tr("Move to group", "移到分组")) }, onClick = { menu = false; onMove() })
+                        StudioMenuItem(text = { Text(tr("Export Inkloom preset", "导出 Inkloom 预设")) }, onClick = { menu = false; onExport() })
+                        StudioMenuItem(text = { Text(if (brush.hidden) tr("Unhide", "取消隐藏") else tr("Hide", "隐藏")) }, onClick = { menu = false; onHide() })
+                        StudioMenuItem(text = { Text(tr("Remove from library", "从笔刷库移除")) }, onClick = { menu = false; onDelete() })
                     }
                 }
             }

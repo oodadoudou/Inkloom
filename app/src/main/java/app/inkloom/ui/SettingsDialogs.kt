@@ -79,7 +79,7 @@ internal fun SettingsDialog(
 ) {
     var settingsTab by rememberSaveable { mutableIntStateOf(0) }
     var shortcutEditorOpen by remember { mutableStateOf(false) }
-    AlertDialog(
+    StudioDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Done", "完成")) } },
         title = { Text(tr("Settings", "设置")) },
@@ -107,7 +107,7 @@ internal fun SettingsDialog(
                             app.inkloom.settings.UiGrayTheme.SOFT -> tr("Soft", "柔灰")
                             app.inkloom.settings.UiGrayTheme.LIGHT -> tr("Light", "浅灰")
                         }
-                        FilterChip(selected = settings.uiGrayTheme == gray,
+                        StudioFilterChip(selected = settings.uiGrayTheme == gray,
                             onClick = { onChange(settings.copy(uiGrayTheme = gray)) },
                             modifier = Modifier.weight(1f).semantics { contentDescription = "Interface gray ${gray.name}" },
                             label = { Text(label, fontSize = 12.sp) })
@@ -115,8 +115,8 @@ internal fun SettingsDialog(
                 } }
                 item { Text(tr("LANGUAGE", "语言"), color = MutedInk, fontSize = 12.sp) }
                 item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = settings.language == UiLanguage.ENGLISH, onClick = { onChange(settings.copy(language = UiLanguage.ENGLISH)) }, label = { Text("English") })
-                    FilterChip(selected = settings.language == UiLanguage.SIMPLIFIED_CHINESE, onClick = { onChange(settings.copy(language = UiLanguage.SIMPLIFIED_CHINESE)) }, label = { Text("简体中文") })
+                    StudioFilterChip(selected = settings.language == UiLanguage.ENGLISH, onClick = { onChange(settings.copy(language = UiLanguage.ENGLISH)) }, label = { Text("English") })
+                    StudioFilterChip(selected = settings.language == UiLanguage.SIMPLIFIED_CHINESE, onClick = { onChange(settings.copy(language = UiLanguage.SIMPLIFIED_CHINESE)) }, label = { Text("简体中文") })
                 } }
                 item { Text(tr("INTERFACE", "界面"), color = MutedInk, fontSize = 12.sp) }
                 item { SettingSwitch(tr("Show floating toolbar", "显示浮动工具栏"), null, settings.showToolbar) { onChange(settings.copy(showToolbar = it)) } }
@@ -222,7 +222,7 @@ private fun ShortcutEditorDialog(settings: AppSettings, brushes: List<ImportedBr
     }
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(listeningFor) { if (listeningFor != null) focusRequester.requestFocus() }
-    AlertDialog(
+    StudioDialog(
         properties = DialogProperties(decorFitsSystemWindows = false),
         onDismissRequest = onDismiss,
         title = { Text(tr("Toolbox shortcuts", "Toolbox 快捷键")) },
@@ -257,7 +257,7 @@ private fun ShortcutEditorDialog(settings: AppSettings, brushes: List<ImportedBr
                 ) {
                     item { Text(tr("Tap Change, then press a Toolbox or keyboard combination. Rotary, touch-ring, wheel and pointer-button mappings are configured below.", "点击“更改”，然后按下 Toolbox 或键盘组合键。旋钮、触控环、滚轮与侧键映射可在下方配置。"), color = MutedInk, fontSize = 12.sp) }
                     item {
-                        OutlinedTextField(
+                        StudioOutlinedTextField(
                             value = search,
                             onValueChange = { search = it },
                             leadingIcon = { Icon(Icons.Outlined.Search, null) },
@@ -268,9 +268,9 @@ private fun ShortcutEditorDialog(settings: AppSettings, brushes: List<ImportedBr
                     }
                     item {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            item { FilterChip(selected = selectedCategory == null, onClick = { selectedCategory = null }, label = { Text(tr("All", "全部")) }) }
+                            item { StudioFilterChip(selected = selectedCategory == null, onClick = { selectedCategory = null }, label = { Text(tr("All", "全部")) }) }
                             items(ShortcutCategory.entries, key = { it.name }) { category ->
-                                FilterChip(selected = selectedCategory == category, onClick = { selectedCategory = if (selectedCategory == category) null else category }, label = { Text(shortcutCategoryLabel(category, language)) })
+                                StudioFilterChip(selected = selectedCategory == category, onClick = { selectedCategory = if (selectedCategory == category) null else category }, label = { Text(shortcutCategoryLabel(category, language)) })
                             }
                         }
                     }
@@ -278,12 +278,12 @@ private fun ShortcutEditorDialog(settings: AppSettings, brushes: List<ImportedBr
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(tr("Capture mode", "捕获方式"), color = MutedInk, fontSize = 11.sp)
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                FilterChip(selected = captureMode == ShortcutMatchMode.KEY_CODE, onClick = { captureMode = ShortcutMatchMode.KEY_CODE }, label = { Text(tr("Logical key", "逻辑键")) })
-                                FilterChip(selected = captureMode == ShortcutMatchMode.SCAN_CODE, onClick = { captureMode = ShortcutMatchMode.SCAN_CODE }, label = { Text(tr("Physical scan code", "物理扫描码")) })
+                                StudioFilterChip(selected = captureMode == ShortcutMatchMode.KEY_CODE, onClick = { captureMode = ShortcutMatchMode.KEY_CODE }, label = { Text(tr("Logical key", "逻辑键")) })
+                                StudioFilterChip(selected = captureMode == ShortcutMatchMode.SCAN_CODE, onClick = { captureMode = ShortcutMatchMode.SCAN_CODE }, label = { Text(tr("Physical scan code", "物理扫描码")) })
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                FilterChip(selected = captureTrigger == ShortcutTrigger.PRESS, onClick = { captureTrigger = ShortcutTrigger.PRESS }, label = { Text(tr("Tap to switch", "单击切换")) })
-                                FilterChip(selected = captureTrigger == ShortcutTrigger.HOLD, onClick = { captureTrigger = ShortcutTrigger.HOLD }, label = { Text(tr("Hold, release to return", "按住，松开返回")) })
+                                StudioFilterChip(selected = captureTrigger == ShortcutTrigger.PRESS, onClick = { captureTrigger = ShortcutTrigger.PRESS }, label = { Text(tr("Tap to switch", "单击切换")) })
+                                StudioFilterChip(selected = captureTrigger == ShortcutTrigger.HOLD, onClick = { captureTrigger = ShortcutTrigger.HOLD }, label = { Text(tr("Hold, release to return", "按住，松开返回")) })
                             }
                             SettingSwitch(tr("Only this input device", "仅此输入设备"), tr("Keeps the global CSP key while adding a Toolbox-specific mapping.", "保留全局 CSP 键位，同时添加此 Toolbox 的专用映射。"), deviceSpecific) { deviceSpecific = it }
                         }
@@ -430,8 +430,8 @@ private fun ToolboxButtonBindingRow(index: Int, button: Int, settings: AppSettin
         }
         if (binding != null) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = binding.trigger == ShortcutTrigger.PRESS, onClick = { onChange(settings.copy(shortcutButtonBindings = ToolboxMotionResolver.replaceButton(settings.shortcutButtonBindings, binding.copy(trigger = ShortcutTrigger.PRESS)))) }, label = { Text(tr("Tap", "单击")) })
-                FilterChip(selected = binding.trigger == ShortcutTrigger.HOLD, onClick = { onChange(settings.copy(shortcutButtonBindings = ToolboxMotionResolver.replaceButton(settings.shortcutButtonBindings, binding.copy(trigger = ShortcutTrigger.HOLD)))) }, label = { Text(tr("Hold / release", "按住／松开")) })
+                StudioFilterChip(selected = binding.trigger == ShortcutTrigger.PRESS, onClick = { onChange(settings.copy(shortcutButtonBindings = ToolboxMotionResolver.replaceButton(settings.shortcutButtonBindings, binding.copy(trigger = ShortcutTrigger.PRESS)))) }, label = { Text(tr("Tap", "单击")) })
+                StudioFilterChip(selected = binding.trigger == ShortcutTrigger.HOLD, onClick = { onChange(settings.copy(shortcutButtonBindings = ToolboxMotionResolver.replaceButton(settings.shortcutButtonBindings, binding.copy(trigger = ShortcutTrigger.HOLD)))) }, label = { Text(tr("Hold / release", "按住／松开")) })
             }
         }
         if (deviceBindings > 0) Text(tr("$deviceBindings device-specific mapping(s) retained", "已保留 $deviceBindings 个设备专用映射"), color = MutedInk, fontSize = 10.sp)
@@ -454,12 +454,12 @@ private fun ShortcutBrushGroupTargetRow(group: ShortcutBrushGroup, selectedPath:
                 Icon(Icons.Outlined.ArrowDropDown, null)
             }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                DropdownMenuItem(
+                StudioMenuItem(
                     text = { Text(tr("Automatic", "自动")) },
                     onClick = { onSelect(""); expanded = false },
                 )
                 groupPaths.forEach { path ->
-                    DropdownMenuItem(
+                    StudioMenuItem(
                         text = { Text(path) },
                         onClick = { onSelect(path); expanded = false },
                     )
@@ -485,7 +485,7 @@ private fun ToolboxQuickSlotEditorDialog(
         onChange(settings.copy(toolboxQuickSlots = updated))
     }
     var colorText by remember(selectedIndex, slot.colorArgb) { mutableStateOf("#%06X".format(slot.colorArgb and 0xFFFFFF)) }
-    AlertDialog(
+    StudioDialog(
         modifier = Modifier.imePadding(),
         properties = DialogProperties(decorFitsSystemWindows = false),
         onDismissRequest = onDismiss,
@@ -502,7 +502,7 @@ private fun ToolboxQuickSlotEditorDialog(
                 item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(ToolboxQuickSlots.COUNT) { index ->
-                            FilterChip(
+                            StudioFilterChip(
                                 selected = selectedIndex == index,
                                 onClick = { selectedIndex = index },
                                 label = { Text(tr("Slot ${index + 1}", "槽 ${index + 1}")) },
@@ -511,7 +511,7 @@ private fun ToolboxQuickSlotEditorDialog(
                     }
                 }
                 item {
-                    OutlinedTextField(
+                    StudioOutlinedTextField(
                         value = slot.label,
                         onValueChange = { updateSlot(slot.copy(label = it)) },
                         label = { Text(tr("Slot label", "快速槽名称")) },
@@ -521,9 +521,10 @@ private fun ToolboxQuickSlotEditorDialog(
                 }
                 item {
                     Text(tr("RESTORE", "恢复内容"), color = MutedInk, fontSize = 11.sp)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(ToolboxQuickSlotKind.entries, key = { it.name }) { kind ->
-                            FilterChip(
+                    // Four choices wrap instead of scrolling sideways, so all stay visible at large fonts.
+                    androidx.compose.foundation.layout.FlowRow {
+                        ToolboxQuickSlotKind.entries.forEach { kind ->
+                            StudioFilterChip(
                                 selected = slot.kind == kind,
                                 onClick = { updateSlot(slot.copy(kind = kind)) },
                                 label = { Text(toolboxQuickSlotKindLabel(kind)) },
@@ -561,7 +562,7 @@ private fun ToolboxQuickSlotEditorDialog(
                         item { BrushSettingSlider(tr("Size", "大小"), slot.size, .5f..400f) { updateSlot(slot.copy(size = it)) } }
                         item { BrushSettingSlider(tr("Opacity", "不透明度"), slot.opacity, .05f..1f) { updateSlot(slot.copy(opacity = it)) } }
                         item {
-                            OutlinedTextField(
+                            StudioOutlinedTextField(
                                 value = colorText,
                                 onValueChange = { raw ->
                                     colorText = raw.take(9)
@@ -607,7 +608,7 @@ private fun ToolboxQuickSlotDropdown(label: String, selected: String, choices: L
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             choices.forEach { (value, name) ->
-                DropdownMenuItem(text = { Text(name) }, onClick = { onSelect(value); expanded = false })
+                StudioMenuItem(text = { Text(name) }, onClick = { onSelect(value); expanded = false })
             }
         }
     }
@@ -831,7 +832,7 @@ private fun StylusActionRow(title: String, selected: StylusButtonAction, trigger
         Text(title, fontSize = 13.sp)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             items(StylusButtonAction.entries, key = { it.name }) { action ->
-                FilterChip(selected = selected == action, onClick = { onSelected(action) }, label = { Text(when (action) {
+                StudioFilterChip(selected = selected == action, onClick = { onSelected(action) }, label = { Text(when (action) {
                     StylusButtonAction.ERASER -> tr("Eraser", "橡皮")
                     StylusButtonAction.LASSO -> tr("Lasso", "套索")
                     StylusButtonAction.HAND -> tr("Hand", "抓手")
@@ -844,8 +845,8 @@ private fun StylusActionRow(title: String, selected: StylusButtonAction, trigger
         }
         if (selected !in setOf(StylusButtonAction.UNDO, StylusButtonAction.REDO, StylusButtonAction.NONE)) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = trigger == ShortcutTrigger.HOLD, onClick = { onTrigger(ShortcutTrigger.HOLD) }, label = { Text(tr("Hold temporarily", "按住临时切换")) })
-                FilterChip(selected = trigger == ShortcutTrigger.PRESS, onClick = { onTrigger(ShortcutTrigger.PRESS) }, label = { Text(tr("Tap to switch", "单击切换")) })
+                StudioFilterChip(selected = trigger == ShortcutTrigger.HOLD, onClick = { onTrigger(ShortcutTrigger.HOLD) }, label = { Text(tr("Hold temporarily", "按住临时切换")) })
+                StudioFilterChip(selected = trigger == ShortcutTrigger.PRESS, onClick = { onTrigger(ShortcutTrigger.PRESS) }, label = { Text(tr("Tap to switch", "单击切换")) })
             }
         } else if (selected in setOf(StylusButtonAction.UNDO, StylusButtonAction.REDO)) {
             Text(tr("Runs once when pressed", "按下时执行一次"), color = MutedInk, fontSize = 10.sp)

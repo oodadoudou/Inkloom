@@ -110,7 +110,7 @@ internal fun AdjustmentCurveEditor(
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         @Composable fun number(label: String, value: Float, enabled: Boolean, apply: (Float) -> Unit) {
             var text by remember(selected, value) { mutableStateOf((value * 255).roundToInt().toString()) }
-            OutlinedTextField(text, { raw ->
+            StudioOutlinedTextField(text, { raw ->
                 text = raw.filter(Char::isDigit).take(3)
                 text.toIntOrNull()?.takeIf { it in 0..255 }?.let { apply(it / 255f) }
             }, label = { Text(label) }, singleLine = true, enabled = enabled, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -130,8 +130,8 @@ internal fun AdjustmentCurveEditor(
         }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        FilterChip(!smooth, { onSmooth(false) }, label = { Text(language.text("Linear", "线性")) })
-        FilterChip(smooth, { onSmooth(true) }, label = { Text(language.text("Smooth", "平滑")) })
+        StudioFilterChip(!smooth, { onSmooth(false) }, label = { Text(language.text("Linear", "线性")) })
+        StudioFilterChip(smooth, { onSmooth(true) }, label = { Text(language.text("Smooth", "平滑")) })
         TextButton({ selected = 0; onChange(listOf(AdjustmentCurvePoint(0f, 0f), AdjustmentCurvePoint(1f, 1f))) }) {
             Text(language.text("Reset channel", "重置此通道"))
         }

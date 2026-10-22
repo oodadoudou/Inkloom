@@ -162,7 +162,7 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
                     }
                     library.sets.forEach { candidate ->
                         val isActive = set?.id == candidate.id
-                        DropdownMenuItem(text = { Text(candidate.name) },
+                        StudioMenuItem(text = { Text(candidate.name) },
                             modifier = (if (isActive) Modifier.bringIntoViewRequester(activeSetRequester) else Modifier).semantics { selected = isActive },
                             trailingIcon = { if (isActive) Icon(Icons.Outlined.Check, null) },
                             onClick = { edit { it.selectSet(candidate.id) }; chooser = false })
@@ -172,22 +172,22 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
             Box {
                 SetAction(Icons.Outlined.MoreHoriz, tr("Color set menu", "色板菜单")) { menu = true }
                 ColorPaletteDropdownMenu(menu, { menu = false }) {
-                    DropdownMenuItem(text = { Text(tr("New color set", "新建色板")) }, onClick = { startName("new", "") })
-                    DropdownMenuItem(
+                    StudioMenuItem(text = { Text(tr("New color set", "新建色板")) }, onClick = { startName("new", "") })
+                    StudioMenuItem(
                         text = { Text(tr("Import color set from file", "从文件导入色板")) },
                         enabled = !importBusy,
                         onClick = { menu = false; importSource = "file" },
                     )
-                    DropdownMenuItem(
+                    StudioMenuItem(
                         text = { Text(tr("New color set from image", "从图片新建色板")) },
                         enabled = !importBusy,
                         onClick = { menu = false; importSource = "image" },
                     )
-                    DropdownMenuItem(text = { Text(tr("Add starter color set", "添加基础色板")) }, onClick = { menu = false; starterPicker = true })
+                    StudioMenuItem(text = { Text(tr("Add starter color set", "添加基础色板")) }, onClick = { menu = false; starterPicker = true })
                     if (set != null) {
-                        DropdownMenuItem(text = { Text(tr("Rename color set", "重命名色板")) }, onClick = { startName("rename", set.name) })
-                        DropdownMenuItem(text = { Text(tr("Duplicate color set", "复制色板")) }, onClick = { edit { it.duplicateSet(set.id, "${set.name} ${tr("copy", "副本")}".take(120)) }; menu = false })
-                        DropdownMenuItem(text = { Text(tr("Delete color set", "删除色板")) }, onClick = { deletion = true; menu = false })
+                        StudioMenuItem(text = { Text(tr("Rename color set", "重命名色板")) }, onClick = { startName("rename", set.name) })
+                        StudioMenuItem(text = { Text(tr("Duplicate color set", "复制色板")) }, onClick = { edit { it.duplicateSet(set.id, "${set.name} ${tr("copy", "副本")}".take(120)) }; menu = false })
+                        StudioMenuItem(text = { Text(tr("Delete color set", "删除色板")) }, onClick = { deletion = true; menu = false })
                     }
                 }
             }
@@ -274,7 +274,7 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
             tileToEdit = null
         }, onDismiss = { tileToEdit = null })
     } }
-    if (importSource != null) AlertDialog(
+    if (importSource != null) StudioDialog(
         onDismissRequest = { importSource = null },
         title = { Text(tr("Import into color set", "导入到色板")) },
         text = { Text(set?.name ?: tr("A new color set will be created", "将创建新色板")) },
@@ -300,7 +300,7 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
             }
         },
     )
-    if (starterPicker) AlertDialog(onDismissRequest = { starterPicker = false },
+    if (starterPicker) StudioDialog(onDismissRequest = { starterPicker = false },
         title = { Text(tr("Inkloom color sets", "Inkloom 基础色板")) },
         text = {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -319,8 +319,8 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
                 }
             }
         }, confirmButton = {}, dismissButton = { TextButton(onClick = { starterPicker = false }) { Text(tr("Cancel", "取消")) } })
-    if (naming != null) AlertDialog(onDismissRequest = { naming = null }, title = { Text(tr("Name", "名称")) }, text = {
-        OutlinedTextField(name, { name = it.take(120) }, singleLine = true, modifier = Modifier.semantics { contentDescription = tr("Name", "名称") })
+    if (naming != null) StudioDialog(onDismissRequest = { naming = null }, title = { Text(tr("Name", "名称")) }, text = {
+        StudioOutlinedTextField(name, { name = it.take(120) }, singleLine = true, modifier = Modifier.semantics { contentDescription = tr("Name", "名称") })
     }, confirmButton = {
         val focusManager = LocalFocusManager.current
         val keyboard = LocalSoftwareKeyboardController.current
@@ -337,7 +337,7 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
         val keyboard = LocalSoftwareKeyboardController.current
         TextButton(onClick = { focusManager.clearFocus(force = true); keyboard?.hide(); naming = null }) { Text(tr("Cancel", "取消")) }
     })
-    if (deletion && set != null) AlertDialog(onDismissRequest = { deletion = false }, title = { Text(tr("Delete color set", "删除色板")) }, text = { Text(set.name) }, confirmButton = {
+    if (deletion && set != null) StudioDialog(onDismissRequest = { deletion = false }, title = { Text(tr("Delete color set", "删除色板")) }, text = { Text(set.name) }, confirmButton = {
         TextButton(onClick = { edit { it.deleteSet(set.id) }; deletion = false }) { Text(tr("Delete", "删除")) }
     }, dismissButton = { TextButton(onClick = { deletion = false }) { Text(tr("Cancel", "取消")) } })
 }

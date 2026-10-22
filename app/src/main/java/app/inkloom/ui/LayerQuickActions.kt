@@ -59,7 +59,7 @@ internal fun LayerQuickActions(
             LayerQuickIcon(Icons.Outlined.Tune, tr("Add adjustment layer", "添加调整图层"), true, false) { adjustmentOpen = true }
             DropdownMenu(adjustmentOpen, { adjustmentOpen = false }) {
                 LayerAdjustmentKind.entries.forEach { kind ->
-                    DropdownMenuItem(text = { Text(adjustmentName(kind, language)) },
+                    StudioMenuItem(text = { Text(adjustmentName(kind, language)) },
                         onClick = { adjustmentOpen = false; onAdjustment(kind) })
                 }
             }

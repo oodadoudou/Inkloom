@@ -78,9 +78,9 @@ internal fun SelectionTransformToolbar(
                 }
                 DropdownMenu(meshOpen, { meshOpen = false }) {
                     (2..8).forEach { divisions ->
-                        DropdownMenuItem(
+                        StudioMenuItem(
                             text = { Text("$divisions × $divisions") },
-                            leadingIcon = { RadioButton(state.pose.meshColumns == divisions + 1 && state.pose.meshRows == divisions + 1, null) },
+                            leadingIcon = { StudioRadioButton(state.pose.meshColumns == divisions + 1 && state.pose.meshRows == divisions + 1, null) },
                             onClick = { onMeshDensity(divisions + 1, divisions + 1); meshOpen = false },
                         )
                     }
@@ -101,31 +101,31 @@ internal fun SelectionTransformToolbar(
                         SelectionAlignmentReference.GUIDES -> t("guides", "辅助线")
                         else -> t("canvas", "画布")
                     }
-                    DropdownMenuItem(
+                    StudioMenuItem(
                         text = { Text("${t("Auto", "自动")} · $automaticTarget") },
-                        leadingIcon = { RadioButton(state.alignmentReference == SelectionAlignmentReference.AUTO, null) },
+                        leadingIcon = { StudioRadioButton(state.alignmentReference == SelectionAlignmentReference.AUTO, null) },
                         onClick = { onReference(SelectionAlignmentReference.AUTO) },
                     )
-                    DropdownMenuItem(
+                    StudioMenuItem(
                         text = { Text(t("Canvas reference", "参考画布")) },
-                        leadingIcon = { RadioButton(state.alignmentReference == SelectionAlignmentReference.CANVAS, null) },
+                        leadingIcon = { StudioRadioButton(state.alignmentReference == SelectionAlignmentReference.CANVAS, null) },
                         onClick = { onReference(SelectionAlignmentReference.CANVAS) },
                     )
-                    DropdownMenuItem(
+                    StudioMenuItem(
                         text = { Text(t("Active layer reference", "参考当前图层")) },
-                        leadingIcon = { RadioButton(state.alignmentReference == SelectionAlignmentReference.ACTIVE_LAYER, null) },
+                        leadingIcon = { StudioRadioButton(state.alignmentReference == SelectionAlignmentReference.ACTIVE_LAYER, null) },
                         enabled = state.layerCount >= 2,
                         onClick = { onReference(SelectionAlignmentReference.ACTIVE_LAYER) },
                     )
-                    DropdownMenuItem(text = { Text(t("Selection reference", "参考选区")) },
-                        leadingIcon = { RadioButton(state.alignmentReference == SelectionAlignmentReference.SELECTION, null) },
+                    StudioMenuItem(text = { Text(t("Selection reference", "参考选区")) },
+                        leadingIcon = { StudioRadioButton(state.alignmentReference == SelectionAlignmentReference.SELECTION, null) },
                         onClick = { onReference(SelectionAlignmentReference.SELECTION) })
-                    DropdownMenuItem(text = { Text(t("Alignment guides reference", "参考辅助线")) },
-                        leadingIcon = { RadioButton(state.alignmentReference == SelectionAlignmentReference.GUIDES, null) },
+                    StudioMenuItem(text = { Text(t("Alignment guides reference", "参考辅助线")) },
+                        leadingIcon = { StudioRadioButton(state.alignmentReference == SelectionAlignmentReference.GUIDES, null) },
                         onClick = { onReference(SelectionAlignmentReference.GUIDES) })
                     HorizontalDivider()
                     SelectionAlignment.entries.forEach { alignment ->
-                        DropdownMenuItem(text = { Text(when (alignment) {
+                        StudioMenuItem(text = { Text(when (alignment) {
                             SelectionAlignment.LEFT -> t("Align left", "左对齐")
                             SelectionAlignment.HORIZONTAL_CENTER -> t("Center horizontally", "水平居中")
                             SelectionAlignment.RIGHT -> t("Align right", "右对齐")
@@ -135,21 +135,21 @@ internal fun SelectionTransformToolbar(
                         }) }, onClick = { onAlign(alignment); alignOpen = false })
                     }
                     HorizontalDivider()
-                    DropdownMenuItem(text = { Text(t("Distribute left edges", "左边缘均分")) }, enabled = state.layerCount >= 3,
+                    StudioMenuItem(text = { Text(t("Distribute left edges", "左边缘均分")) }, enabled = state.layerCount >= 3,
                         onClick = { onDistribute(true, SelectionDistributionMode.START_EDGE); alignOpen = false })
-                    DropdownMenuItem(text = { Text(t("Distribute horizontal centers", "水平中心均分")) }, enabled = state.layerCount >= 3,
+                    StudioMenuItem(text = { Text(t("Distribute horizontal centers", "水平中心均分")) }, enabled = state.layerCount >= 3,
                         onClick = { onDistribute(true, SelectionDistributionMode.CENTER); alignOpen = false })
-                    DropdownMenuItem(text = { Text(t("Distribute right edges", "右边缘均分")) }, enabled = state.layerCount >= 3,
+                    StudioMenuItem(text = { Text(t("Distribute right edges", "右边缘均分")) }, enabled = state.layerCount >= 3,
                         onClick = { onDistribute(true, SelectionDistributionMode.END_EDGE); alignOpen = false })
-                    DropdownMenuItem(text = { Text(t("Distribute top edges", "上边缘均分")) }, enabled = state.layerCount >= 3,
+                    StudioMenuItem(text = { Text(t("Distribute top edges", "上边缘均分")) }, enabled = state.layerCount >= 3,
                         onClick = { onDistribute(false, SelectionDistributionMode.START_EDGE); alignOpen = false })
-                    DropdownMenuItem(text = { Text(t("Distribute vertical centers", "垂直中心均分")) }, enabled = state.layerCount >= 3,
+                    StudioMenuItem(text = { Text(t("Distribute vertical centers", "垂直中心均分")) }, enabled = state.layerCount >= 3,
                         onClick = { onDistribute(false, SelectionDistributionMode.CENTER); alignOpen = false })
-                    DropdownMenuItem(text = { Text(t("Distribute bottom edges", "下边缘均分")) }, enabled = state.layerCount >= 3,
+                    StudioMenuItem(text = { Text(t("Distribute bottom edges", "下边缘均分")) }, enabled = state.layerCount >= 3,
                         onClick = { onDistribute(false, SelectionDistributionMode.END_EDGE); alignOpen = false })
-                    DropdownMenuItem(text = { Text(t("Equal horizontal gaps", "水平等间距")) }, enabled = state.layerCount >= 3,
+                    StudioMenuItem(text = { Text(t("Equal horizontal gaps", "水平等间距")) }, enabled = state.layerCount >= 3,
                         onClick = { onDistribute(true, SelectionDistributionMode.EQUAL_GAP); alignOpen = false })
-                    DropdownMenuItem(text = { Text(t("Equal vertical gaps", "垂直等间距")) }, enabled = state.layerCount >= 3,
+                    StudioMenuItem(text = { Text(t("Equal vertical gaps", "垂直等间距")) }, enabled = state.layerCount >= 3,
                         onClick = { onDistribute(false, SelectionDistributionMode.EQUAL_GAP); alignOpen = false })
                 }
             }
@@ -157,8 +157,8 @@ internal fun SelectionTransformToolbar(
                 var snapOpen by remember { mutableStateOf(false) }
                 TextButton(onClick={ snapOpen=true }) { Text(t("Snapping", "吸附")) }
                 DropdownMenu(snapOpen,{snapOpen=false}) {
-                    DropdownMenuItem(text={Text(t("Snapping", "吸附"))},leadingIcon={Checkbox(state.snapping,null)},onClick={onSnapping(!state.snapping,state.magnetics,state.snapDistance)})
-                    DropdownMenuItem(text={Text(t("Magnetics", "磁力方向"))},leadingIcon={Checkbox(state.magnetics,null)},onClick={onSnapping(state.snapping,!state.magnetics,state.snapDistance)})
+                    StudioMenuItem(text={Text(t("Snapping", "吸附"))},leadingIcon={StudioCheckbox(state.snapping,null)},onClick={onSnapping(!state.snapping,state.magnetics,state.snapDistance)})
+                    StudioMenuItem(text={Text(t("Magnetics", "磁力方向"))},leadingIcon={StudioCheckbox(state.magnetics,null)},onClick={onSnapping(state.snapping,!state.magnetics,state.snapDistance)})
                     Text(t("Distance", "距离")+" ${state.snapDistance.toInt()} px",Modifier.padding(horizontal=16.dp))
                     Slider(state.snapDistance,{onSnapping(state.snapping,state.magnetics,it)},valueRange=1f..50f,modifier=Modifier.width(240.dp).padding(horizontal=16.dp))
                 }
@@ -171,11 +171,11 @@ internal fun SelectionTransformToolbar(
                 TextButton(onClick = { samplingOpen = true }) { Text(t("Interpolation", "插值")) }
                 DropdownMenu(samplingOpen, { samplingOpen = false }) {
                     app.inkloom.engine.v5.tools.SelectionInterpolation.entries.forEach { method ->
-                        DropdownMenuItem(text = { Text(when (method) {
+                        StudioMenuItem(text = { Text(when (method) {
                             app.inkloom.engine.v5.tools.SelectionInterpolation.NEAREST -> t("Nearest neighbor", "最近邻")
                             app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR -> t("Bilinear", "双线性")
                             app.inkloom.engine.v5.tools.SelectionInterpolation.BICUBIC -> t("Bicubic", "双三次")
-                        }) }, leadingIcon = { RadioButton(selected = method == interpolation, onClick = null) },
+                        }) }, leadingIcon = { StudioRadioButton(selected = method == interpolation, onClick = null) },
                             onClick = { onInterpolation(method); samplingOpen = false })
                     }
                 }
@@ -199,10 +199,10 @@ internal fun SelectionTransformToolbar(
         val dx = horizontal.toFloatOrNull(); val dy = vertical.toFloatOrNull()
         val valid = dx?.isFinite() == true && dy?.isFinite() == true &&
             dx in -65536f..65536f && dy in -65536f..65536f
-        AlertDialog(onDismissRequest = { skewOpen = false }, title = { Text(t("Skew by pixels", "数值歪斜")) },
-            text = { Column { OutlinedTextField(horizontal, { horizontal = it },
+        StudioDialog(onDismissRequest = { skewOpen = false }, title = { Text(t("Skew by pixels", "数值歪斜")) },
+            text = { Column { StudioOutlinedTextField(horizontal, { horizontal = it },
                 label = { Text(t("Horizontal (px)", "水平（像素）")) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                OutlinedTextField(vertical, { vertical = it },
+                StudioOutlinedTextField(vertical, { vertical = it },
                     label = { Text(t("Vertical (px)", "垂直（像素）")) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)) } },
             confirmButton = { TextButton(enabled = valid, onClick = { onSkewBy(dx!!, dy!!); skewOpen = false }) { Text(t("Apply", "应用")) } },
             dismissButton = { TextButton(onClick = { skewOpen = false }) { Text(t("Cancel", "取消")) } })
@@ -230,22 +230,22 @@ internal fun SelectionTransformToolbar(
                         Text(t("Transform dimensions", "变换尺寸"), style = MaterialTheme.typography.titleLarge)
                         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(t("Enable Move pivot, then drag the crosshair on the canvas.", "开启「移动基准点」后，拖动画布上的十字准星。"), fontSize = 11.sp)
-                            OutlinedTextField(x, { x = it }, label = { Text(t("Position X (px)", "位置 X（像素）")) },
+                            StudioOutlinedTextField(x, { x = it }, label = { Text(t("Position X (px)", "位置 X（像素）")) },
                                 singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                            OutlinedTextField(y, { y = it }, label = { Text(t("Position Y (px)", "位置 Y（像素）")) },
+                            StudioOutlinedTextField(y, { y = it }, label = { Text(t("Position Y (px)", "位置 Y（像素）")) },
                                 singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                             TextButton(onClick = onResetPivot) {
                                 Text(t("Reset reference point to center", "基准点回到中心"))
                             }
-                            OutlinedTextField(width, { value -> width = value; if (linked) value.toFloatOrNull()?.takeIf(Float::isFinite)?.let { height = number(it / ratio) } },
+                            StudioOutlinedTextField(width, { value -> width = value; if (linked) value.toFloatOrNull()?.takeIf(Float::isFinite)?.let { height = number(it / ratio) } },
                                 label = { Text(t("Width (px)", "宽度（像素）")) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                            OutlinedTextField(height, { value -> height = value; if (linked) value.toFloatOrNull()?.takeIf(Float::isFinite)?.let { width = number(it * ratio) } },
+                            StudioOutlinedTextField(height, { value -> height = value; if (linked) value.toFloatOrNull()?.takeIf(Float::isFinite)?.let { width = number(it * ratio) } },
                                 label = { Text(t("Height (px)", "高度（像素）")) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(linked, { linked = it; if (it) width.toFloatOrNull()?.takeIf(Float::isFinite)?.let { value -> height = number(value / ratio) } })
+                                StudioCheckbox(linked, { linked = it; if (it) width.toFloatOrNull()?.takeIf(Float::isFinite)?.let { value -> height = number(value / ratio) } })
                                 Text(t("Keep aspect ratio", "保持宽高比"))
                             }
-                            OutlinedTextField(angle, { angle = it }, label = { Text(t("Rotation (degrees)", "旋转角度")) },
+                            StudioOutlinedTextField(angle, { angle = it }, label = { Text(t("Rotation (degrees)", "旋转角度")) },
                                 singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                                 keyboardActions = KeyboardActions(onDone = { submit() }))
                             if (!valid) Text(t("Enter finite dimensions from 1 to 65536 pixels and a rotation angle.", "请输入 1 至 65536 像素的有效尺寸和旋转角度。"), color = MaterialTheme.colorScheme.error)
