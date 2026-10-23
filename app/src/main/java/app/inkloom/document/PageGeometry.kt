@@ -16,6 +16,7 @@ object PageGeometry {
                         (layer.rasterRotationQuarterTurns + 1).mod(4)
                     } else layer.rasterRotationQuarterTurns,
                     vector = layer.vector?.let(VectorGeometry::rotatedClockwise),
+                    rulers = layer.rulers?.let(RulerGeometry::rotatedClockwise),
                 )
             },
             elements = page.elements.map { rotateElementClockwise(it, oldWidth, oldHeight) },

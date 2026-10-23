@@ -229,6 +229,8 @@ data class InkLayer(
      * re-render the pixels; tools that only change pixels refuse the layer until it is rasterized.
      */
     val vector: VectorLayerContent? = null,
+    /** CSP rulers kept on this layer, with their display range and links. */
+    val rulers: LayerRulers? = null,
 )
 
 /** Where a file object's image comes from, and the state of that file when it was last read. */

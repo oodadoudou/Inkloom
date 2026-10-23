@@ -608,13 +608,13 @@ class DocumentAssetService(private val context: Context) {
                         sx, sy, offset.first, offset.second)
                     saveRasterTileSurface(resized).also(rasterReservations::add)
                 }
-                // Lines move with the pixels: page fractions → visible page units → the new page.
-                val vector = layer.vector?.let { content ->
-                    VectorGeometry.mapped(content, sx) { x, y ->
-                        ((x - page.crop.left) * page.width * sx + offset.first) / width to ((y - page.crop.top) * page.height * sy + offset.second) / height
-                    }
+                // Lines and rulers move with the pixels: page fractions → visible page units → the new page.
+                val toNewPage = { x: Float, y: Float ->
+                    ((x - page.crop.left) * page.width * sx + offset.first) / width to ((y - page.crop.top) * page.height * sy + offset.second) / height
                 }
+                val vector = layer.vector?.let { content -> VectorGeometry.mapped(content, sx, toNewPage) }
                 layer.copy(rasterTileSurface = raster, rasterRotationQuarterTurns = 0, vector = vector,
+                    rulers = layer.rulers?.let { RulerGeometry.mapped(it, toNewPage) },
                     mask = layer.mask?.let { it.copy(surface = it.surface?.let { ref -> resizedMask(ref) }) })
             }
             val transform = app.inkloom.engine.v5.tools.SelectionAffineTransform(0f, 0f, sx, sy, 0f, offset.first, offset.second)
@@ -687,7 +687,8 @@ class DocumentAssetService(private val context: Context) {
                         mask = layer.mask?.let { mask -> mask.copy(surface = mask.surface?.let { reference ->
                             saveMask(CanvasOrientation.flippedMask(loadMaskTileSurface(reference).snapshot(), flip))
                         }) },
-                        vector = layer.vector?.let { VectorGeometry.flipped(it, flip) })
+                        vector = layer.vector?.let { VectorGeometry.flipped(it, flip) },
+                        rulers = layer.rulers?.let { RulerGeometry.flipped(it, flip) })
                 },
                 elements = page.elements.map { CanvasOrientation.flippedElement(it, page.width, page.height, flip) },
                 pdfTextBlocks = page.pdfTextBlocks.map { it.copy(bounds = it.bounds.map { b -> CanvasOrientation.flippedBounds(b, flip) }) },
