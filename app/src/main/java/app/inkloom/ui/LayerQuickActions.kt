@@ -42,6 +42,7 @@ internal fun LayerQuickActions(
     onVector: () -> Unit = {},
     onFrameFolder: () -> Unit = {},
     onFigure: () -> Unit = {},
+    onAnimation: () -> Unit = {},
 ) {
     fun tr(en: String, zh: String) = language.text(en, zh)
     val content = layer?.isPaintSurfaceLayer() == true
@@ -75,6 +76,7 @@ internal fun LayerQuickActions(
                 StudioMenuItem(text = { Text(tr("Vector layer", "矢量图层")) }, onClick = { generatedOpen = false; onVector() })
                 StudioMenuItem(text = { Text(tr("Frame border folder…", "分格文件夹…")) }, onClick = { generatedOpen = false; onFrameFolder() })
                 StudioMenuItem(text = { Text(tr("3D drawing figure…", "3D 素描人偶…")) }, onClick = { generatedOpen = false; onFigure() })
+                StudioMenuItem(text = { Text(tr("Animation folder", "动画文件夹")) }, onClick = { generatedOpen = false; onAnimation() })
                 listOf(GeneratedLayerKind.FILL to tr("Fill layer", "填充图层"), GeneratedLayerKind.GRADIENT to tr("Gradient layer", "渐变图层"),
                     GeneratedLayerKind.TONE to tr("Tone layer", "网点图层")).forEach { (kind, label) ->
                     StudioMenuItem(text = { Text(label) }, onClick = { generatedOpen = false; onGenerated(kind) })

@@ -207,6 +207,8 @@ internal fun LayerPanel(
     onRulerAction: (String, LayerRulerAction) -> Unit = { _, _ -> },
     onFrameAction: (String?, FrameAction) -> Unit = { _, _ -> },
     onAddFigure: () -> Unit = {},
+    onAddAnimation: () -> Unit = {},
+    onAnimationTimeline: (String) -> Unit = {},
     onRasterize: (String) -> Unit = {},
     onConvertLayer: (String) -> Unit = {},
     onConvertToFileObject: (String) -> Unit = {},
@@ -264,6 +266,8 @@ internal fun LayerPanel(
             onRulerAction = onRulerAction,
             onFrameAction = onFrameAction,
             onAddFigure = onAddFigure,
+            onAddAnimation = onAddAnimation,
+            onAnimationTimeline = onAnimationTimeline,
             onRasterize = onRasterize,
             onConvertLayer = onConvertLayer,
             onConvertToFileObject = onConvertToFileObject,
@@ -337,6 +341,8 @@ private fun PaintingLayerPanel(
     onRulerAction: (String, LayerRulerAction) -> Unit = { _, _ -> },
     onFrameAction: (String?, FrameAction) -> Unit = { _, _ -> },
     onAddFigure: () -> Unit = {},
+    onAddAnimation: () -> Unit = {},
+    onAnimationTimeline: (String) -> Unit = {},
     onRasterize: (String) -> Unit = {},
     onConvertLayer: (String) -> Unit = {},
     onConvertToFileObject: (String) -> Unit = {},
@@ -490,7 +496,7 @@ private fun PaintingLayerPanel(
                 onClip = { onToggleClippedToBelow(activeLayerId) }, onReference = { onToggleReference(activeLayerId) },
                 onDraft = { onToggleDraft(activeLayerId) }, onMask = { onMaskCommand(activeLayerId, it) },
                 onDuplicate = { onDuplicate(activeLayerId) }, onMerge = { onMergeDown(activeLayerId) },
-                onDelete = { onDelete(activeLayerId) }, onGenerated = onAddGenerated, onVector = onAddVector, onFrameFolder = { onFrameAction(null, FrameAction.CREATE) }, onFigure = onAddFigure) }
+                onDelete = { onDelete(activeLayerId) }, onGenerated = onAddGenerated, onVector = onAddVector, onFrameFolder = { onFrameAction(null, FrameAction.CREATE) }, onFigure = onAddFigure, onAnimation = onAddAnimation) }
             if (settings.layerShowCommands && !settings.layerCommandsAtBottom) commands()
             HorizontalDivider(color = OutlineSoft)
             if (searchOpen) StudioOutlinedTextField(
@@ -720,6 +726,7 @@ private fun PaintingLayerPanel(
                                 StudioMenuItem(text = { Text(if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) }, onClick = { menu = false; onLock(layer.id) })
                                 if (layer.role == LayerRole.ADJUSTMENT) StudioMenuItem(text = { Text(tr("Edit adjustment", "编辑调整参数")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditAdjustment(layer.id) })
                                 if (layer.generator != null || layer.figure != null) StudioMenuItem(text = { Text(tr("Edit layer settings", "编辑图层设置")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditGenerated(layer.id) })
+                                if (layer.animation != null) StudioMenuItem(text = { Text(tr("Animation timeline…", "动画时间轴…")) }, onClick = { menu = false; onAnimationTimeline(layer.id) })
                                 if (layer.frame != null) StudioMenuItem(text = { Text(tr("Frames", "分格")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) },
                                     onClick = { menu = false; frameMenu = true })
                                 if (layer.role != LayerRole.BACKGROUND) StudioMenuItem(text = { Text(tr("Ruler", "尺规")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) },

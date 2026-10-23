@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -46,7 +47,8 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun MaterialsDialog(materials: List<Material>, language: UiLanguage, busy: Boolean, message: String?,
     onRegisterLayer: (String) -> Unit, onRegisterPage: (String) -> Unit, onPlace: (Material) -> Unit,
-    onAddPage: (Material) -> Unit, onDelete: (Material) -> Unit, onDismiss: () -> Unit) {
+    onAddPage: (Material) -> Unit, onDelete: (Material) -> Unit, onDismiss: () -> Unit,
+    onRegisterAnimation: ((String) -> Unit)? = null) {
     fun tr(en: String, zh: String) = language.text(en, zh)
     var name by remember { mutableStateOf("") }
     StudioDialog(onDismissRequest = onDismiss, wide = true, title = { Text(tr("Materials", "素材")) }, text = {
@@ -56,6 +58,7 @@ internal fun MaterialsDialog(materials: List<Material>, language: UiLanguage, bu
                 StudioTextField(name, { name = it.take(80) }, tr("Material name", "素材名称"), Modifier.weight(1f))
                 StudioButton(tr("Current layer", "当前图层"), { onRegisterLayer(name.trim().ifBlank { tr("Image", "图像") }); name = "" }, enabled = !busy)
                 StudioButton(tr("This page", "本页"), { onRegisterPage(name.trim().ifBlank { tr("Template", "模板") }); name = "" }, enabled = !busy)
+                onRegisterAnimation?.let { register -> StudioButton(tr("Animation", "动画"), { register(name.trim().ifBlank { tr("Animation", "动画") }); name = "" }, enabled = !busy) }
             }
             message?.let { StudioNote(it) }
             StudioSection(tr("Library", "素材库"))
@@ -68,11 +71,14 @@ internal fun MaterialsDialog(materials: List<Material>, language: UiLanguage, bu
                         MaterialThumbnail(material)
                         Column(Modifier.weight(1f)) {
                             Text(material.name, style = MaterialTheme.typography.bodyMedium)
-                            StudioNote(if (material.kind == MaterialKind.IMAGE) tr("Image · ${material.imageWidth} × ${material.imageHeight} px", "图像 · ${material.imageWidth} × ${material.imageHeight} px")
-                                else tr("Page template with layers", "含图层的页面模板"))
+                            StudioNote(when (material.kind) {
+                                MaterialKind.IMAGE -> tr("Image · ${material.imageWidth} × ${material.imageHeight} px", "图像 · ${material.imageWidth} × ${material.imageHeight} px")
+                                MaterialKind.TEMPLATE -> tr("Page template with layers", "含图层的页面模板")
+                                MaterialKind.ANIMATION -> tr("Animation · ${material.page?.layers?.firstOrNull()?.animation?.cels?.size ?: 0} cels", "动画 · ${material.page?.layers?.firstOrNull()?.animation?.cels?.size ?: 0} 个赛璐")
+                            })
                         }
-                        if (material.kind == MaterialKind.IMAGE) StudioButton(tr("Place", "置入"), { onPlace(material) })
-                        else StudioButton(tr("Add page", "添加页面"), { onAddPage(material) })
+                        if (material.kind == MaterialKind.TEMPLATE) StudioButton(tr("Add page", "添加页面"), { onAddPage(material) })
+                        else StudioButton(tr("Place", "置入"), { onPlace(material) })
                         StudioButton(tr("Delete", "删除"), { onDelete(material) })
                     }
                 }
@@ -95,5 +101,6 @@ private fun MaterialThumbnail(material: Material) {
         val image = bitmap
         if (image != null) Image(image.asImageBitmap(), null, Modifier.size(40.dp), contentScale = ContentScale.Fit)
         else if (material.kind == MaterialKind.TEMPLATE) Icon(Icons.Outlined.Description, null)
+        else if (material.kind == MaterialKind.ANIMATION) Icon(Icons.Outlined.Movie, null)
     }
 }

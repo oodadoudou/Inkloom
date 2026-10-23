@@ -237,6 +237,8 @@ data class InkLayer(
     val frameBorderOf: String? = null,
     /** 3D layers: the posed drawing figure the pixels are rendered from. */
     val figure: DrawingFigure? = null,
+    /** Folders only: an animation folder's timeline of cels. */
+    val animation: AnimationFolder? = null,
 )
 
 /** Where a file object's image comes from, and the state of that file when it was last read. */

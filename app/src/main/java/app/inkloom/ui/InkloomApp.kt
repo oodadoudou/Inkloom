@@ -1057,10 +1057,18 @@ fun InkloomApp(initialIntent: Intent?) {
                     materialsMessage = settings.language.text("Registered \"$name\"", "已登记“$name”")
                 }
             },
-            onPlace = { viewModel.placeMaterial(it.id); materialsLayerId = null },
+            onPlace = { material ->
+                if (material.kind == app.inkloom.document.MaterialKind.ANIMATION) viewModel.placeAnimationMaterial(material.id) else viewModel.placeMaterial(material.id)
+                materialsLayerId = null
+            },
             onAddPage = { material -> libraryState.selectedDocumentId?.let { viewModel.addPageFromTemplate(it, material.id) }; materialsLayerId = null },
             onDelete = { viewModel.deleteMaterial(it.id) },
-            onDismiss = { materialsLayerId = null })
+            onDismiss = { materialsLayerId = null },
+            onRegisterAnimation = viewModel.currentPage()?.let { page -> activeAnimationFolder(page.layers, layerId) }?.let { folder -> { name: String ->
+                val documentId = libraryState.selectedDocumentId; val pageId = libraryState.selectedPageId
+                if (documentId != null && pageId != null) materialsMessage = viewModel.registerAnimationMaterial(documentId, pageId, folder.id, name)
+                    ?: settings.language.text("Registered \"$name\"", "已登记“$name”")
+            } })
     }
     if (settingsOpen) SettingsDialog(
         settings = settings,
@@ -1379,6 +1387,17 @@ private fun EditorScreen(
     var rulerDialog by remember(document.id, selectedPage.id) { mutableStateOf<Pair<LayerRulerAction, String>?>(null) }
     var frameAction by remember(document.id, selectedPage.id) { mutableStateOf<FrameAction?>(null) }
     var figureEditor by remember(document.id, selectedPage.id) { mutableStateOf<Pair<app.inkloom.document.DrawingFigure, String?>?>(null) }
+    var animationFolderId by remember(document.id, selectedPage.id) { mutableStateOf<String?>(null) }
+    /** A whole-page change from the current page as one undo step; false when nothing changed or it could not apply. */
+    fun applyPlainPageEdit(change: (app.inkloom.document.InkPage) -> app.inkloom.document.InkPage?): Boolean {
+        val view = canvasView ?: return false
+        val before = currentAppearancePage
+        val after = change(before)?.takeIf { it != before } ?: return false
+        val edit = app.inkloom.document.PageGeometryEdit(before, after)
+        if (!onApplyPageGeometry(document.id, before.id, edit, false)) return false
+        view.recordExternalEdit(undo = { onApplyPageGeometry(document.id, before.id, edit, true) }, redo = { onApplyPageGeometry(document.id, before.id, edit, false) })
+        return true
+    }
     fun createGeneratedLayer(kind: GeneratedLayerKind) { generatedLayerEditor = defaultGenerator(kind, brushColor, backgroundColor) to null }
     fun editGeneratedLayer(layerId: String) {
         val layer = selectedPage.layers.firstOrNull { it.id == layerId }
@@ -2324,6 +2343,10 @@ private fun EditorScreen(
                         createdId?.let { id -> view.clearSelection(); selectLayerTarget(id) }
                     }
                 }
+            }
+            animationFolderId?.let { folderId ->
+                AnimationTimelineDialog(selectedPage, folderId, maskAssets, settings.language, onEdit = { change -> applyPlainPageEdit(change) },
+                    onSelectCel = ::selectLayerTarget) { animationFolderId = null }
             }
             figureEditor?.let { (initial, editingId) ->
                 DrawingFigureDialog(initial, editingId != null, selectedPage.height / selectedPage.width.coerceAtLeast(1f), settings.language, brushColor,
@@ -3575,6 +3598,13 @@ private fun EditorScreen(
                 onEditVector = { vectorLinesOpen = true },
                 onFrameAction = { layerId, action -> layerId?.let(::selectLayerTarget); frameAction = action },
                 onAddFigure = { figureEditor = app.inkloom.document.DrawingFigure() to null },
+                onAddAnimation = {
+                    var created: Pair<app.inkloom.document.InkPage, String>? = null
+                    if (applyPlainPageEdit { page -> app.inkloom.document.AnimationEdits.createFolder(page, activeLayerId,
+                            app.inkloom.document.AnimationNames(settings.language.text("Animation", "动画"), settings.language.text("Cel", "赛璐"))).also { created = it }.first })
+                        created?.let { (page, cel) -> selectLayerTarget(cel); animationFolderId = page.layers.first { it.id == cel }.parentId }
+                },
+                onAnimationTimeline = { animationFolderId = it },
                 onRulerAction = { layerId, action ->
                     val view = canvasView
                     val layer = selectedPage.layers.firstOrNull { it.id == layerId }

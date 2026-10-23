@@ -289,6 +289,22 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /** ED-22: CSP's Register material > Animation: the animation folder and its cels. */
+    fun registerAnimationMaterial(documentId: String, pageId: String, folderId: String, name: String): String? {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return "The page is no longer open"
+        val template = runCatching { app.inkloom.document.AnimationEdits.subtree(page, folderId) }.getOrElse { return it.message }
+        mutableMaterials.value = materialStore.add(app.inkloom.document.Material(name = name, kind = app.inkloom.document.MaterialKind.ANIMATION, page = template))
+        return null
+    }
+
+    /** An animation material's folder goes on the current page, above its layers. */
+    fun placeAnimationMaterial(materialId: String) {
+        val template = mutableMaterials.value.firstOrNull { it.id == materialId && it.kind == app.inkloom.document.MaterialKind.ANIMATION }?.page ?: return
+        val documentId = mutableState.value.selectedDocumentId ?: return
+        val pageId = mutableState.value.selectedPageId ?: return
+        updatePage(documentId, pageId) { page -> app.inkloom.document.AnimationEdits.place(page, template) }
+    }
+
     /** A new page after the current one, made from a template material. */
     fun addPageFromTemplate(documentId: String, materialId: String) {
         val template = mutableMaterials.value.firstOrNull { it.id == materialId }?.page ?: return

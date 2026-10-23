@@ -8,7 +8,7 @@ import java.util.UUID
 
 /** CSP's material palette: pictures registered for placing, and whole pages registered as templates. */
 @Serializable
-enum class MaterialKind { IMAGE, TEMPLATE }
+enum class MaterialKind { IMAGE, TEMPLATE, ANIMATION }
 
 /**
  * One registered material. An image keeps its picture as a managed asset; a template keeps a
@@ -26,7 +26,7 @@ data class Material(
     val page: InkPage? = null,
     val createdAt: Long = System.currentTimeMillis(),
 ) {
-    init { require((kind == MaterialKind.IMAGE) == (imageAssetPath != null) && (kind == MaterialKind.TEMPLATE) == (page != null)) }
+    init { require((kind == MaterialKind.IMAGE) == (imageAssetPath != null) && (kind != MaterialKind.IMAGE) == (page != null)) }
 }
 
 class MaterialStore(root: File) {
@@ -63,6 +63,12 @@ class MaterialStore(root: File) {
                 elements = template.elements.map { element -> element.withId(nextId()) },
                 savedSelections = template.savedSelections.map { it.copy(id = nextId()) },
                 pdfGotoLinks = emptyList(), recognizedTextBlocks = emptyList(), handwritingIndexFingerprint = "", imageOcrFingerprint = "")
+
+        /** A copy of [element] with a new ID, on the layer [layerId]. */
+        fun withLayer(element: PageElement, layerId: String): PageElement = when (val copy = element.withId(UUID.randomUUID().toString())) {
+            is PageElement.Text -> copy.copy(layerId = layerId); is PageElement.Sticky -> copy.copy(layerId = layerId); is PageElement.Shape -> copy.copy(layerId = layerId)
+            is PageElement.Image -> copy.copy(layerId = layerId); is PageElement.Fill -> copy.copy(layerId = layerId); is PageElement.Link -> copy.copy(layerId = layerId)
+        }
 
         private fun PageElement.withId(id: String): PageElement = when (this) {
             is PageElement.Text -> copy(id = id); is PageElement.Sticky -> copy(id = id); is PageElement.Shape -> copy(id = id)
