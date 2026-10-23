@@ -2017,6 +2017,8 @@ private fun EditorScreen(
                             onClick = { overlays.workspaceMenu = false; rasterFilterInitialKind = 0; rasterFilterDialogOpen = true })
                         StudioMenuItem(text = { Text(tr("Obtain screen color", "屏幕取色")) }, leadingIcon = { Icon(Icons.Outlined.Colorize, null) },
                             onClick = { overlays.workspaceMenu = false; overlays.screenColorPickOpen = true })
+                        StudioMenuItem(text = { Text(tr("Obtain screen color from other apps…", "从其他应用屏幕取色…")) },
+                            onClick = { overlays.workspaceMenu = false; overlays.externalScreenColorOpen = true })
                         StudioMenuItem(text = { Text(tr("Tonal correction…", "色调补偿…")) },
                             onClick = { overlays.workspaceMenu = false; rasterFilterInitialKind = app.inkloom.settings.RasterFilterPreset.FIRST_TONAL_KIND; rasterFilterDialogOpen = true })
                         StudioMenuItem(text = { Text(tr("Fit page", "适合页面")) }, leadingIcon = { Icon(Icons.Outlined.CenterFocusStrong, null) }, onClick = { overlays.workspaceMenu = false; fitPage() })
@@ -2324,6 +2326,11 @@ private fun EditorScreen(
                 VectorLinesDialog(view, settings.language, brushColor, selectedPage.width, selectedPage.height, settings.vectorEraseWholeLine,
                     { onSettingsChange(settings.copy(vectorEraseWholeLine = it)) }) { vectorLinesOpen = false }
             }
+            if (overlays.externalScreenColorOpen) ObtainScreenColorFromApps(settings.language) { overlays.externalScreenColorOpen = false }
+            val capturedScreen by app.inkloom.capture.ScreenColorCapture.frame.collectAsState()
+            capturedScreen?.let { frame -> FrozenScreenColorPicker(frame, settings.language,
+                onPick = { color -> app.inkloom.capture.ScreenColorCapture.clear(); changeBrushColor(color) },
+                onCancel = { app.inkloom.capture.ScreenColorCapture.clear() }) }
             if (overlays.screenColorPickOpen) ScreenColorPicker(settings.language,
                 onPick = { color -> overlays.screenColorPickOpen = false; changeBrushColor(color) },
                 onCancel = { overlays.screenColorPickOpen = false })
