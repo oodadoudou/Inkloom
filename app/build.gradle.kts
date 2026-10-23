@@ -106,6 +106,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+    // ED-10 super-resolution: on-device inference of the bundled Real-ESRGAN model (MIT licence).
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")

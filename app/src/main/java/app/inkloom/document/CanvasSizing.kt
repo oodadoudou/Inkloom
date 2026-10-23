@@ -13,7 +13,9 @@ data class CanvasSizeRequest(val width: Float, val height: Float, val dpi: Float
     val unit: CanvasUnit = CanvasUnit.PIXELS, val mode: CanvasResizeMode = CanvasResizeMode.CANVAS,
     val anchor: CanvasAnchor = CanvasAnchor.CENTER,
     /** New paper colour for a paper background; null keeps the current one. */
-    val paperColorArgb: Long? = null) {
+    val paperColorArgb: Long? = null,
+    /** Resample mode, enlarging: CSP's Super resolution instead of ordinary interpolation. */
+    val superResolution: Boolean = false) {
     fun pixels(): Pair<Int, Int> {
         require(dpi.isFinite() && dpi in 1f..2400f && width.isFinite() && height.isFinite())
         val w = CanvasSizing.toPixels(width, unit, dpi).roundToInt()
@@ -35,6 +37,11 @@ object CanvasSizing {
         val column = anchor.ordinal % 3; val row = anchor.ordinal / 3
         return (width - oldWidth) * column / 2 to (height - oldHeight) * row / 2
     }
+}
+
+/** Enlarges pixels to [width] × [height] better than interpolation (super resolution). */
+fun interface RasterEnlarger {
+    fun enlarge(source: app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot, width: Int, height: Int, cancelled: () -> Boolean): app.inkloom.engine.v5.surface.PixelTileSurface
 }
 
 data class PageGeometryEdit(val before: InkPage, val after: InkPage) {

@@ -547,7 +547,7 @@ class DocumentAssetService(private val context: Context) {
         } catch(failure:Throwable) { close(); throw failure }
     }
 
-    fun prepareCanvasSize(page: InkPage, request: CanvasSizeRequest): PreparedPageGeometry {
+    fun prepareCanvasSize(page: InkPage, request: CanvasSizeRequest, enlarger: RasterEnlarger? = null): PreparedPageGeometry {
         val (width, height) = request.pixels()
         fun InkPage.withPaper(): InkPage = request.paperColorArgb?.let { color ->
             (background as? PageBackground.Paper)?.let { copy(background = it.copy(colorArgb = color)) } } ?: this
@@ -604,8 +604,11 @@ class DocumentAssetService(private val context: Context) {
             val layers = visible.layers.map { layer ->
                 val raster = layer.rasterTileSurface?.let {
                     val original = renderRasterLayerSurface(page, layer.id, visible.width.toInt().coerceAtLeast(1))
-                    val resized = app.inkloom.engine.v5.tools.PixelSurfaceResampling.resample(original.snapshot(), width, height,
-                        sx, sy, offset.first, offset.second)
+                    val enlarge = enlarger?.takeIf { request.mode == CanvasResizeMode.RESAMPLE && request.superResolution && sx > 1.01f && sy > 1.01f &&
+                        original.logicalWidth < width && original.logicalHeight < height }
+                    val resized = enlarge?.enlarge(original.snapshot(), width, height) { false }
+                        ?: app.inkloom.engine.v5.tools.PixelSurfaceResampling.resample(original.snapshot(), width, height,
+                            sx, sy, offset.first, offset.second)
                     saveRasterTileSurface(resized).also(rasterReservations::add)
                 }
                 // Lines and rulers move with the pixels: page fractions → visible page units → the new page.

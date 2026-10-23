@@ -2380,7 +2380,10 @@ private fun EditorScreen(
                             try {
                                 kotlinx.coroutines.withTimeout(15_000) { while (view.hasPendingPaintPublicationForMerge()) kotlinx.coroutines.delay(8) }
                                 val before = currentAppearancePage
-                                prepared = withContext(Dispatchers.IO) { maskAssets.prepareCanvasSize(before, request) }
+                                prepared = withContext(Dispatchers.IO) {
+                                    if (!request.superResolution) maskAssets.prepareCanvasSize(before, request)
+                                    else app.inkloom.ml.SuperResolution(context).use { maskAssets.prepareCanvasSize(before, request, it) }
+                                }
                                 val transaction = requireNotNull(prepared)
                                 check(onApplyPageGeometry(document.id, before.id, transaction.edit, false)) { "Page changed during resize" }
                                 view.recordExternalEdit(

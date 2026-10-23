@@ -30,13 +30,14 @@ internal fun CanvasSizeDialog(page: InkPage, language: UiLanguage, busy: Boolean
     var unitMenu by remember { mutableStateOf(false) }
     var mode by remember { mutableStateOf(CanvasResizeMode.CANVAS) }
     var anchor by remember { mutableStateOf(CanvasAnchor.CENTER) }
+    var superResolution by remember { mutableStateOf(false) }
     val paperBackground = page.background as? PageBackground.Paper
     var paper by remember { mutableStateOf(paperBackground?.colorArgb) }
     var paperPicker by remember { mutableStateOf(false) }
     if (paperPicker) StandardColorPickerDialog((paper ?: PaperColorCatalog.WHITE).toInt(), language,
         onConfirm = { paper = (it.toLong() and 0xFFFFFFFFL) or 0xFF000000L; paperPicker = false }, onDismiss = { paperPicker = false })
     val request = runCatching { CanvasSizeRequest(width.toFloat(), height.toFloat(), dpi.toFloat(), unit, mode, anchor,
-        paperColorArgb = paper?.takeIf { it != paperBackground?.colorArgb }).also { it.pixels() } }.getOrNull()
+        paperColorArgb = paper?.takeIf { it != paperBackground?.colorArgb }, superResolution = superResolution).also { it.pixels() } }.getOrNull()
     StudioDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text(tr("Canvas & resolution", "画布与分辨率")) },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) {
             val unitLabel = when(unit) { CanvasUnit.PIXELS -> "px"; CanvasUnit.MILLIMETERS -> "mm"; CanvasUnit.CENTIMETERS -> "cm"; CanvasUnit.INCHES -> "in" }
@@ -61,6 +62,11 @@ internal fun CanvasSizeDialog(page: InkPage, language: UiLanguage, busy: Boolean
             StudioSegmented(listOf(tr("Crop / extend canvas", "裁剪／扩展画布"), tr("Resample image", "重采样图像")),
                 if (mode == CanvasResizeMode.CANVAS) 0 else 1, { mode = if (it == 0) CanvasResizeMode.CANVAS else CanvasResizeMode.RESAMPLE },
                 label = tr("Change", "方式"))
+            if (mode == CanvasResizeMode.RESAMPLE) {
+                StudioCheckRow(tr("Super resolution (enlarging)", "超分辨率（放大）"), superResolution, { superResolution = it })
+                if (superResolution) StudioNote(tr("An on-device Real-ESRGAN model fills in detail when enlarging illustrations. It takes a while on large pages; shrinking uses ordinary resampling.",
+                    "放大插画时由设备上的 Real-ESRGAN 模型补充细节。大页面需要一些时间；缩小时仍使用普通重采样。"))
+            }
             if (mode == CanvasResizeMode.CANVAS) Row(Modifier.padding(vertical = 4.dp)) {
                 Text(tr("Anchor", "锚点"), Modifier.width(96.dp), style = MaterialTheme.typography.bodySmall)
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -95,7 +101,10 @@ internal fun CanvasSizeDialog(page: InkPage, language: UiLanguage, busy: Boolean
             }
             request?.pixels()?.let { StudioNote(tr("Result: ${it.first} × ${it.second} px", "结果：${it.first} × ${it.second} px"), Modifier.padding(top = 4.dp)) }
                 ?: StudioNote(tr("32–8192 px per side; DPI 1–2400", "每边 32–8192 px；DPI 1–2400"), Modifier.padding(top = 4.dp))
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (busy && superResolution) {
+                val progress by app.inkloom.ml.SuperResolution.progress.collectAsState()
+                LinearProgressIndicator({ progress }, Modifier.fillMaxWidth())
+            } else if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         } },
         confirmButton = { TextButton(enabled = request != null && !busy, onClick = { request?.let(onApply) }) { Text(tr("Apply", "应用")) } },
         dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(tr("Cancel", "取消")) } })
