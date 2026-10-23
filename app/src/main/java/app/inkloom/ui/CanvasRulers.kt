@@ -53,6 +53,8 @@ internal class RulerToolController(private val density: Float) {
     private var dragging = false
     private var editPoint = -1
     private var editOriginal: RulerShape? = null
+    private var editVanishingPoint = -1
+    private var editPerspective: app.inkloom.document.PerspectiveRuler? = null
     private var lastTapTime = 0L
 
     val hasDraft: Boolean get() = draft.isNotEmpty()
@@ -65,6 +67,10 @@ internal class RulerToolController(private val density: Float) {
         }
         val shapes = rulers?.shapes.orEmpty()
         val radius = HANDLE_DP * density / scale
+        rulers?.perspective?.let { perspective ->
+            val index = (0 until perspective.count).firstOrNull { hypot(perspective.x(it) * width - x, perspective.y(it) * height - y) <= radius }
+            if (index != null && !perspective.fixed[index]) { editVanishingPoint = index; editPerspective = perspective; selectedId = null; onChanged(); return }
+        }
         // Control points first, then the line itself.
         for (shape in shapes.asReversed()) {
             val index = handles(shape, width, height).withIndex().firstOrNull { (_, p) -> hypot(p.first - x, p.second - y) <= radius }?.index
@@ -79,6 +85,10 @@ internal class RulerToolController(private val density: Float) {
         dragX = x; dragY = y
         if (mode == RulerToolMode.PEN) { draft += x; draft += y }
         if (mode == RulerToolMode.EDIT) editOriginal?.let { original -> replace(edited(original, width, height)) }
+        if (mode == RulerToolMode.EDIT) editPerspective?.let { original ->
+            rulers = rulers?.copy(perspective = original.moved(editVanishingPoint,
+                original.x(editVanishingPoint) + (x - dragStartX) / width, original.y(editVanishingPoint) + (y - dragStartY) / height))
+        }
         onChanged()
     }
 
@@ -88,10 +98,16 @@ internal class RulerToolController(private val density: Float) {
         dragging = false
         val tap = hypot(x - dragStartX, y - dragStartY) < TAP_DP * density / scale
         when (mode) {
-            RulerToolMode.EDIT -> editOriginal?.let { original ->
-                val shape = rulers?.shapes?.firstOrNull { it.id == original.id }
-                if (shape != null && shape != original) rulers?.let(onCommit)
-                editOriginal = null
+            RulerToolMode.EDIT -> {
+                editOriginal?.let { original ->
+                    val shape = rulers?.shapes?.firstOrNull { it.id == original.id }
+                    if (shape != null && shape != original) rulers?.let(onCommit)
+                    editOriginal = null
+                }
+                editPerspective?.let { original ->
+                    if (rulers?.perspective != original) rulers?.let(onCommit)
+                    editPerspective = null; editVanishingPoint = -1
+                }
             }
             RulerToolMode.STRAIGHT -> if (!tap) add(RulerShape.Straight(x1 = dragStartX / width, y1 = dragStartY / height, x2 = x / width, y2 = y / height))
             RulerToolMode.RECTANGLE, RulerToolMode.ELLIPSE, RulerToolMode.POLYGON -> if (!tap) add(RulerGeometry.figure(
@@ -125,7 +141,8 @@ internal class RulerToolController(private val density: Float) {
 
     fun cancel() {
         if (mode == RulerToolMode.EDIT) editOriginal?.let { replace(it) }
-        editOriginal = null; dragging = false
+        if (mode == RulerToolMode.EDIT) editPerspective?.let { rulers = rulers?.copy(perspective = it) }
+        editOriginal = null; editPerspective = null; dragging = false
         if (mode == RulerToolMode.PEN) draft.clear()
         onChanged()
     }
@@ -143,8 +160,12 @@ internal class RulerToolController(private val density: Float) {
         return true
     }
 
-    fun draw(canvas: Canvas, width: Float, height: Float, scale: Float, others: List<ApplicableRuler>, activeLayerId: String, toolActive: Boolean) {
+    fun draw(canvas: Canvas, width: Float, height: Float, scale: Float, others: List<ApplicableRuler>, activeLayerId: String, toolActive: Boolean,
+             perspective: app.inkloom.document.PerspectiveRuler?) {
         val stroke = 1.5f * density / scale
+        paint.strokeWidth = stroke
+        val ownPerspective = rulers?.takeIf { toolActive && it.visible }?.perspective
+        (ownPerspective ?: perspective)?.let { drawPerspective(canvas, it, width, height, scale, editable = ownPerspective != null && mode == RulerToolMode.EDIT) }
         paint.strokeWidth = stroke
         others.filter { it.ownerId != activeLayerId || !toolActive }.forEach { ruler ->
             paint.color = if (ruler.ownerId == activeLayerId) RULER_COLOR else OTHER_LAYER_COLOR
@@ -169,6 +190,42 @@ internal class RulerToolController(private val density: Float) {
         }
         if (mode == RulerToolMode.CURVE || mode == RulerToolMode.POLYLINE) for (i in 0 until draft.size / 2)
             canvas.drawCircle(draft[i * 2], draft[i * 2 + 1], 3.5f * density / scale, handleFill)
+    }
+
+    /** Eye level, guide lines towards each vanishing point, the optional ground grid and the point markers. */
+    private fun drawPerspective(canvas: Canvas, ruler: app.inkloom.document.PerspectiveRuler, width: Float, height: Float, scale: Float, editable: Boolean) {
+        paint.color = PERSPECTIVE_COLOR
+        paint.strokeWidth = 1f * density / scale
+        val reach = hypot(width, height) * 3f
+        fun ray(x: Float, y: Float, tx: Float, ty: Float) {
+            val dx = tx - x; val dy = ty - y; val length = hypot(dx, dy).coerceAtLeast(1e-3f)
+            canvas.drawLine(x, y, x + dx / length * reach, y + dy / length * reach, paint)
+        }
+        val points = (0 until ruler.count).map { ruler.x(it) * width to ruler.y(it) * height }
+        // Eye level: through the first two points, or level through a single point.
+        if (points.size >= 2) { ray(points[0].first, points[0].second, points[1].first, points[1].second); ray(points[1].first, points[1].second, points[0].first, points[0].second) }
+        else { canvas.drawLine(-reach, points[0].second, reach, points[0].second, paint) }
+        paint.alpha = 110
+        points.forEachIndexed { index, (x, y) ->
+            if (!ruler.snap[index]) return@forEachIndexed
+            // Guides fan out from the point across the page.
+            for (k in 0..8) {
+                val t = k / 8f
+                ray(x, y, t * width, if (y < height / 2) height else 0f)
+                ray(x, y, if (x < width / 2) width else 0f, t * height)
+            }
+        }
+        if (ruler.grid && points.isNotEmpty()) {
+            // Ground grid: lines from each of the first two points through evenly spaced marks on the bottom edge.
+            points.take(2).forEach { (x, y) -> for (k in -10..20) ray(x, y, k / 10f * width, height * 1.5f) }
+        }
+        paint.alpha = 255
+        points.forEachIndexed { index, (x, y) ->
+            val r = (if (editable) 6f else 4f) * density / scale
+            if (ruler.snap[index]) canvas.drawCircle(x, y, r, handleFill)
+            canvas.drawCircle(x, y, r, paint)
+            if (ruler.fixed[index]) canvas.drawLine(x - r, y - r, x + r, y + r, paint)
+        }
     }
 
     private fun drawShape(canvas: Canvas, shape: RulerShape, width: Float, height: Float) {
@@ -254,6 +311,7 @@ internal class RulerToolController(private val density: Float) {
     companion object {
         const val RULER_COLOR = 0xE07A4DFF.toInt()
         const val OTHER_LAYER_COLOR = 0x907A4DFF.toInt()
+        const val PERSPECTIVE_COLOR = 0xD04D8DFF.toInt()
         const val HANDLE_DP = 14f
         const val LINE_DP = 12f
         const val TAP_DP = 6f
@@ -267,23 +325,15 @@ internal class RulerToolController(private val density: Float) {
 /** Ruler tool commands from its properties panel. */
 enum class RulerCommand { FINISH, CANCEL, DELETE }
 
-/**
- * Gives the canvas the rulers covering the active layer and the ruler tool settings, and saves the
- * ruler tool's edits to the active layer as undoable steps.
- */
+/** Gives the canvas the rulers covering the active layer and the ruler tool settings, and saves ruler edits. */
 internal fun bindCanvasRulers(view: InkCanvasView, page: app.inkloom.document.InkPage, activeLayerId: String,
                               settings: app.inkloom.settings.AppSettings, save: (String, LayerRulers?) -> Unit) {
     val projected = page.layers.map { layer -> layer.rulers?.let { layer.copy(rulers = RulerCrop.project(it, page.crop)) } ?: layer }
-    view.setRulers(app.inkloom.document.RulerScope.applicable(projected, activeLayerId), projected.firstOrNull { it.id == activeLayerId }?.rulers)
+    view.setRulers(app.inkloom.document.RulerScope.applicable(projected, activeLayerId),
+        page.layers.mapNotNull { layer -> layer.rulers?.let { layer.id to it } }.toMap(), page.crop,
+        app.inkloom.document.RulerScope.perspective(projected, activeLayerId))
     view.snapToRulers = settings.snapToRulers
     if (view.rulerTool.mode != settings.rulerToolMode) { view.rulerTool.cancelDraft(); view.rulerTool.mode = settings.rulerToolMode }
     view.rulerTool.polygonSides = settings.rulerPolygonSides
-    view.onActiveLayerRulersEdited = { layerId, edited ->
-        val before = page.layers.firstOrNull { it.id == layerId }?.rulers
-        val after = RulerCrop.unproject(edited, page.crop).takeUnless { it.isEmpty && it.range == app.inkloom.document.RulerRange.EDITING_TARGET }
-        if (before != after) {
-            save(layerId, after)
-            view.recordExternalEdit(undo = { save(layerId, before) }, redo = { save(layerId, after) })
-        }
-    }
+    view.onSaveLayerRulers = save
 }

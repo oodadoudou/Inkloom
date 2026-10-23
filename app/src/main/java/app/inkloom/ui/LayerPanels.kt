@@ -204,6 +204,7 @@ internal fun LayerPanel(
     onEditGenerated: (String) -> Unit = {},
     onAddVector: () -> Unit = {},
     onEditVector: (String) -> Unit = {},
+    onRulerAction: (String, LayerRulerAction) -> Unit = { _, _ -> },
     onRasterize: (String) -> Unit = {},
     onConvertLayer: (String) -> Unit = {},
     onConvertToFileObject: (String) -> Unit = {},
@@ -258,6 +259,7 @@ internal fun LayerPanel(
             onEditGenerated = onEditGenerated,
             onAddVector = onAddVector,
             onEditVector = onEditVector,
+            onRulerAction = onRulerAction,
             onRasterize = onRasterize,
             onConvertLayer = onConvertLayer,
             onConvertToFileObject = onConvertToFileObject,
@@ -328,6 +330,7 @@ private fun PaintingLayerPanel(
     onEditGenerated: (String) -> Unit = {},
     onAddVector: () -> Unit = {},
     onEditVector: (String) -> Unit = {},
+    onRulerAction: (String, LayerRulerAction) -> Unit = { _, _ -> },
     onRasterize: (String) -> Unit = {},
     onConvertLayer: (String) -> Unit = {},
     onConvertToFileObject: (String) -> Unit = {},
@@ -530,6 +533,7 @@ private fun PaintingLayerPanel(
                     var menu by remember { mutableStateOf(false) }
                     var maskMenu by remember { mutableStateOf(false) }
                     var contentsMenu by remember { mutableStateOf(false) }
+                    var rulerMenu by remember { mutableStateOf(false) }
                     var paletteColorMenu by remember { mutableStateOf(false) }
                     DisposableEffect(layer.id) { onDispose { drag.rows.remove(layer.id) } }
                     val folderTargets = LayerHierarchy.availableFolders(page.layers, layer.id)
@@ -636,9 +640,22 @@ private fun PaintingLayerPanel(
                         if (layer.draft) Icon(Icons.Outlined.EditNote, tr("Draft layer", "草稿图层"), Modifier.size(15.dp), tint = MutedInk)
                         if (layer.drawingAssist) Icon(Icons.Outlined.AutoFixHigh, tr("Drawing Assist", "绘图辅助"), Modifier.size(15.dp), tint = MutedInk)
                         if (layer.vector != null) Icon(Icons.Outlined.Gesture, tr("Vector layer", "矢量图层"), Modifier.size(15.dp), tint = MutedInk)
+                        if (layer.rulers?.isEmpty == false) Box {
+                            var rulerIconMenu by remember { mutableStateOf(false) }
+                            IconButton({ rulerIconMenu = true }, Modifier.size(26.dp)) {
+                                Icon(Icons.Outlined.Straighten, "${tr("Ruler", "尺规")} ${layer.name}", Modifier.size(15.dp),
+                                    tint = if (layer.rulers.visible) Ink else MutedInk.copy(alpha = .5f))
+                            }
+                            DropdownMenu(rulerIconMenu, { rulerIconMenu = false }) {
+                                LayerRulerMenuItems(layer, LocalUiLanguage.current) { action -> rulerIconMenu = false; onRulerAction(layer.id, action) }
+                            }
+                        }
                         val layerActionsDescription = "${tr("Layer actions", "图层操作")} ${layer.name}"
                         Box(Modifier.semantics { contentDescription = layerActionsDescription }) {
                             IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), tint = rowInk) }
+                            DropdownMenu(rulerMenu, { rulerMenu = false }) {
+                                LayerRulerMenuItems(layer, LocalUiLanguage.current) { action -> rulerMenu = false; onRulerAction(layer.id, action) }
+                            }
                             DropdownMenu(maskMenu, { maskMenu = false }) {
                                 LayerMaskMenuItems(
                                     layer = layer,
@@ -687,6 +704,8 @@ private fun PaintingLayerPanel(
                                 StudioMenuItem(text = { Text(if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) }, onClick = { menu = false; onLock(layer.id) })
                                 if (layer.role == LayerRole.ADJUSTMENT) StudioMenuItem(text = { Text(tr("Edit adjustment", "编辑调整参数")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditAdjustment(layer.id) })
                                 if (layer.generator != null) StudioMenuItem(text = { Text(tr("Edit layer settings", "编辑图层设置")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditGenerated(layer.id) })
+                                if (layer.role != LayerRole.BACKGROUND) StudioMenuItem(text = { Text(tr("Ruler", "尺规")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) },
+                                    onClick = { menu = false; rulerMenu = true })
                                 if (layer.vector != null) StudioMenuItem(text = { Text(tr("Vector lines…", "矢量线条…")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onSelect(layer.id); onEditVector(layer.id) })
                                 if (layer.generator != null || layer.vector != null)
                                     StudioMenuItem(text = { Text(tr("Rasterize", "栅格化")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onRasterize(layer.id) })

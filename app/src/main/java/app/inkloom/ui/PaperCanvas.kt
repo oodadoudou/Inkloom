@@ -307,6 +307,14 @@ internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<St
                 { Toast.makeText(context, settings.language.text("Could not create or restore layer; finish the current operation or unlock its folder", "无法新建或恢复图层，请完成当前操作或解锁目标文件夹"), Toast.LENGTH_SHORT).show() }
             ).create(view, targetId, folder)
         }
+        view.onRulerLayerCreationRequested = { targetId, rulers ->
+            LayerCreationEditor(documentId, page.id, { currentMergePage }, rasterSurfaceRuntime,
+                pendingRasterSaves, rasterCommitMutex, latestRasterAssets,
+                { edit, undo -> onApplyLayerInsertion(documentId, page.id, edit, undo) },
+                { id -> onSelectionTransferLayerChosen(id); view.selectLayerContent(id) }, gradientCommitScope,
+                { Toast.makeText(context, settings.language.text("Could not create the ruler layer; finish the current operation or unlock its folder", "无法新建尺规图层，请完成当前操作或解锁目标文件夹"), Toast.LENGTH_SHORT).show() }
+            ).create(view, targetId, folder = false, rulers = rulers)
+        }
         view.onVectorLayerCreationRequested = { targetId ->
             LayerCreationEditor(documentId, page.id, { currentMergePage }, rasterSurfaceRuntime,
                 pendingRasterSaves, rasterCommitMutex, latestRasterAssets,

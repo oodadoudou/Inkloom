@@ -43,20 +43,18 @@ sealed interface RulerShape {
 
 /**
  * A layer's perspective ruler: one to three vanishing points (x, y pairs, page fractions, possibly
- * off the page), each with its own snap switch and fixed flag, plus the guides drawn towards them.
+ * off the page), each with its own snap switch and fixed flag, and an optional ground grid.
  */
 @Serializable
 data class PerspectiveRuler(
     val vanishingPoints: List<Float>,
     val snap: List<Boolean> = List(vanishingPoints.size / 2) { true },
     val fixed: List<Boolean> = List(vanishingPoints.size / 2) { false },
-    /** Guide directions in degrees, per vanishing point, for drawing the ruler's guides. */
-    val guideAngles: List<List<Float>> = List(vanishingPoints.size / 2) { listOf(-20f, 0f, 20f) },
     val grid: Boolean = false,
 ) {
     init {
         require(vanishingPoints.size in 2..6 && vanishingPoints.size % 2 == 0) { "A perspective ruler has one to three vanishing points" }
-        require(snap.size == count && fixed.size == count && guideAngles.size == count)
+        require(snap.size == count && fixed.size == count)
     }
     val count: Int get() = vanishingPoints.size / 2
     fun x(index: Int) = vanishingPoints[index * 2]

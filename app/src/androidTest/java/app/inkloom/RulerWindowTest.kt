@@ -104,6 +104,107 @@ class RulerWindowTest {
         assertTrue(w > 0 && h > 0)
     }
 
+    @RulerMode("RECTANGLE")
+    @Test fun layerRulerCommandsSelectDrawShowAndDelete() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        val view = canvas()
+        val bounds = pageScreenBounds(view)
+        fun at(x: Float, y: Float) = Offset(bounds.left + bounds.width() * x, bounds.top + bounds.height() * y)
+        compose.onNodeWithContentDescription("Ruler").performClick()
+        compose.waitForIdle()
+        stroke(at(.1f, .3f), at(.3f, .5f))
+        compose.waitUntil(5_000) { activeRulers(view).size == 1 }
+        val layer = model().currentPage()!!.layers.first { it.id == view.activeLayerId }
+        compose.onNodeWithContentDescription("Layers").performClick()
+
+        rulerMenu(layer.name).onNodeWithText("Selection from ruler").performClick()
+        compose.waitUntil(5_000) { view.hasActiveSelection() }
+        val selected = requireNotNull(view.selectionPageBounds())
+        assertEquals(.1f, selected.left, .01f); assertEquals(.3f, selected.right, .01f)
+        assertEquals(.3f, selected.top, .01f); assertEquals(.5f, selected.bottom, .01f)
+        view.post { view.clearSelection() }; compose.waitForIdle()
+
+        rulerMenu(layer.name).onNodeWithText("Draw along ruler…").performClick()
+        compose.onNodeWithText("OK").performClick()
+        compose.waitUntil(10_000) { (view.activeRasterSnapshotForTest()?.tileInfo?.sumOf { it.nonTransparentPixelCount } ?: 0) > 0 }
+        val ink = requireNotNull(view.activeRasterSnapshotForTest())
+        val edgeX = (ink.logicalWidth * .2f).toInt(); val edgeY = (ink.logicalHeight * .3f).toInt()
+        assertTrue("the rectangle's top edge is drawn", (edgeY - 3..edgeY + 3).any { ink.pixelAt(edgeX, it) ushr 24 > 0 })
+        assertEquals("inside the rectangle stays empty", 0, ink.pixelAt(edgeX, (ink.logicalHeight * .4f).toInt()) ushr 24)
+
+        rulerMenu(layer.name).onNodeWithText("Show in all layers").performClick()
+        compose.waitUntil(5_000) { model().currentPage()!!.layers.first { it.id == layer.id }.rulers?.range == app.inkloom.document.RulerRange.ALL_LAYERS }
+        rulerMenu(layer.name).onNodeWithText("Show ruler").performClick()
+        compose.waitUntil(5_000) { model().currentPage()!!.layers.first { it.id == layer.id }.rulers?.visible == false }
+        rulerMenu(layer.name).onNodeWithText("Delete ruler").performClick()
+        compose.waitUntil(5_000) { model().currentPage()!!.layers.first { it.id == layer.id }.rulers == null }
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        compose.waitUntil(5_000) { model().currentPage()!!.layers.first { it.id == layer.id }.rulers?.visible == false }
+    }
+
+    @Test fun linkedRulersFollowAWholeLayerTransform() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        val view = canvas()
+        val bounds = pageScreenBounds(view)
+        fun at(x: Float, y: Float) = Offset(bounds.left + bounds.width() * x, bounds.top + bounds.height() * y)
+        stroke(at(.5f, .2f), at(.6f, .25f))
+        compose.waitUntil(10_000) { !view.hasPendingPaintPublicationForMerge() && view.v5LastCommittedNormalizedPoints().isNotEmpty() }
+        compose.onNodeWithContentDescription("Ruler").performClick()
+        compose.waitForIdle()
+        stroke(at(.1f, .5f), at(.3f, .5f))
+        compose.waitUntil(5_000) { activeRulers(view).size == 1 }
+        instrumentation.runOnMainSync { view.selectAllEditableStrokes(); view.flipSelection(horizontal = true) }
+        compose.waitUntil(10_000) { (activeRulers(view).singleOrNull() as? RulerShape.Straight)?.let { it.x1 > .5f } == true }
+        val flipped = activeRulers(view).single() as RulerShape.Straight
+        assertEquals(.9f, flipped.x1, .01f); assertEquals(.7f, flipped.x2, .01f)
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        compose.waitUntil(5_000) { (activeRulers(view).single() as RulerShape.Straight).x1 < .5f }
+    }
+
+    @Test fun perspectiveRulersGuideStrokesTowardsTheirVanishingPoints() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        val view = canvas()
+        val bounds = pageScreenBounds(view)
+        fun at(x: Float, y: Float) = Offset(bounds.left + bounds.width() * x, bounds.top + bounds.height() * y)
+        val layer = model().currentPage()!!.layers.first { it.id == view.activeLayerId }
+        compose.onNodeWithContentDescription("Layers").performClick()
+        compose.onAllNodesWithContentDescription("Layer actions")[layerRow(layer.name)].performClick()
+        compose.onNodeWithText("Ruler").performClick()
+        compose.onNodeWithText("Create perspective ruler…").performClick()
+        compose.onNodeWithText("1-point").performClick()
+        compose.onNodeWithText("OK").performClick()
+        compose.waitUntil(5_000) { model().currentPage()!!.layers.first { it.id == layer.id }.rulers?.perspective?.count == 1 }
+        compose.waitForIdle(); SystemClock.sleep(300)
+        // From below the vanishing point (.5, .42), moving roughly towards it.
+        stroke(at(.3f, .7f), at(.34f, .6f))
+        compose.waitUntil(10_000) { !view.hasPendingPaintPublicationForMerge() && view.v5LastCommittedNormalizedPoints().isNotEmpty() }
+        val w = bounds.width(); val h = bounds.height()
+        val points = view.v5LastCommittedNormalizedPoints()
+        val (sx, sy) = points.first()
+        points.drop(1).forEach { (x, y) ->
+            // Collinear with the start point and the vanishing point, in screen pixels.
+            val cross = ((x - sx) * w) * ((.42f - sy) * h) - ((y - sy) * h) * ((.5f - sx) * w)
+            val length = kotlin.math.hypot((.5f - sx) * w, (.42f - sy) * h)
+            assertTrue("($x, $y) is on the line to the vanishing point", abs(cross / length) < 2f)
+        }
+    }
+
+    private fun rulerMenu(layerName: String): SemanticsNodeInteractionsProvider {
+        compose.onNodeWithContentDescription("Ruler $layerName").performClick()
+        return compose
+    }
+
+    /** Index of a layer row among the rows' action buttons (rows are listed top layer first). */
+    private fun layerRow(name: String): Int {
+        val rows = compose.onAllNodesWithContentDescription("Layer actions").fetchSemanticsNodes()
+        val names = compose.onAllNodesWithText(name).fetchSemanticsNodes()
+        val target = names.first().boundsInRoot.center.y
+        return rows.indices.minBy { kotlin.math.abs(rows[it].boundsInRoot.center.y - target) }
+    }
+
     private fun activeRulers(view: InkCanvasView): List<RulerShape> =
         model().currentPage()?.layers?.firstOrNull { it.id == view.activeLayerId }?.rulers?.shapes.orEmpty()
 

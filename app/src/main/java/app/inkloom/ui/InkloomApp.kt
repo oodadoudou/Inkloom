@@ -1376,6 +1376,7 @@ private fun EditorScreen(
     // Fill, gradient and tone layers: the settings being created (no layer ID) or edited.
     var generatedLayerEditor by remember(document.id, selectedPage.id) { mutableStateOf<Pair<app.inkloom.document.LayerGenerator, String?>?>(null) }
     var vectorLinesOpen by remember(document.id, selectedPage.id) { mutableStateOf(false) }
+    var rulerDialog by remember(document.id, selectedPage.id) { mutableStateOf<Pair<LayerRulerAction, String>?>(null) }
     fun createGeneratedLayer(kind: GeneratedLayerKind) { generatedLayerEditor = defaultGenerator(kind, brushColor, backgroundColor) to null }
     fun editGeneratedLayer(layerId: String) {
         selectedPage.layers.firstOrNull { it.id == layerId }?.generator?.let { generatedLayerEditor = it to layerId }
@@ -2312,6 +2313,12 @@ private fun EditorScreen(
                         createdId?.let { id -> view.clearSelection(); selectLayerTarget(id) }
                     }
                 }
+            }
+            rulerDialog?.let { (action, layerId) ->
+                val view = canvasView; val layer = selectedPage.layers.firstOrNull { it.id == layerId }
+                if (view == null || layer == null) rulerDialog = null
+                else LayerRulerDialog(action, layer, view, settings.language, brushSize,
+                    onCreateOnNewLayer = { rulers -> view.onRulerLayerCreationRequested?.invoke(layerId, rulers) }) { rulerDialog = null }
             }
             canvasView?.takeIf { vectorLinesOpen }?.let { view ->
                 VectorLinesDialog(view, settings.language, brushColor, selectedPage.width, selectedPage.height, settings.vectorEraseWholeLine,
@@ -3512,6 +3519,14 @@ private fun EditorScreen(
                 onEditGenerated = ::editGeneratedLayer,
                 onAddVector = { canvasView?.onVectorLayerCreationRequested?.invoke(activeLayerId) },
                 onEditVector = { vectorLinesOpen = true },
+                onRulerAction = { layerId, action ->
+                    val view = canvasView
+                    val layer = selectedPage.layers.firstOrNull { it.id == layerId }
+                    if (view != null && layer != null) {
+                        if (action == LayerRulerAction.DRAW_ALONG) selectLayerTarget(layerId)
+                        performLayerRulerAction(view, layer, action, selectedPage.width, selectedPage.height)?.let { rulerDialog = it to layerId }
+                    }
+                },
                 onConvertToFileObject = { layerId ->
                     fileObjectLayerId = layerId
                     fileObjectSaver.launch("${selectedPage.layers.firstOrNull { it.id == layerId }?.name ?: "Layer"}.png")

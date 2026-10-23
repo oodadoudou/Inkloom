@@ -68,4 +68,41 @@ object VectorLayerRenderer {
         if (record.changedTileCount == 0) { record.close(); return null }
         return record
     }
+
+    /**
+     * Draws [strokes] over the existing pixels of [target] (source-over) as one undoable
+     * transaction, for Draw along ruler on pixel layers. Without [antiAlias] edges are hard.
+     */
+    fun drawOnto(target: PixelTileSurface, strokes: List<VectorStroke>, frame: VectorFrame, antiAlias: Boolean): Pair<PixelTileTransactionRecord, PixelRect>? {
+        var region: PixelRect? = null
+        strokes.forEach { stroke -> VectorGeometry.bounds(stroke, frame)?.let { b -> val r = PixelRect(b[0], b[1], b[2], b[3]); region = region?.union(r) ?: r } }
+        val bounds = region?.intersect(PixelRect(0, 0, target.logicalWidth, target.logicalHeight))?.takeUnless { it.isEmpty } ?: return null
+        val scratch = PixelTileSurface(target.logicalWidth, target.logicalHeight, target.tileSize)
+        strokes.forEach { paint(scratch, it, frame)?.close() }
+        val ink = scratch.snapshot().copyPremultipliedPixels(bounds)
+        val pixels = target.snapshot().copyPremultipliedPixels(bounds)
+        val peak = strokes.maxOf { (it.colorArgb ushr 24) * it.opacity }.toInt().coerceIn(1, 255)
+        for (i in pixels.indices) {
+            var source = ink[i]
+            if (!antiAlias) {
+                // Hard edges: at least half coverage becomes the line's full colour, the rest nothing.
+                val alpha = source ushr 24
+                source = if (alpha * 2 < peak) 0 else {
+                    val scale = peak.toFloat() / alpha
+                    (peak shl 24) or (((source ushr 16 and 255) * scale).toInt().coerceAtMost(peak) shl 16) or
+                        (((source ushr 8 and 255) * scale).toInt().coerceAtMost(peak) shl 8) or ((source and 255) * scale).toInt().coerceAtMost(peak)
+                }
+            }
+            val sa = source ushr 24
+            if (sa == 0) continue
+            val d = pixels[i]; val inverse = 255 - sa
+            fun channel(shift: Int) = ((source ushr shift and 255) + ((d ushr shift and 255) * inverse + 127) / 255).coerceAtMost(255)
+            pixels[i] = (channel(24) shl 24) or (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
+        }
+        val write = target.beginWrite("draw along ruler")
+        write.replacePremultipliedPixels(bounds, pixels)
+        val record = write.commit()
+        if (record.changedTileCount == 0) { record.close(); return null }
+        return record to bounds
+    }
 }

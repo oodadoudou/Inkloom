@@ -1830,7 +1830,7 @@ class InkCanvasView(context: Context) : View(context) {
         drawSpecialRulerGuide(canvas)
         drawPerspectiveGuide(canvas)
         drawRulerGuide(canvas)
-        rulerTool.draw(canvas, width.toFloat(), height.toFloat(), rulerScale(), applicableRulers, activeLayerId, tool == EditorTool.RULER)
+        rulerTool.draw(canvas, width.toFloat(), height.toFloat(), rulerScale(), applicableRulers, activeLayerId, tool == EditorTool.RULER, layerPerspective)
         drawLaserTrail(canvas, SystemClock.uptimeMillis())
         drawFillPreview(canvas)
         drawGradientPreview(canvas)
@@ -5497,8 +5497,12 @@ class InkCanvasView(context: Context) : View(context) {
             onLayerMaskStrokeCommitted?.invoke(layerId, snapshot)
         }
         invalidateLayerComposition(); invalidate()
+        // Rulers linked to their layer move with it when the whole layer is transformed.
+        val rulerMoves = rulerMovesForTransform(results.keys, finalTransform, affine, originalSelection)
+        rulerMoves.forEach { (layerId, _, after) -> changeLayerRulers(layerId) { after } }
         recordExternalEdit(
             undo = {
+                rulerMoves.forEach { (layerId, before, _) -> changeLayerRulers(layerId) { before } }
                 results.forEach { (layerId, result) -> result?.transactionRecord?.let { record ->
                     rasterTileSurfaceFor(layerId)?.apply(record, PixelTileSurface.HistoryDirection.UNDO)
                 } }
@@ -5509,6 +5513,7 @@ class InkCanvasView(context: Context) : View(context) {
                 maskHistories.forEach { it.undo() }
             },
             redo = {
+                rulerMoves.forEach { (layerId, _, after) -> changeLayerRulers(layerId) { after } }
                 results.forEach { (layerId, result) -> result?.transactionRecord?.let { record ->
                     rasterTileSurfaceFor(layerId)?.apply(record, PixelTileSurface.HistoryDirection.REDO)
                 } }
@@ -5526,6 +5531,27 @@ class InkCanvasView(context: Context) : View(context) {
             },
         )
         return true
+    }
+
+    /**
+     * CSP's Link ruler to layer: when a transform covers the whole page, each transformed layer's
+     * linked rulers follow it; guides follow only with Link guides to ruler.
+     */
+    private fun rulerMovesForTransform(layerIds: Set<String>, transform: app.inkloom.engine.v5.tools.SelectionRasterTransform,
+                                       affine: SelectionAffineTransform?, selection: MaskTileSurfaceSnapshot?):
+        List<Triple<String, app.inkloom.document.LayerRulers, app.inkloom.document.LayerRulers>> {
+        val covered = selection?.nonZeroBounds() ?: return emptyList()
+        if (covered.left > 0 || covered.top > 0 || covered.right < selection.logicalWidth || covered.bottom < selection.logicalHeight) return emptyList()
+        return layerIds.mapNotNull { layerId ->
+            val rulers = documentRulers[layerId]?.takeIf { it.linkedToLayer && !it.isEmpty } ?: return@mapNotNull null
+            val surface = rasterTileSurfaceFor(layerId) ?: return@mapNotNull null
+            val w = surface.logicalWidth.toFloat(); val h = surface.logicalHeight.toFloat()
+            val offset = selectionLayerOffsets[layerId] ?: (0f to 0f)
+            val layerTransform = affine?.copy(translateX = affine.translateX + offset.first, translateY = affine.translateY + offset.second) ?: transform
+            val moved = app.inkloom.document.RulerGeometry.mapped(RulerCrop.project(rulers, rulerPageCrop),
+                { x, y -> layerTransform.forward(x * w, y * h).let { (px, py) -> px / w to py / h } }, includeGuides = rulers.linkGuides)
+            Triple(layerId, rulers, RulerCrop.unproject(moved, rulerPageCrop))
+        }
     }
 
     private fun cancelRasterSelectionTransform() {
@@ -5689,21 +5715,113 @@ class InkCanvasView(context: Context) : View(context) {
 
     /** Rulers covering the active layer (visible-page fractions), for drawing and snapping. */
     private var applicableRulers: List<app.inkloom.document.ApplicableRuler> = emptyList()
+    /** The perspective ruler covering the active layer; it replaces the page-wide perspective guide. */
+    private var layerPerspective: app.inkloom.document.PerspectiveRuler? = null
+    private fun effectivePerspectiveGuide(): PerspectiveGuideState =
+        layerPerspective?.asGuide()?.let { if (snapToRulers) it else it.copy(assisted = false) } ?: perspectiveGuideState
     private var activeShapeRulerSnap: app.inkloom.document.RulerSnapSession? = null
     private var rulerSnapDecided = false
     var snapToRulers = true
     internal val rulerTool = RulerToolController(resources.displayMetrics.density).apply {
         onChanged = { invalidate() }
-        onCommit = { rulers -> onActiveLayerRulersEdited(activeLayerId, rulers) }
+        onCommit = { edited -> editLayerRulers(activeLayerId) { RulerCrop.unproject(edited, rulerPageCrop) } }
     }
-    /** The host saves the active layer's rulers (visible-page fractions) as one undoable step. */
-    var onActiveLayerRulersEdited: (String, app.inkloom.document.LayerRulers) -> Unit = { _, _ -> }
+    /** Every layer's rulers as the document holds them (whole-page fractions). */
+    private var documentRulers: Map<String, app.inkloom.document.LayerRulers> = emptyMap()
+    private var rulerPageCrop = app.inkloom.document.PageCrop()
+    /** The host saves a layer's rulers; history is recorded here. */
+    var onSaveLayerRulers: (String, app.inkloom.document.LayerRulers?) -> Unit = { _, _ -> }
 
-    /** Rulers that apply to the active layer, and the active layer's own rulers for the ruler tool. */
-    fun setRulers(applicable: List<app.inkloom.document.ApplicableRuler>, activeLayerRulers: app.inkloom.document.LayerRulers?) {
+    /** Rulers covering the active layer (visible-page fractions), and every layer's saved rulers. */
+    fun setRulers(applicable: List<app.inkloom.document.ApplicableRuler>, layers: Map<String, app.inkloom.document.LayerRulers>,
+                  crop: app.inkloom.document.PageCrop, perspective: app.inkloom.document.PerspectiveRuler? = null) {
         applicableRulers = applicable
-        if (activeTool != EditorTool.RULER) rulerTool.rulers = activeLayerRulers
+        layerPerspective = perspective
+        documentRulers = layers
+        rulerPageCrop = crop
+        if (activeTool != EditorTool.RULER) rulerTool.rulers = layers[activeLayerId]?.let { RulerCrop.project(it, crop) }
         invalidate()
+    }
+
+    internal fun layerRulers(layerId: String): app.inkloom.document.LayerRulers? = documentRulers[layerId]
+
+    /** Saves a change to a layer's rulers without history; returns the rulers before and after. */
+    private fun changeLayerRulers(layerId: String, change: (app.inkloom.document.LayerRulers?) -> app.inkloom.document.LayerRulers?):
+        Pair<app.inkloom.document.LayerRulers?, app.inkloom.document.LayerRulers?>? {
+        val before = documentRulers[layerId]
+        val after = change(before)?.takeUnless { it.isEmpty && it.range == app.inkloom.document.RulerRange.EDITING_TARGET }
+        if (before == after) return null
+        documentRulers = if (after == null) documentRulers - layerId else documentRulers + (layerId to after)
+        if (layerId == activeLayerId) rulerTool.rulers = after?.let { RulerCrop.project(it, rulerPageCrop) }
+        onSaveLayerRulers(layerId, after)
+        invalidate()
+        return before to after
+    }
+
+    /** Changes a layer's rulers (whole-page fractions) as one undoable step. */
+    internal fun editLayerRulers(layerId: String, change: (app.inkloom.document.LayerRulers?) -> app.inkloom.document.LayerRulers?): Boolean {
+        val (before, after) = changeLayerRulers(layerId, change) ?: return false
+        recordExternalEdit(undo = { changeLayerRulers(layerId) { before } }, redo = { changeLayerRulers(layerId) { after } })
+        return true
+    }
+
+    /** CSP's Selection from ruler: the closed rulers of [layerId] become the selection, as one undo step. */
+    internal fun selectFromRulers(layerId: String): Boolean {
+        val state = documentSelectionState ?: return false
+        val rulers = documentRulers[layerId]?.let { RulerCrop.project(it, rulerPageCrop) } ?: return false
+        val w = state.logicalWidth; val h = state.logicalHeight
+        val masks = rulers.shapes.mapNotNull { shape ->
+            app.inkloom.document.RulerGeometry.closedOutline(shape, w.toFloat(), h.toFloat())?.let { outline ->
+                app.inkloom.engine.v5.selection.SelectionMaskRasterizer.rasterize(
+                    app.inkloom.engine.v5.selection.CanonicalLassoContour(outline.map { (x, y) -> app.inkloom.engine.v5.coordinates.DocumentPoint(x * w, y * h) }, closed = true),
+                    w.toFloat(), h.toFloat(), w, h)
+            }
+        }
+        if (masks.isEmpty()) {
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                "此图层没有闭合的尺规，无法创建选区" else "This layer has no closed ruler to make a selection from.")
+            return false
+        }
+        finishSelectionTransform(apply = true)
+        val beforeAlpha = state.snapshot()
+        val combined = masks.drop(1).fold(SparseAlphaMask.fromSnapshot(masks.first())) { mask, next ->
+            mask?.composed(SparseAlphaMask.fromSnapshot(next), AlphaMaskOperation.ADD) ?: SparseAlphaMask.fromSnapshot(next)
+        }
+        replaceSelectionAlphaMask(combined, resetFeather = true)
+        recordSelectionHistory(state, beforeAlpha)
+        invalidate()
+        return hasSelection()
+    }
+
+    /**
+     * CSP's Draw along ruler: the rulers covering the active layer are drawn on it in the drawing
+     * colour, [widthPixels] wide (page pixels). Vector layers receive vector lines.
+     */
+    internal fun drawAlongRulers(widthPixels: Float, antiAlias: Boolean): Boolean {
+        if (selectionLayerTransferPending || hasActivePaintContact()) return false
+        val shapes = applicableRulers.map { it.shape }
+        if (shapes.isEmpty()) {
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                "当前图层没有可用的尺规" else "No ruler applies to the current layer.")
+            return false
+        }
+        val vector = vectorContent() != null
+        if (layerContentRejection(allowVector = true)?.let(::reportLayerEditRejection) == true) return false
+        val surface = rasterTileSurfaceFor(activeLayerId)?.takeIf { it.pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888 } ?: return false
+        v5StrokeController.awaitIdle()
+        val frame = app.inkloom.document.VectorFrame(surface.logicalWidth, surface.logicalHeight,
+            surface.logicalWidth / pageModelWidth.coerceAtLeast(1f), rulerPageCrop)
+        val w = surface.logicalWidth.toFloat(); val h = surface.logicalHeight.toFloat()
+        val strokes = shapes.map { shape ->
+            val line = if (shape is app.inkloom.document.RulerShape.Straight) floatArrayOf(shape.x1 * w, shape.y1 * h, shape.x2 * w, shape.y2 * h)
+                else app.inkloom.document.RulerGeometry.polyline(shape, w, h)
+            app.inkloom.document.VectorStroke(points = (0 until line.size / 2).flatMap { i -> listOf(frame.pageX(line[i * 2]), frame.pageY(line[i * 2 + 1]), 1f) },
+                colorArgb = inkColor, diameter = (widthPixels / frame.pixelsPerUnit).coerceAtLeast(.01f), opacity = inkOpacity.coerceIn(0f, 1f))
+        }
+        if (vector) return editVectorLayer { content, _ -> content.copy(strokes = content.strokes + strokes) }
+        val (record, bounds) = app.inkloom.engine.v5.tools.VectorLayerRenderer.drawOnto(surface, strokes, frame, antiAlias) ?: return false
+        recordRasterToolTransaction(activeLayerId, surface, record, Rect(bounds.left, bounds.top, bounds.right, bounds.bottom))
+        return true
     }
 
     private fun rulerScale() = viewportScale.coerceAtLeast(ViewportTransform.MINIMUM_SCALE)
@@ -6765,7 +6883,7 @@ class InkCanvasView(context: Context) : View(context) {
             activePerspectiveSnapConstraint == null && start != null
         ) {
             activePerspectiveSnapConstraint = PerspectiveGuides.constraintAt(
-                perspectiveGuideState,
+                effectivePerspectiveGuide(),
                 start.first,
                 start.second,
                 x,
@@ -6775,7 +6893,7 @@ class InkCanvasView(context: Context) : View(context) {
                 GUIDE_CAPTURE_MOVEMENT_DP * resources.displayMetrics.density,
             )
         }
-        if (!(rulerEnabled && rulerAssisted) && perspectiveGuideState.mode == PerspectiveGuideMode.NONE &&
+        if (!(rulerEnabled && rulerAssisted) && effectivePerspectiveGuide().mode == PerspectiveGuideMode.NONE &&
             activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) &&
             activeSpecialRulerConstraint == null && start != null
         ) {
@@ -6903,6 +7021,8 @@ class InkCanvasView(context: Context) : View(context) {
 
     var onLayerCreationRequested: ((String, Boolean) -> Unit)? = null
     var onVectorLayerCreationRequested: ((String) -> Unit)? = null
+    /** A new raster layer above the target that already carries [LayerRulers], as one undo step. */
+    var onRulerLayerCreationRequested: ((String, app.inkloom.document.LayerRulers) -> Unit)? = null
     var onAdjustmentLayerCreationRequested: ((String, app.inkloom.document.LayerAdjustment, (String) -> Unit) -> Unit)? = null
     var onLayerMergeRequested: (app.inkloom.document.RasterLayerMergeRequest) -> Unit = {}
     internal var onRasterFilterPreviewRequested: (app.inkloom.engine.v5.tools.RasterImageFilter.Effect) -> Unit = {}
