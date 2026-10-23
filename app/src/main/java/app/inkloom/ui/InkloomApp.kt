@@ -2020,6 +2020,10 @@ private fun EditorScreen(
                             onClick = { overlays.workspaceMenu = false; overlays.screenColorPickOpen = true })
                         StudioMenuItem(text = { Text(tr("Obtain screen color from other apps…", "从其他应用屏幕取色…")) },
                             onClick = { overlays.workspaceMenu = false; overlays.externalScreenColorOpen = true })
+                        StudioMenuItem(text = { Text(tr("Shading assist…", "阴影辅助…")) },
+                            onClick = { overlays.workspaceMenu = false; overlays.shadingAssistOpen = true })
+                        StudioMenuItem(text = { Text(tr("Colorize…", "自动上色…")) },
+                            onClick = { overlays.workspaceMenu = false; overlays.colorizeOpen = true })
                         StudioMenuItem(text = { Text(tr("Tonal correction…", "色调补偿…")) },
                             onClick = { overlays.workspaceMenu = false; rasterFilterInitialKind = app.inkloom.settings.RasterFilterPreset.FIRST_TONAL_KIND; rasterFilterDialogOpen = true })
                         StudioMenuItem(text = { Text(tr("Fit page", "适合页面")) }, leadingIcon = { Icon(Icons.Outlined.CenterFocusStrong, null) }, onClick = { overlays.workspaceMenu = false; fitPage() })
@@ -2336,6 +2340,16 @@ private fun EditorScreen(
                     { onSettingsChange(settings.copy(vectorEraseWholeLine = it)) }) { vectorLinesOpen = false }
             }
             if (overlays.externalScreenColorOpen) ObtainScreenColorFromApps(settings.language) { overlays.externalScreenColorOpen = false }
+            canvasView?.takeIf { overlays.shadingAssistOpen || overlays.colorizeOpen }?.let { view ->
+                val runEdit: ((app.inkloom.document.InkPage) -> app.inkloom.document.PreparedPageGeometry) -> Unit = { prepare ->
+                    applyPreparedPageEdit(appearanceScope, view, { currentAppearancePage }, prepare,
+                        { edit, undo -> onApplyPageGeometry(document.id, edit.before.id, edit, undo) }, { modes.canvasSizeBusy = it }) {}
+                }
+                if (overlays.shadingAssistOpen) ShadingAssistDialog(selectedPage, activeLayerId, maskAssets, settings.language, brushColor,
+                    { overlays.shadingAssistOpen = false }, runEdit)
+                if (overlays.colorizeOpen) ColorizeDialog(selectedPage, activeLayerId, maskAssets, settings.language, brushColor,
+                    { overlays.colorizeOpen = false }, runEdit)
+            }
             val capturedScreen by app.inkloom.capture.ScreenColorCapture.frame.collectAsState()
             capturedScreen?.let { frame -> FrozenScreenColorPicker(frame, settings.language,
                 onPick = { color -> app.inkloom.capture.ScreenColorCapture.clear(); changeBrushColor(color) },

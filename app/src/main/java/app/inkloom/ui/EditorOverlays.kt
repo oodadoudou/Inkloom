@@ -17,6 +17,8 @@ internal class EditorOverlays {
     var clearHistoryOpen by mutableStateOf(false)
     var screenColorPickOpen by mutableStateOf(false)
     var externalScreenColorOpen by mutableStateOf(false)
+    var shadingAssistOpen by mutableStateOf(false)
+    var colorizeOpen by mutableStateOf(false)
     var pageExportOpen by mutableStateOf(false)
     var pageShareOpen by mutableStateOf(false)
     var quickZoomMenu by mutableStateOf(false)
