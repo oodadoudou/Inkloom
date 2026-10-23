@@ -1357,6 +1357,7 @@ class InkCanvasView(context: Context) : View(context) {
             app.inkloom.document.LayerEditingTarget.Rejection.LOCKED -> if (chinese) "请先解锁此图层或所属文件夹" else "Unlock this layer or its parent folder first."
             app.inkloom.document.LayerEditingTarget.Rejection.HIDDEN -> if (chinese) "请先显示此图层及所属文件夹" else "Show this layer and its parent folder first."
             app.inkloom.document.LayerEditingTarget.Rejection.GENERATED -> if (chinese) "填充、渐变和网点图层请编辑其设置或蒙版；栅格化后可直接绘画" else "Edit this layer's settings or mask, or rasterize it to paint on it."
+            app.inkloom.document.LayerEditingTarget.Rejection.FIGURE -> if (chinese) "3D 图层请编辑人偶姿势；栅格化后可直接绘画" else "Pose this 3D layer's figure, or rasterize it to paint on it."
             app.inkloom.document.LayerEditingTarget.Rejection.VECTOR -> if (chinese) "矢量图层只能用画笔和橡皮擦编辑线条；栅格化后可使用此工具" else "Vector layers take the pen and eraser. Rasterize the layer to use this tool."
         })
         return true

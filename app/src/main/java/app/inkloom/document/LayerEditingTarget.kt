@@ -2,7 +2,7 @@ package app.inkloom.document
 
 /** Selection is independent of whether the selected node accepts paint. Never redirect an edit. */
 object LayerEditingTarget {
-    enum class Rejection { MISSING, FOLDER, ADJUSTMENT, BACKGROUND, LOCKED, HIDDEN, GENERATED, VECTOR }
+    enum class Rejection { MISSING, FOLDER, ADJUSTMENT, BACKGROUND, LOCKED, HIDDEN, GENERATED, VECTOR, FIGURE }
 
     fun rejection(layers: List<InkLayer>, layerId: String): Rejection? {
         val layer = layers.firstOrNull { it.id == layerId } ?: return Rejection.MISSING
@@ -14,6 +14,8 @@ object LayerEditingTarget {
             !LayerHierarchy.effectiveVisible(layers, layer) -> Rejection.HIDDEN
             // As in CSP, fill, gradient and tone layers are edited by their settings or mask.
             layer.generator != null -> Rejection.GENERATED
+            // 3D layers are edited by posing the figure; rasterize them to paint.
+            layer.figure != null -> Rejection.FIGURE
             // Vector layers take the pen and the vector eraser; pixel-only tools refuse them.
             layer.vector != null -> Rejection.VECTOR
             else -> null

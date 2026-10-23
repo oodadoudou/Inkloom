@@ -45,9 +45,51 @@ internal object GeneratedLayerEdits {
         }
     }
 
+    /** A new 3D layer above [targetId] holding [figure], rendered at the page's resolution. */
+    fun createFigure(assets: DocumentAssetService, page: InkPage, targetId: String, figure: DrawingFigure, name: String, withRuler: Boolean): PreparedPageGeometry {
+        val insertion = requireNotNull(LayerInsertionEdit.create(page, targetId, folder = false)) { "Choose an unlocked layer or folder first" }
+        val raster = renderFigure(assets, page, figure)
+        try {
+            val layer = insertion.layer.copy(name = name, rasterTileSurface = raster, figure = figure, rulers = cameraRuler(page, figure, withRuler, null))
+            val after = requireNotNull(insertion.copy(layer = layer).apply(page)) { "The layer could not be inserted here" }
+            return PreparedPageGeometry(PageGeometryEdit(page, after)) { assets.releaseRasterTileReservation(raster) }
+        } catch (failure: Throwable) { assets.releaseRasterTileReservation(raster); throw failure }
+    }
+
+    /** A new pose or camera re-renders the 3D layer; the previous pixels stay reserved for undo. */
+    fun updateFigure(assets: DocumentAssetService, page: InkPage, layerId: String, figure: DrawingFigure, withRuler: Boolean): PreparedPageGeometry {
+        val layer = requireNotNull(page.layers.firstOrNull { it.id == layerId && it.figure != null }) { "This is not a 3D layer" }
+        val reserved = layer.rasterTileSurface?.let { assets.saveRasterTileSurface(assets.loadRasterTileSurface(it), it) }
+        val raster = try { renderFigure(assets, page, figure) } catch (failure: Throwable) { reserved?.let(assets::releaseRasterTileReservation); throw failure }
+        val after = page.copy(layers = page.layers.map {
+            if (it.id == layerId) it.copy(rasterTileSurface = raster, rasterRotationQuarterTurns = 0, figure = figure, rulers = cameraRuler(page, figure, withRuler, it.rulers)) else it
+        })
+        return PreparedPageGeometry(PageGeometryEdit(page, after)) { assets.releaseRasterTileReservation(raster); reserved?.let(assets::releaseRasterTileReservation) }
+    }
+
+    private fun renderFigure(assets: DocumentAssetService, page: InkPage, figure: DrawingFigure): RasterTileSurfaceRef {
+        val (width, height) = pixelSize(page)
+        val surface = app.inkloom.engine.v5.surface.PixelTileSurface(width, height).also { s ->
+            s.beginWrite("3D figure").run {
+                replacePremultipliedPixels(app.inkloom.engine.v5.surface.PixelRect(0, 0, width, height), DrawingFigureRenderer.render(figure, width, height))
+                commit().close()
+            }
+        }
+        val converted = if (page.pixelFormat() == app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_SRGB_8888) surface
+            else app.inkloom.engine.v5.tools.PixelSurfaceResampling.convert(surface.snapshot(), page.pixelFormat())
+        return assets.saveRasterTileSurface(converted)
+    }
+
+    /** CSP's 3D layer perspective ruler: vanishing points matching the camera, kept in step with it. */
+    private fun cameraRuler(page: InkPage, figure: DrawingFigure, withRuler: Boolean, current: LayerRulers?): LayerRulers? {
+        if (!withRuler) return current?.copy(perspective = null)?.takeUnless { it.isEmpty }
+        val perspective = FigureRig.perspective(figure, page.width, page.height) ?: return current
+        return (current ?: LayerRulers()).copy(perspective = perspective, visible = true)
+    }
+
     /** CSP Layer > Rasterize: the pixels stay, the settings or vector lines go, and every tool works again. */
     fun rasterize(page: InkPage, layerId: String): PageGeometryEdit {
-        require(page.layers.any { it.id == layerId && (it.generator != null || it.vector != null) }) { "This layer is already a pixel layer" }
-        return PageGeometryEdit(page, page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(generator = null, vector = null) else it }))
+        require(page.layers.any { it.id == layerId && (it.generator != null || it.vector != null || it.figure != null) }) { "This layer is already a pixel layer" }
+        return PageGeometryEdit(page, page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(generator = null, vector = null, figure = null) else it }))
     }
 }

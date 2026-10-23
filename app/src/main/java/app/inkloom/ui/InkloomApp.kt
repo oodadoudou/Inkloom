@@ -1378,9 +1378,12 @@ private fun EditorScreen(
     var vectorLinesOpen by remember(document.id, selectedPage.id) { mutableStateOf(false) }
     var rulerDialog by remember(document.id, selectedPage.id) { mutableStateOf<Pair<LayerRulerAction, String>?>(null) }
     var frameAction by remember(document.id, selectedPage.id) { mutableStateOf<FrameAction?>(null) }
+    var figureEditor by remember(document.id, selectedPage.id) { mutableStateOf<Pair<app.inkloom.document.DrawingFigure, String?>?>(null) }
     fun createGeneratedLayer(kind: GeneratedLayerKind) { generatedLayerEditor = defaultGenerator(kind, brushColor, backgroundColor) to null }
     fun editGeneratedLayer(layerId: String) {
-        selectedPage.layers.firstOrNull { it.id == layerId }?.generator?.let { generatedLayerEditor = it to layerId }
+        val layer = selectedPage.layers.firstOrNull { it.id == layerId }
+        layer?.generator?.let { generatedLayerEditor = it to layerId }
+        layer?.figure?.let { figureEditor = it to layerId }
     }
     fun swapDrawingColors() = commitDrawingColors(
         drawingColors.let { it.copy(foreground = it.background, background = it.foreground) },
@@ -2319,6 +2322,22 @@ private fun EditorScreen(
                     }, { edit, undo -> onApplyPageGeometry(document.id, edit.before.id, edit, undo) }, { modes.canvasSizeBusy = it }) {
                         generatedLayerEditor = null
                         createdId?.let { id -> view.clearSelection(); selectLayerTarget(id) }
+                    }
+                }
+            }
+            figureEditor?.let { (initial, editingId) ->
+                DrawingFigureDialog(initial, editingId != null, selectedPage.height / selectedPage.width.coerceAtLeast(1f), settings.language, brushColor,
+                    modes.canvasSizeBusy, { figureEditor = null }) { figure, ruler ->
+                    canvasView?.let { view ->
+                        var createdId: String? = null
+                        applyPreparedPageEdit(appearanceScope, view, { currentAppearancePage }, { page ->
+                            if (editingId != null) app.inkloom.document.GeneratedLayerEdits.updateFigure(maskAssets, page, editingId, figure, ruler)
+                            else app.inkloom.document.GeneratedLayerEdits.createFigure(maskAssets, page, activeLayerId, figure, settings.language.text("3D figure", "3D 人偶"), ruler)
+                                .also { prepared -> createdId = prepared.edit.after.layers.firstOrNull { layer -> page.layers.none { it.id == layer.id } }?.id }
+                        }, { edit, undo -> onApplyPageGeometry(document.id, edit.before.id, edit, undo) }, { modes.canvasSizeBusy = it }) {
+                            figureEditor = null
+                            createdId?.let(::selectLayerTarget)
+                        }
                     }
                 }
             }
@@ -3555,6 +3574,7 @@ private fun EditorScreen(
                 onAddVector = { canvasView?.onVectorLayerCreationRequested?.invoke(activeLayerId) },
                 onEditVector = { vectorLinesOpen = true },
                 onFrameAction = { layerId, action -> layerId?.let(::selectLayerTarget); frameAction = action },
+                onAddFigure = { figureEditor = app.inkloom.document.DrawingFigure() to null },
                 onRulerAction = { layerId, action ->
                     val view = canvasView
                     val layer = selectedPage.layers.firstOrNull { it.id == layerId }

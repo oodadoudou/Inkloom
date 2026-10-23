@@ -3,6 +3,8 @@ package app.inkloom.ui
 import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -99,7 +101,7 @@ internal fun ShadingAssistDialog(page: InkPage, layerId: String, assets: Documen
         shade = withContext(Dispatchers.Default) { pixelsBitmap(ShadingAssist.render(colours, lines, settings), colours.logicalWidth, colours.logicalHeight) }
     }
     StudioDialog(onDismissRequest = onDismiss, placement = StudioDialogPlacement.SIDE, title = { Text(tr("Shading assist", "阴影辅助")) }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             AssistPreview(base, shade, multiply = true, lines = lineBitmap)
             StudioSection(tr("Preset", "预设"))
             StudioDropdownField(shadingPresetName(preset, language), presetsOpen, { presetsOpen = it }, Modifier.fillMaxWidth()) {
@@ -169,7 +171,7 @@ internal fun ColorizeDialog(page: InkPage, lineArtId: String, assets: DocumentAs
         result = withContext(Dispatchers.Default) { pixelsBitmap(LineArtColorize.render(art, if (mode == 0) null else hint, effective), art.logicalWidth, art.logicalHeight) }
     }
     StudioDialog(onDismissRequest = onDismiss, placement = StudioDialogPlacement.SIDE, title = { Text(tr("Colorize", "自动上色")) }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             AssistPreview(result, null, multiply = false, lines = lineBitmap)
             StudioSegmented(listOf(tr("Colorize all", "全部上色"), tr("Use hint layer", "使用提示图层"), tr("Advanced", "高级设置")), mode, { mode = it })
             when (mode) {

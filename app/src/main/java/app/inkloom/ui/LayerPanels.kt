@@ -206,6 +206,7 @@ internal fun LayerPanel(
     onEditVector: (String) -> Unit = {},
     onRulerAction: (String, LayerRulerAction) -> Unit = { _, _ -> },
     onFrameAction: (String?, FrameAction) -> Unit = { _, _ -> },
+    onAddFigure: () -> Unit = {},
     onRasterize: (String) -> Unit = {},
     onConvertLayer: (String) -> Unit = {},
     onConvertToFileObject: (String) -> Unit = {},
@@ -262,6 +263,7 @@ internal fun LayerPanel(
             onEditVector = onEditVector,
             onRulerAction = onRulerAction,
             onFrameAction = onFrameAction,
+            onAddFigure = onAddFigure,
             onRasterize = onRasterize,
             onConvertLayer = onConvertLayer,
             onConvertToFileObject = onConvertToFileObject,
@@ -334,6 +336,7 @@ private fun PaintingLayerPanel(
     onEditVector: (String) -> Unit = {},
     onRulerAction: (String, LayerRulerAction) -> Unit = { _, _ -> },
     onFrameAction: (String?, FrameAction) -> Unit = { _, _ -> },
+    onAddFigure: () -> Unit = {},
     onRasterize: (String) -> Unit = {},
     onConvertLayer: (String) -> Unit = {},
     onConvertToFileObject: (String) -> Unit = {},
@@ -487,7 +490,7 @@ private fun PaintingLayerPanel(
                 onClip = { onToggleClippedToBelow(activeLayerId) }, onReference = { onToggleReference(activeLayerId) },
                 onDraft = { onToggleDraft(activeLayerId) }, onMask = { onMaskCommand(activeLayerId, it) },
                 onDuplicate = { onDuplicate(activeLayerId) }, onMerge = { onMergeDown(activeLayerId) },
-                onDelete = { onDelete(activeLayerId) }, onGenerated = onAddGenerated, onVector = onAddVector, onFrameFolder = { onFrameAction(null, FrameAction.CREATE) }) }
+                onDelete = { onDelete(activeLayerId) }, onGenerated = onAddGenerated, onVector = onAddVector, onFrameFolder = { onFrameAction(null, FrameAction.CREATE) }, onFigure = onAddFigure) }
             if (settings.layerShowCommands && !settings.layerCommandsAtBottom) commands()
             HorizontalDivider(color = OutlineSoft)
             if (searchOpen) StudioOutlinedTextField(
@@ -596,7 +599,7 @@ private fun PaintingLayerPanel(
                             val thumbnailDescription = when (layer.role) {
                                 LayerRole.FOLDER -> "${tr("Toggle folder", "折叠或展开文件夹")} ${layer.name}"
                                 LayerRole.ADJUSTMENT -> "${tr("Edit adjustment", "编辑调整参数")} ${layer.name}"
-                                else -> if (layer.generator != null) "${tr("Edit layer settings", "编辑图层设置")} ${layer.name}"
+                                else -> if (layer.generator != null || layer.figure != null) "${tr("Edit layer settings", "编辑图层设置")} ${layer.name}"
                                     else "${tr("Layer content", "图层内容")} ${layer.name}"
                             }
                             Surface(Modifier.size(thumbnailSize).semantics { contentDescription = thumbnailDescription }.clickable {
@@ -604,7 +607,7 @@ private fun PaintingLayerPanel(
                                     LayerRole.FOLDER -> onToggleFolderCollapsed(layer.id)
                                     LayerRole.ADJUSTMENT -> if (!LayerHierarchy.effectiveLocked(page.layers, layer)) { onSecondarySelection(emptySet()); onSelect(layer.id); onEditAdjustment(layer.id) }
                                     else -> { onSecondarySelection(emptySet()); onSelect(layer.id)
-                                        if (layer.generator != null && !LayerHierarchy.effectiveLocked(page.layers, layer)) onEditGenerated(layer.id) }
+                                        if ((layer.generator != null || layer.figure != null) && !LayerHierarchy.effectiveLocked(page.layers, layer)) onEditGenerated(layer.id) }
                                 }
                             }, shape = RoundedCornerShape(1.dp), color = Paper, border = androidx.compose.foundation.BorderStroke(
                                 if (layer.id == activeLayerId && editingMaskId != layer.id) 2.dp else 1.dp, if (selected) Ink else MutedInk)) {
@@ -716,16 +719,16 @@ private fun PaintingLayerPanel(
                             DropdownMenu(menu, { menu = false }) {
                                 StudioMenuItem(text = { Text(if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) }, onClick = { menu = false; onLock(layer.id) })
                                 if (layer.role == LayerRole.ADJUSTMENT) StudioMenuItem(text = { Text(tr("Edit adjustment", "编辑调整参数")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditAdjustment(layer.id) })
-                                if (layer.generator != null) StudioMenuItem(text = { Text(tr("Edit layer settings", "编辑图层设置")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditGenerated(layer.id) })
+                                if (layer.generator != null || layer.figure != null) StudioMenuItem(text = { Text(tr("Edit layer settings", "编辑图层设置")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditGenerated(layer.id) })
                                 if (layer.frame != null) StudioMenuItem(text = { Text(tr("Frames", "分格")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) },
                                     onClick = { menu = false; frameMenu = true })
                                 if (layer.role != LayerRole.BACKGROUND) StudioMenuItem(text = { Text(tr("Ruler", "尺规")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) },
                                     onClick = { menu = false; rulerMenu = true })
                                 if (layer.vector != null) StudioMenuItem(text = { Text(tr("Vector lines…", "矢量线条…")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onSelect(layer.id); onEditVector(layer.id) })
-                                if (layer.generator != null || layer.vector != null)
+                                if (layer.generator != null || layer.vector != null || layer.figure != null)
                                     StudioMenuItem(text = { Text(tr("Rasterize", "栅格化")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onRasterize(layer.id) })
                                 if (layer.isPaintSurfaceLayer()) StudioMenuItem(text = { Text(if (layer.alphaLock) tr("Unlock alpha", "解锁透明度") else tr("Lock alpha", "锁定透明度")) }, onClick = { menu = false; onToggleAlphaLock(layer.id) })
-                                if (layer.isPaintSurfaceLayer() && layer.generator == null && layer.vector == null) StudioMenuItem(text = { Text(tr("Convert layer…", "转换图层…")) },
+                                if (layer.isPaintSurfaceLayer() && layer.generator == null && layer.vector == null && layer.figure == null) StudioMenuItem(text = { Text(tr("Convert layer…", "转换图层…")) },
                                     enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onConvertLayer(layer.id) })
                                 if (layer.isPaintSurfaceLayer() && layer.generator == null && layer.vector == null && layer.rasterTileSurface != null) StudioMenuItem(text = { Text(tr("Convert to file object…", "转换为文件对象…")) },
                                     enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onConvertToFileObject(layer.id) })
