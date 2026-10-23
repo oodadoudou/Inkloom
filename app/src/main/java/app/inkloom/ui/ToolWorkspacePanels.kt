@@ -7,6 +7,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import kotlin.math.roundToInt
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyColumn
@@ -62,6 +63,7 @@ internal fun WorkspaceSubtoolsPanel(
     onGradientKind: (GradientKind) -> Unit,
     onCorrectLineMode: (CorrectLineMode) -> Unit,
     modifier: Modifier = Modifier,
+    onRulerToolMode: (app.inkloom.document.RulerToolMode) -> Unit = {},
 ) {
     val language = settings.language
     val brushTool = tool in setOf(EditorTool.PEN, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)
@@ -75,6 +77,7 @@ internal fun WorkspaceSubtoolsPanel(
         EditorTool.FILL -> settings.fillSubTool.name to settings.fillSubTool.ordinal
         EditorTool.GRADIENT -> settings.gradientKind.name to settings.gradientKind.ordinal
         EditorTool.CORRECT_LINE -> settings.correctLineMode.name to settings.correctLineMode.ordinal
+        EditorTool.RULER -> settings.rulerToolMode.name to settings.rulerToolMode.ordinal
         else -> selectedBrushId to variants.indexOfFirst { it.id == selectedBrushId }
     }
     RevealSelectedItem(listState, tool, selectedVariant.first, selectedVariant.second)
@@ -109,6 +112,10 @@ internal fun WorkspaceSubtoolsPanel(
             } else if (tool == EditorTool.CORRECT_LINE) {
                 items(CorrectLineMode.entries, key = { it.name }) { mode ->
                     WorkspaceSubtoolRow(correctLineModeLabel(mode, settings), mode == settings.correctLineMode) { onCorrectLineMode(mode) }
+                }
+            } else if (tool == EditorTool.RULER) {
+                items(app.inkloom.document.RulerToolMode.entries, key = { it.name }) { mode ->
+                    WorkspaceSubtoolRow(rulerToolModeLabel(mode, settings), mode == settings.rulerToolMode) { onRulerToolMode(mode) }
                 }
             } else {
                 item {
@@ -152,6 +159,18 @@ private fun gradientKindLabel(kind: GradientKind, settings: AppSettings): String
     GradientKind.DIAMOND -> settings.language.text("Diamond", "菱形")
 }
 
+internal fun rulerToolModeLabel(mode: app.inkloom.document.RulerToolMode, settings: AppSettings): String = when (mode) {
+    app.inkloom.document.RulerToolMode.EDIT -> settings.language.text("Edit rulers", "编辑尺规")
+    app.inkloom.document.RulerToolMode.STRAIGHT -> settings.language.text("Linear ruler", "直线尺规")
+    app.inkloom.document.RulerToolMode.CURVE -> settings.language.text("Curve ruler", "曲线尺规")
+    app.inkloom.document.RulerToolMode.POLYLINE -> settings.language.text("Polyline ruler", "折线尺规")
+    app.inkloom.document.RulerToolMode.RECTANGLE -> settings.language.text("Rectangle ruler", "矩形尺规")
+    app.inkloom.document.RulerToolMode.ELLIPSE -> settings.language.text("Ellipse ruler", "椭圆尺规")
+    app.inkloom.document.RulerToolMode.POLYGON -> settings.language.text("Polygon ruler", "多边形尺规")
+    app.inkloom.document.RulerToolMode.PEN -> settings.language.text("Ruler pen", "尺规笔")
+    app.inkloom.document.RulerToolMode.GUIDE -> settings.language.text("Guide", "参考线")
+}
+
 private fun correctLineModeLabel(mode: CorrectLineMode, settings: AppSettings): String = when (mode) {
     CorrectLineMode.SMOOTH -> settings.language.text("Smooth", "平滑")
     CorrectLineMode.SIMPLIFY -> settings.language.text("Simplify", "简化")
@@ -174,6 +193,7 @@ internal fun WorkspaceToolPropertiesPanel(
     shapeKind: ShapeKind,
     onShapeKind: (ShapeKind) -> Unit,
     modifier: Modifier = Modifier,
+    onRulerCommand: (RulerCommand) -> Unit = {},
 ) {
     val language = settings.language
     var organizerOpen by remember { mutableStateOf(false) }
@@ -321,6 +341,7 @@ internal fun WorkspaceToolPropertiesPanel(
                 EditorTool.NOTE -> WorkspacePropertyHint(language.text("Tap the canvas to place a note. Its content remains editable.", "点击画布放置便笺，内容会保持可编辑。"))
                 EditorTool.LINK -> WorkspacePropertyHint(language.text("Tap the canvas to create an external or notebook link.", "点击画布创建外部链接或笔记内部链接。"))
                 EditorTool.IMAGE -> WorkspacePropertyHint(language.text("Tap the canvas to import an image as an editable object.", "点击画布导入图片并保持为可编辑对象。"))
+                EditorTool.RULER -> RulerToolProperties(settings, onSettings, onRulerCommand)
             }
         }
     }
@@ -354,6 +375,7 @@ private fun ToolPaletteOrganizerDialog(settings: AppSettings, onSettings: (AppSe
         EditorTool.SMUDGE -> language.text("Blend", "混色")
         EditorTool.LIQUIFY -> language.text("Liquify", "液化")
         EditorTool.CORRECT_LINE -> language.text("Correct line", "线条修正")
+        EditorTool.RULER -> language.text("Ruler", "尺规")
     }
     StudioDialog(
         onDismissRequest=onDismiss,
@@ -431,4 +453,27 @@ private fun WorkspacePropertySlider(label: String, valueLabel: String, value: Fl
         Text(valueLabel, color = MutedInk, fontSize = 11.sp)
     }
     BrushParameterSlider(value, onValue, valueRange = range)
+}
+
+/** The ruler tool: snapping, polygon sides, finishing curves and deleting the selected ruler. */
+@Composable
+private fun RulerToolProperties(settings: AppSettings, onSettings: (AppSettings) -> Unit, onCommand: (RulerCommand) -> Unit) {
+    val language = settings.language
+    WorkspacePropertySwitch(language.text("Snap to rulers", "吸附到尺规"), settings.snapToRulers) { onSettings(settings.copy(snapToRulers = it)) }
+    if (settings.rulerToolMode == app.inkloom.document.RulerToolMode.POLYGON) WorkspacePropertySlider(language.text("Sides", "边数"),
+        "${settings.rulerPolygonSides}", settings.rulerPolygonSides.toFloat(), 3f..32f, { onSettings(settings.copy(rulerPolygonSides = it.roundToInt())) })
+    WorkspacePropertyHint(when (settings.rulerToolMode) {
+        app.inkloom.document.RulerToolMode.EDIT -> language.text("Drag a point to reshape a ruler on the current layer, or drag its line to move it.", "拖动控制点调整当前图层的尺规，拖动线条可移动尺规。")
+        app.inkloom.document.RulerToolMode.CURVE, app.inkloom.document.RulerToolMode.POLYLINE ->
+            language.text("Tap to add points. Tap the first point to close the ruler, or double-tap to finish.", "点击添加控制点；点击第一个点闭合尺规，双击结束。")
+        app.inkloom.document.RulerToolMode.GUIDE -> language.text("Drag across the page for a horizontal guide, or down it for a vertical one.", "横向拖动创建水平参考线，纵向拖动创建垂直参考线。")
+        else -> language.text("Drag on the canvas to place the ruler on the current layer.", "在画布上拖动，将尺规放到当前图层。")
+    })
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (settings.rulerToolMode == app.inkloom.document.RulerToolMode.CURVE || settings.rulerToolMode == app.inkloom.document.RulerToolMode.POLYLINE) {
+            StudioButton(language.text("Finish", "完成"), { onCommand(RulerCommand.FINISH) })
+            StudioButton(language.text("Cancel", "取消"), { onCommand(RulerCommand.CANCEL) })
+        }
+        if (settings.rulerToolMode == app.inkloom.document.RulerToolMode.EDIT) StudioButton(language.text("Delete ruler", "删除尺规"), { onCommand(RulerCommand.DELETE) })
+    }
 }

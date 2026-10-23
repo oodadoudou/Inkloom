@@ -979,6 +979,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onToggleLayerLock = viewModel::toggleLayerLock,
             onApplyLayerAppearanceEdit = viewModel::applyLayerAppearanceEdit,
             onSetLayerRasterTileSurface = viewModel::setLayerRasterTileSurface,
+            onSetLayerRulers = viewModel::setLayerRulers,
             onToggleLayerAlphaLock = viewModel::toggleLayerAlphaLock,
             onToggleLayerDrawingAssist = viewModel::toggleLayerDrawingAssist,
             onUpdateLayerDrawingGuide = viewModel::updateLayerDrawingGuide,
@@ -1136,6 +1137,7 @@ private fun EditorScreen(
     onToggleLayerLock: (String, String, String) -> Unit,
     onApplyLayerAppearanceEdit: (String, String, LayerAppearanceEdit, Boolean) -> Boolean,
     onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?, app.inkloom.document.VectorLayerContent?) -> Unit,
+    onSetLayerRulers: (String, String, String, app.inkloom.document.LayerRulers?) -> Unit,
     onToggleLayerAlphaLock: (String, String, String) -> Unit,
     onToggleLayerDrawingAssist: (String, String, String, LayerDrawingGuide) -> Unit,
     onUpdateLayerDrawingGuide: (String, String, String, LayerDrawingGuide) -> Unit,
@@ -2056,6 +2058,7 @@ private fun EditorScreen(
                             Triple(EditorTool.SMUDGE, Icons.Outlined.BlurOn, tr("Blend", "混色")),
                             Triple(EditorTool.LIQUIFY, Icons.Outlined.Waves, tr("Liquify", "液化")),
                             Triple(EditorTool.CORRECT_LINE, Icons.Outlined.AutoFixHigh, tr("Correct line", "线条修正")),
+                            Triple(EditorTool.RULER, Icons.Outlined.Straighten, tr("Ruler", "尺规")),
                             Triple(EditorTool.SHAPE, Icons.Outlined.Category, tr("Shape", "形状")),
                             Triple(EditorTool.TEXT, Icons.Outlined.Title, tr("Text", "文字")),
                             Triple(EditorTool.NOTE, Icons.Outlined.StickyNote2, tr("Note", "便笺")),
@@ -2490,6 +2493,7 @@ private fun EditorScreen(
                     page = paintingPage,
                     documentId = document.id,
                     onSetLayerRasterTileSurface = onSetLayerRasterTileSurface,
+                    onSetLayerRulers = onSetLayerRulers,
                     onElement = onElement,
                     onRemoveElement = onRemoveElement,
                     onDuplicateElement = onDuplicateElement,
@@ -3623,12 +3627,14 @@ private fun EditorScreen(
                         onFillSubTool = { onSettingsChange(settings.copy(fillSubTool = it)) },
                         onGradientKind = { onSettingsChange(settings.copy(gradientKind = it)) },
                         onCorrectLineMode = { onSettingsChange(settings.copy(correctLineMode = it)) },
+                        onRulerToolMode = { canvasView?.rulerCommand(RulerCommand.CANCEL); onSettingsChange(settings.copy(rulerToolMode = it)) },
                     )
                     EditorPanel.PROPERTIES -> WorkspaceToolPropertiesPanel(
                         tool = tool, brushSize = brushSize, brushOpacity = brushOpacity,
                         settings = settings, onBrushSize = ::changeCurrentBrushSize,
                         onBrushOpacity = ::changeCurrentBrushOpacity, onSettings = onSettingsChange,
                         shapeKind = insertShape, onShapeKind = { insertShape = it },
+                        onRulerCommand = { canvasView?.rulerCommand(it) },
                     )
                     else -> BoxWithConstraints(Modifier.fillMaxSize().padding(6.dp)) {
                     ColorStudioPanel(

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.core.content.edit
 import app.inkloom.model.SymmetryMode
 import app.inkloom.document.CorrectLineMode
+import app.inkloom.document.RulerToolMode
 import app.inkloom.document.FillSubTool
 import app.inkloom.document.PressureResponseCurve
 import app.inkloom.document.PerspectiveGuideMode
@@ -145,6 +146,10 @@ data class AppSettings(
     val eyedropperIncludePaper: Boolean = true,
     val correctLineMode: CorrectLineMode = CorrectLineMode.SMOOTH,
     val correctLineAmount: Float = .55f,
+    val rulerToolMode: RulerToolMode = RulerToolMode.STRAIGHT,
+    val rulerPolygonSides: Int = 6,
+    /** CSP's Snap to ruler: strokes starting near a ruler follow it. */
+    val snapToRulers: Boolean = true,
     val nonDestructiveEraser: Boolean = false,
     val shortcutBindings: List<ShortcutBinding> = CspShortcutResolver.defaultBindings,
     val shortcutAxisBindings: List<AxisShortcutBinding> = emptyList(),
@@ -320,6 +325,9 @@ class AppSettingsStore(context: Context) {
             eyedropperIncludePaper = preferences.getBoolean("eyedropperIncludePaper", true),
             correctLineMode = enumValue(preferences.getString("correctLineMode", null), CorrectLineMode.SMOOTH),
             correctLineAmount = preferences.getFloat("correctLineAmount", .55f).coerceIn(0f, 1f),
+            rulerToolMode = enumValue(preferences.getString("rulerToolMode", null), RulerToolMode.STRAIGHT),
+            rulerPolygonSides = preferences.getInt("rulerPolygonSides", 6).coerceIn(3, 32),
+            snapToRulers = preferences.getBoolean("snapToRulers", true),
             nonDestructiveEraser = preferences.getBoolean("nonDestructiveEraser", false),
             shortcutBindings = ShortcutBindingCodec.decode(preferences.getString("shortcutBindings", null)),
             shortcutAxisBindings = ToolboxMotionBindingCodec.decodeAxes(preferences.getString("shortcutAxisBindings", null)),
@@ -472,6 +480,9 @@ class AppSettingsStore(context: Context) {
             .putBoolean("eyedropperIncludePaper", persisted.eyedropperIncludePaper)
             .putString("correctLineMode", persisted.correctLineMode.name)
             .putFloat("correctLineAmount", persisted.correctLineAmount.coerceIn(0f, 1f))
+            .putString("rulerToolMode", persisted.rulerToolMode.name)
+            .putInt("rulerPolygonSides", persisted.rulerPolygonSides.coerceIn(3, 32))
+            .putBoolean("snapToRulers", persisted.snapToRulers)
             .putBoolean("nonDestructiveEraser", persisted.nonDestructiveEraser)
             .putString("shortcutBindings", ShortcutBindingCodec.encode(persisted.shortcutBindings))
             .putString("shortcutAxisBindings", ToolboxMotionBindingCodec.encodeAxes(persisted.shortcutAxisBindings))

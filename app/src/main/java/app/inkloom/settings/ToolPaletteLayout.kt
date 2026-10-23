@@ -13,7 +13,7 @@ object ToolPaletteLayout {
         EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER,
         null,
         EditorTool.SELECT, EditorTool.EYEDROPPER, EditorTool.FILL, EditorTool.GRADIENT,
-        EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE,
+        EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE, EditorTool.RULER,
         null,
         EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK,
         EditorTool.IMAGE, EditorTool.LASER,
@@ -26,9 +26,11 @@ object ToolPaletteLayout {
             if (token == "|") ToolPaletteEntry.Separator
             else runCatching { ToolPaletteEntry.Tool(EditorTool.valueOf(token)) }.getOrNull()
         }
-        if (parsed.filterIsInstance<ToolPaletteEntry.Tool>().map { it.tool }.toSet() != EditorTool.entries.toSet()) return defaultEntries
-        val normalized = normalize(parsed)
-        return normalized
+        val tools = parsed.filterIsInstance<ToolPaletteEntry.Tool>().map { it.tool }
+        if (tools.size != tools.toSet().size) return defaultEntries
+        // Tools added in later versions join the end of a customized rail instead of resetting it.
+        val missing = EditorTool.entries.filterNot { it in tools }.map(ToolPaletteEntry::Tool)
+        return normalize(parsed + missing)
     }
 
     fun encode(entries: List<ToolPaletteEntry>): String = normalize(entries).joinToString(",") {

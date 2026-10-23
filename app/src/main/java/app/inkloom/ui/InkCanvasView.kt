@@ -1170,6 +1170,8 @@ class InkCanvasView(context: Context) : View(context) {
             specialRulerGestureHandle = null
             specialRulerGestureStart = null
             activeSpecialRulerConstraint = null
+            activeShapeRulerSnap = null
+            rulerSnapDecided = false
             ctrlModifierHeld = false
             altModifierHeld = false
             singleFingerDoubleTapUndoGesture.cancel()
@@ -1828,6 +1830,7 @@ class InkCanvasView(context: Context) : View(context) {
         drawSpecialRulerGuide(canvas)
         drawPerspectiveGuide(canvas)
         drawRulerGuide(canvas)
+        rulerTool.draw(canvas, width.toFloat(), height.toFloat(), rulerScale(), applicableRulers, activeLayerId, tool == EditorTool.RULER)
         drawLaserTrail(canvas, SystemClock.uptimeMillis())
         drawFillPreview(canvas)
         drawGradientPreview(canvas)
@@ -2492,7 +2495,7 @@ class InkCanvasView(context: Context) : View(context) {
             layerPickContact = false
             return false
         }
-        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE)) return false
+        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE, EditorTool.RULER)) return false
         val pointerIndex = event.stylusPointerIndex(activeStylusPointerId).takeIf { it >= 0 }
             ?: event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val eventToolType = event.getToolType(pointerIndex)
@@ -2854,6 +2857,11 @@ class InkCanvasView(context: Context) : View(context) {
                     parent?.requestDisallowInterceptTouchEvent(false)
                     return true
                 }
+                if (activeTool == EditorTool.RULER) {
+                    if (rejectRulerEdit()) { activeTool = null; parent?.requestDisallowInterceptTouchEvent(false); return true }
+                    rulerTool.down(inputPoint.first, inputPoint.second, width.toFloat(), height.toFloat(), rulerScale())
+                    return true
+                }
                 if (beginLayerMaskGesture(event, pointerIndex, normalizedX, normalizedY)) return true
                 if (activeTool == EditorTool.ERASER) {
                     if (beginV5PaintGesture(event, pointerIndex, normalizedX, normalizedY)) return true
@@ -2952,6 +2960,10 @@ class InkCanvasView(context: Context) : View(context) {
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
+                if (activeTool == EditorTool.RULER) {
+                    rulerTool.move(inputPoint.first, inputPoint.second, width.toFloat(), height.toFloat())
+                    return true
+                }
                 if (layerMaskGesture != null) {
                     appendLayerMaskGesture(event, pointerIndex, normalizedX, normalizedY)
                     return true
@@ -3028,6 +3040,12 @@ class InkCanvasView(context: Context) : View(context) {
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (activeTool == EditorTool.RULER) {
+                    if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) rulerTool.cancel()
+                    else rulerTool.up(inputPoint.first, inputPoint.second, width.toFloat(), height.toFloat(), rulerScale(), event.eventTime)
+                    activeTool = null
+                    return true
+                }
                 if (layerMaskGesture != null) {
                     if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
                         cancelLayerMaskGesture()
@@ -3137,6 +3155,8 @@ class InkCanvasView(context: Context) : View(context) {
                 activeCanvasSnapConstraint = null
                 activePerspectiveSnapConstraint = null
                 activeSpecialRulerConstraint = null
+                activeShapeRulerSnap = null
+                rulerSnapDecided = false
                 if (deferredEraserReleaseStrokeId == null) flushDeferredStylusButtonReleases()
                 activeTool = null
                 activeInputWasStylus = false
@@ -3550,6 +3570,8 @@ class InkCanvasView(context: Context) : View(context) {
         specialRulerGestureHandle = null
         specialRulerGestureStart = null
         activeSpecialRulerConstraint = null
+        activeShapeRulerSnap = null
+        rulerSnapDecided = false
         if (gradientGestureHandle >= 0) {
             gradientGestureStart?.let { editableGradient = it }
             gradientGestureHandle = -1
@@ -5665,6 +5687,48 @@ class InkCanvasView(context: Context) : View(context) {
         val frame: app.inkloom.document.VectorFrame,
     )
 
+    /** Rulers covering the active layer (visible-page fractions), for drawing and snapping. */
+    private var applicableRulers: List<app.inkloom.document.ApplicableRuler> = emptyList()
+    private var activeShapeRulerSnap: app.inkloom.document.RulerSnapSession? = null
+    private var rulerSnapDecided = false
+    var snapToRulers = true
+    internal val rulerTool = RulerToolController(resources.displayMetrics.density).apply {
+        onChanged = { invalidate() }
+        onCommit = { rulers -> onActiveLayerRulersEdited(activeLayerId, rulers) }
+    }
+    /** The host saves the active layer's rulers (visible-page fractions) as one undoable step. */
+    var onActiveLayerRulersEdited: (String, app.inkloom.document.LayerRulers) -> Unit = { _, _ -> }
+
+    /** Rulers that apply to the active layer, and the active layer's own rulers for the ruler tool. */
+    fun setRulers(applicable: List<app.inkloom.document.ApplicableRuler>, activeLayerRulers: app.inkloom.document.LayerRulers?) {
+        applicableRulers = applicable
+        if (activeTool != EditorTool.RULER) rulerTool.rulers = activeLayerRulers
+        invalidate()
+    }
+
+    private fun rulerScale() = viewportScale.coerceAtLeast(ViewportTransform.MINIMUM_SCALE)
+
+    /** Rulers can be placed on any unlocked layer except the paper. */
+    private fun rejectRulerEdit(): Boolean {
+        val layer = boundDocumentLayers?.firstOrNull { it.id == activeLayerId }
+        val chinese = feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE
+        val reason = when {
+            layer == null -> if (chinese) "请选择图层" else "Select a layer first."
+            layer.role == app.inkloom.document.LayerRole.BACKGROUND -> if (chinese) "纸张不能放置尺规，请选择图层" else "Select a layer instead of the paper."
+            app.inkloom.document.LayerHierarchy.effectiveLocked(boundDocumentLayers.orEmpty(), layer) -> if (chinese) "请先解锁此图层或所属文件夹" else "Unlock this layer or its parent folder first."
+            else -> return false
+        }
+        onPaintCapabilityRejected(reason)
+        return true
+    }
+
+    /** Commands from the ruler tool's properties: finish or cancel a curve, delete the selected ruler. */
+    internal fun rulerCommand(command: RulerCommand): Boolean = when (command) {
+        RulerCommand.FINISH -> rulerTool.finishDraft(width.toFloat(), height.toFloat())
+        RulerCommand.CANCEL -> { rulerTool.cancelDraft(); true }
+        RulerCommand.DELETE -> rulerTool.deleteSelected()
+    }
+
     private var documentVectorLayers: Map<String, app.inkloom.document.VectorLayerContent> = emptyMap()
     /** Lines committed here whose save has not reached the document yet. */
     private val vectorExpected = mutableMapOf<String, app.inkloom.document.VectorLayerContent>()
@@ -6389,6 +6453,8 @@ class InkCanvasView(context: Context) : View(context) {
             height.toFloat(),
             GUIDE_SNAP_TOLERANCE_DP * resources.displayMetrics.density,
         )
+        rulerSnapDecided = false
+        activeShapeRulerSnap = null
         val initialSample = v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null)
         val started = v5StrokeController.begin(
             layerId = activeLayerId,
@@ -6683,6 +6749,18 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun v5ConstrainedNormalizedPoint(x: Float, y: Float): Pair<Float, Float> {
         val start = v5GestureStartNormalized
+        if (!rulerSnapDecided && start != null && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) {
+            // As in CSP, a stroke follows the ruler nearest to where the pen went down.
+            rulerSnapDecided = true
+            activeShapeRulerSnap = if (!snapToRulers || width <= 0 || height <= 0) null else app.inkloom.document.RulerGeometry.nearest(
+                applicableRulers.map { it.shape }, start.first * width, start.second * height, width.toFloat(), height.toFloat(),
+                RulerToolController.SNAP_CAPTURE_DP * resources.displayMetrics.density / rulerScale(),
+            )?.let { app.inkloom.document.RulerSnapSession(it, width.toFloat(), height.toFloat()) }
+        }
+        activeShapeRulerSnap?.let { snap ->
+            val (px, py) = snap.project(x * width, y * height)
+            return (px / width.coerceAtLeast(1)).coerceIn(0f, 1f) to (py / height.coerceAtLeast(1)).coerceIn(0f, 1f)
+        }
         if (!(rulerEnabled && rulerAssisted) && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) &&
             activePerspectiveSnapConstraint == null && start != null
         ) {

@@ -747,6 +747,10 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         })
     }
 
+    /** A layer's rulers and their settings; null removes them. */
+    fun setLayerRulers(documentId: String, pageId: String, layerId: String, rulers: app.inkloom.document.LayerRulers?) =
+        updatePage(documentId, pageId) { page -> page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(rulers = rulers) else it }) }
+
     fun toggleLayerAlphaLock(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
         val existingContentIds = page.elements.filter { it.layerId == layerId }.map(PageElement::id)
         page.copy(layers = page.layers.map { layer ->
