@@ -12,6 +12,8 @@ data class RasterLayerCommit(
     val dirtyBounds: PixelRect,
     /** Null keeps elements; a list atomically replaces the edited layer's retained elements. */
     val layerElements: app.inkloom.document.LayerElementEdit? = null,
+    /** Vector layers: the lines these pixels render, saved with them. Null keeps the lines. */
+    val vector: app.inkloom.document.VectorLayerContent? = null,
 ) {
     init {
         require(layerId.isNotBlank())

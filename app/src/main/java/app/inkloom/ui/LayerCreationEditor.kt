@@ -22,7 +22,7 @@ internal class LayerCreationEditor(
     private val assets: DocumentAssetService? = null,
 ) {
     fun create(view: InkCanvasView, targetId: String, folder: Boolean, adjustment: LayerAdjustment? = null,
-        onCreated: ((String) -> Unit)? = null) {
+        onCreated: ((String) -> Unit)? = null, vector: Boolean = false) {
         if (view.selectionLayerTransferPending || view.hasActivePaintContact() ||
             !view.isBoundToSelectionPage(documentId, pageId)) { rejected(); return }
         view.finishSelectionTransform(apply = true)
@@ -35,7 +35,7 @@ internal class LayerCreationEditor(
             try {
                 awaitPublication(view)
                 mutex.withLock {
-                    val unmasked = checkNotNull(LayerInsertionEdit.create(page(), targetId, folder, adjustment = adjustment))
+                    val unmasked = checkNotNull(LayerInsertionEdit.create(page(), targetId, folder, adjustment = adjustment, vector = vector))
                     mask = selection?.let { selected ->
                         val planned = checkNotNull(unmasked.apply(page()))
                         withContext(NonCancellable + Dispatchers.IO) {

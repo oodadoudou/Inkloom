@@ -49,6 +49,8 @@ data class AppSettings(
     val layerPanelSplitFraction: Float = .5f,
     val layerRowDensity: LayerRowDensity = LayerRowDensity.COMFORTABLE,
     val layerShowThumbnails: Boolean = true,
+    /** CSP's vector eraser: remove whole lines instead of cutting away the touched part. */
+    val vectorEraseWholeLine: Boolean = false,
     val layerShowDetails: Boolean = true,
     val layerShowProperties: Boolean = true,
     val layerShowCommands: Boolean = true,
@@ -230,6 +232,7 @@ class AppSettingsStore(context: Context) {
             layerPanelSplitFraction = preferences.getFloat("layerPanelSplitFraction", .5f).takeIf(Float::isFinite)?.coerceIn(.2f, .8f) ?: .5f,
             layerRowDensity = enumValue(preferences.getString("layerRowDensity", null), LayerRowDensity.COMFORTABLE),
             layerShowThumbnails = preferences.getBoolean("layerShowThumbnails", true),
+            vectorEraseWholeLine = preferences.getBoolean("vectorEraseWholeLine", false),
             layerShowDetails = preferences.getBoolean("layerShowDetails", true),
             layerShowProperties = preferences.getBoolean("layerShowProperties", true),
             layerShowCommands = preferences.getBoolean("layerShowCommands", true),
@@ -385,6 +388,7 @@ class AppSettingsStore(context: Context) {
             .putFloat("layerPanelSplitFraction", persisted.layerPanelSplitFraction.takeIf(Float::isFinite)?.coerceIn(.2f, .8f) ?: .5f)
             .putString("layerRowDensity", persisted.layerRowDensity.name)
             .putBoolean("layerShowThumbnails", persisted.layerShowThumbnails)
+            .putBoolean("vectorEraseWholeLine", persisted.vectorEraseWholeLine)
             .putBoolean("layerShowDetails", persisted.layerShowDetails)
             .putBoolean("layerShowProperties", persisted.layerShowProperties)
             .putBoolean("layerShowCommands", persisted.layerShowCommands)

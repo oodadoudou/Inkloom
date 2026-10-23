@@ -397,6 +397,11 @@ class InkCanvasView(context: Context) : View(context) {
     internal fun awaitV5StrokeWorkerIdleForTest() = v5StrokeController.awaitIdle()
     @VisibleForTesting
     internal fun activeRasterSnapshotForTest() = rasterTileSurfaceFor(activeLayerId)?.snapshot()
+    /** The active vector layer's lines rendered afresh, to compare with its live pixels. */
+    @VisibleForTesting
+    internal fun vectorReplayForTest() = rasterTileSurfaceFor(activeLayerId)?.let { surface ->
+        vectorContent()?.let { app.inkloom.engine.v5.tools.VectorLayerRenderer.render(it, vectorFrame(surface)).snapshot() }
+    }
     private data class RasterToolPoint(val x: Float, val y: Float, val pressure: Float = 1f)
     private val pendingSmudge = ArrayDeque<RasterToolPoint>()
     private val pendingLiquify = ArrayDeque<RasterToolPoint>()
@@ -1032,12 +1037,13 @@ class InkCanvasView(context: Context) : View(context) {
         snapshot: app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot,
         dirtyBounds: Rect?,
         layerId: String = activeLayerId,
+        vector: app.inkloom.document.VectorLayerContent? = null,
     ) {
         val dirty = dirtyBounds ?: return
         val clipped = PixelRect(dirty.left, dirty.top, dirty.right, dirty.bottom).intersect(
             PixelRect(0, 0, snapshot.logicalWidth, snapshot.logicalHeight),
         )
-        if (!clipped.isEmpty) onRasterLayerCommitted?.invoke(RasterLayerCommit(layerId, snapshot, clipped))
+        if (!clipped.isEmpty) onRasterLayerCommitted?.invoke(RasterLayerCommit(layerId, snapshot, clipped, vector = vector))
     }
 
     private fun publishRasterSelectionEdit(layerId: String, surface: PixelTileSurface, bounds: PixelRect) {
@@ -1311,7 +1317,7 @@ class InkCanvasView(context: Context) : View(context) {
         // A folder's content rejection remains FOLDER even when its lock/visibility changes;
         // the selected mask still needs its ancestor permissions rechecked.
         documentLayerTargets = targets
-        if (currentPaintTargetRejection() != null) {
+        if (currentPaintTargetRejection(allowVector = true) != null) {
             if (activeTool != null) cancelActiveGestureForNavigation()
             cancelLayerMaskGesture()
             finishSelectionColorFill(false)
@@ -1319,22 +1325,23 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    private fun layerContentRejection(layerId: String = activeLayerId): app.inkloom.document.LayerEditingTarget.Rejection? {
+    private fun layerContentRejection(layerId: String = activeLayerId, allowVector: Boolean = false): app.inkloom.document.LayerEditingTarget.Rejection? {
         documentLayerTargets?.let { targets ->
-            return if (targets.containsKey(layerId)) targets[layerId] else app.inkloom.document.LayerEditingTarget.Rejection.MISSING
+            val rejection = if (targets.containsKey(layerId)) targets[layerId] else app.inkloom.document.LayerEditingTarget.Rejection.MISSING
+            return rejection.takeUnless { allowVector && it == app.inkloom.document.LayerEditingTarget.Rejection.VECTOR }
         }
         return if (layerId in protectedLayerIds) app.inkloom.document.LayerEditingTarget.Rejection.LOCKED else null
     }
 
-    private fun currentPaintTargetRejection(layerId: String = activeLayerId): app.inkloom.document.LayerEditingTarget.Rejection? =
-        if (editingLayerMaskId == layerId) maskTargetRejection(layerId) else layerContentRejection(layerId)
+    private fun currentPaintTargetRejection(layerId: String = activeLayerId, allowVector: Boolean = false): app.inkloom.document.LayerEditingTarget.Rejection? =
+        if (editingLayerMaskId == layerId) maskTargetRejection(layerId) else layerContentRejection(layerId, allowVector)
 
     private fun maskTargetRejection(layerId: String): app.inkloom.document.LayerEditingTarget.Rejection? =
         boundDocumentLayers?.let { app.inkloom.document.LayerEditingTarget.maskRejection(it, layerId) }
             ?: if (boundDocumentLayers == null) layerContentRejection(layerId) else null
 
-    private fun rejectLayerContentEdit(layerId: String = activeLayerId): Boolean {
-        val reason = currentPaintTargetRejection(layerId) ?: return false
+    private fun rejectLayerContentEdit(layerId: String = activeLayerId, allowVector: Boolean = false): Boolean {
+        val reason = currentPaintTargetRejection(layerId, allowVector) ?: return false
         return reportLayerEditRejection(reason)
     }
 
@@ -1348,6 +1355,7 @@ class InkCanvasView(context: Context) : View(context) {
             app.inkloom.document.LayerEditingTarget.Rejection.LOCKED -> if (chinese) "请先解锁此图层或所属文件夹" else "Unlock this layer or its parent folder first."
             app.inkloom.document.LayerEditingTarget.Rejection.HIDDEN -> if (chinese) "请先显示此图层及所属文件夹" else "Show this layer and its parent folder first."
             app.inkloom.document.LayerEditingTarget.Rejection.GENERATED -> if (chinese) "填充、渐变和网点图层请编辑其设置或蒙版；栅格化后可直接绘画" else "Edit this layer's settings or mask, or rasterize it to paint on it."
+            app.inkloom.document.LayerEditingTarget.Rejection.VECTOR -> if (chinese) "矢量图层只能用画笔和橡皮擦编辑线条；栅格化后可使用此工具" else "Vector layers take the pen and eraser. Rasterize the layer to use this tool."
         })
         return true
     }
@@ -2840,7 +2848,8 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER,
                         EditorTool.SHAPE, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE,
-                        EditorTool.LIQUIFY, EditorTool.CORRECT_LINE) && rejectLayerContentEdit()) {
+                        EditorTool.LIQUIFY, EditorTool.CORRECT_LINE) &&
+                    rejectLayerContentEdit(allowVector = activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER))) {
                     activeTool = null
                     parent?.requestDisallowInterceptTouchEvent(false)
                     return true
@@ -5312,7 +5321,8 @@ class InkCanvasView(context: Context) : View(context) {
         }
         val transformLayerContent = editingMask == null || layerMasks[editingMask]?.linked == true
         val layerIds = requestedIds.filterTo(linkedSetOf()) {
-            transformLayerContent && it !in protectedLayerIds && rasterTileSurfaceFor(it) != null
+            // Vector layers are left in place: moving their pixels alone would leave the lines behind.
+            transformLayerContent && it !in protectedLayerIds && rasterTileSurfaceFor(it) != null && vectorContent(it) == null
         }
         val geometry = rasterTileSurfaceFor(activeLayerId)
             ?: layerIds.firstNotNullOfOrNull(::rasterTileSurfaceFor)
@@ -5642,7 +5652,168 @@ class InkCanvasView(context: Context) : View(context) {
         val runtimeId: String,
         val smoothing: Float = 0f,
         val executionIdentity: BrushExecutionIdentity? = null,
+        val vector: VectorGesture? = null,
     )
+
+    /** A stroke on a vector layer: the pen's line settings, or null for the vector eraser. */
+    private class VectorGesture(
+        val layerId: String,
+        val recorder: app.inkloom.engine.v5.raster.RecordingPaintOp,
+        val pen: app.inkloom.document.VectorStroke?,
+        val eraserRadius: Float,
+        val transforms: List<PaintSampleTransform>,
+        val frame: app.inkloom.document.VectorFrame,
+    )
+
+    private var documentVectorLayers: Map<String, app.inkloom.document.VectorLayerContent> = emptyMap()
+    /** Lines committed here whose save has not reached the document yet. */
+    private val vectorExpected = mutableMapOf<String, app.inkloom.document.VectorLayerContent>()
+    private var vectorPageCrop = app.inkloom.document.PageCrop()
+    private var activeVectorGesture: VectorGesture? = null
+    var vectorEraseMode = app.inkloom.document.VectorEraseMode.TOUCHED_AREA
+
+    /** Vector layers' lines as the document holds them, with the page crop this view shows. */
+    fun setVectorLayers(layers: Map<String, app.inkloom.document.VectorLayerContent>, crop: app.inkloom.document.PageCrop) {
+        documentVectorLayers = layers
+        vectorPageCrop = crop
+        vectorExpected.entries.removeAll { (layerId, expected) -> layers[layerId] == expected || layerId !in layers }
+    }
+
+    internal fun vectorContent(layerId: String = activeLayerId): app.inkloom.document.VectorLayerContent? =
+        vectorExpected[layerId] ?: documentVectorLayers[layerId]
+
+    private fun vectorFrame(surface: PixelTileSurface) = app.inkloom.document.VectorFrame(surface.logicalWidth, surface.logicalHeight,
+        surface.logicalWidth / pageModelWidth.coerceAtLeast(1f), vectorPageCrop)
+
+    /**
+     * Vector layers draw with one round pen, so their pixels can be rebuilt from their lines;
+     * selections and alpha lock do not clip vector lines.
+     */
+    private fun vectorPaintConfiguration(surface: PixelTileSurface, tool: EditorTool, diameterPixels: Float,
+                                         transforms: List<PaintSampleTransform>): V5PaintConfiguration {
+        val frame = vectorFrame(surface)
+        val program = compiledBrushProgramV5
+        val pen = if (tool == EditorTool.ERASER) null else app.inkloom.document.VectorStroke(points = listOf(0f, 0f, 1f),
+            colorArgb = inkColor, diameter = diameterPixels / frame.pixelsPerUnit,
+            opacity = (inkOpacity * (program?.deposition?.flow ?: 1f)).coerceIn(0f, 1f),
+            minimumPressureScale = if (program?.pressure?.widthEnabled == true) program.pressure.widthMinimum.coerceIn(0f, 1f) else 1f)
+        val definition = pen?.let { app.inkloom.engine.v5.tools.VectorLayerRenderer.definition(it, frame.pixelsPerUnit) }
+            ?: DryInkDefinition(diameterPixels = diameterPixels, colorArgb = Color.TRANSPARENT, minimumPressureScale = 1f, blend = DryBlend.DESTINATION_OUT)
+        val recorder = app.inkloom.engine.v5.raster.RecordingPaintOp(DryInkPaintOp(surface, definition, null, transforms))
+        return V5PaintConfiguration(recorder, definition.diameterPixels * .5f + 2f, if (pen == null) "vector-eraser" else "vector-pen",
+            program?.strokeShaping?.smoothing?.coerceIn(0f, 1f) ?: 0f,
+            vector = VectorGesture(activeLayerId, recorder, pen, definition.diameterPixels * .5f, transforms, frame))
+    }
+
+    /** Adds the drawn line, or applies the vector eraser, as one undoable step with its pixels. */
+    private fun recordVectorStroke(layerId: String, surface: PixelTileSurface, record: app.inkloom.engine.v5.surface.PixelTileTransactionRecord,
+                                   dirty: Rect, gesture: VectorGesture) {
+        val before = vectorContent(layerId) ?: app.inkloom.document.VectorLayerContent()
+        val frame = gesture.frame
+        val samples = gesture.recorder.samples()
+        var region = PixelRect(dirty.left, dirty.top, dirty.right, dirty.bottom)
+        val after = if (gesture.pen != null) {
+            before.copy(strokes = before.strokes + gesture.transforms.map { transform ->
+                gesture.pen.copy(id = java.util.UUID.randomUUID().toString(), points = samples.flatMap { sample ->
+                    transform.apply(sample).let { listOf(frame.pageX(it.point.x), frame.pageY(it.point.y), it.pressure) }
+                })
+            })
+        } else gesture.transforms.fold(before) { content, transform ->
+            app.inkloom.document.VectorGeometry.erase(content, samples.flatMap { sample -> transform.apply(sample).point.let { listOf(it.x, it.y) } },
+                gesture.eraserRadius, vectorEraseMode, frame)
+        }
+        val kept = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<app.inkloom.document.VectorStroke, Boolean>()).apply { addAll(after.strokes) }
+        before.strokes.filterNot(kept::contains).forEach { changed ->
+            app.inkloom.document.VectorGeometry.bounds(changed, frame)?.let { region = region.union(PixelRect(it[0], it[1], it[2], it[3])) }
+        }
+        // Symmetric copies and erasing are re-rendered so the pixels are exactly the lines.
+        val fixup = if (gesture.pen == null || gesture.transforms.size > 1)
+            app.inkloom.engine.v5.tools.VectorLayerRenderer.rerender(surface, after, frame, region) else null
+        val bounds = Rect(region.left, region.top, region.right, region.bottom)
+        fun publish(content: app.inkloom.document.VectorLayerContent) {
+            vectorExpected[layerId] = content
+            commitRasterLayerPatch(surface.snapshot(), bounds, layerId, content)
+            invalidateV5Damage(surface, region)
+        }
+        publish(after)
+        recordExternalEdit(
+            undo = {
+                fixup?.let { surface.apply(it, PixelTileSurface.HistoryDirection.UNDO) }
+                surface.apply(record, PixelTileSurface.HistoryDirection.UNDO)
+                publish(before)
+            },
+            redo = {
+                surface.apply(record, PixelTileSurface.HistoryDirection.REDO)
+                fixup?.let { surface.apply(it, PixelTileSurface.HistoryDirection.REDO) }
+                publish(after)
+            },
+            dispose = { record.close(); fixup?.close() },
+        )
+    }
+
+    private fun selectedAt(mask: MaskTileSurfaceSnapshot, frame: app.inkloom.document.VectorFrame, x: Float, y: Float): Boolean =
+        mask.alphaAt((x * mask.logicalWidth / frame.width).toInt().coerceIn(0, mask.logicalWidth - 1),
+            (y * mask.logicalHeight / frame.height).toInt().coerceIn(0, mask.logicalHeight - 1)) >= 128
+
+    /** On a vector layer, deleting cuts the lines where they are [selected] (or unselected). */
+    private fun eraseVectorsBySelection(selected: Boolean): Boolean {
+        if (layerContentRejection(allowVector = true)?.let(::reportLayerEditRejection) == true) return false
+        finishSelectionTransform(apply = true)
+        val mask = selectionMaskForRasterTools()?.takeUnless { it.isEmpty } ?: return false
+        return editVectorLayer { content, frame ->
+            app.inkloom.document.VectorGeometry.eraseWhere(content, frame) { x, y -> selectedAt(mask, frame, x, y) == selected }
+        }
+    }
+
+    /**
+     * CSP's vector selection on the active vector layer: lines crossing the selection, or only
+     * lines inside it. Null when the layer is not a vector layer; empty without a selection.
+     */
+    internal fun selectedVectorIds(containedOnly: Boolean): Set<String>? {
+        val content = vectorContent() ?: return null
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return null
+        val mask = selectionMaskForRasterTools()?.takeUnless { it.isEmpty } ?: return emptySet()
+        val frame = vectorFrame(surface)
+        return app.inkloom.document.VectorGeometry.select(content, frame, containedOnly) { x, y -> selectedAt(mask, frame, x, y) }
+    }
+
+    /**
+     * Replaces the active vector layer's lines, re-rendering the pixels where lines changed, as one
+     * undoable step. Returns false when the layer is not a vector layer or nothing changed.
+     */
+    internal fun editVectorLayer(edit: (app.inkloom.document.VectorLayerContent, app.inkloom.document.VectorFrame) -> app.inkloom.document.VectorLayerContent): Boolean {
+        if (selectionLayerTransferPending || hasActivePaintContact()) return false
+        val layerId = activeLayerId
+        if (layerContentRejection(layerId, allowVector = true) != null) return false
+        val before = vectorContent(layerId) ?: return false
+        val surface = rasterTileSurfaceFor(layerId)?.takeIf { it.pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888 } ?: return false
+        v5StrokeController.awaitIdle()
+        val frame = vectorFrame(surface)
+        val after = edit(before, frame)
+        if (after == before) return false
+        fun identities(strokes: List<app.inkloom.document.VectorStroke>) =
+            java.util.Collections.newSetFromMap(java.util.IdentityHashMap<app.inkloom.document.VectorStroke, Boolean>()).apply { addAll(strokes) }
+        val old = identities(before.strokes); val new = identities(after.strokes)
+        var region: PixelRect? = null
+        (before.strokes.filterNot(new::contains) + after.strokes.filterNot(old::contains)).forEach { changed ->
+            app.inkloom.document.VectorGeometry.bounds(changed, frame)?.let { val r = PixelRect(it[0], it[1], it[2], it[3]); region = region?.union(r) ?: r }
+        }
+        val changedRegion = region
+        val record = changedRegion?.let { app.inkloom.engine.v5.tools.VectorLayerRenderer.rerender(surface, after, frame, it) }
+        val bounds = changedRegion?.let { Rect(it.left, it.top, it.right, it.bottom) } ?: Rect(0, 0, 1, 1)
+        fun publish(content: app.inkloom.document.VectorLayerContent) {
+            vectorExpected[layerId] = content
+            commitRasterLayerPatch(surface.snapshot(), bounds, layerId, content)
+            changedRegion?.let { invalidateV5Damage(surface, it) }
+        }
+        publish(after)
+        recordExternalEdit(
+            undo = { record?.let { surface.apply(it, PixelTileSurface.HistoryDirection.UNDO) }; publish(before) },
+            redo = { record?.let { surface.apply(it, PixelTileSurface.HistoryDirection.REDO) }; publish(after) },
+            dispose = { record?.close() },
+        )
+        return true
+    }
 
     /** Worker-only rendering for an isolated, unattached preview view. Shares the contact factory
      * and stroke coordinator; never guesses a mark from the preset's name or source thumbnail. */
@@ -5693,7 +5864,7 @@ class InkCanvasView(context: Context) : View(context) {
         // Opacity, blend, clipping and layer masks are projection properties. They must never
         // disable edits to the layer's own pixel surface. Paint on an alpha-locked layer publishes
         // with SOURCE_ATOP below; erasing is rejected because it cannot preserve destination alpha.
-        if ((if (maskCoverage) maskTargetRejection(activeLayerId) else layerContentRejection()) != null ||
+        if ((if (maskCoverage) maskTargetRejection(activeLayerId) else layerContentRejection(allowVector = true)) != null ||
             (!maskCoverage && activeLayerId in alphaLockedLayers && active == EditorTool.ERASER)
         ) return null
         val diameter = requestedDiameter ?: if (active == EditorTool.ERASER) gestureEraserSize else gestureBrushSize
@@ -5701,6 +5872,7 @@ class InkCanvasView(context: Context) : View(context) {
             .coerceAtLeast(.1f)
         val selection = selectionMaskForRasterTools()?.takeUnless { it.isEmpty }
         val sampleTransforms = v5SampleTransforms(surface)
+        if (!maskCoverage && vectorContent() != null) return vectorPaintConfiguration(surface, active, diameterPixels, sampleTransforms)
         fun pressure(enabled: Boolean, minimum: Float, curve: List<BrushCurvePoint>) = PressureResponse(
             enabled,
             minimum,
@@ -6241,6 +6413,7 @@ class InkCanvasView(context: Context) : View(context) {
             trackDrawAndHold(listOf(initialSample), surface)
         }
         activeV5Execution = configuration.executionIdentity?.let { it to configuration.paintOp.javaClass.name }
+        activeVectorGesture = configuration.vector
         if (activeTool == EditorTool.ERASER) {
             EraserLifecycleTrace.record(
                 EraserLifecycleTrace.Event(
@@ -6374,6 +6547,8 @@ class InkCanvasView(context: Context) : View(context) {
         val finishingStrokeId = currentStrokeId
         val finishingExecution = activeV5Execution
         activeV5Execution = null
+        val finishingVector = activeVectorGesture?.takeIf { it.layerId == layerId }
+        activeVectorGesture = null
         val accepted = v5StrokeController.finish(sample) { published ->
             v5MainHandler.post {
                 acceptV5PublishedGesture(
@@ -6383,6 +6558,7 @@ class InkCanvasView(context: Context) : View(context) {
                     finishingStrokeId,
                     finishingEraser,
                     finishingExecution,
+                    finishingVector,
                 )
             }
         }
@@ -6412,6 +6588,7 @@ class InkCanvasView(context: Context) : View(context) {
         strokeId: String,
         wasEraser: Boolean,
         execution: Pair<BrushExecutionIdentity, String>?,
+        vector: VectorGesture? = null,
     ) {
         try {
             v5DryPublishedGeneration = published.snapshot.revision
@@ -6444,7 +6621,9 @@ class InkCanvasView(context: Context) : View(context) {
                     )
                 }
                 v5PresentationBarrier.awaitVisible(published.snapshot.revision, published.record.transactionId)
-                recordRasterToolTransaction(
+                if (vector != null) recordVectorStroke(layerId, surface, published.record,
+                    Rect(bounds.left, bounds.top, bounds.right, bounds.bottom), vector)
+                else recordRasterToolTransaction(
                     layerId,
                     surface,
                     published.record,
@@ -6645,6 +6824,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     var onLayerCreationRequested: ((String, Boolean) -> Unit)? = null
+    var onVectorLayerCreationRequested: ((String) -> Unit)? = null
     var onAdjustmentLayerCreationRequested: ((String, app.inkloom.document.LayerAdjustment, (String) -> Unit) -> Unit)? = null
     var onLayerMergeRequested: (app.inkloom.document.RasterLayerMergeRequest) -> Unit = {}
     internal var onRasterFilterPreviewRequested: (app.inkloom.engine.v5.tools.RasterImageFilter.Effect) -> Unit = {}
@@ -7509,6 +7689,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun deleteSelection() {
+        if (editingLayerMaskId == null && vectorContent() != null) { eraseVectorsBySelection(selected = true); return }
         if (rejectLayerContentEdit()) return
         finishSelectionTransform(apply = true)
         if (!hasSelection()) return
@@ -7530,6 +7711,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     /** Clears unselected pixels without altering the document selection or adding inverse history. */
     fun deleteOutsideSelection(): Boolean {
+        if (editingLayerMaskId == null && vectorContent() != null) return eraseVectorsBySelection(selected = false)
         if (selectionLayerTransferPending || rejectLayerContentEdit()) return false
         if (hasActivePaintContact()) {
             onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)

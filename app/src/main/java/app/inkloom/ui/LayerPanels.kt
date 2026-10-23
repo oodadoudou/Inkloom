@@ -202,6 +202,8 @@ internal fun LayerPanel(
     onEditAdjustment: (String) -> Unit,
     onAddGenerated: (GeneratedLayerKind) -> Unit = {},
     onEditGenerated: (String) -> Unit = {},
+    onAddVector: () -> Unit = {},
+    onEditVector: (String) -> Unit = {},
     onRasterize: (String) -> Unit = {},
     onConvertLayer: (String) -> Unit = {},
     onConvertToFileObject: (String) -> Unit = {},
@@ -254,6 +256,8 @@ internal fun LayerPanel(
             onEditAdjustment = onEditAdjustment,
             onAddGenerated = onAddGenerated,
             onEditGenerated = onEditGenerated,
+            onAddVector = onAddVector,
+            onEditVector = onEditVector,
             onRasterize = onRasterize,
             onConvertLayer = onConvertLayer,
             onConvertToFileObject = onConvertToFileObject,
@@ -322,6 +326,8 @@ private fun PaintingLayerPanel(
     onEditAdjustment: (String) -> Unit,
     onAddGenerated: (GeneratedLayerKind) -> Unit = {},
     onEditGenerated: (String) -> Unit = {},
+    onAddVector: () -> Unit = {},
+    onEditVector: (String) -> Unit = {},
     onRasterize: (String) -> Unit = {},
     onConvertLayer: (String) -> Unit = {},
     onConvertToFileObject: (String) -> Unit = {},
@@ -475,7 +481,7 @@ private fun PaintingLayerPanel(
                 onClip = { onToggleClippedToBelow(activeLayerId) }, onReference = { onToggleReference(activeLayerId) },
                 onDraft = { onToggleDraft(activeLayerId) }, onMask = { onMaskCommand(activeLayerId, it) },
                 onDuplicate = { onDuplicate(activeLayerId) }, onMerge = { onMergeDown(activeLayerId) },
-                onDelete = { onDelete(activeLayerId) }, onGenerated = onAddGenerated) }
+                onDelete = { onDelete(activeLayerId) }, onGenerated = onAddGenerated, onVector = onAddVector) }
             if (settings.layerShowCommands && !settings.layerCommandsAtBottom) commands()
             HorizontalDivider(color = OutlineSoft)
             if (searchOpen) StudioOutlinedTextField(
@@ -629,6 +635,7 @@ private fun PaintingLayerPanel(
                         if (layer.reference) Icon(Icons.Outlined.Lightbulb, tr("Reference layer", "参考图层"), Modifier.size(15.dp), tint = MutedInk)
                         if (layer.draft) Icon(Icons.Outlined.EditNote, tr("Draft layer", "草稿图层"), Modifier.size(15.dp), tint = MutedInk)
                         if (layer.drawingAssist) Icon(Icons.Outlined.AutoFixHigh, tr("Drawing Assist", "绘图辅助"), Modifier.size(15.dp), tint = MutedInk)
+                        if (layer.vector != null) Icon(Icons.Outlined.Gesture, tr("Vector layer", "矢量图层"), Modifier.size(15.dp), tint = MutedInk)
                         val layerActionsDescription = "${tr("Layer actions", "图层操作")} ${layer.name}"
                         Box(Modifier.semantics { contentDescription = layerActionsDescription }) {
                             IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), tint = rowInk) }
@@ -679,14 +686,14 @@ private fun PaintingLayerPanel(
                             DropdownMenu(menu, { menu = false }) {
                                 StudioMenuItem(text = { Text(if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) }, onClick = { menu = false; onLock(layer.id) })
                                 if (layer.role == LayerRole.ADJUSTMENT) StudioMenuItem(text = { Text(tr("Edit adjustment", "编辑调整参数")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditAdjustment(layer.id) })
-                                if (layer.generator != null) {
-                                    StudioMenuItem(text = { Text(tr("Edit layer settings", "编辑图层设置")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditGenerated(layer.id) })
+                                if (layer.generator != null) StudioMenuItem(text = { Text(tr("Edit layer settings", "编辑图层设置")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditGenerated(layer.id) })
+                                if (layer.vector != null) StudioMenuItem(text = { Text(tr("Vector lines…", "矢量线条…")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onSelect(layer.id); onEditVector(layer.id) })
+                                if (layer.generator != null || layer.vector != null)
                                     StudioMenuItem(text = { Text(tr("Rasterize", "栅格化")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onRasterize(layer.id) })
-                                }
                                 if (layer.isPaintSurfaceLayer()) StudioMenuItem(text = { Text(if (layer.alphaLock) tr("Unlock alpha", "解锁透明度") else tr("Lock alpha", "锁定透明度")) }, onClick = { menu = false; onToggleAlphaLock(layer.id) })
-                                if (layer.isPaintSurfaceLayer() && layer.generator == null) StudioMenuItem(text = { Text(tr("Convert layer…", "转换图层…")) },
+                                if (layer.isPaintSurfaceLayer() && layer.generator == null && layer.vector == null) StudioMenuItem(text = { Text(tr("Convert layer…", "转换图层…")) },
                                     enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onConvertLayer(layer.id) })
-                                if (layer.isPaintSurfaceLayer() && layer.generator == null && layer.rasterTileSurface != null) StudioMenuItem(text = { Text(tr("Convert to file object…", "转换为文件对象…")) },
+                                if (layer.isPaintSurfaceLayer() && layer.generator == null && layer.vector == null && layer.rasterTileSurface != null) StudioMenuItem(text = { Text(tr("Convert to file object…", "转换为文件对象…")) },
                                     enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onConvertToFileObject(layer.id) })
                                 if (layer.canClipToBelow()) StudioMenuItem(text = { Text(if (layer.clippedToBelow) tr("Stop clipping", "取消剪贴") else tr("Clipping mask", "剪贴蒙版")) }, onClick = { menu = false; onToggleClippedToBelow(layer.id) })
                                 if (layer.role != LayerRole.BACKGROUND) StudioMenuItem(text = { Text(if (layer.reference) tr("Unset reference layer", "取消参考图层") else tr("Set as reference layer", "设为参考图层")) }, onClick = { menu = false; onToggleReference(layer.id) })

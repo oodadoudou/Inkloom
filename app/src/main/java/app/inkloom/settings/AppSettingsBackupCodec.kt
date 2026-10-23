@@ -82,7 +82,7 @@ object AppSettingsBackupCodec {
         put("liquifyStrengthScale", liquifyStrengthScale); put("liquifyDistortion", liquifyDistortion); put("liquifyMomentum", liquifyMomentum)
         put("brushGridLayout", brushGridLayout); put("brushCategoryWidthDp",brushCategoryWidthDp);
         put("layerPanelDualList", layerPanelDualList); put("layerPanelSplitFraction", layerPanelSplitFraction); put("layerRowDensity", layerRowDensity.name)
-        put("layerShowThumbnails", layerShowThumbnails); put("layerShowDetails", layerShowDetails)
+        put("layerShowThumbnails", layerShowThumbnails); put("layerShowDetails", layerShowDetails); put("vectorEraseWholeLine", vectorEraseWholeLine)
         put("layerShowProperties", layerShowProperties); put("layerShowCommands", layerShowCommands); put("layerCommandsAtBottom", layerCommandsAtBottom)
         put("toolbarOffsetXDp", toolbarOffsetXDp); put("toolbarOffsetYDp", toolbarOffsetYDp); put("selectionStudioXDp",selectionStudioXDp); put("selectionStudioYDp",selectionStudioYDp); put("verticalToolbar", verticalToolbar); put("toolbarDock", toolbarDock.name)
         put("toolPaletteLayout", ToolPaletteLayout.encode(ToolPaletteLayout.decode(toolPaletteLayout)))
@@ -142,6 +142,7 @@ object AppSettingsBackupCodec {
 
             layerPanelDualList = boolean("layerPanelDualList", defaults.layerPanelDualList), layerPanelSplitFraction = float("layerPanelSplitFraction", defaults.layerPanelSplitFraction).coerceIn(.2f, .8f),
             layerRowDensity = enum("layerRowDensity", defaults.layerRowDensity), layerShowThumbnails = boolean("layerShowThumbnails", defaults.layerShowThumbnails), layerShowDetails = boolean("layerShowDetails", defaults.layerShowDetails),
+            vectorEraseWholeLine = boolean("vectorEraseWholeLine", defaults.vectorEraseWholeLine),
             layerShowProperties = boolean("layerShowProperties", defaults.layerShowProperties), layerShowCommands = boolean("layerShowCommands", defaults.layerShowCommands), layerCommandsAtBottom = boolean("layerCommandsAtBottom", defaults.layerCommandsAtBottom),
             toolbarOffsetXDp = float("toolbarOffsetXDp", defaults.toolbarOffsetXDp).coerceIn(-1200f, 1200f), toolbarOffsetYDp = float("toolbarOffsetYDp", defaults.toolbarOffsetYDp).coerceIn(-1200f, 1200f),
             selectionStudioXDp = float("selectionStudioXDp",defaults.selectionStudioXDp).coerceIn(-1f,2400f), selectionStudioYDp = float("selectionStudioYDp",defaults.selectionStudioYDp).coerceIn(-1f,2400f),

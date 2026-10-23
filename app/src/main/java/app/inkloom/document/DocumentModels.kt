@@ -224,6 +224,11 @@ data class InkLayer(
      * when it is edited. Brushes do not paint on these layers; rasterizing drops the setting.
      */
     val generator: LayerGenerator? = null,
+    /**
+     * Vector layers: the lines behind the pixels. Strokes and the vector eraser edit the lines and
+     * re-render the pixels; tools that only change pixels refuse the layer until it is rasterized.
+     */
+    val vector: VectorLayerContent? = null,
 )
 
 /** Where a file object's image comes from, and the state of that file when it was last read. */

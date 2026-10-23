@@ -155,8 +155,9 @@ object RasterLayerMerge {
             name = resultName,
             role = bottom.second.role.takeIf { it != LayerRole.FOLDER && it != LayerRole.ADJUSTMENT } ?: LayerRole.CUSTOM,
             adjustment = null,
-            // Merged pixels no longer match a fill, gradient or tone setting.
+            // Merged pixels no longer match a fill, gradient or tone setting, or vector lines.
             generator = null,
+            vector = null,
             rasterTileSurface = null,
             rasterRotationQuarterTurns = 0,
             visible = true,
@@ -208,6 +209,7 @@ object RasterLayerMerge {
             listOf(LayerAt(afterIndex, source.copy(
                 rasterTileSurface = null,
                 generator = null,
+                vector = source.vector?.let { VectorLayerContent() },
                 rasterRotationQuarterTurns = 0,
                 alphaLock = false,
                 alphaLockBaseContentIds = emptyList(),

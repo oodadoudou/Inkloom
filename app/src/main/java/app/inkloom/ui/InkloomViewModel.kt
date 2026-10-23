@@ -734,12 +734,15 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         reference: RasterTileSurfaceRef?,
         rotationQuarterTurns: Int = 0,
         layerElements: app.inkloom.document.LayerElementEdit? = null,
+        vector: app.inkloom.document.VectorLayerContent? = null,
     ) = updatePage(documentId, pageId) { page ->
         page.copy(elements = layerElements?.apply(page.elements) ?: page.elements, layers = page.layers.map { layer ->
             if (layer.id != layerId || !layer.isPaintSurfaceLayer()) layer
             else layer.copy(
                 rasterTileSurface = reference,
                 rasterRotationQuarterTurns = rotationQuarterTurns.mod(4),
+                // Lines only update a layer that is still a vector layer.
+                vector = if (layer.vector != null && vector != null) vector else layer.vector,
             )
         })
     }

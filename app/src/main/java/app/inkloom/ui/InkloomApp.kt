@@ -1135,7 +1135,7 @@ private fun EditorScreen(
     onToggleLayerVisibility: (String, String, String) -> Unit,
     onToggleLayerLock: (String, String, String) -> Unit,
     onApplyLayerAppearanceEdit: (String, String, LayerAppearanceEdit, Boolean) -> Boolean,
-    onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?) -> Unit,
+    onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?, app.inkloom.document.VectorLayerContent?) -> Unit,
     onToggleLayerAlphaLock: (String, String, String) -> Unit,
     onToggleLayerDrawingAssist: (String, String, String, LayerDrawingGuide) -> Unit,
     onUpdateLayerDrawingGuide: (String, String, String, LayerDrawingGuide) -> Unit,
@@ -1373,6 +1373,7 @@ private fun EditorScreen(
     }
     // Fill, gradient and tone layers: the settings being created (no layer ID) or edited.
     var generatedLayerEditor by remember(document.id, selectedPage.id) { mutableStateOf<Pair<app.inkloom.document.LayerGenerator, String?>?>(null) }
+    var vectorLinesOpen by remember(document.id, selectedPage.id) { mutableStateOf(false) }
     fun createGeneratedLayer(kind: GeneratedLayerKind) { generatedLayerEditor = defaultGenerator(kind, brushColor, backgroundColor) to null }
     fun editGeneratedLayer(layerId: String) {
         selectedPage.layers.firstOrNull { it.id == layerId }?.generator?.let { generatedLayerEditor = it to layerId }
@@ -2308,6 +2309,10 @@ private fun EditorScreen(
                         createdId?.let { id -> view.clearSelection(); selectLayerTarget(id) }
                     }
                 }
+            }
+            canvasView?.takeIf { vectorLinesOpen }?.let { view ->
+                VectorLinesDialog(view, settings.language, brushColor, selectedPage.width, selectedPage.height, settings.vectorEraseWholeLine,
+                    { onSettingsChange(settings.copy(vectorEraseWholeLine = it)) }) { vectorLinesOpen = false }
             }
             if (overlays.screenColorPickOpen) ScreenColorPicker(settings.language,
                 onPick = { color -> overlays.screenColorPickOpen = false; changeBrushColor(color) },
@@ -3501,6 +3506,8 @@ private fun EditorScreen(
                 onEditAdjustment = { adjustmentDialogId = it },
                 onAddGenerated = ::createGeneratedLayer,
                 onEditGenerated = ::editGeneratedLayer,
+                onAddVector = { canvasView?.onVectorLayerCreationRequested?.invoke(activeLayerId) },
+                onEditVector = { vectorLinesOpen = true },
                 onConvertToFileObject = { layerId ->
                     fileObjectLayerId = layerId
                     fileObjectSaver.launch("${selectedPage.layers.firstOrNull { it.id == layerId }?.name ?: "Layer"}.png")

@@ -44,7 +44,7 @@ class GeneratedLayerWindowTest {
         compose.onNodeWithText("Create").performClick()
         val view = canvas()
         compose.onNodeWithContentDescription("Layers").performClick()
-        compose.onNodeWithContentDescription("Add fill, gradient or tone layer").performClick()
+        compose.onNodeWithContentDescription("Add vector, fill, gradient or tone layer").performClick()
         compose.onNodeWithText("Tone layer").performClick()
         compose.onNodeWithText("New tone layer").assertExists()
         compose.waitForIdle()

@@ -45,9 +45,9 @@ internal object GeneratedLayerEdits {
         }
     }
 
-    /** CSP Layer > Rasterize: the pixels stay, the settings go, and brushes may paint again. */
+    /** CSP Layer > Rasterize: the pixels stay, the settings or vector lines go, and every tool works again. */
     fun rasterize(page: InkPage, layerId: String): PageGeometryEdit {
-        require(page.layers.any { it.id == layerId && it.generator != null }) { "This layer is already a pixel layer" }
-        return PageGeometryEdit(page, page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(generator = null) else it }))
+        require(page.layers.any { it.id == layerId && (it.generator != null || it.vector != null) }) { "This layer is already a pixel layer" }
+        return PageGeometryEdit(page, page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(generator = null, vector = null) else it }))
     }
 }

@@ -75,7 +75,7 @@ internal object FileObjectConversion {
         val image = PageCropTransform.unproject(visible, page.crop)
         // The pixels being replaced stay reserved for undo.
         val reserved = assets.saveRasterTileSurface(assets.loadRasterTileSurface(raster), raster)
-        val after = page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(rasterTileSurface = null, rasterRotationQuarterTurns = 0) else it },
+        val after = page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(rasterTileSurface = null, rasterRotationQuarterTurns = 0, vector = it.vector?.let { VectorLayerContent() }) else it },
             elements = page.elements + image)
         return PreparedPageGeometry(PageGeometryEdit(page, after)) { assets.releaseRasterTileReservation(reserved) }
     }
