@@ -5,11 +5,12 @@ import app.inkloom.document.FileDocumentStore
 import app.inkloom.document.InkDocument
 import app.inkloom.document.InkPage
 
-/** Start each UI scenario with its own notebook checkpoints, recovery journal and folder index. */
+/** Start each UI scenario with its own notebook checkpoints, recovery journal, folder index and materials library. */
 internal fun resetNotebookTestLibrary(context: Context) {
     check(context.filesDir.resolve("documents").deleteRecursively())
     context.filesDir.resolve("journal.jsonl").let { check(!it.exists() || it.delete()) }
     context.filesDir.resolve("library.json").let { check(!it.exists() || it.delete()) }
+    context.filesDir.resolve("materials.json").let { check(!it.exists() || it.delete()) }
     seedTestNotebooks(context)
 }
 
