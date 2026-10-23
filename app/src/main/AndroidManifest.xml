@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- ED-34 screen colour from other apps: one frame, with the user's screen-capture consent. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
@@ -53,5 +54,11 @@
             android:noHistory="true"
             android:taskAffinity="app.inkloom.capture"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <!-- ONNX Runtime would start Microsoft usage telemetry (device ID, locale, time zone) and
+             load its 34 MB library at every launch; super resolution needs neither. -->
+        <provider
+            android:name="ai.onnxruntime.TelemetryInitializer"
+            android:authorities="${applicationId}.onnxruntime_telemetry_initializer"
+            tools:node="remove" />
     </application>
 </manifest>

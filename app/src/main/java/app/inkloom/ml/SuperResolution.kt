@@ -25,7 +25,8 @@ import kotlin.math.roundToInt
  * stays bounded; transparency is enlarged by the model too.
  */
 class SuperResolution(private val context: Context) : RasterEnlarger, AutoCloseable {
-    private val environment = OrtEnvironment.getEnvironment()
+    // The telemetry start-up provider is removed from the manifest; this also keeps the native side quiet.
+    private val environment = OrtEnvironment.getEnvironment().apply { setTelemetry(false) }
     private var loaded: OrtSession? = null
     private val session: OrtSession get() = loaded ?: run {
         val threads = Runtime.getRuntime().availableProcessors().coerceIn(1, 8)
