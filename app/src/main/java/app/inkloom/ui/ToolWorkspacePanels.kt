@@ -64,6 +64,7 @@ internal fun WorkspaceSubtoolsPanel(
     onCorrectLineMode: (CorrectLineMode) -> Unit,
     modifier: Modifier = Modifier,
     onRulerToolMode: (app.inkloom.document.RulerToolMode) -> Unit = {},
+    onFrameToolMode: (app.inkloom.document.FrameToolMode) -> Unit = {},
 ) {
     val language = settings.language
     val brushTool = tool in setOf(EditorTool.PEN, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)
@@ -78,6 +79,7 @@ internal fun WorkspaceSubtoolsPanel(
         EditorTool.GRADIENT -> settings.gradientKind.name to settings.gradientKind.ordinal
         EditorTool.CORRECT_LINE -> settings.correctLineMode.name to settings.correctLineMode.ordinal
         EditorTool.RULER -> settings.rulerToolMode.name to settings.rulerToolMode.ordinal
+        EditorTool.FRAME -> settings.frameToolMode.name to settings.frameToolMode.ordinal
         else -> selectedBrushId to variants.indexOfFirst { it.id == selectedBrushId }
     }
     RevealSelectedItem(listState, tool, selectedVariant.first, selectedVariant.second)
@@ -116,6 +118,10 @@ internal fun WorkspaceSubtoolsPanel(
             } else if (tool == EditorTool.RULER) {
                 items(app.inkloom.document.RulerToolMode.entries, key = { it.name }) { mode ->
                     WorkspaceSubtoolRow(rulerToolModeLabel(mode, settings), mode == settings.rulerToolMode) { onRulerToolMode(mode) }
+                }
+            } else if (tool == EditorTool.FRAME) {
+                items(app.inkloom.document.FrameToolMode.entries, key = { it.name }) { mode ->
+                    WorkspaceSubtoolRow(frameToolModeLabel(mode, settings), mode == settings.frameToolMode) { onFrameToolMode(mode) }
                 }
             } else {
                 item {
@@ -159,6 +165,12 @@ private fun gradientKindLabel(kind: GradientKind, settings: AppSettings): String
     GradientKind.DIAMOND -> settings.language.text("Diamond", "菱形")
 }
 
+internal fun frameToolModeLabel(mode: app.inkloom.document.FrameToolMode, settings: AppSettings): String = when (mode) {
+    app.inkloom.document.FrameToolMode.DIVIDE -> settings.language.text("Divide frame border", "分割分格")
+    app.inkloom.document.FrameToolMode.RECTANGLE -> settings.language.text("Rectangle frame", "矩形分格")
+    app.inkloom.document.FrameToolMode.SELECT -> settings.language.text("Select frames", "选择分格")
+}
+
 internal fun rulerToolModeLabel(mode: app.inkloom.document.RulerToolMode, settings: AppSettings): String = when (mode) {
     app.inkloom.document.RulerToolMode.EDIT -> settings.language.text("Edit rulers", "编辑尺规")
     app.inkloom.document.RulerToolMode.STRAIGHT -> settings.language.text("Linear ruler", "直线尺规")
@@ -194,6 +206,7 @@ internal fun WorkspaceToolPropertiesPanel(
     onShapeKind: (ShapeKind) -> Unit,
     modifier: Modifier = Modifier,
     onRulerCommand: (RulerCommand) -> Unit = {},
+    onFrameAction: (FrameAction) -> Unit = {},
 ) {
     val language = settings.language
     var organizerOpen by remember { mutableStateOf(false) }
@@ -342,6 +355,7 @@ internal fun WorkspaceToolPropertiesPanel(
                 EditorTool.LINK -> WorkspacePropertyHint(language.text("Tap the canvas to create an external or notebook link.", "点击画布创建外部链接或笔记内部链接。"))
                 EditorTool.IMAGE -> WorkspacePropertyHint(language.text("Tap the canvas to import an image as an editable object.", "点击画布导入图片并保持为可编辑对象。"))
                 EditorTool.RULER -> RulerToolProperties(settings, onSettings, onRulerCommand)
+                EditorTool.FRAME -> FrameToolProperties(settings, onSettings, onFrameAction)
             }
         }
     }
@@ -376,6 +390,7 @@ private fun ToolPaletteOrganizerDialog(settings: AppSettings, onSettings: (AppSe
         EditorTool.LIQUIFY -> language.text("Liquify", "液化")
         EditorTool.CORRECT_LINE -> language.text("Correct line", "线条修正")
         EditorTool.RULER -> language.text("Ruler", "尺规")
+        EditorTool.FRAME -> language.text("Frame border", "分格")
     }
     StudioDialog(
         onDismissRequest=onDismiss,
@@ -475,5 +490,34 @@ private fun RulerToolProperties(settings: AppSettings, onSettings: (AppSettings)
             StudioButton(language.text("Cancel", "取消"), { onCommand(RulerCommand.CANCEL) })
         }
         if (settings.rulerToolMode == app.inkloom.document.RulerToolMode.EDIT) StudioButton(language.text("Delete ruler", "删除尺规"), { onCommand(RulerCommand.DELETE) })
+    }
+}
+
+/** The frame border tool: gutters, how dividing treats folders, and the frame commands. */
+@Composable
+private fun FrameToolProperties(settings: AppSettings, onSettings: (AppSettings) -> Unit, onAction: (FrameAction) -> Unit) {
+    val language = settings.language
+    WorkspacePropertySlider(language.text("Left–right gutter", "左右间隔"), "${settings.frameHorizontalGutter.roundToInt()}",
+        settings.frameHorizontalGutter, 0f..300f, { onSettings(settings.copy(frameHorizontalGutter = it)) })
+    WorkspacePropertySlider(language.text("Top–bottom gutter", "上下间隔"), "${settings.frameVerticalGutter.roundToInt()}",
+        settings.frameVerticalGutter, 0f..300f, { onSettings(settings.copy(frameVerticalGutter = it)) })
+    Text(language.text("Dividing", "分割方式"), color = Ink, fontSize = 11.sp)
+    app.inkloom.document.FrameDivision.entries.forEach { division -> WorkspaceSubtoolRow(when (division) {
+        app.inkloom.document.FrameDivision.BORDER_ONLY -> language.text("Divide the frame border only", "仅分割分格框线")
+        app.inkloom.document.FrameDivision.FOLDERS_EMPTY -> language.text("New folders, empty", "分割文件夹（空白）")
+        app.inkloom.document.FrameDivision.FOLDERS_DUPLICATE -> language.text("New folders, copying layers", "分割文件夹并复制图层")
+    }, division == settings.frameDivision) { onSettings(settings.copy(frameDivision = division)) } }
+    WorkspacePropertyHint(when (settings.frameToolMode) {
+        app.inkloom.document.FrameToolMode.DIVIDE -> language.text("Drag across a frame to divide it.", "在分格上拖动以分割。")
+        app.inkloom.document.FrameToolMode.RECTANGLE -> language.text("Drag to add a rectangle frame to the folder.", "拖动为文件夹添加矩形分格。")
+        app.inkloom.document.FrameToolMode.SELECT -> language.text("Tap frames to select them.", "点按分格以选择。")
+    })
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        StudioButton(language.text("New folder…", "新建…"), { onAction(FrameAction.CREATE) })
+        StudioButton(language.text("Divide equally…", "等分…"), { onAction(FrameAction.DIVIDE_EQUALLY) })
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        StudioButton(language.text("Combine", "合并"), { onAction(FrameAction.COMBINE) })
+        StudioButton(language.text("Delete frames", "删除分格"), { onAction(FrameAction.DELETE_SELECTED) })
     }
 }

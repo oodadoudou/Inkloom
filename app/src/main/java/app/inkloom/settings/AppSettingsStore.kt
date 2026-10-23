@@ -153,6 +153,11 @@ data class AppSettings(
     /** CSP's Align/Distribute: text by its drawn pixels (off: its frame), vector layers by their paths (off: their pixels). */
     val alignToTextPixels: Boolean = true,
     val alignToVectorPaths: Boolean = true,
+    val frameToolMode: app.inkloom.document.FrameToolMode = app.inkloom.document.FrameToolMode.DIVIDE,
+    val frameDivision: app.inkloom.document.FrameDivision = app.inkloom.document.FrameDivision.BORDER_ONLY,
+    /** Gutters between divided frames, in page units: left–right and top–bottom. */
+    val frameHorizontalGutter: Float = 40f,
+    val frameVerticalGutter: Float = 60f,
     val nonDestructiveEraser: Boolean = false,
     val shortcutBindings: List<ShortcutBinding> = CspShortcutResolver.defaultBindings,
     val shortcutAxisBindings: List<AxisShortcutBinding> = emptyList(),
@@ -333,6 +338,10 @@ class AppSettingsStore(context: Context) {
             snapToRulers = preferences.getBoolean("snapToRulers", true),
             alignToTextPixels = preferences.getBoolean("alignToTextPixels", true),
             alignToVectorPaths = preferences.getBoolean("alignToVectorPaths", true),
+            frameToolMode = enumValue(preferences.getString("frameToolMode", null), app.inkloom.document.FrameToolMode.DIVIDE),
+            frameDivision = enumValue(preferences.getString("frameDivision", null), app.inkloom.document.FrameDivision.BORDER_ONLY),
+            frameHorizontalGutter = preferences.getFloat("frameHorizontalGutter", 40f).coerceIn(0f, 500f),
+            frameVerticalGutter = preferences.getFloat("frameVerticalGutter", 60f).coerceIn(0f, 500f),
             nonDestructiveEraser = preferences.getBoolean("nonDestructiveEraser", false),
             shortcutBindings = ShortcutBindingCodec.decode(preferences.getString("shortcutBindings", null)),
             shortcutAxisBindings = ToolboxMotionBindingCodec.decodeAxes(preferences.getString("shortcutAxisBindings", null)),
@@ -490,6 +499,10 @@ class AppSettingsStore(context: Context) {
             .putBoolean("snapToRulers", persisted.snapToRulers)
             .putBoolean("alignToTextPixels", persisted.alignToTextPixels)
             .putBoolean("alignToVectorPaths", persisted.alignToVectorPaths)
+            .putString("frameToolMode", persisted.frameToolMode.name)
+            .putString("frameDivision", persisted.frameDivision.name)
+            .putFloat("frameHorizontalGutter", persisted.frameHorizontalGutter.coerceIn(0f, 500f))
+            .putFloat("frameVerticalGutter", persisted.frameVerticalGutter.coerceIn(0f, 500f))
             .putBoolean("nonDestructiveEraser", persisted.nonDestructiveEraser)
             .putString("shortcutBindings", ShortcutBindingCodec.encode(persisted.shortcutBindings))
             .putString("shortcutAxisBindings", ToolboxMotionBindingCodec.encodeAxes(persisted.shortcutAxisBindings))

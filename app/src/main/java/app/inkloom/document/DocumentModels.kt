@@ -231,6 +231,10 @@ data class InkLayer(
     val vector: VectorLayerContent? = null,
     /** CSP rulers kept on this layer, with their display range and links. */
     val rulers: LayerRulers? = null,
+    /** Folders only: a frame border folder's frames; the folder's mask is rendered from them. */
+    val frame: FrameBorder? = null,
+    /** The locked layer holding the frame lines of the frame border folder with this ID. */
+    val frameBorderOf: String? = null,
 )
 
 /** Where a file object's image comes from, and the state of that file when it was last read. */

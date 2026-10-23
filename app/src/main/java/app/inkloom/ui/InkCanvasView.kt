@@ -1831,6 +1831,7 @@ class InkCanvasView(context: Context) : View(context) {
         drawPerspectiveGuide(canvas)
         drawRulerGuide(canvas)
         rulerTool.draw(canvas, width.toFloat(), height.toFloat(), rulerScale(), applicableRulers, activeLayerId, tool == EditorTool.RULER, layerPerspective)
+        if (tool == EditorTool.FRAME) frameTool.draw(canvas, width.toFloat(), height.toFloat(), rulerScale())
         drawLaserTrail(canvas, SystemClock.uptimeMillis())
         drawFillPreview(canvas)
         drawGradientPreview(canvas)
@@ -2495,7 +2496,7 @@ class InkCanvasView(context: Context) : View(context) {
             layerPickContact = false
             return false
         }
-        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE, EditorTool.RULER)) return false
+        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE, EditorTool.RULER, EditorTool.FRAME)) return false
         val pointerIndex = event.stylusPointerIndex(activeStylusPointerId).takeIf { it >= 0 }
             ?: event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val eventToolType = event.getToolType(pointerIndex)
@@ -2857,6 +2858,10 @@ class InkCanvasView(context: Context) : View(context) {
                     parent?.requestDisallowInterceptTouchEvent(false)
                     return true
                 }
+                if (activeTool == EditorTool.FRAME) {
+                    frameTool.down(inputPoint.first, inputPoint.second)
+                    return true
+                }
                 if (activeTool == EditorTool.RULER) {
                     if (rejectRulerEdit()) { activeTool = null; parent?.requestDisallowInterceptTouchEvent(false); return true }
                     rulerTool.down(inputPoint.first, inputPoint.second, width.toFloat(), height.toFloat(), rulerScale())
@@ -2964,6 +2969,7 @@ class InkCanvasView(context: Context) : View(context) {
                     rulerTool.move(inputPoint.first, inputPoint.second, width.toFloat(), height.toFloat())
                     return true
                 }
+                if (activeTool == EditorTool.FRAME) { frameTool.move(inputPoint.first, inputPoint.second); return true }
                 if (layerMaskGesture != null) {
                     appendLayerMaskGesture(event, pointerIndex, normalizedX, normalizedY)
                     return true
@@ -3040,6 +3046,12 @@ class InkCanvasView(context: Context) : View(context) {
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (activeTool == EditorTool.FRAME) {
+                    if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) frameTool.cancel()
+                    else frameTool.up(inputPoint.first, inputPoint.second, width.toFloat(), height.toFloat(), rulerScale())
+                    activeTool = null
+                    return true
+                }
                 if (activeTool == EditorTool.RULER) {
                     if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) rulerTool.cancel()
                     else rulerTool.up(inputPoint.first, inputPoint.second, width.toFloat(), height.toFloat(), rulerScale(), event.eventTime)
@@ -5859,6 +5871,17 @@ class InkCanvasView(context: Context) : View(context) {
         recordRasterToolTransaction(activeLayerId, surface, record, Rect(bounds.left, bounds.top, bounds.right, bounds.bottom))
         return true
     }
+
+    internal val frameTool = FrameToolController(resources.displayMetrics.density).apply {
+        onChanged = { invalidate() }
+        onRequest = { folderId, request -> onFrameEdit(folderId, request) }
+        onRejected = {
+            onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+                "请先选择漫画分格文件夹或其中的图层" else "Select a frame border folder or a layer inside it first.")
+        }
+    }
+    /** The host turns frame tool gestures into undoable page edits. */
+    var onFrameEdit: (String, FrameEditRequest) -> Unit = { _, _ -> }
 
     private fun rulerScale() = viewportScale.coerceAtLeast(ViewportTransform.MINIMUM_SCALE)
 

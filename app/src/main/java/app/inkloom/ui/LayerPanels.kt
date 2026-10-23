@@ -205,6 +205,7 @@ internal fun LayerPanel(
     onAddVector: () -> Unit = {},
     onEditVector: (String) -> Unit = {},
     onRulerAction: (String, LayerRulerAction) -> Unit = { _, _ -> },
+    onFrameAction: (String?, FrameAction) -> Unit = { _, _ -> },
     onRasterize: (String) -> Unit = {},
     onConvertLayer: (String) -> Unit = {},
     onConvertToFileObject: (String) -> Unit = {},
@@ -260,6 +261,7 @@ internal fun LayerPanel(
             onAddVector = onAddVector,
             onEditVector = onEditVector,
             onRulerAction = onRulerAction,
+            onFrameAction = onFrameAction,
             onRasterize = onRasterize,
             onConvertLayer = onConvertLayer,
             onConvertToFileObject = onConvertToFileObject,
@@ -331,6 +333,7 @@ private fun PaintingLayerPanel(
     onAddVector: () -> Unit = {},
     onEditVector: (String) -> Unit = {},
     onRulerAction: (String, LayerRulerAction) -> Unit = { _, _ -> },
+    onFrameAction: (String?, FrameAction) -> Unit = { _, _ -> },
     onRasterize: (String) -> Unit = {},
     onConvertLayer: (String) -> Unit = {},
     onConvertToFileObject: (String) -> Unit = {},
@@ -484,7 +487,7 @@ private fun PaintingLayerPanel(
                 onClip = { onToggleClippedToBelow(activeLayerId) }, onReference = { onToggleReference(activeLayerId) },
                 onDraft = { onToggleDraft(activeLayerId) }, onMask = { onMaskCommand(activeLayerId, it) },
                 onDuplicate = { onDuplicate(activeLayerId) }, onMerge = { onMergeDown(activeLayerId) },
-                onDelete = { onDelete(activeLayerId) }, onGenerated = onAddGenerated, onVector = onAddVector) }
+                onDelete = { onDelete(activeLayerId) }, onGenerated = onAddGenerated, onVector = onAddVector, onFrameFolder = { onFrameAction(null, FrameAction.CREATE) }) }
             if (settings.layerShowCommands && !settings.layerCommandsAtBottom) commands()
             HorizontalDivider(color = OutlineSoft)
             if (searchOpen) StudioOutlinedTextField(
@@ -534,6 +537,7 @@ private fun PaintingLayerPanel(
                     var maskMenu by remember { mutableStateOf(false) }
                     var contentsMenu by remember { mutableStateOf(false) }
                     var rulerMenu by remember { mutableStateOf(false) }
+                    var frameMenu by remember { mutableStateOf(false) }
                     var paletteColorMenu by remember { mutableStateOf(false) }
                     DisposableEffect(layer.id) { onDispose { drag.rows.remove(layer.id) } }
                     val folderTargets = LayerHierarchy.availableFolders(page.layers, layer.id)
@@ -653,6 +657,15 @@ private fun PaintingLayerPanel(
                         val layerActionsDescription = "${tr("Layer actions", "图层操作")} ${layer.name}"
                         Box(Modifier.semantics { contentDescription = layerActionsDescription }) {
                             IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), tint = rowInk) }
+                            DropdownMenu(frameMenu, { frameMenu = false }) {
+                                listOf(FrameAction.DIVIDE_EQUALLY to tr("Divide frame border equally…", "等分分格…"),
+                                    FrameAction.COMBINE to tr("Combine selected frames", "合并所选分格"),
+                                    FrameAction.DELETE_SELECTED to tr("Delete selected frames", "删除所选分格"),
+                                    FrameAction.SETTINGS to tr("Frame border settings…", "分格框线设置…"),
+                                    FrameAction.REMOVE_BORDER to tr("Delete frame border", "删除分格框线")).forEach { (action, label) ->
+                                    StudioMenuItem(text = { Text(label) }, onClick = { frameMenu = false; onFrameAction(layer.id, action) })
+                                }
+                            }
                             DropdownMenu(rulerMenu, { rulerMenu = false }) {
                                 LayerRulerMenuItems(layer, LocalUiLanguage.current) { action -> rulerMenu = false; onRulerAction(layer.id, action) }
                             }
@@ -704,6 +717,8 @@ private fun PaintingLayerPanel(
                                 StudioMenuItem(text = { Text(if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) }, onClick = { menu = false; onLock(layer.id) })
                                 if (layer.role == LayerRole.ADJUSTMENT) StudioMenuItem(text = { Text(tr("Edit adjustment", "编辑调整参数")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditAdjustment(layer.id) })
                                 if (layer.generator != null) StudioMenuItem(text = { Text(tr("Edit layer settings", "编辑图层设置")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onEditGenerated(layer.id) })
+                                if (layer.frame != null) StudioMenuItem(text = { Text(tr("Frames", "分格")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) },
+                                    onClick = { menu = false; frameMenu = true })
                                 if (layer.role != LayerRole.BACKGROUND) StudioMenuItem(text = { Text(tr("Ruler", "尺规")) }, trailingIcon = { Icon(Icons.Outlined.ChevronRight, null) },
                                     onClick = { menu = false; rulerMenu = true })
                                 if (layer.vector != null) StudioMenuItem(text = { Text(tr("Vector lines…", "矢量线条…")) }, enabled = !LayerHierarchy.effectiveLocked(page.layers, layer), onClick = { menu = false; onSelect(layer.id); onEditVector(layer.id) })

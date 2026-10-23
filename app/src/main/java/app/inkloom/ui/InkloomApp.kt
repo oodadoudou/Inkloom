@@ -1377,6 +1377,7 @@ private fun EditorScreen(
     var generatedLayerEditor by remember(document.id, selectedPage.id) { mutableStateOf<Pair<app.inkloom.document.LayerGenerator, String?>?>(null) }
     var vectorLinesOpen by remember(document.id, selectedPage.id) { mutableStateOf(false) }
     var rulerDialog by remember(document.id, selectedPage.id) { mutableStateOf<Pair<LayerRulerAction, String>?>(null) }
+    var frameAction by remember(document.id, selectedPage.id) { mutableStateOf<FrameAction?>(null) }
     fun createGeneratedLayer(kind: GeneratedLayerKind) { generatedLayerEditor = defaultGenerator(kind, brushColor, backgroundColor) to null }
     fun editGeneratedLayer(layerId: String) {
         selectedPage.layers.firstOrNull { it.id == layerId }?.generator?.let { generatedLayerEditor = it to layerId }
@@ -2062,6 +2063,7 @@ private fun EditorScreen(
                             Triple(EditorTool.LIQUIFY, Icons.Outlined.Waves, tr("Liquify", "液化")),
                             Triple(EditorTool.CORRECT_LINE, Icons.Outlined.AutoFixHigh, tr("Correct line", "线条修正")),
                             Triple(EditorTool.RULER, Icons.Outlined.Straighten, tr("Ruler", "尺规")),
+                            Triple(EditorTool.FRAME, Icons.Outlined.ViewQuilt, tr("Frame border", "分格")),
                             Triple(EditorTool.SHAPE, Icons.Outlined.Category, tr("Shape", "形状")),
                             Triple(EditorTool.TEXT, Icons.Outlined.Title, tr("Text", "文字")),
                             Triple(EditorTool.NOTE, Icons.Outlined.StickyNote2, tr("Note", "便笺")),
@@ -2315,6 +2317,13 @@ private fun EditorScreen(
                         createdId?.let { id -> view.clearSelection(); selectLayerTarget(id) }
                     }
                 }
+            }
+            canvasView?.let { view ->
+                FrameBorderHost(view, selectedPage, activeLayerId, settings, maskAssets, brushColor, frameAction, { frameAction = null },
+                    runEdit = { prepare, onApplied ->
+                        applyPreparedPageEdit(appearanceScope, view, { currentAppearancePage }, prepare,
+                            { edit, undo -> onApplyPageGeometry(document.id, edit.before.id, edit, undo) }, { modes.canvasSizeBusy = it }) { onApplied(currentAppearancePage) }
+                    }, selectLayer = ::selectLayerTarget)
             }
             rulerDialog?.let { (action, layerId) ->
                 val view = canvasView; val layer = selectedPage.layers.firstOrNull { it.id == layerId }
@@ -3528,6 +3537,7 @@ private fun EditorScreen(
                 onEditGenerated = ::editGeneratedLayer,
                 onAddVector = { canvasView?.onVectorLayerCreationRequested?.invoke(activeLayerId) },
                 onEditVector = { vectorLinesOpen = true },
+                onFrameAction = { layerId, action -> layerId?.let(::selectLayerTarget); frameAction = action },
                 onRulerAction = { layerId, action ->
                     val view = canvasView
                     val layer = selectedPage.layers.firstOrNull { it.id == layerId }
@@ -3652,6 +3662,7 @@ private fun EditorScreen(
                         onGradientKind = { onSettingsChange(settings.copy(gradientKind = it)) },
                         onCorrectLineMode = { onSettingsChange(settings.copy(correctLineMode = it)) },
                         onRulerToolMode = { canvasView?.rulerCommand(RulerCommand.CANCEL); onSettingsChange(settings.copy(rulerToolMode = it)) },
+                        onFrameToolMode = { onSettingsChange(settings.copy(frameToolMode = it)) },
                     )
                     EditorPanel.PROPERTIES -> WorkspaceToolPropertiesPanel(
                         tool = tool, brushSize = brushSize, brushOpacity = brushOpacity,
@@ -3659,6 +3670,7 @@ private fun EditorScreen(
                         onBrushOpacity = ::changeCurrentBrushOpacity, onSettings = onSettingsChange,
                         shapeKind = insertShape, onShapeKind = { insertShape = it },
                         onRulerCommand = { canvasView?.rulerCommand(it) },
+                        onFrameAction = { frameAction = it },
                     )
                     else -> BoxWithConstraints(Modifier.fillMaxSize().padding(6.dp)) {
                     ColorStudioPanel(

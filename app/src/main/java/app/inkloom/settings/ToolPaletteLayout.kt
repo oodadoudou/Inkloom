@@ -13,7 +13,7 @@ object ToolPaletteLayout {
         EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER,
         null,
         EditorTool.SELECT, EditorTool.EYEDROPPER, EditorTool.FILL, EditorTool.GRADIENT,
-        EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE, EditorTool.RULER,
+        EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE, EditorTool.RULER, EditorTool.FRAME,
         null,
         EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK,
         EditorTool.IMAGE, EditorTool.LASER,

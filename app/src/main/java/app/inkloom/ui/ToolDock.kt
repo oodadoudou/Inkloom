@@ -532,6 +532,7 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
                 Triple(EditorTool.LIQUIFY, Icons.Outlined.Waves, tr("Liquify", "液化")),
                 Triple(EditorTool.CORRECT_LINE, Icons.Outlined.AutoFixHigh, tr("Correct line", "线条修正")),
                 Triple(EditorTool.RULER, Icons.Outlined.Straighten, tr("Ruler", "尺规")),
+                Triple(EditorTool.FRAME, Icons.Outlined.ViewQuilt, tr("Frame border", "分格")),
                 Triple(EditorTool.SHAPE, Icons.Outlined.Category, tr("Figure", "图形")),
                 Triple(EditorTool.TEXT, Icons.Outlined.Title, tr("Text", "文字")),
                 Triple(EditorTool.NOTE, Icons.Outlined.StickyNote2, tr("Note", "便笺")),
@@ -792,6 +793,7 @@ private fun ToolPaletteButton(value: EditorTool, selected: EditorTool, brushes: 
         EditorTool.LIQUIFY -> Icons.Outlined.Waves
         EditorTool.CORRECT_LINE -> Icons.Outlined.AutoFixHigh
         EditorTool.RULER -> Icons.Outlined.Straighten
+        EditorTool.FRAME -> Icons.Outlined.ViewQuilt
         EditorTool.PEN, EditorTool.ERASER -> error("handled above")
     }
     val label = when(value) {
@@ -810,6 +812,7 @@ private fun ToolPaletteButton(value: EditorTool, selected: EditorTool, brushes: 
         EditorTool.LIQUIFY -> tr("Liquify", "液化")
         EditorTool.CORRECT_LINE -> tr("Correct line", "线条修正")
         EditorTool.RULER -> tr("Ruler", "尺规")
+        EditorTool.FRAME -> tr("Frame border", "分格")
         EditorTool.PEN, EditorTool.ERASER -> ""
     }
     ToolButton(value, icon, label, selected, onTool)

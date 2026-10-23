@@ -329,7 +329,11 @@ enum class RulerCommand { FINISH, CANCEL, DELETE }
 internal fun bindCanvasRulers(view: InkCanvasView, page: app.inkloom.document.InkPage, activeLayerId: String,
                               settings: app.inkloom.settings.AppSettings, save: (String, LayerRulers?) -> Unit) {
     val projected = page.layers.map { layer -> layer.rulers?.let { layer.copy(rulers = RulerCrop.project(it, page.crop)) } ?: layer }
-    view.setRulers(app.inkloom.document.RulerScope.applicable(projected, activeLayerId),
+    // A frame folder set to act as a ruler gives its layers the frame outlines.
+    val frameRulers = activeFrameFolder(page.layers, activeLayerId)?.takeIf { it.frame?.useAsRuler == true && it.id != activeLayerId }?.let { folder ->
+        app.inkloom.document.FrameGeometry.asRulers(folder.frame!!).map { app.inkloom.document.ApplicableRuler(folder.id, it) }
+    }.orEmpty()
+    view.setRulers(app.inkloom.document.RulerScope.applicable(projected, activeLayerId) + frameRulers,
         page.layers.mapNotNull { layer -> layer.rulers?.let { layer.id to it } }.toMap(), page.crop,
         app.inkloom.document.RulerScope.perspective(projected, activeLayerId))
     view.snapToRulers = settings.snapToRulers
