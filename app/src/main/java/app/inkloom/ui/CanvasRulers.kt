@@ -336,4 +336,6 @@ internal fun bindCanvasRulers(view: InkCanvasView, page: app.inkloom.document.In
     if (view.rulerTool.mode != settings.rulerToolMode) { view.rulerTool.cancelDraft(); view.rulerTool.mode = settings.rulerToolMode }
     view.rulerTool.polygonSides = settings.rulerPolygonSides
     view.onSaveLayerRulers = save
+    view.alignToTextPixels = settings.alignToTextPixels
+    view.alignToVectorPaths = settings.alignToVectorPaths
 }

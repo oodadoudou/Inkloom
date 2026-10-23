@@ -150,6 +150,9 @@ data class AppSettings(
     val rulerPolygonSides: Int = 6,
     /** CSP's Snap to ruler: strokes starting near a ruler follow it. */
     val snapToRulers: Boolean = true,
+    /** CSP's Align/Distribute: text by its drawn pixels (off: its frame), vector layers by their paths (off: their pixels). */
+    val alignToTextPixels: Boolean = true,
+    val alignToVectorPaths: Boolean = true,
     val nonDestructiveEraser: Boolean = false,
     val shortcutBindings: List<ShortcutBinding> = CspShortcutResolver.defaultBindings,
     val shortcutAxisBindings: List<AxisShortcutBinding> = emptyList(),
@@ -328,6 +331,8 @@ class AppSettingsStore(context: Context) {
             rulerToolMode = enumValue(preferences.getString("rulerToolMode", null), RulerToolMode.STRAIGHT),
             rulerPolygonSides = preferences.getInt("rulerPolygonSides", 6).coerceIn(3, 32),
             snapToRulers = preferences.getBoolean("snapToRulers", true),
+            alignToTextPixels = preferences.getBoolean("alignToTextPixels", true),
+            alignToVectorPaths = preferences.getBoolean("alignToVectorPaths", true),
             nonDestructiveEraser = preferences.getBoolean("nonDestructiveEraser", false),
             shortcutBindings = ShortcutBindingCodec.decode(preferences.getString("shortcutBindings", null)),
             shortcutAxisBindings = ToolboxMotionBindingCodec.decodeAxes(preferences.getString("shortcutAxisBindings", null)),
@@ -483,6 +488,8 @@ class AppSettingsStore(context: Context) {
             .putString("rulerToolMode", persisted.rulerToolMode.name)
             .putInt("rulerPolygonSides", persisted.rulerPolygonSides.coerceIn(3, 32))
             .putBoolean("snapToRulers", persisted.snapToRulers)
+            .putBoolean("alignToTextPixels", persisted.alignToTextPixels)
+            .putBoolean("alignToVectorPaths", persisted.alignToVectorPaths)
             .putBoolean("nonDestructiveEraser", persisted.nonDestructiveEraser)
             .putString("shortcutBindings", ShortcutBindingCodec.encode(persisted.shortcutBindings))
             .putString("shortcutAxisBindings", ToolboxMotionBindingCodec.encodeAxes(persisted.shortcutAxisBindings))

@@ -96,6 +96,33 @@ class VectorLayerWindowTest {
         compose.waitUntil(10_000) { model().currentPage()?.layers?.first { it.id == layer.id }?.vector == null }
     }
 
+    @Test fun selectionTransformsMoveTheLines() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        val view = canvas()
+        compose.onNodeWithContentDescription("Layers").performClick()
+        compose.onNodeWithContentDescription("Add vector, fill, gradient or tone layer").performClick()
+        compose.onNodeWithText("Vector layer").performClick()
+        compose.waitUntil(10_000) { model().currentPage()?.layers?.any { it.vector != null } == true }
+        val layer = model().currentPage()!!.layers.first { it.vector != null }
+        compose.waitUntil(5_000) { view.activeLayerId == layer.id }
+        compose.waitForIdle(); SystemClock.sleep(300)
+        val bounds = pageScreenBounds(view)
+        fun at(x: Float, y: Float) = Offset(bounds.left + bounds.width() * x, bounds.top + bounds.height() * y)
+        stroke(at(.1f, .4f), at(.3f, .4f))
+        awaitLines(layer.id, 1)
+        val before = lines(layer.id).single()
+        instrumentation.runOnMainSync { view.selectAllEditableStrokes(); view.flipSelection(horizontal = true) }
+        compose.waitUntil(10_000) { lines(layer.id).singleOrNull()?.let { it.x(0) > .5f } == true }
+        val flipped = lines(layer.id).single()
+        assertEquals("the line is mirrored across the page", 1f - before.x(0), flipped.x(0), .003f)
+        assertEquals(before.diameter, flipped.diameter, 1e-3f)
+        assertReplayMatches(view)
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        compose.waitUntil(10_000) { lines(layer.id).singleOrNull()?.let { it.x(0) < .5f } == true }
+        assertReplayMatches(view)
+    }
+
     private fun lines(layerId: String) = model().currentPage()?.layers?.first { it.id == layerId }?.vector?.strokes.orEmpty()
 
     private fun awaitLines(layerId: String, count: Int) {

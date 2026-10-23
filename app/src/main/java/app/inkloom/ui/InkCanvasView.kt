@@ -5343,8 +5343,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         val transformLayerContent = editingMask == null || layerMasks[editingMask]?.linked == true
         val layerIds = requestedIds.filterTo(linkedSetOf()) {
-            // Vector layers are left in place: moving their pixels alone would leave the lines behind.
-            transformLayerContent && it !in protectedLayerIds && rasterTileSurfaceFor(it) != null && vectorContent(it) == null
+            transformLayerContent && it !in protectedLayerIds && rasterTileSurfaceFor(it) != null
         }
         val geometry = rasterTileSurfaceFor(activeLayerId)
             ?: layerIds.firstNotNullOfOrNull(::rasterTileSurfaceFor)
@@ -5371,6 +5370,13 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                 }
                 rasterSelectionTransformSessions[layerId] = RasterSelectionTransformSession(target, selection)
+                // Vector lines touching the selection move as lines; their pixels are rebuilt on finish.
+                vectorContent(layerId)?.let { content ->
+                    val frame = vectorFrame(target)
+                    vectorTransformSources[layerId] = content to app.inkloom.document.VectorGeometry.select(content, frame, containedOnly = false) { x, y ->
+                        selectedAt(selection, frame, x, y)
+                    }
+                }
             }
             maskIds.forEach { layerId ->
                 layerMaskSurfaces[layerId]?.let { layerMaskTransformOriginals[layerId] = it }
@@ -5380,6 +5386,7 @@ class InkCanvasView(context: Context) : View(context) {
             rasterSelectionTransformPreviewMask = selection
             true
         }.getOrElse {
+            vectorTransformSources.clear()
             rasterSelectionTransformSessions.values.forEach(RasterSelectionTransformSession::cancel)
             rasterSelectionTransformSessions.clear()
             mixedSelectionDrafts.values.forEach(MixedSelectionDraft::close)
@@ -5480,9 +5487,34 @@ class InkCanvasView(context: Context) : View(context) {
         val activeResult = results[activeLayerId]
         rebuildSelectionDerivedState()
         val affine = finalTransform as? SelectionAffineTransform
+        val vectorSources = vectorTransformSources.toMap()
+        vectorTransformSources.clear()
+        // Vector layers: the lines are transformed and their pixels rebuilt from them.
+        val vectorEdits = vectorSources.mapNotNull { (layerId, source) ->
+            val result = results[layerId] ?: return@mapNotNull null
+            val surface = rasterTileSurfaceFor(layerId) ?: return@mapNotNull null
+            val offset = selectionLayerOffsets[layerId] ?: (0f to 0f)
+            val transform = affine?.copy(translateX = affine.translateX + offset.first, translateY = affine.translateY + offset.second) ?: finalTransform
+            val (before, selected) = source
+            val frame = vectorFrame(surface)
+            val after = TransformedVectors.apply(before, selected, frame, transform)
+            var region = result.dirtyBounds
+            (before.strokes + after.strokes).filter { it.id in selected }.forEach { stroke ->
+                app.inkloom.document.VectorGeometry.bounds(stroke, frame)?.let { region = region.union(PixelRect(it[0], it[1], it[2], it[3])) }
+            }
+            val fixup = app.inkloom.engine.v5.tools.VectorLayerRenderer.rerender(surface, after, frame, region)
+            layerId to VectorTransformEdit(before, after, fixup, region)
+        }.toMap()
         fun publish(layerId: String, useAfter: Boolean) {
             val result = results[layerId] ?: return
             val surface = rasterTileSurfaceFor(layerId) ?: return
+            val vectorEdit = vectorEdits[layerId]
+            if (vectorEdit != null) {
+                val content = if (useAfter) vectorEdit.after else vectorEdit.before
+                vectorExpected[layerId] = content
+                onRasterLayerCommitted?.invoke(RasterLayerCommit(layerId, surface.snapshot(), vectorEdit.region, vector = content))
+                return
+            }
             val draft = mixed[layerId]
             val offset = selectionLayerOffsets[layerId] ?: (0f to 0f)
             val layerAffine = affine?.copy(translateX = affine.translateX + offset.first, translateY = affine.translateY + offset.second)
@@ -5503,6 +5535,7 @@ class InkCanvasView(context: Context) : View(context) {
         recordExternalEdit(
             undo = {
                 rulerMoves.forEach { (layerId, before, _) -> changeLayerRulers(layerId) { before } }
+                vectorEdits.forEach { (layerId, edit) -> edit.fixup?.let { rasterTileSurfaceFor(layerId)?.apply(it, PixelTileSurface.HistoryDirection.UNDO) } }
                 results.forEach { (layerId, result) -> result?.transactionRecord?.let { record ->
                     rasterTileSurfaceFor(layerId)?.apply(record, PixelTileSurface.HistoryDirection.UNDO)
                 } }
@@ -5517,6 +5550,7 @@ class InkCanvasView(context: Context) : View(context) {
                 results.forEach { (layerId, result) -> result?.transactionRecord?.let { record ->
                     rasterTileSurfaceFor(layerId)?.apply(record, PixelTileSurface.HistoryDirection.REDO)
                 } }
+                vectorEdits.forEach { (layerId, edit) -> edit.fixup?.let { rasterTileSurfaceFor(layerId)?.apply(it, PixelTileSurface.HistoryDirection.REDO) } }
                 transformedSelection?.let { selection -> documentSelectionState?.replaceFrom(selection)
                     ?: replaceSelectionAlphaMask(SparseAlphaMask.fromSnapshot(selection), resetFeather = false) }
                 rebuildSelectionDerivedState()
@@ -5525,6 +5559,7 @@ class InkCanvasView(context: Context) : View(context) {
             },
             dispose = {
                 results.values.filterNotNull().forEach { it.transactionRecord?.close() }
+                vectorEdits.values.forEach { it.fixup?.close() }
                 mixed.values.forEach(MixedSelectionDraft::close)
                 maskHistories.forEach { it.dispose() }
                 selectionLayerOffsets.clear()
@@ -5555,6 +5590,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun cancelRasterSelectionTransform() {
+        vectorTransformSources.clear()
         if (rasterSelectionTransformSessions.isEmpty() && mixedSelectionDrafts.isEmpty() && layerMaskTransformOriginals.isEmpty()) return
         rasterSelectionTransformSessions.values.forEach(RasterSelectionTransformSession::cancel)
         rasterSelectionTransformSessions.clear()
@@ -5848,6 +5884,13 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private var documentVectorLayers: Map<String, app.inkloom.document.VectorLayerContent> = emptyMap()
+    /** Vector layers in the current selection transform: their lines and the lines being moved. */
+    private val vectorTransformSources = mutableMapOf<String, Pair<app.inkloom.document.VectorLayerContent, Set<String>>>()
+    private class VectorTransformEdit(val before: app.inkloom.document.VectorLayerContent, val after: app.inkloom.document.VectorLayerContent,
+                                      val fixup: app.inkloom.engine.v5.surface.PixelTileTransactionRecord?, val region: PixelRect)
+    /** TF-32: align text by its drawn pixels (or its frame), and vector layers by their paths (or their pixels). */
+    var alignToTextPixels = true
+    var alignToVectorPaths = true
     /** Lines committed here whose save has not reached the document yet. */
     private val vectorExpected = mutableMapOf<String, app.inkloom.document.VectorLayerContent>()
     private var vectorPageCrop = app.inkloom.document.PageCrop()
@@ -7505,7 +7548,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun validateRasterSelectionTransform(): Boolean {
-        if (rejectLayerContentEdit()) return false
+        if (rejectLayerContentEdit(allowVector = true)) return false
         val surface = rasterTileSurfaceFor(activeLayerId)
         val mask = editingLayerMaskId?.let(layerMaskSurfaces::get)
         val rejection = when {
@@ -7622,10 +7665,17 @@ class InkCanvasView(context: Context) : View(context) {
                 } ?: content
             }
             ?.takeUnless(PixelRect::isEmpty)
-        val structured = mixedSelectionDrafts[layerId]?.source?.bitmap
+        val draftSource = mixedSelectionDrafts[layerId]?.source
+        val structured = if (!alignToTextPixels && draftSource?.elements?.any { it is PageElement.Text } == true)
+            TransformedVectors.frameBounds(draftSource.elements, surface.logicalWidth / pageModelWidth.coerceAtLeast(1f),
+                surface.logicalHeight / pageModelHeight.coerceAtLeast(1f))
+        else draftSource?.bitmap
             ?.takeUnless(Bitmap::isRecycled)
             ?.let(NativeRasterOps::alphaBounds)
             ?.let { PixelRect(it.left, it.top, it.right, it.bottom) }
+        if (alignToVectorPaths) vectorTransformSources[layerId]?.let { (content, selected) ->
+            TransformedVectors.pathBounds(content, selected, vectorFrame(surface))?.let { paths -> return structured?.union(paths) ?: paths }
+        }
         return when {
             selectedPixels == null -> structured
             structured == null -> selectedPixels

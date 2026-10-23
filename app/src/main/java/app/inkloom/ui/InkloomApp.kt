@@ -3444,6 +3444,8 @@ private fun EditorScreen(
                         onNudge = { x,y -> canvasView?.nudgeSelection(x,y) },
                         onFinish = { canvasView?.finishSelectionTransform(apply = it) },
                         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 54.dp).zIndex(4f),
+                        alignToTextPixels = settings.alignToTextPixels, alignToVectorPaths = settings.alignToVectorPaths,
+                        onAlignBounds = { text, vector -> onSettingsChange(settings.copy(alignToTextPixels = text, alignToVectorPaths = vector)) },
                     )
                 }
                 imageCanvasTransform?.let { session ->

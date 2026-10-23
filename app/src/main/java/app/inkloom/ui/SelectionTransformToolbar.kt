@@ -52,6 +52,9 @@ internal fun SelectionTransformToolbar(
     onNudge: (Float, Float) -> Unit,
     onFinish: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    alignToTextPixels: Boolean = true,
+    alignToVectorPaths: Boolean = true,
+    onAlignBounds: (Boolean, Boolean) -> Unit = { _, _ -> },
 ) {
     fun t(en: String, zh: String) = language.text(en, zh)
     var dimensionsOpen by remember { mutableStateOf(false) }
@@ -123,6 +126,13 @@ internal fun SelectionTransformToolbar(
                     StudioMenuItem(text = { Text(t("Alignment guides reference", "参考辅助线")) },
                         leadingIcon = { StudioRadioButton(state.alignmentReference == SelectionAlignmentReference.GUIDES, null) },
                         onClick = { onReference(SelectionAlignmentReference.GUIDES) })
+                    HorizontalDivider()
+                    StudioMenuItem(text = { Text(t("Align to text pixels", "按文字像素对齐")) },
+                        leadingIcon = { StudioCheckbox(alignToTextPixels, null) },
+                        onClick = { onAlignBounds(!alignToTextPixels, alignToVectorPaths) })
+                    StudioMenuItem(text = { Text(t("Align to vector paths", "按矢量路径对齐")) },
+                        leadingIcon = { StudioCheckbox(alignToVectorPaths, null) },
+                        onClick = { onAlignBounds(alignToTextPixels, !alignToVectorPaths) })
                     HorizontalDivider()
                     SelectionAlignment.entries.forEach { alignment ->
                         StudioMenuItem(text = { Text(when (alignment) {
