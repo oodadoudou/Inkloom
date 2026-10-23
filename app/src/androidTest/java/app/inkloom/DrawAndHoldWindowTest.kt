@@ -102,6 +102,64 @@ class DrawAndHoldWindowTest {
         assertEquals(0, restored.activeRasterSnapshotForTest()?.pixelAt(x, y))
     }
 
+    @Test fun heldCircleCanBeReshapedWithItsHandles() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        view.drawAndHoldDelayMillis = 1500L
+        val centre = pagePoint(view, .5f, .5f)
+        val radius = view.width * .15f
+        val time = SystemClock.uptimeMillis()
+        fun on(angle: Float, r: Float = radius) = Offset(centre.x + r * kotlin.math.cos(angle), centre.y + r * kotlin.math.sin(angle))
+        event(MotionEvent.ACTION_DOWN, on(0f), time, MotionEvent.TOOL_TYPE_STYLUS)
+        repeat(60) { index ->
+            val angle = (index + 1) / 60f * 2f * Math.PI.toFloat() * 1.03f
+            event(MotionEvent.ACTION_MOVE, on(angle, radius + kotlin.math.sin(index * 1.3f) * 2f), time, MotionEvent.TOOL_TYPE_STYLUS, sync = false)
+            SystemClock.sleep(8)
+        }
+        instrumentation.waitForIdleSync()
+        compose.waitUntil(4_000) { view.heldStrokeKind != null }
+        assertEquals(app.inkloom.engine.v5.runtime.StrokeRegularizer.Kind.CIRCLE, view.heldStrokeKind)
+        event(MotionEvent.ACTION_UP, on(2f * Math.PI.toFloat() * 1.03f), time, MotionEvent.TOOL_TYPE_STYLUS)
+        view.awaitV5StrokeWorkerIdleForTest(); compose.waitForIdle()
+        compose.waitUntil(5_000) { view.shapeEditor != null }
+        val committed = requireNotNull(view.activeRasterSnapshotForTest())
+        val scale = committed.logicalWidth / view.width.toFloat()
+        val location = IntArray(2); instrumentation.runOnMainSync { view.getLocationOnScreen(location) }
+        val fitted = requireNotNull(view.shapeEditor).shape as app.inkloom.engine.v5.runtime.HeldShape.Ellipse
+        // The top of the fitted circle, and of the same circle 1.4 times as large, in surface pixels.
+        val oldTop = fitted.cx.toInt() to (fitted.cy - fitted.a).toInt()
+        val newTop = fitted.cx.toInt() to (fitted.cy - fitted.a * 1.4f).toInt()
+        fun inked(snapshot: app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot, p: Pair<Int, Int>) =
+            // The brush's own pressure and shape put the ink within a few pixels of the centre line.
+            (p.second - 12..p.second + 12).any { snapshot.pixelAt(p.first, it) != 0 }
+        val pts = view.v5LastCommittedNormalizedPoints().map { (x, y) -> kotlin.math.hypot(x * committed.logicalWidth - fitted.cx, y * committed.logicalHeight - fitted.cy) }
+        assertTrue("fitted=$fitted ink=" + app.inkloom.engine.v5.tools.selectionContentBounds(committed) +
+            " committed radii ${pts.minOrNull()}..${pts.maxOrNull()} n=${pts.size}", inked(committed, oldTop))
+
+        // Drag the radius handle out to 1.4 × the radius.
+        val (hx, hy) = requireNotNull(view.shapeEditor).shape.handles()[1]
+        val handle = Offset(location[0] + hx / scale, location[1] + hy / scale)
+        val target = on(0f, radius * 1.4f)
+        val dragTime = SystemClock.uptimeMillis()
+        event(MotionEvent.ACTION_DOWN, handle, dragTime, MotionEvent.TOOL_TYPE_STYLUS)
+        repeat(12) { index -> event(MotionEvent.ACTION_MOVE, handle + (target - handle) * ((index + 1) / 12f), dragTime, MotionEvent.TOOL_TYPE_STYLUS); SystemClock.sleep(40) }
+        event(MotionEvent.ACTION_UP, target, dragTime, MotionEvent.TOOL_TYPE_STYLUS)
+        compose.waitForIdle()
+        val reshaped = requireNotNull(view.activeRasterSnapshotForTest())
+        val edited = requireNotNull(view.shapeEditor).shape as app.inkloom.engine.v5.runtime.HeldShape.Ellipse
+        assertEquals(fitted.a * 1.4f, edited.a, fitted.a * .05f)
+        val editedTop = edited.cx.toInt() to (edited.cy - edited.a).toInt()
+        assertTrue("the old circle is gone", !inked(reshaped, oldTop))
+        assertTrue("the larger circle is drawn", inked(reshaped, editedTop))
+
+        tap("Undo")
+        compose.waitUntil(5_000) { view.activeRasterSnapshotForTest()?.let { inked(it, oldTop) } == true }
+        assertTrue(!inked(requireNotNull(view.activeRasterSnapshotForTest()), editedTop))
+        assertTrue(newTop.second < oldTop.second)
+        tap("Undo")
+        compose.waitUntil(5_000) { view.activeRasterSnapshotForTest()?.tileCount == 0 }
+    }
+
     @Test fun cancellationDropsHeldPreviewAndNextStrokeStillDraws() {
         tap("New Note"); tap("Create")
         val view = canvas()

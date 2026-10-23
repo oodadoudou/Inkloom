@@ -116,11 +116,16 @@ class RealtimeStrokeController {
     }
 
     fun append(samples: List<RawDocumentSample>): PaintResult? {
-        if (!enqueue(samples)) return null
+        if (active == null || samples.isEmpty()) return null
         var result: PaintResult? = null
-        while (true) {
-            val next = drainPending() ?: break
-            result = result?.merge(next) ?: next
+        // Drain each bounded batch before queuing the next, so a long replacement (a held circle)
+        // is painted whole instead of being thinned by the input mailbox's limits.
+        samples.chunked(MAX_PROCESSING_BATCH_SAMPLES).forEach { chunk ->
+            if (!enqueue(chunk)) return result
+            while (true) {
+                val next = drainPending() ?: break
+                result = result?.merge(next) ?: next
+            }
         }
         return result
     }

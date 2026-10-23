@@ -1832,6 +1832,7 @@ class InkCanvasView(context: Context) : View(context) {
         drawRulerGuide(canvas)
         rulerTool.draw(canvas, width.toFloat(), height.toFloat(), rulerScale(), applicableRulers, activeLayerId, tool == EditorTool.RULER, layerPerspective)
         if (tool == EditorTool.FRAME) frameTool.draw(canvas, width.toFloat(), height.toFloat(), rulerScale())
+        drawShapeHandles(canvas)
         drawLaserTrail(canvas, SystemClock.uptimeMillis())
         drawFillPreview(canvas)
         drawGradientPreview(canvas)
@@ -2858,6 +2859,10 @@ class InkCanvasView(context: Context) : View(context) {
                     parent?.requestDisallowInterceptTouchEvent(false)
                     return true
                 }
+                if (handleShapeEditor(MotionEvent.ACTION_DOWN, inputPoint.first, inputPoint.second, canceled = false)) {
+                    shapeHandleContact = true
+                    return true
+                }
                 if (activeTool == EditorTool.FRAME) {
                     frameTool.down(inputPoint.first, inputPoint.second)
                     return true
@@ -2965,6 +2970,7 @@ class InkCanvasView(context: Context) : View(context) {
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
+                if (shapeHandleContact) { handleShapeEditor(MotionEvent.ACTION_MOVE, inputPoint.first, inputPoint.second, canceled = false); return true }
                 if (activeTool == EditorTool.RULER) {
                     rulerTool.move(inputPoint.first, inputPoint.second, width.toFloat(), height.toFloat())
                     return true
@@ -3046,14 +3052,22 @@ class InkCanvasView(context: Context) : View(context) {
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val contactCanceled = event.actionMasked == MotionEvent.ACTION_CANCEL ||
+                    android.os.Build.VERSION.SDK_INT >= 33 && event.flags and MotionEvent.FLAG_CANCELED != 0
+                if (shapeHandleContact) {
+                    shapeHandleContact = false
+                    handleShapeEditor(MotionEvent.ACTION_UP, inputPoint.first, inputPoint.second, canceled = contactCanceled)
+                    activeTool = null
+                    return true
+                }
                 if (activeTool == EditorTool.FRAME) {
-                    if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) frameTool.cancel()
+                    if (contactCanceled) frameTool.cancel()
                     else frameTool.up(inputPoint.first, inputPoint.second, width.toFloat(), height.toFloat(), rulerScale())
                     activeTool = null
                     return true
                 }
                 if (activeTool == EditorTool.RULER) {
-                    if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) rulerTool.cancel()
+                    if (contactCanceled) rulerTool.cancel()
                     else rulerTool.up(inputPoint.first, inputPoint.second, width.toFloat(), height.toFloat(), rulerScale(), event.eventTime)
                     activeTool = null
                     return true
@@ -5688,6 +5702,16 @@ class InkCanvasView(context: Context) : View(context) {
     private val holdSamples = ArrayList<RawDocumentSample>()
     private var holdAnchor: RawDocumentSample? = null
     private var regularizedStroke: List<RawDocumentSample>? = null
+    /** The raw held stroke, whose pressure and timing the regular shape keeps. */
+    private var regularizedTemplate: List<RawDocumentSample>? = null
+    private var heldShape: app.inkloom.engine.v5.runtime.HeldShape? = null
+    /** The active layer just before the current stroke, for editing a held shape afterwards. */
+    private var gestureBackdrop: app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot? = null
+    /** Handles of the held shape just drawn; dragging one reshapes the stroke. */
+    internal var shapeEditor: HeldShapeEditor? = null
+        private set
+    private var shapeHandleContact = false
+    private var shapeDragTime = 0L
     internal var heldStrokeKind: app.inkloom.engine.v5.runtime.StrokeRegularizer.Kind? = null
         private set
     private val regularizeHeldStroke = Runnable {
@@ -5696,11 +5720,12 @@ class InkCanvasView(context: Context) : View(context) {
             app.inkloom.engine.v5.runtime.StrokeRegularizer.fit(holdSamples)?.let { fitted ->
                 if (replaceHeldStroke(fitted.samples)) {
                     regularizedStroke = fitted.samples
+                    regularizedTemplate = holdSamples.toList()
+                    heldShape = fitted.shape
                     heldStrokeKind = fitted.kind
                     stopContinuousPlot()
                     performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
-                    announceForAccessibility(if (fitted.kind == app.inkloom.engine.v5.runtime.StrokeRegularizer.Kind.LINE)
-                        "Line regularized" else "Curve regularized")
+                    announceForAccessibility("${fitted.kind.name.lowercase().replaceFirstChar(Char::uppercase)} regularized")
                 }
             }
         }
@@ -5712,6 +5737,8 @@ class InkCanvasView(context: Context) : View(context) {
         holdSamples.clear()
         holdAnchor = null
         regularizedStroke = null
+        regularizedTemplate = null
+        heldShape = null
         heldStrokeKind = null
     }
 
@@ -5750,6 +5777,78 @@ class InkCanvasView(context: Context) : View(context) {
         val executionIdentity: BrushExecutionIdentity? = null,
         val vector: VectorGesture? = null,
     )
+
+    /** What a held shape needs to be edited after its stroke lands. */
+    private class ShapeSeed(val shape: app.inkloom.engine.v5.runtime.HeldShape, val template: List<RawDocumentSample>,
+                            val configuration: V5PaintConfiguration, val backdrop: app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot)
+
+    /** Surface pixels of a view point on the shape editor's layer. */
+    private fun shapePoint(editor: HeldShapeEditor, x: Float, y: Float): Pair<Float, Float>? {
+        val surface = rasterTileSurfaceFor(editor.layerId) ?: return null
+        return x * surface.logicalWidth / width.coerceAtLeast(1) to y * surface.logicalHeight / height.coerceAtLeast(1)
+    }
+
+    /** Handles of the held shape: true when this contact grabbed one (or is dragging it). */
+    private fun handleShapeEditor(action: Int, x: Float, y: Float, canceled: Boolean): Boolean {
+        val editor = shapeEditor ?: return false
+        if (editor.layerId != activeLayerId) { shapeEditor = null; invalidate(); return false }
+        val surface = rasterTileSurfaceFor(editor.layerId) ?: return false
+        val (sx, sy) = shapePoint(editor, x, y) ?: return false
+        when (action) {
+            MotionEvent.ACTION_DOWN -> {
+                val radius = 22f * resources.displayMetrics.density / rulerScale() * surface.logicalWidth / width.coerceAtLeast(1)
+                val handle = editor.handleAt(sx, sy, radius)
+                if (handle == null) { shapeEditor = null; invalidate(); return false }
+                editor.beginDrag(handle)
+                shapeDragTime = 0L
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (!editor.dragging) return false
+                val now = SystemClock.uptimeMillis()
+                // Repainting the whole stroke on every move would outrun the pen; about 30 times a second is smooth.
+                if (now - shapeDragTime >= 32L) {
+                    shapeDragTime = now
+                    editor.dragTo(sx, sy)?.let { invalidateV5Damage(surface, it) }
+                }
+                invalidate()
+                return true
+            }
+            else -> {
+                if (!editor.dragging) return false
+                if (canceled) { editor.cancelDrag()?.let { invalidateV5Damage(surface, it) }; invalidate(); return true }
+                editor.dragTo(sx, sy)
+                val edit = editor.endDrag() ?: return true
+                val layerId = editor.layerId
+                val bounds = Rect(edit.bounds.left, edit.bounds.top, edit.bounds.right, edit.bounds.bottom)
+                fun publish() { commitRasterLayerPatch(surface.snapshot(), bounds, layerId); invalidateV5Damage(surface, edit.bounds) }
+                publish()
+                recordExternalEdit(
+                    undo = { edit.paint?.let { surface.apply(it, PixelTileSurface.HistoryDirection.UNDO) }; surface.apply(edit.restore, PixelTileSurface.HistoryDirection.UNDO); publish() },
+                    redo = { surface.apply(edit.restore, PixelTileSurface.HistoryDirection.REDO); edit.paint?.let { surface.apply(it, PixelTileSurface.HistoryDirection.REDO) }; publish() },
+                    dispose = { edit.restore.close(); edit.paint?.close() },
+                )
+                invalidate()
+                return true
+            }
+        }
+    }
+
+    private fun drawShapeHandles(canvas: Canvas) {
+        val editor = shapeEditor ?: return
+        val surface = rasterTileSurfaceFor(editor.layerId) ?: return
+        if (editor.layerId != activeLayerId) return
+        val scale = rulerScale(); val density = resources.displayMetrics.density
+        val sx = width.toFloat() / surface.logicalWidth; val sy = height.toFloat() / surface.logicalHeight
+        shapeHandlePaint.strokeWidth = 1.5f * density / scale
+        editor.shape.handles().forEach { (x, y) ->
+            shapeHandleFill.color = Color.WHITE
+            canvas.drawCircle(x * sx, y * sy, 7f * density / scale, shapeHandleFill)
+            canvas.drawCircle(x * sx, y * sy, 7f * density / scale, shapeHandlePaint)
+        }
+    }
+    private val shapeHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = 0xFF2F80ED.toInt() }
+    private val shapeHandleFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
 
     /** A stroke on a vector layer: the pen's line settings, or null for the vector eraser. */
     private class VectorGesture(
@@ -6639,6 +6738,8 @@ class InkCanvasView(context: Context) : View(context) {
         )
         rulerSnapDecided = false
         activeShapeRulerSnap = null
+        shapeEditor = null
+        gestureBackdrop = if (drawAndHoldEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) surface.snapshot() else null
         val initialSample = v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null)
         val started = v5StrokeController.begin(
             layerId = activeLayerId,
@@ -6754,8 +6855,11 @@ class InkCanvasView(context: Context) : View(context) {
         }
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
         regularizedStroke?.let { regular ->
+            // Closed circles and ellipses stay put; lines, curves and arcs follow the pen.
+            if (heldShape?.closed == true) return true
             val endpoint = samples.last()
             val adjusted = app.inkloom.engine.v5.runtime.StrokeRegularizer.moveEndpoint(regular, endpoint.x, endpoint.y)
+            heldShape = heldShape?.let { app.inkloom.engine.v5.runtime.StrokeRegularizer.moveEndpoint(it, endpoint.x, endpoint.y) }
             replaceHeldStroke(adjusted)
             return true
         }
@@ -6791,6 +6895,11 @@ class InkCanvasView(context: Context) : View(context) {
         val layerId = activeLayerId
         val sample = if (regularizedStroke != null) null else
             v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null)
+        val shapeSeed = heldShape?.takeIf { activeVectorGesture == null && surface.pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888 }?.let { shape ->
+            val configuration = heldPaintConfiguration; val template = regularizedTemplate; val backdrop = gestureBackdrop
+            if (configuration == null || template == null || backdrop == null) null else ShapeSeed(shape, template, configuration, backdrop)
+        }
+        gestureBackdrop = null
         // The held geometry is already the exact preview; pen-up pressure must not add a dot.
         resetDrawAndHold()
         val finishingEraser = activeTool == EditorTool.ERASER
@@ -6809,6 +6918,7 @@ class InkCanvasView(context: Context) : View(context) {
                     finishingEraser,
                     finishingExecution,
                     finishingVector,
+                    shapeSeed,
                 )
             }
         }
@@ -6839,6 +6949,7 @@ class InkCanvasView(context: Context) : View(context) {
         wasEraser: Boolean,
         execution: Pair<BrushExecutionIdentity, String>?,
         vector: VectorGesture? = null,
+        shapeSeed: ShapeSeed? = null,
     ) {
         try {
             v5DryPublishedGeneration = published.snapshot.revision
@@ -6873,13 +6984,22 @@ class InkCanvasView(context: Context) : View(context) {
                 v5PresentationBarrier.awaitVisible(published.snapshot.revision, published.record.transactionId)
                 if (vector != null) recordVectorStroke(layerId, surface, published.record,
                     Rect(bounds.left, bounds.top, bounds.right, bounds.bottom), vector)
-                else recordRasterToolTransaction(
-                    layerId,
-                    surface,
-                    published.record,
-                    Rect(bounds.left, bounds.top, bounds.right, bounds.bottom),
-                    published.snapshot,
-                )
+                else {
+                    recordRasterToolTransaction(
+                        layerId,
+                        surface,
+                        published.record,
+                        Rect(bounds.left, bounds.top, bounds.right, bounds.bottom),
+                        published.snapshot,
+                    )
+                    if (shapeSeed != null) {
+                        shapeEditor = HeldShapeEditor(layerId, surface, shapeSeed.backdrop, shapeSeed.configuration.paintOp, shapeSeed.configuration.runtimeId,
+                            shapeSeed.configuration.maximumRadius, shapeSeed.shape, shapeSeed.template, bounds)
+                        invalidate()
+                    }
+                }
+                // This block must not end in a null value: the fallback below releases the record.
+                Unit
             } ?: run {
                 published.record.close()
                 if (deferredEraserReleaseStrokeId == strokeId) {
@@ -7018,6 +7138,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun undo() {
+        shapeEditor?.takeIf { !it.dragging }?.let { shapeEditor = null; invalidate() }
         if (selectionLayerTransferPending) return
         if (layerMaskGesture != null) { cancelActiveGestureForNavigation(); return }
         flushPendingMaskPublications()
@@ -7030,6 +7151,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun redo() {
+        shapeEditor?.takeIf { !it.dragging }?.let { shapeEditor = null; invalidate() }
         if (selectionLayerTransferPending) return
         if (layerMaskGesture != null) { cancelActiveGestureForNavigation(); return }
         flushPendingMaskPublications()
