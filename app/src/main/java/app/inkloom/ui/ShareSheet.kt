@@ -9,7 +9,7 @@ import app.inkloom.document.ShareFileName
 import java.io.File
 
 /** What a notebook's ⋮ menu or the editor's Share section can produce. */
-internal enum class NotebookOutput { SHARE_PDF, EXPORT_PDF, EXPORT_PACKAGE }
+internal enum class NotebookOutput { SHARE_PDF, EXPORT_PDF, EXPORT_PACKAGE, BOOK_PREVIEW }
 
 /**
  * Hands finished files to Android's share sheet. Files are written to a private cache folder that

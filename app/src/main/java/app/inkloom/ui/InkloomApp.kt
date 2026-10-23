@@ -609,6 +609,7 @@ fun InkloomApp(initialIntent: Intent?) {
     }
     // The file picker returns after the editor or Library chose a notebook; remember which one.
     var pendingExportDocumentId by rememberSaveable { mutableStateOf<String?>(null) }
+    var bookPreview by remember { mutableStateOf<Pair<InkDocument, Int?>?>(null) }
     fun takeExportDocumentId(): String? = (pendingExportDocumentId ?: viewModel.currentDocument()?.id).also { pendingExportDocumentId = null }
     val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         val documentId = takeExportDocumentId()
@@ -640,6 +641,7 @@ fun InkloomApp(initialIntent: Intent?) {
         NotebookOutput.SHARE_PDF -> shareNotebookPdf(document)
         NotebookOutput.EXPORT_PDF -> { pendingExportDocumentId = document.id; exportPicker.launch(app.inkloom.document.ShareFileName.of(document.title, "pdf")) }
         NotebookOutput.EXPORT_PACKAGE -> { pendingExportDocumentId = document.id; bundleExportPicker.launch(app.inkloom.document.ShareFileName.of(document.title, "inkloom.zip")) }
+        NotebookOutput.BOOK_PREVIEW -> bookPreview = document to null
     }
     val libraryBackupExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) {
@@ -1009,6 +1011,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onSharePage = ::shareCurrentPage,
             onExportPage = { options -> pendingRasterExport = options; imageExportPicker.launch(RasterExportDestination("${viewModel.currentDocument()?.title ?: "Inkloom"}-page.${options.format.extension}", options.format.mime)) },
             onExportBundle = { viewModel.currentDocument()?.let { produceNotebookOutput(it, NotebookOutput.EXPORT_PACKAGE) } },
+            onBookPreview = { viewModel.currentDocument()?.let { document -> bookPreview = document to document.pages.indexOfFirst { it.id == libraryState.selectedPageId }.takeIf { it >= 0 } } },
             assets = viewModel.assets,
             selectionRuntime = viewModel.selectionRuntime,
             settings = settings,
@@ -1038,6 +1041,7 @@ fun InkloomApp(initialIntent: Intent?) {
         text = { Text(tr("The notebook is still in Trash. Your pages and saved colors have been kept. Please try again.", "笔记仍在废纸篓中，页面和已保存的颜色均已保留。请重试。")) },
         confirmButton = { TextButton(onClick = { deletionFailed = false }) { Text(tr("OK", "确定")) } },
     )
+    bookPreview?.let { (document, page) -> BookPreviewDialog(document, page, viewModel.assets, settings.language) { bookPreview = null } }
     materialsLayerId?.let { layerId ->
         MaterialsDialog(materials, settings.language, materialsBusy, materialsMessage,
             onRegisterLayer = { name ->
@@ -1168,6 +1172,7 @@ private fun EditorScreen(
     onSharePage: (PageRasterExportOptions) -> Unit,
     onExportPage: (PageRasterExportOptions) -> Unit,
     onExportBundle: () -> Unit,
+    onBookPreview: () -> Unit,
     assets: DocumentAssetService,
     selectionRuntime: DocumentSelectionRuntime,
     settings: AppSettings,
@@ -2027,6 +2032,7 @@ private fun EditorScreen(
                         StudioMenuItem(text = { Text(tr("Search this notebook", "搜索当前笔记")) }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, onClick = { overlays.workspaceMenu = false; overlays.searchOpen = true })
                         StudioMenuItem(text = { Text(tr("Add PDF or image pages", "追加 PDF／图片页面")) }, leadingIcon = { Icon(Icons.Outlined.FileOpen, null) }, onClick = { overlays.workspaceMenu = false; onAppendPageFiles(document.id) })
                         StudioMenuItem(text = { Text(tr("Materials…", "素材…")) }, leadingIcon = { Icon(Icons.Outlined.Collections, null) }, onClick = { overlays.workspaceMenu = false; onOpenMaterials(activeLayerId) })
+                        StudioMenuItem(text = { Text(tr("3D book preview…", "3D 书本预览…")) }, leadingIcon = { Icon(Icons.Outlined.MenuBook, null) }, onClick = { overlays.workspaceMenu = false; onBookPreview() })
                     StudioMenuItem(text = { Text(tr("Place file object…", "置入文件对象…")) }, leadingIcon = { Icon(Icons.Outlined.Image, null) }, onClick = { overlays.workspaceMenu = false; onPlaceFileObject() })
                         StudioMenuItem(text = { Text(tr("Update file objects", "更新文件对象")) }, leadingIcon = { Icon(Icons.Outlined.Sync, null) }, onClick = { overlays.workspaceMenu = false; onUpdateFileObjects() })
                         StudioMenuItem(text = { Text(if (selectedPage.bookmarked) tr("Remove page bookmark", "取消本页书签") else tr("Bookmark this page", "收藏本页")) }, leadingIcon = { Icon(if (selectedPage.bookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder, null) }, onClick = { overlays.workspaceMenu = false; onToggleBookmark(document.id, selectedPage.id) })

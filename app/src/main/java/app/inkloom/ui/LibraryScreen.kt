@@ -672,6 +672,7 @@ private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (Ink
                     StudioMenuItem(text = { Text(tr("Share PDF…", "分享 PDF…")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { menu = false; onOutput(document, NotebookOutput.SHARE_PDF) })
                     StudioMenuItem(text = { Text(tr("Export PDF…", "导出 PDF…")) }, onClick = { menu = false; onOutput(document, NotebookOutput.EXPORT_PDF) })
                     StudioMenuItem(text = { Text(tr("Export Inkloom package…", "导出 Inkloom 文件…")) }, onClick = { menu = false; onOutput(document, NotebookOutput.EXPORT_PACKAGE) })
+                    StudioMenuItem(text = { Text(tr("3D book preview", "3D 书本预览")) }, onClick = { menu = false; onOutput(document, NotebookOutput.BOOK_PREVIEW) })
                     folders.forEach { folder -> StudioMenuItem(text = { Text("${tr("Move to", "移动到")} ${folder.name}") }, onClick = { menu = false; onMoveToFolder(document.id, folder.id) }) }
                     if (document.folderId != null) StudioMenuItem(text = { Text(tr("Remove from folder", "移出文件夹")) }, onClick = { menu = false; onMoveToFolder(document.id, null) })
                     StudioMenuItem(text = { Text(if (document.favorite) tr("Remove favorite", "取消收藏") else tr("Favorite", "收藏")) }, onClick = { menu = false; onFavorite(document.id) })
