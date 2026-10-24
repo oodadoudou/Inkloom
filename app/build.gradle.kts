@@ -15,8 +15,8 @@ android {
         applicationId = "app.inkloom"
         minSdk = 29
         targetSdk = 35
-        versionCode = 238
-        versionName = "0.238.0"
+        versionCode = 239
+        versionName = "0.239.0"
         testInstrumentationRunner = "app.inkloom.InkloomTestRunner"
         buildConfigField("boolean", "PAINTING_DIAGNOSTICS", "false")
         vectorDrawables.useSupportLibrary = true
