@@ -74,7 +74,7 @@ object AppSettingsBackupCodec {
     }
 
     private fun AppSettings.toJson() = buildJsonObject {
-        put("uiGrayTheme", uiGrayTheme.name); put("language", language.name); put("fingerDrawing", fingerDrawing); put("showToolbar", showToolbar)
+        put("uiGrayTheme", uiGrayTheme.name); put("interfaceScale", interfaceScale); put("language", language.name); put("fingerDrawing", fingerDrawing); put("showToolbar", showToolbar)
         put("fillSensitivity", fillSensitivity); put("fillCloseGapPixels", fillCloseGapPixels); put("fillAreaScalingPixels", fillAreaScalingPixels); put("fillTargetMode", fillTargetMode.name); put("fillTargetColor", fillTargetColor); put("fillExpansionShape", fillExpansionShape.name); put("fillAntiAlias", fillAntiAlias); put("fillSubTool", fillSubTool.name)
         put("gradientKind", gradientKind.name); put("gradientEdgeMode", gradientEdgeMode.name); put("gradientReverse", gradientReverse); put("gradientDither", gradientDither)
         put("gradientEllipseRatio", gradientEllipseRatio); put("gradientAngleSnapEnabled", gradientAngleSnapEnabled); put("gradientAngleSnapDegrees", gradientAngleSnapDegrees); put("gradientStops", app.inkloom.document.GradientStopCodec.encode(gradientStops))
@@ -128,6 +128,7 @@ object AppSettingsBackupCodec {
             liquifyMomentum = float("liquifyMomentum", defaults.liquifyMomentum).coerceIn(0f, 1f),
             cloneAligned = boolean("cloneAligned", defaults.cloneAligned),
             uiGrayTheme = UiGrayTheme.decode(text("uiGrayTheme")),
+            interfaceScale = InterfaceScale.stored(float("interfaceScale", defaults.interfaceScale)),
             language = enum("language", defaults.language), fingerDrawing = boolean("fingerDrawing", defaults.fingerDrawing),
 
              showToolbar = boolean("showToolbar", defaults.showToolbar),

@@ -363,7 +363,8 @@ fun InkloomApp(initialIntent: Intent?) {
     var destination by rememberSaveable { mutableStateOf(AppDestination.LIBRARY) }
     val librarySavedState = rememberSaveableStateHolder()
     var importError by remember { mutableStateOf<String?>(null) }
-    var settingsOpen by remember { mutableStateOf(false) }
+    // Saveable: changing the interface size recreates the activity with Settings still open.
+    var settingsOpen by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val importScope = rememberCoroutineScope()
     val viewModel: InkloomViewModel = viewModel()

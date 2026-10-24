@@ -9,6 +9,11 @@ import app.inkloom.ui.theme.InkloomTheme
 import app.inkloom.engine.v5.android.PixelMemoryPressureCoordinator
 
 class MainActivity : ComponentActivity() {
+    // The chosen interface size applies to every window of this activity.
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(app.inkloom.ui.theme.InterfaceScaling.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val gray = app.inkloom.settings.UiGrayTheme.decode(getSharedPreferences("inkloom_settings", MODE_PRIVATE).getString("uiGrayTheme", null))

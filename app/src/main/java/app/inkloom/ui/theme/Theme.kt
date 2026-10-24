@@ -77,6 +77,11 @@ fun InkloomTheme(content: @Composable () -> Unit) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { source, key ->
             if (key == "uiGrayTheme" || key == null) selectedGrayTheme.value =
                 app.inkloom.settings.UiGrayTheme.decode(source.getString("uiGrayTheme", null))
+            if (key == app.inkloom.settings.InterfaceScale.PREFERENCE_KEY) {
+                var host: android.content.Context? = context
+                while (host is android.content.ContextWrapper && host !is android.app.Activity) host = host.baseContext
+                (host as? android.app.Activity)?.let(InterfaceScaling::recreateIfChanged)
+            }
         }
         preferences.registerOnSharedPreferenceChangeListener(listener)
         onDispose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }

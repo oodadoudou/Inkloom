@@ -20,6 +20,8 @@ enum class LayerRowDensity { COMPACT, COMFORTABLE, LARGE }
 data class AppSettings(
     val language: UiLanguage = UiLanguage.ENGLISH,
     val uiGrayTheme: UiGrayTheme = UiGrayTheme.DEFAULT,
+    /** [InterfaceScale.AUTO] measures the screen; otherwise the interface size, 0.6–1.2. */
+    val interfaceScale: Float = InterfaceScale.AUTO,
     val libraryLayout: LibraryLayout = LibraryLayout.GRID,
     val fingerDrawing: Boolean = false,
     val drawAndHoldEnabled: Boolean = true,
@@ -215,6 +217,7 @@ class AppSettingsStore(context: Context) {
         val loaded = AppSettings(
             language = enumValue(preferences.getString("language", null), systemLanguage),
             uiGrayTheme = UiGrayTheme.decode(preferences.getString("uiGrayTheme", null)),
+            interfaceScale = InterfaceScale.stored(preferences.getFloat(InterfaceScale.PREFERENCE_KEY, InterfaceScale.AUTO)),
             libraryLayout = enumValue(preferences.getString("libraryLayout", null), LibraryLayout.GRID),
             fingerDrawing = preferences.getBoolean("fingerDrawing", false),
             drawAndHoldEnabled = preferences.getBoolean("drawAndHoldEnabled", true),
@@ -381,6 +384,7 @@ class AppSettingsStore(context: Context) {
         preferences.edit()
             .putString("language", persisted.language.name)
             .putString("uiGrayTheme", persisted.uiGrayTheme.name)
+            .putFloat(InterfaceScale.PREFERENCE_KEY, InterfaceScale.stored(persisted.interfaceScale))
             .putString("libraryLayout", persisted.libraryLayout.name)
             .putInt(INPUT_GESTURES_VERSION_KEY, INPUT_GESTURES_VERSION)
             .putInt("shortcutDefaultsMigrationVersion", 1)

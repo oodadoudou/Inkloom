@@ -113,6 +113,7 @@ internal fun SettingsDialog(
                             label = { Text(label, fontSize = 12.sp) })
                     }
                 } }
+                item { InterfaceSizeSetting(settings.interfaceScale, language = settings.language) { onChange(settings.copy(interfaceScale = it)) } }
                 item { Text(tr("LANGUAGE", "语言"), color = MutedInk, fontSize = 12.sp) }
                 item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     StudioFilterChip(selected = settings.language == UiLanguage.ENGLISH, onClick = { onChange(settings.copy(language = UiLanguage.ENGLISH)) }, label = { Text("English") })
