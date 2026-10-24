@@ -297,7 +297,9 @@ class EditorPanelsWindowTest {
             val title = point(hasContentDescription("Move panel group") and
                 hasAnyAncestor(hasTestTag("editor-panel-layers")))
             val host = compose.onNodeWithTag("resize-host").fetchSemanticsNode()
-            val center = host.boundsInWindow.center + host.positionOnScreen - host.positionInWindow
+            // The middle of the canvas, clear of its docking edges (a dock keeps its own size, so the host's centre can sit near one).
+            val canvas = EditorPanelLayouts.slots(state.layout, bounds.width / density, bounds.height / density).first { it.node is PanelNode.Canvas }.rect
+            val center = host.positionOnScreen + Offset((canvas.x + canvas.width / 2f) * density, (canvas.y + canvas.height / 2f) * density)
             drag(title, center, holdMillis = 0)
             assertFalse("$edge title must still undock instead of resizing", EditorPanel.LAYERS in EditorPanelLayouts.members(state.layout.dock))
         }
