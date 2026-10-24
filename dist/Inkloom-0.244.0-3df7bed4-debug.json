@@ -1,0 +1,20 @@
+{
+  "version": "0.244.0",
+  "versionCode": 244,
+  "variant": "debug",
+  "commit": "3df7bed46d006c0f8a16d9b0617923ef6e55c963",
+  "sha256": "3f4dca426edc924e63d5ce72ed5f4eb6e9b974571fdf61b33a4becfd98626683",
+  "bytes": 184309416,
+  "generatedUtc": "2026-10-24T18:25:55.015640+00:00",
+  "verification": {
+    "JVM": "PASS 1232 tests, 0 failures/errors, 8 skipped",
+    "Android15Full": "Full run on 0.243.0 source: 953 tests, 941 passed; 11 colour-window tests failed only because they expected the colour chip to open all colour tabs (changed by request in 0.240.0) and were updated (13/13 pass); 1 navigation test passed on rerun (timing).",
+    "Android15Targeted": "AnimationRenderingTest (onion pixels, GIF, MP4) and AnimationWindowTest pass.",
+    "lint": "PASS 0 errors, 116 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS clean install, versionCode 244, cold start ok (1102-1247 ms), crash buffer empty",
+    "DriveDesktop": "APK only, SHA-256 verified in the local sync folder; cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING"
+}
