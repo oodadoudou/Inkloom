@@ -48,7 +48,8 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
         Column(Modifier.verticalScroll(rememberScrollState())) {
             StudioDropdownField(names[state.kind],kinds,{kinds=it},label=tr("Filter","滤镜")){
                 RasterFilterKindMenuItems(::tr){i->
-                    state=state.copy(kind=i,strength=when(i){2,3,4->1f;5->8f;else->2f},distortion=if(i==28)kotlin.math.abs(state.distortion) else state.distortion);kinds=false}
+                    state=state.copy(kind=i,strength=when(i){2,3,4->1f;5->8f;else->2f},distortion=if(i==28)kotlin.math.abs(state.distortion) else state.distortion,
+                        angle=when(i){RasterFilterPreset.INFLATE_KIND->135f;RasterFilterPreset.DROP_SHADOW_KIND->-45f;else->state.angle});kinds=false}
             }
             StudioDropdownField(presets.firstOrNull{it.id==state.id}?.let{(if(it.favorite) "★ " else "")+it.name} ?: tr("None","无"),presetMenu,{presetMenu=it},
                 label=tr("Preset","预设")){
@@ -65,7 +66,7 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
                 StudioSliderRow(tr("Strength","强度"),state.matchStrength*100f,0f..100f,{state=state.copy(matchStrength=it/100f)},unit="%")
                 StudioCheckRow(tr("Keep luminance","保持明度"),state.keepLuminance,{state=state.copy(keepLuminance=it)})
                 StudioNote(tr("Moves this layer's colours towards the reference layer's overall colour and contrast.","使此图层的整体色彩与对比度向参考图层靠拢。"))
-            } else if (state.kind >= RasterFilterPreset.FIRST_EFFECT_KIND) RasterFilterEffectControls(state,{state=it},::tr,pageDpi)
+            } else if (state.kind >= RasterFilterPreset.FIRST_EFFECT_KIND) RasterFilterEffectControls(state,{state=it},::tr,pageDpi) { colorPickerOpen=true }
             else if (state.kind >= RasterFilterPreset.FIRST_TONAL_KIND) {
                 val kind=RasterFilterPreset.TONAL_KINDS[state.kind-RasterFilterPreset.FIRST_TONAL_KIND]
                 AdjustmentParameters((state.adjustment ?: app.inkloom.document.LayerAdjustment()).copy(kind=kind),channel,{channel=it},{state=state.copy(adjustment=it)},language)

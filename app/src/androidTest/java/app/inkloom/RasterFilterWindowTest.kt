@@ -326,6 +326,23 @@ class RasterFilterWindowTest {
         compose.onNodeWithText("Keep luminance").assertExists()
         compose.onNodeWithText("Cancel").performClick()
         compose.waitUntil(15_000) { fingerprint(view) == ink && !view.selectionLayerTransferPending }
+        // CSP 5.1's quick effects and Glitch: a drop shadow adds pixels beside the ink.
+        fun covered() = requireNotNull(view.activeRasterSnapshotForTest()).let { snapshot ->
+            snapshot.copyPremultipliedPixels(PixelRect(0, 0, snapshot.logicalWidth, snapshot.logicalHeight)).count { it ushr 24 != 0 }
+        }
+        val inked = covered()
+        open("Drop shadow")
+        compose.onNodeWithText("Shadow color…").assertExists()
+        applied(ink)
+        assertTrue("the shadow covers more of the layer", covered() > inked)
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        compose.waitUntil(15_000) { fingerprint(view) == ink }
+        listOf("Glow" to "Effect blur range", "Inflate" to "Shine", "Glitch" to "Color split").forEach { (kind, setting) ->
+            open(kind)
+            compose.onNodeWithText(setting).assertExists()
+            compose.onNodeWithText("Cancel").performClick()
+            compose.waitUntil(15_000) { fingerprint(view) == ink && !view.selectionLayerTransferPending }
+        }
         // Tonal correction opens on its first correction and bakes it into the layer.
         open("", menu = "Tonal correction…")
         compose.onNodeWithText("Brightness / Contrast").assertExists()

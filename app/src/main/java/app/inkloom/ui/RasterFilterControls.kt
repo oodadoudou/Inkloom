@@ -26,7 +26,8 @@ internal fun rasterFilterNames(tr: (String, String) -> String) = listOf(
     tr("Threshold", "二值化"), tr("Gradient Map", "渐变映射"),
     tr("Remove JPEG noise", "去除 JPEG 噪声"), tr("Crystallize", "水晶"), tr("Normal map", "法线贴图"),
     tr("Artistic", "插画风"), tr("Pencil drawing", "铅笔风"), tr("Film", "照片风（胶片）"),
-    tr("Convert layer", "转换图层"), tr("Match color", "色彩参考匹配"))
+    tr("Convert layer", "转换图层"), tr("Match color", "色彩参考匹配"),
+    tr("Glow", "辉光"), tr("Inflate", "膨胀"), tr("Drop shadow", "投影"), tr("Glitch", "故障"))
 
 /** CSP's Filter menu groups, each listing preset kind indices. Headers never repeat a filter name. */
 internal fun rasterFilterGroups(tr: (String, String) -> String) = listOf(
@@ -35,7 +36,8 @@ internal fun rasterFilterGroups(tr: (String, String) -> String) = listOf(
     tr("NOISE & RENDER", "噪点与绘制") to listOf(10, 19, 2, 9, 11),
     tr("DISTORT", "变形类") to listOf(20, 21, 22, 5, 23, 24, 25, 26, 27, 28),
     tr("LINE ART", "线稿") to listOf(3, 4),
-    tr("EFFECT", "效果") to (RasterFilterPreset.FIRST_EFFECT_KIND until RasterFilterPreset.CONVERT_LAYER_KIND).toList(),
+    tr("EFFECT", "效果") to (RasterFilterPreset.FIRST_EFFECT_KIND until RasterFilterPreset.CONVERT_LAYER_KIND).toList() +
+        (RasterFilterPreset.GLOW_KIND..RasterFilterPreset.GLITCH_KIND),
     tr("TONAL CORRECTION", "色调补偿") to (RasterFilterPreset.FIRST_TONAL_KIND..RasterFilterPreset.LAST_TONAL_KIND).toList(),
     tr("COLOR", "颜色") to listOf(12, 13, RasterFilterPreset.MATCH_COLOR_KIND, RasterFilterPreset.CONVERT_LAYER_KIND))
 
@@ -123,10 +125,10 @@ internal fun RasterFilterExtraControls(state: RasterFilterPreset, onState: (Rast
     }
 }
 
-/** Settings for CSP's Effect filters: Remove JPEG noise, Crystallize, Normal map, Artistic, Pencil drawing and Film. */
+/** Settings for CSP's Effect filters: Remove JPEG noise, Crystallize, Normal map, Artistic, Pencil drawing, Film, Glow, Inflate, Drop shadow and Glitch. */
 @Composable
 internal fun RasterFilterEffectControls(state: RasterFilterPreset, onState: (RasterFilterPreset) -> Unit, tr: (String, String) -> String,
-    pageDpi: Float = 300f) {
+    pageDpi: Float = 300f, onPickColor: () -> Unit = {}) {
     val note = MaterialTheme.typography.bodySmall
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     @Composable fun percent(label: String, value: Float, onValue: (Float) -> Unit) = StudioSliderRow(label, value, 0f..100f, onValue)
@@ -198,6 +200,33 @@ internal fun RasterFilterEffectControls(state: RasterFilterPreset, onState: (Ras
                     StudioSliderRow(tr("Screen angle", "网屏角度"), state.angle, -90f..90f, { onState(state.copy(angle = it)) }, unit = "°")
                 }
                 Text(tr("Converts this layer's pixels; use Undo to go back.", "转换此图层的像素，可撤销恢复。"), style = note, color = muted)
+            }
+            8 -> {
+                StudioSliderRow(tr("Strength", "强度"), state.glowStrength, 0f..400f, { onState(state.copy(glowStrength = it)) }, unit = "%")
+                percent(tr("Effect area", "效果范围"), state.glowArea) { onState(state.copy(glowArea = it)) }
+                StudioSliderRow(tr("Effect blur range", "效果模糊范围"), state.glowBlur, 1f..100f, { onState(state.copy(glowBlur = it)) }, unit = "px")
+                Text(tr("Bright areas such as highlights and light sources spread soft light.", "高光、光源等明亮部分散发柔和的光。"), style = note, color = muted)
+            }
+            9 -> {
+                percent(tr("Shadow intensity", "阴影强度"), state.inflateShadow) { onState(state.copy(inflateShadow = it)) }
+                percent(tr("Shine", "光泽"), state.inflateShine) { onState(state.copy(inflateShine = it)) }
+                percent(tr("Height", "高度"), state.inflateHeight) { onState(state.copy(inflateHeight = it)) }
+                StudioSliderRow(tr("Smoothness", "平滑度"), state.inflateSmoothness, 0f..10f, { onState(state.copy(inflateSmoothness = it)) }, unit = "px")
+                StudioSliderRow(tr("Light source", "光源方向"), state.angle, -180f..180f, { onState(state.copy(angle = it)) }, unit = "°")
+            }
+            10 -> {
+                StudioSliderRow(tr("Blur", "模糊"), state.shadowBlur, 0f..100f, { onState(state.copy(shadowBlur = it)) }, unit = "px")
+                StudioSliderRow(tr("Angle", "角度"), state.angle, -180f..180f, { onState(state.copy(angle = it)) }, unit = "°")
+                StudioSliderRow(tr("Distance", "距离"), state.shadowDistance, 0f..500f, { onState(state.copy(shadowDistance = it)) }, unit = "px")
+                percent(tr("Opacity", "不透明度"), state.shadowOpacity) { onState(state.copy(shadowOpacity = it)) }
+                StudioButton(tr("Shadow color…", "阴影颜色…"), onPickColor)
+            }
+            11 -> {
+                StudioSliderRow(tr("Shift", "偏移"), state.glitchShift, 0f..400f, { onState(state.copy(glitchShift = it)) }, unit = "px")
+                StudioSliderRow(tr("Band height", "条带高度"), state.glitchBand, 2f..400f, { onState(state.copy(glitchBand = it)) }, unit = "px")
+                percent(tr("Shifted bands", "偏移条带比例"), state.glitchDensity) { onState(state.copy(glitchDensity = it)) }
+                StudioSliderRow(tr("Color split", "色彩分离"), state.glitchSplit, 0f..100f, { onState(state.copy(glitchSplit = it)) }, unit = "px")
+                StudioButton(tr("New pattern", "重新生成"), { onState(state.copy(seed = state.seed + 1)) })
             }
         }
     }

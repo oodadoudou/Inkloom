@@ -7,6 +7,10 @@ import app.inkloom.engine.v5.tools.ArtisticProcess
 import app.inkloom.engine.v5.tools.DistortKind
 import app.inkloom.engine.v5.tools.FilmLook
 import app.inkloom.engine.v5.tools.FilmParameters
+import app.inkloom.engine.v5.tools.DropShadowParameters
+import app.inkloom.engine.v5.tools.GlitchParameters
+import app.inkloom.engine.v5.tools.GlowParameters
+import app.inkloom.engine.v5.tools.InflateParameters
 import app.inkloom.engine.v5.tools.LayerConversion
 import app.inkloom.engine.v5.tools.LayerExpression
 import app.inkloom.engine.v5.tools.PencilParameters
@@ -39,7 +43,12 @@ data class RasterFilterPreset(val id:String=UUID.randomUUID().toString(),val nam
     val expression:Int=1,val monoThreshold:Float=.5f,val whiteTransparent:Boolean=true,val layerResolution:Float=1f,
     val tonePitch:Float=0f,
     // Match color: the reference layer's statistics are read when the filter runs.
-    val matchStrength:Float=1f,val keepLuminance:Boolean=false) {
+    val matchStrength:Float=1f,val keepLuminance:Boolean=false,
+    // Glow, Inflate, Drop shadow (angle and colour shared) and Glitch (seed shared).
+    val glowStrength:Float=100f,val glowArea:Float=50f,val glowBlur:Float=30f,
+    val inflateShadow:Float=50f,val inflateShine:Float=50f,val inflateHeight:Float=30f,val inflateSmoothness:Float=2f,
+    val shadowBlur:Float=8f,val shadowDistance:Float=12f,val shadowOpacity:Float=60f,
+    val glitchShift:Float=40f,val glitchBand:Float=24f,val glitchDensity:Float=40f,val glitchSplit:Float=6f) {
     fun normalized():RasterFilterPreset {
         fun Float.bounded(range:ClosedFloatingPointRange<Float>,fallback:Float)=takeIf{it.isFinite()}?.coerceIn(range)?:fallback
         val lengthMin=wavelengthMin.bounded(2f..2000f,40f);val heightMin=amplitudeMin.bounded(0f..1000f,5f)
@@ -59,7 +68,12 @@ data class RasterFilterPreset(val id:String=UUID.randomUUID().toString(),val nam
         hatchSize=hatchSize.bounded(1f..10f,2f),hatchRoughness=hatchRoughness.bounded(0f..100f,40f),
         filmIntensity=filmIntensity.bounded(0f..100f,70f),filmAberration=filmAberration.bounded(0f..100f,30f),filmNoise=filmNoise.bounded(0f..100f,30f),
         expression=expression.coerceIn(0,2),monoThreshold=monoThreshold.bounded(0f..1f,.5f),layerResolution=layerResolution.bounded(.02f..1f,1f),
-        tonePitch=tonePitch.takeIf{it.isFinite()&&it>=2f}?.coerceAtMost(200f)?:0f,matchStrength=matchStrength.bounded(0f..1f,1f))
+        tonePitch=tonePitch.takeIf{it.isFinite()&&it>=2f}?.coerceAtMost(200f)?:0f,matchStrength=matchStrength.bounded(0f..1f,1f),
+        glowStrength=glowStrength.bounded(0f..400f,100f),glowArea=glowArea.bounded(0f..100f,50f),glowBlur=glowBlur.bounded(1f..100f,30f),
+        inflateShadow=inflateShadow.bounded(0f..100f,50f),inflateShine=inflateShine.bounded(0f..100f,50f),inflateHeight=inflateHeight.bounded(0f..100f,30f),
+        inflateSmoothness=inflateSmoothness.bounded(0f..10f,2f),shadowBlur=shadowBlur.bounded(0f..100f,8f),shadowDistance=shadowDistance.bounded(0f..500f,12f),
+        shadowOpacity=shadowOpacity.bounded(0f..100f,60f),glitchShift=glitchShift.bounded(0f..400f,40f),glitchBand=glitchBand.bounded(2f..400f,24f),
+        glitchDensity=glitchDensity.bounded(0f..100f,40f),glitchSplit=glitchSplit.bounded(0f..100f,6f))
     }
     internal fun distortParameters()=DistortParameters(distortion,centerX,centerY,radius,shape,angle,tension,count,
         wavelengthMin,wavelengthMax,amplitudeMin,amplitudeMax,horizontalRatio,verticalRatio,mode,wrap,scale,seed)
@@ -86,6 +100,10 @@ data class RasterFilterPreset(val id:String=UUID.randomUUID().toString(),val nam
         CONVERT_LAYER_KIND->RasterImageFilter.Effect.ConvertLayer(LayerConversion(LayerExpression.entries[p.expression],p.monoThreshold,
             p.whiteTransparent,p.layerResolution,p.tonePitch.takeIf{it>=2f},p.angle))
         MATCH_COLOR_KIND->RasterImageFilter.Effect.MatchColor(null,p.matchStrength,p.keepLuminance)
+        GLOW_KIND->RasterImageFilter.Effect.Glow(GlowParameters(p.glowStrength,p.glowArea,p.glowBlur))
+        INFLATE_KIND->RasterImageFilter.Effect.Inflate(InflateParameters(p.inflateShadow,p.inflateShine,p.inflateHeight,p.inflateSmoothness,p.angle))
+        DROP_SHADOW_KIND->RasterImageFilter.Effect.DropShadow(DropShadowParameters(p.shadowBlur,p.angle,p.shadowDistance,p.shadowOpacity,p.colorArgb))
+        GLITCH_KIND->RasterImageFilter.Effect.Glitch(GlitchParameters(p.glitchShift,p.glitchBand,p.glitchDensity,p.glitchSplit,p.seed))
         else->RasterImageFilter.Effect.Distort(DISTORT_KINDS[p.kind-FIRST_DISTORT_KIND],p.distortParameters())
     }}
     companion object {
@@ -105,7 +123,12 @@ data class RasterFilterPreset(val id:String=UUID.randomUUID().toString(),val nam
         val CONVERT_LAYER_KIND=FIRST_EFFECT_KIND+6
         /** Match color: the dialog supplies the reference layer's statistics. */
         val MATCH_COLOR_KIND=CONVERT_LAYER_KIND+1
-        val LAST_KIND=MATCH_COLOR_KIND
+        /** CSP 5.1's Glow, Inflate and Drop shadow, then Glitch; listed with the Effect filters. */
+        val GLOW_KIND=MATCH_COLOR_KIND+1
+        val INFLATE_KIND=GLOW_KIND+1
+        val DROP_SHADOW_KIND=INFLATE_KIND+1
+        val GLITCH_KIND=DROP_SHADOW_KIND+1
+        val LAST_KIND=GLITCH_KIND
     }
 }
 object RasterFilterPresetsCodec {

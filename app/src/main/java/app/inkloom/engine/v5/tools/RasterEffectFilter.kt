@@ -59,7 +59,7 @@ data class FilmParameters(
  * keeps its range where an effect allows it, and a selection weights the result.
  */
 internal object RasterEffectFilter {
-    private class Region(val left: Int, val top: Int, val width: Int, val height: Int, val rgba: FloatArray) {
+    internal class Region(val left: Int, val top: Int, val width: Int, val height: Int, val rgba: FloatArray) {
         /** Unpremultiplied display-encoded colour and alpha at absolute coordinates, edges clamped. */
         fun at(x: Int, y: Int, out: FloatArray) {
             val cx = (x - left).coerceIn(0, width - 1); val cy = (y - top).coerceIn(0, height - 1)
@@ -91,6 +91,28 @@ internal object RasterEffectFilter {
             is RasterImageFilter.Effect.Crystallize -> haloKeys(source, max(4, effect.cellSize.roundToInt() * 2))
             else -> haloKeys(source, halo)
         }
+        return render(source, selection, keys, cancelled) { left, top, w, h, result ->
+            val reach = if (effect is RasterImageFilter.Effect.Crystallize) effect.cellSize.roundToInt() * 2 + 2 else halo
+            val region = region(source, left - reach, top - reach, w + reach * 2, h + reach * 2)
+            when (effect) {
+                is RasterImageFilter.Effect.RemoveJpegNoise -> removeJpegNoise(region, left, top, w, h, result)
+                is RasterImageFilter.Effect.Crystallize -> crystallize(source, effect, left, top, w, h, result)
+                is RasterImageFilter.Effect.NormalMap -> normalMap(region, effect, left, top, w, h, result)
+                is RasterImageFilter.Effect.Artistic -> artistic(region, effect.parameters, left, top, w, h, result)
+                is RasterImageFilter.Effect.PencilDrawing -> pencil(region, effect.parameters, left, top, w, h, result)
+                is RasterImageFilter.Effect.Film -> film(region, effect.parameters, width, height, left, top, w, h, result)
+                else -> error("Unsupported effect")
+            }
+        }
+    }
+
+    /**
+     * Writes the [keys] tiles of a new surface (other tiles stay empty): [compute] fills a tile's
+     * unpremultiplied display-encoded RGBA, which the selection then weights against the original.
+     */
+    internal fun render(source: PixelTileSurfaceSnapshot, selection: MaskTileSurfaceSnapshot?, keys: Collection<PixelTileKey>,
+                        cancelled: () -> Boolean, compute: (left: Int, top: Int, w: Int, h: Int, out: FloatArray) -> Unit): PixelTileSurface {
+        val width = source.logicalWidth; val height = source.logicalHeight; val tile = source.tileSize
         val output = PixelTileSurface(width, height, tile, pixelFormat = source.pixelFormat)
         val high = source.pixelFormat.isHighPrecision
         output.beginWrite("effect filter").use { write ->
@@ -100,22 +122,13 @@ internal object RasterEffectFilter {
                 if (cancelled()) throw java.util.concurrent.CancellationException("Image filter preview superseded")
                 val left = key.column * tile; val top = key.row * tile
                 val w = min(tile, width - left); val h = min(tile, height - top)
-                val reach = if (effect is RasterImageFilter.Effect.Crystallize) effect.cellSize.roundToInt() * 2 + 2 else halo
-                val region = region(source, left - reach, top - reach, w + reach * 2, h + reach * 2)
                 val result = FloatArray(w * h * 4)
-                when (effect) {
-                    is RasterImageFilter.Effect.RemoveJpegNoise -> removeJpegNoise(region, left, top, w, h, result)
-                    is RasterImageFilter.Effect.Crystallize -> crystallize(source, effect, left, top, w, h, result)
-                    is RasterImageFilter.Effect.NormalMap -> normalMap(region, effect, left, top, w, h, result)
-                    is RasterImageFilter.Effect.Artistic -> artistic(region, effect.parameters, left, top, w, h, result)
-                    is RasterImageFilter.Effect.PencilDrawing -> pencil(region, effect.parameters, left, top, w, h, result)
-                    is RasterImageFilter.Effect.Film -> film(region, effect.parameters, width, height, left, top, w, h, result)
-                    else -> error("Unsupported effect")
-                }
+                compute(left, top, w, h, result)
+                val original = region(source, left, top, w, h)
                 val old = FloatArray(4)
                 for (y in 0 until h) for (x in 0 until w) {
                     val px = left + x; val py = top + y; val i = (y * w + x) * 4
-                    region.at(px, py, old)
+                    original.at(px, py, old)
                     val weight = selection?.alphaAt((px.toLong() * selection.logicalWidth / width).toInt(),
                         (py.toLong() * selection.logicalHeight / height).toInt())?.div(255f) ?: 1f
                     fun mix(c: Int) = old[c] + (result[i + c] - old[c]) * weight
@@ -141,7 +154,7 @@ internal object RasterEffectFilter {
     }
 
     /** Unpremultiplied, display-encoded copy of a rectangle; outside the layer is transparent. */
-    private fun region(source: PixelTileSurfaceSnapshot, left: Int, top: Int, width: Int, height: Int): Region {
+    internal fun region(source: PixelTileSurfaceSnapshot, left: Int, top: Int, width: Int, height: Int): Region {
         val rgba = FloatArray(width * height * 4)
         if (!source.pixelFormat.isHighPrecision) {
             // 8-bit pixels are already display-encoded: one bulk read, no linear round trip.
@@ -166,10 +179,10 @@ internal object RasterEffectFilter {
         return Region(left, top, width, height, rgba)
     }
 
-    private fun allKeys(width: Int, height: Int, tile: Int): List<PixelTileKey> =
+    internal fun allKeys(width: Int, height: Int, tile: Int): List<PixelTileKey> =
         (0 until (height + tile - 1) / tile).flatMap { row -> (0 until (width + tile - 1) / tile).map { PixelTileKey(it, row) } }
 
-    private fun haloKeys(source: PixelTileSurfaceSnapshot, halo: Int): Set<PixelTileKey> {
+    internal fun haloKeys(source: PixelTileSurfaceSnapshot, halo: Int): Set<PixelTileKey> {
         val tile = source.tileSize; val keys = linkedSetOf<PixelTileKey>()
         val lastColumn = (source.logicalWidth - 1) / tile; val lastRow = (source.logicalHeight - 1) / tile
         source.tileInfo.filter { it.nonTransparentPixelCount > 0 }.forEach { info ->
@@ -180,7 +193,7 @@ internal object RasterEffectFilter {
         return keys
     }
 
-    private fun hash(x: Int, y: Int, seed: Int): Float {
+    internal fun hash(x: Int, y: Int, seed: Int): Float {
         var n = x * 73856093 xor (y * 19349663) xor (seed * 83492791)
         n = (n xor (n ushr 13)) * 1274126177
         return ((n ushr 1) and 0xFFFFFF) / 16777215f

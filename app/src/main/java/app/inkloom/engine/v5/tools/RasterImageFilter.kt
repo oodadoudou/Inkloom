@@ -74,6 +74,10 @@ internal object RasterImageFilter {
             override val sigma = 1f
             init { require(strength in 0f..1f) { "Match strength must be between 0 and 100%" } }
         }
+        data class Glow(val parameters: GlowParameters) : Effect { override val sigma = 1f }
+        data class Inflate(val parameters: InflateParameters) : Effect { override val sigma = 1f }
+        data class DropShadow(val parameters: DropShadowParameters) : Effect { override val sigma = 1f }
+        data class Glitch(val parameters: GlitchParameters) : Effect { override val sigma = 1f }
     }
 
     fun apply(
@@ -90,6 +94,8 @@ internal object RasterImageFilter {
         if (effect is Effect.RemoveJpegNoise || effect is Effect.Crystallize || effect is Effect.NormalMap ||
             effect is Effect.Artistic || effect is Effect.PencilDrawing || effect is Effect.Film)
             return RasterEffectFilter.apply(source, effect, selection, cancelled)
+        if (effect is Effect.Glow || effect is Effect.Inflate || effect is Effect.DropShadow || effect is Effect.Glitch)
+            return RasterQuickEffects.apply(source, effect, selection, cancelled)
         if (effect is Effect.FixedBlur || effect is Effect.PerlinNoise || effect is Effect.Distort)
             return RasterDistortFilter.apply(source, effect, selection, cancelled)
         if(source.pixelFormat.isHighPrecision || effect is Effect.MotionBlur || effect is Effect.RadialBlur ||
