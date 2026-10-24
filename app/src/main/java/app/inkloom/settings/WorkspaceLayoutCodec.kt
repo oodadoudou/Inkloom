@@ -45,8 +45,9 @@ object WorkspaceLayoutCodec {
 
     fun decode(bytes: ByteArray): Result<WorkspaceLayoutDocument> = runCatching {
         require(bytes.isNotEmpty() && bytes.size <= MAX_FILE_BYTES) { "Workspace layout has an invalid size" }
-        val document = json.decodeFromString<WorkspaceLayoutDocument>(bytes.decodeToString())
-        require(document.format == FORMAT && document.version == 1) { "Unsupported workspace layout" }
+        val decoded = json.decodeFromString<WorkspaceLayoutDocument>(bytes.decodeToString())
+        require(decoded.format == FORMAT && decoded.version == 1) { "Unsupported workspace layout" }
+        val document = decoded.copy(workspace = decoded.workspace.withAllPanels())
         document.workspace.validate()
         validateRail(document.toolRail)
         document

@@ -56,7 +56,7 @@ object AppSettingsBackupCodec {
         val palette = root["colorPalette"]?.jsonArray?.mapNotNull { runCatching { it.jsonPrimitive.int }.getOrNull() }?.distinct()?.take(32).orEmpty()
         val colorSets = root["colorSetLibrary"]?.let { ColorSetLibraryCodec.decode(it.toString()) }
         val workspace = root["panelWorkspace"]?.let {
-            json.decodeFromJsonElement(PanelWorkspaceBackup.serializer(), it).also(PanelWorkspaceBackup::validate)
+            json.decodeFromJsonElement(PanelWorkspaceBackup.serializer(), it).withAllPanels().also(PanelWorkspaceBackup::validate)
         } ?: root.getValue("settings").jsonObject.takeIf { settings -> settings.keys.any { it in LegacyWorkspaceImport.panelKeys } }
             ?.let(LegacyWorkspaceImport::fromSettings)
         AppPreferencesBackup(

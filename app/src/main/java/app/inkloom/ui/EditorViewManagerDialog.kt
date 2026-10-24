@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BlurOn
 import androidx.compose.material.icons.outlined.Brush
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Colorize
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.GridView
@@ -43,13 +44,13 @@ import app.inkloom.ui.theme.OutlineSoft
 internal fun editorPanelTitle(panel: EditorPanel, language: UiLanguage): String = language.text(
     when (panel) {
         EditorPanel.PAGES -> "Pages"; EditorPanel.BRUSHES -> "Brushes"; EditorPanel.LAYERS -> "Layers"
-        EditorPanel.SUBTOOLS -> "Sub tools"; EditorPanel.PROPERTIES -> "Tool property"
+        EditorPanel.SUBTOOLS -> "Sub tools"; EditorPanel.PROPERTIES -> "Tool property"; EditorPanel.NAVIGATOR -> "Navigator"
         EditorPanel.WHEEL -> "Wheel"; EditorPanel.PALETTES -> "Palettes"
         EditorPanel.MIX -> "Mix"; EditorPanel.NEARBY -> "Nearby"
     },
     when (panel) {
         EditorPanel.PAGES -> "页面"; EditorPanel.BRUSHES -> "笔刷"; EditorPanel.LAYERS -> "图层"
-        EditorPanel.SUBTOOLS -> "子工具"; EditorPanel.PROPERTIES -> "工具属性"
+        EditorPanel.SUBTOOLS -> "子工具"; EditorPanel.PROPERTIES -> "工具属性"; EditorPanel.NAVIGATOR -> "导航器"
         EditorPanel.WHEEL -> "色环"; EditorPanel.PALETTES -> "色板"
         EditorPanel.MIX -> "混色"; EditorPanel.NEARBY -> "近似色"
     },
@@ -61,6 +62,7 @@ internal fun editorPanelIcon(panel: EditorPanel): ImageVector = when (panel) {
     EditorPanel.LAYERS -> Icons.Outlined.Layers
     EditorPanel.SUBTOOLS -> Icons.Outlined.GridView
     EditorPanel.PROPERTIES -> Icons.Outlined.Tune
+    EditorPanel.NAVIGATOR -> Icons.Outlined.Explore
     EditorPanel.WHEEL, EditorPanel.PALETTES -> Icons.Outlined.Palette
     EditorPanel.MIX -> Icons.Outlined.BlurOn
     EditorPanel.NEARBY -> Icons.Outlined.Colorize
@@ -82,7 +84,7 @@ internal fun EditorViewManagerDialog(
         text = {
             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                 listOf(
-                    tr("Notebook", "笔记") to listOf(EditorPanel.PAGES),
+                    tr("Notebook", "笔记") to listOf(EditorPanel.PAGES, EditorPanel.NAVIGATOR),
                     tr("Painting", "绘画") to listOf(EditorPanel.BRUSHES, EditorPanel.LAYERS, EditorPanel.SUBTOOLS, EditorPanel.PROPERTIES),
                     tr("Colors", "颜色") to listOf(EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY),
                 ).forEachIndexed { index, (group, panels) ->

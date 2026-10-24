@@ -61,13 +61,13 @@ class EditorWorkspaceStore(private val context: Context) {
         }
         val currentTree = import("layout") { raw ->
             require(raw.length < 64 * 1024) { "Panel layout data is too large" }
-            json.decodeFromString(EditorPanelLayout.serializer(), raw).also { require(EditorPanelLayouts.isValid(it)) }
+            EditorPanelLayouts.withAllPanels(json.decodeFromString(EditorPanelLayout.serializer(), raw)).also { require(EditorPanelLayouts.isValid(it)) }
         }
         val named = import("named_layouts") { raw ->
             require(raw.length < WorkspaceLayoutCodec.MAX_FILE_BYTES) { "Named layout data is too large" }
-            json.decodeFromString(NamedPanelLayouts.serializer(), raw).also {
-                PanelWorkspaceBackup(EditorPanelLayout(), it).validate()
-            }
+            PanelWorkspaceBackup(EditorPanelLayout(), json.decodeFromString(NamedPanelLayouts.serializer(), raw)).withAllPanels().also {
+                it.validate()
+            }.namedLayouts
         } ?: NamedPanelLayouts()
         val oldProfile = legacy.orientationLayouts[orientation]
         val migrated = legacy.copy(layout = currentTree ?: oldProfile?.layout ?: legacy.layout, namedLayouts = named,
@@ -96,7 +96,7 @@ class EditorWorkspaceStore(private val context: Context) {
     }
     private fun decode(raw:String):PanelWorkspaceBackup {
         require(raw.length<=WorkspaceLayoutCodec.MAX_FILE_BYTES) { "Workspace data is too large" }
-        return json.decodeFromString(PanelWorkspaceBackup.serializer(),raw).also(PanelWorkspaceBackup::validate)
+        return json.decodeFromString(PanelWorkspaceBackup.serializer(),raw).withAllPanels().also(PanelWorkspaceBackup::validate)
     }
     private fun write(value: PanelWorkspaceBackup, durable: Boolean = false) {
         val encoded = json.encodeToString(PanelWorkspaceBackup.serializer(), value)

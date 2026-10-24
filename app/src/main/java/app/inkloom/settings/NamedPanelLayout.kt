@@ -59,6 +59,11 @@ data class PanelWorkspaceBackup(
     val orientationLayouts: Map<String, NamedPanelLayout> = emptyMap(),
     val activeOrientation: String? = null,
 ) {
+    /** Every saved layout with the panels added since it was saved. */
+    fun withAllPanels(): PanelWorkspaceBackup = copy(layout = EditorPanelLayouts.withAllPanels(layout),
+        namedLayouts = NamedPanelLayouts(namedLayouts.entries.map { it.copy(layout = EditorPanelLayouts.withAllPanels(it.layout)) }),
+        orientationLayouts = orientationLayouts.mapValues { (_, saved) -> saved.copy(layout = EditorPanelLayouts.withAllPanels(saved.layout)) })
+
     fun validate() {
         require(orientationLayouts.size <= 2 && orientationLayouts.keys.all { it == "LANDSCAPE" || it == "PORTRAIT" }) { "Invalid orientation layouts" }
         require(activeOrientation == null || activeOrientation == "LANDSCAPE" || activeOrientation == "PORTRAIT")

@@ -257,6 +257,24 @@ object ViewportTransform {
     fun resetRotation(current: ViewportState, geometry: ViewportGeometry? = null): ViewportState =
         clamp(sanitize(current).copy(rotationDegrees = 0f), geometry)
 
+    /** The window's outline in page View pixels (for a navigator): four corners clockwise from the top left. */
+    fun visibleOutline(current: ViewportState, windowWidth: Float, windowHeight: Float, viewWidth: Float, viewHeight: Float): FloatArray {
+        val corners = floatArrayOf(0f, 0f, windowWidth, 0f, windowWidth, windowHeight, 0f, windowHeight)
+        return FloatArray(8).also { out ->
+            for (i in 0 until 4) {
+                val (x, y) = screenToLocal(corners[2 * i], corners[2 * i + 1], windowWidth / 2f, windowHeight / 2f, viewWidth, viewHeight, current)
+                out[2 * i] = x; out[2 * i + 1] = y
+            }
+        }
+    }
+
+    /** The viewport moved, at the same zoom and rotation, so page View point ([x], [y]) is at the window centre. */
+    fun centerOn(current: ViewportState, x: Float, y: Float, viewWidth: Float, viewHeight: Float, geometry: ViewportGeometry? = null): ViewportState {
+        val safe = sanitize(current)
+        val (unpannedX, unpannedY) = pageToView(x, y, viewWidth, viewHeight, safe.copy(panX = 0f, panY = 0f))
+        return clamp(safe.copy(panX = viewWidth.coerceAtLeast(1f) / 2f - unpannedX, panY = viewHeight.coerceAtLeast(1f) / 2f - unpannedY), geometry)
+    }
+
     fun clamp(current: ViewportState, geometry: ViewportGeometry?): ViewportState {
         val safe = sanitize(current)
         val validGeometry = geometry?.takeIf { it.viewportWidth.isFinite() && it.viewportHeight.isFinite() && it.pageWidth.isFinite() && it.pageHeight.isFinite() && it.viewportWidth > 0f && it.viewportHeight > 0f && it.pageWidth > 0f && it.pageHeight > 0f } ?: return safe

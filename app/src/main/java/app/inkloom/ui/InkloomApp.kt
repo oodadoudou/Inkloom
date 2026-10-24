@@ -2510,7 +2510,7 @@ private fun EditorScreen(
                 EditorPanel.PAGES -> panelState.show(EditorPanel.PAGES, false)
                 EditorPanel.LAYERS -> panelState.show(EditorPanel.LAYERS, false)
                 EditorPanel.BRUSHES -> setBrushPanelOpen(false)
-                EditorPanel.SUBTOOLS, EditorPanel.PROPERTIES -> Unit
+                EditorPanel.SUBTOOLS, EditorPanel.PROPERTIES, EditorPanel.NAVIGATOR -> Unit
                 else -> if (panelState.layout.open.none { it.ordinal >= EditorPanel.WHEEL.ordinal }) {
                     colorPreview.clear()
                     canvasView?.inkColor = brushColor; canvasView?.secondaryInkColor = backgroundColor
@@ -3745,6 +3745,9 @@ private fun EditorScreen(
                         onRulerCommand = { canvasView?.rulerCommand(it) },
                         onFrameAction = { frameAction = it },
                     )
+                    EditorPanel.NAVIGATOR -> NavigatorPanel(canvasView?.takeIf { it.width > 0 && it.height > 0 && viewportWidthPx > 0f && viewportHeightPx > 0f }?.let {
+                        NavigatorTarget(selectedPage, ViewportState(zoom, panX, panY, viewRotation, viewMirrored), it.width.toFloat(), it.height.toFloat(), viewportWidthPx, viewportHeightPx)
+                    }, assets, settings.language, ::applyViewport, ::fitPage, ::actualSize) { viewMirrored = !viewMirrored }
                     else -> BoxWithConstraints(Modifier.fillMaxSize().padding(6.dp)) {
                     ColorStudioPanel(
                         language = LocalUiLanguage.current,

@@ -4,7 +4,8 @@ import kotlinx.serialization.Serializable
 import kotlin.math.abs
 
 @Serializable
-enum class EditorPanel { PAGES, BRUSHES, LAYERS, SUBTOOLS, PROPERTIES, WHEEL, PALETTES, MIX, NEARBY }
+/** Colour panels come last: code treats every panel from [WHEEL] on as a colour panel. */
+enum class EditorPanel { PAGES, BRUSHES, LAYERS, SUBTOOLS, PROPERTIES, NAVIGATOR, WHEEL, PALETTES, MIX, NEARBY }
 
 @Serializable
 data class PanelRect(val x: Float, val y: Float, val width: Float, val height: Float) {
@@ -48,6 +49,8 @@ data class EditorPanelLayout(
         FloatingPanels(PanelNode.Tabs("pages", listOf(EditorPanel.PAGES)), PanelRect(128f, 12f, 180f, 560f)),
         FloatingPanels(PanelNode.Tabs("brushes", listOf(EditorPanel.BRUSHES, EditorPanel.SUBTOOLS)), PanelRect(720f, 12f, 340f, 600f)),
         FloatingPanels(PanelNode.Tabs("layers", listOf(EditorPanel.LAYERS, EditorPanel.PROPERTIES)), PanelRect(800f, 80f, 270f, 500f)),
+        // Colours stay the front-most window by default.
+        FloatingPanels(PanelNode.Tabs("navigator", listOf(EditorPanel.NAVIGATOR)), PanelRect(880f, 300f, 280f, 340f)),
         FloatingPanels(PanelNode.Tabs("colors", listOf(EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY)), PanelRect(850f, 12f, 324f, 340f)),
     ),
     val open: Set<EditorPanel> = emptySet(),
@@ -88,6 +91,7 @@ object EditorPanelLayouts {
         EditorPanel.BRUSHES -> 196f
         EditorPanel.LAYERS, EditorPanel.SUBTOOLS, EditorPanel.PROPERTIES -> 200f
         EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY -> 180f
+        EditorPanel.NAVIGATOR -> 160f
     }
 
     /** Stable width keeps tab hit targets and drop insertion aligned in both UI languages. */
@@ -97,6 +101,7 @@ object EditorPanelLayouts {
         EditorPanel.PALETTES -> 74f
         EditorPanel.NEARBY -> 68f
         EditorPanel.BRUSHES -> 66f
+        EditorPanel.NAVIGATOR -> 78f
         else -> 60f
     }
     fun tabInsertionIndex(tabs: PanelNode.Tabs, pointerX: Float, panelX: Float, panelWidth: Float): Int {
@@ -133,6 +138,27 @@ object EditorPanelLayouts {
             layout.floating.none { containsCanvas(it.node) || members(it.node).isEmpty() } &&
             panels.size == EditorPanel.entries.size && panels.toSet().size == panels.size &&
             layout.open.all { it in panels } && layout.placed.all { it in panels }
+    }
+    /**
+     * A layout saved before a panel existed gets that panel in a window of its own, closed and
+     * placed as in the default layout, instead of being rejected and reset.
+     */
+    fun withAllPanels(layout: EditorPanelLayout): EditorPanelLayout {
+        val present = (members(layout.dock) + layout.floating.flatMap { members(it.node) }).toSet()
+        val missing = EditorPanel.entries.filter { it !in present }
+        if (missing.isEmpty()) return layout
+        val ids = mutableSetOf<String>()
+        fun collect(node: PanelNode) { ids += node.id; if (node is PanelNode.Split) { collect(node.first); collect(node.second) } }
+        collect(layout.dock); layout.floating.forEach { collect(it.node) }
+        val defaults = EditorPanelLayout().floating
+        var nextId = layout.nextId
+        val added = missing.map { panel ->
+            var id: String
+            do { id = "added-${nextId++}" } while (id in ids)
+            ids += id
+            FloatingPanels(PanelNode.Tabs(id, listOf(panel)), defaults.firstOrNull { panel in members(it.node) }?.rect ?: PanelRect(120f, 120f, 260f, 300f))
+        }
+        return layout.copy(floating = layout.floating + added, nextId = nextId)
     }
     fun members(node: PanelNode): List<EditorPanel> = when (node) {
         is PanelNode.Canvas, is PanelNode.Space -> emptyList()
