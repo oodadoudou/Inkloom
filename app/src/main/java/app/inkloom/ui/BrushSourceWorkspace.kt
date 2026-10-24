@@ -34,6 +34,12 @@ internal class BrushSourceWorkspace(private val context:Context): AutoCloseable 
             ?: error("Unreadable image / 无法读取图片")
         return try { write(bitmap) } finally { bitmap.recycle() }
     }
+    /** A copy of a built-in original source, generated on the device. */
+    fun builtIn(source:BuiltInBrushSource):String {
+        val image=BrushSourceImages.generate(source)
+        val bitmap=Bitmap.createBitmap(image.argb,image.width,image.height,Bitmap.Config.ARGB_8888)
+        return try { write(bitmap) } finally { bitmap.recycle() }
+    }
     fun transform(path:String,operation:SourceImageOperation):String {
         val bounds=BitmapFactory.Options().apply { inJustDecodeBounds=true };BitmapFactory.decodeFile(path,bounds)
         val options=BitmapFactory.Options().apply { inSampleSize=1 }
@@ -41,8 +47,16 @@ internal class BrushSourceWorkspace(private val context:Context): AutoCloseable 
         val bitmap=BitmapFactory.decodeFile(path,options) ?: error("Source unavailable / 来源图案不可用")
         var result:Bitmap?=null
         return try {
-            result=if(operation==SourceImageOperation.ROTATE) Bitmap.createBitmap(bitmap,0,0,bitmap.width,bitmap.height,Matrix().apply{postRotate(90f)},false)
-                else process(bitmap,operation)
+            result=when(operation) {
+                SourceImageOperation.ROTATE -> Bitmap.createBitmap(bitmap,0,0,bitmap.width,bitmap.height,Matrix().apply{postRotate(90f)},false)
+                SourceImageOperation.TRIM, SourceImageOperation.SQUARE -> {
+                    val pixels=IntArray(bitmap.width*bitmap.height).also { bitmap.getPixels(it,0,bitmap.width,0,0,bitmap.width,bitmap.height) }
+                    val source=SourcePixels(bitmap.width,bitmap.height,pixels)
+                    val edited=if(operation==SourceImageOperation.TRIM) BrushSourceImages.trimmed(source) else BrushSourceImages.squared(source)
+                    Bitmap.createBitmap(edited.argb,edited.width,edited.height,Bitmap.Config.ARGB_8888)
+                }
+                else -> process(bitmap,operation)
+            }
             write(result)
         } finally { if(result!==bitmap) result?.recycle();bitmap.recycle() }
     }
@@ -85,4 +99,4 @@ internal class BrushSourceWorkspace(private val context:Context): AutoCloseable 
     }
 }
 internal enum class BrushSourceRole { SHAPE,GRAIN,SECONDARY_SHAPE,SECONDARY_GRAIN }
-internal enum class SourceImageOperation { ROTATE,INVERT,REPEAT }
+internal enum class SourceImageOperation { ROTATE,INVERT,REPEAT,TRIM,SQUARE }
