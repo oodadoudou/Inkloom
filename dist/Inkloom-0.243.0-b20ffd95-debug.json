@@ -1,0 +1,20 @@
+{
+  "version": "0.243.0",
+  "versionCode": 243,
+  "variant": "debug",
+  "commit": "b20ffd95b84ca34d3a78dcc48c036d26fab0ac0d",
+  "sha256": "0f44f02753bee79dcdee47a2c90d0ae947f2c23c17e960108476fe1a926f5064",
+  "bytes": 184276648,
+  "generatedUtc": "2026-10-24T17:25:52.125752+00:00",
+  "verification": {
+    "JVM": "PASS 1229 tests, 0 failures/errors, 8 skipped",
+    "Android15Targeted": "AnimationWindowTest, AnimationRenderingTest, LayerGroupRenderingTest, LayerColorRenderingTest, V5RasterProjectionProductionTest, RasterSurfaceRecompositionTest, InkloomLaunchTest: 77/77; GIF saved through the system picker on the emulator decoded as 2 frames 720x1018 looping.",
+    "Android15Full": "Last full run (942 tests) was on 0.238.0 source.",
+    "lint": "PASS 0 errors, 116 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS clean install, versionCode 243, cold start ok (1141-1262 ms), crash buffer empty",
+    "DriveDesktop": "APK only, SHA-256 verified in the local sync folder; cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING"
+}
