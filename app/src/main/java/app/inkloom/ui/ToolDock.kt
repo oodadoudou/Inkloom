@@ -315,7 +315,10 @@ private fun ProcreateTopButtonBody(icon: ImageVector, description: String, selec
 }
 
 @Composable
-internal fun ToolDock(tool: EditorTool, toolPaletteLayout: String, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDragStart: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, onDragCancel: () -> Unit, layoutLocked: Boolean, vertical: Boolean, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit, liquifyControls: @Composable ColumnScope.() -> Unit, modifier: Modifier = Modifier) {
+internal fun ToolDock(tool: EditorTool, toolPaletteLayout: String, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDragStart: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, onDragCancel: () -> Unit, layoutLocked: Boolean, vertical: Boolean, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit, liquifyControls: @Composable ColumnScope.() -> Unit,
+    modifier: Modifier = Modifier,
+    /** Snapped to a window edge: drawn as a docked palette, flush and square, along the whole edge. */
+    docked: Boolean = false) {
     var moreToolsOpen by remember { mutableStateOf(false) }
     var controlsOpen by remember { mutableStateOf(false) }
     val currentDragStart by rememberUpdatedState(onDragStart)
@@ -331,9 +334,10 @@ internal fun ToolDock(tool: EditorTool, toolPaletteLayout: String, onTool: (Edit
             onDragCancel = { currentDragCancel() },
         ) { change, amount -> change.consume(); currentDrag(amount.x, amount.y) }
     }
+    val shape = if (vertical && !docked) RoundedCornerShape(18.dp) else RoundedCornerShape(0.dp)
     Surface(
-        modifier.shadow(if (vertical) 5.dp else 1.dp, if (vertical) RoundedCornerShape(18.dp) else RoundedCornerShape(0.dp)),
-        shape = if (vertical) RoundedCornerShape(18.dp) else RoundedCornerShape(0.dp),
+        (if (docked) modifier else modifier.shadow(if (vertical) 5.dp else 1.dp, shape)).testTag("tool-dock"),
+        shape = shape,
         color = Paper,
         contentColor = Ink,
         border = CardDefaults.outlinedCardBorder(),
@@ -388,11 +392,13 @@ internal fun ToolDock(tool: EditorTool, toolPaletteLayout: String, onTool: (Edit
         }
         if (vertical) Row(verticalAlignment = Alignment.Top) {
             val railScroll = rememberScrollState()
+            // Docked, the tools use the whole edge and scroll only when it is too short.
             Column(
-                Modifier.width(40.dp).heightIn(max = 600.dp).scrollEdgeFades(railScroll, Paper).verticalScroll(railScroll),
+                Modifier.width(40.dp).then(if (docked) Modifier.fillMaxHeight() else Modifier.heightIn(max = 600.dp))
+                    .scrollEdgeFades(railScroll, Paper).verticalScroll(railScroll),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) { content() }
-            VerticalDivider(Modifier.height(600.dp), color = OutlineSoft)
+            VerticalDivider(if (docked) Modifier.fillMaxHeight() else Modifier.height(600.dp), color = OutlineSoft)
             ProcreateSidebar(
                 brushSize = brushSize,
                 brushOpacity = brushOpacity,

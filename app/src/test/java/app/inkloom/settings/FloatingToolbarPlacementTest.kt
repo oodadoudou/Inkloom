@@ -42,8 +42,13 @@ class FloatingToolbarPlacementTest {
         assertEquals(ToolbarDock.FREE, FloatingToolbarPlacement.snapTarget(
             FloatingToolbarPosition(300f, 8f), 1_200f, 800f,
             vertical = true, measuredWidthDp = 88f, measuredHeightDp = 600f))
+        // A docked toolbar sits flush along its edge from the start; undocking starts it floating there.
         val left = FloatingToolbarPlacement.dockOrigin(ToolbarDock.LEFT, 1_200f, 800f, 88f, 600f)
-        assertEquals(16f, left.xDp, .001f)
-        assertEquals(100f, left.yDp, .001f)
+        assertEquals(FloatingToolbarPlacement.MARGIN_DP, left.xDp, .001f)
+        assertEquals(FloatingToolbarPlacement.MARGIN_DP, left.yDp, .001f)
+        val right = FloatingToolbarPlacement.dockOrigin(ToolbarDock.RIGHT, 1_200f, 800f, 88f, 600f)
+        assertEquals(1_200f - 88f - FloatingToolbarPlacement.MARGIN_DP, right.xDp, .001f)
+        val bottom = FloatingToolbarPlacement.dockOrigin(ToolbarDock.BOTTOM, 1_200f, 800f, 360f, 56f)
+        assertEquals(800f - 56f - FloatingToolbarPlacement.MARGIN_DP, bottom.yDp, .001f)
     }
 }

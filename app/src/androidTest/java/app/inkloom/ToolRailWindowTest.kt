@@ -75,8 +75,21 @@ class ToolRailWindowTest {
             compose.waitForIdle()
         }
         val screenWidth = compose.activity.resources.displayMetrics.widthPixels.toFloat()
+        // Docked like a palette: flush against the edge from the top of the canvas area, with the page area beside it.
+        fun dockedBounds() = compose.onNodeWithTag("tool-dock").fetchSemanticsNode().boundsInWindow
+        fun canvasBounds(): android.graphics.Rect = android.graphics.Rect().also { canvas().getGlobalVisibleRect(it) }
+        compose.waitForIdle()
+        if (AppSettingsStore(compose.activity).load().toolbarDock == ToolbarDock.LEFT) {
+            assertEquals(0f, dockedBounds().left, 1.5f)
+            assertTrue("the page area starts beside the docked rail", canvasBounds().left >= dockedBounds().right - 1.5f)
+        }
         drag(Offset(screenWidth - 35f, handle().y))
         assertEquals(ToolbarDock.RIGHT, AppSettingsStore(compose.activity).load().toolbarDock)
+        compose.waitForIdle()
+        val docked = dockedBounds()
+        assertEquals(screenWidth, docked.right, 1.5f)
+        assertTrue("docked along the whole edge: ${docked.height} of ${compose.onRoot().fetchSemanticsNode().boundsInWindow.height}", docked.height > 500f)
+        assertTrue("the page area ends beside the docked rail", canvasBounds().right <= docked.left + 1.5f)
         drag(Offset(screenWidth / 2f, handle().y), cancel = true)
         assertEquals(ToolbarDock.RIGHT, AppSettingsStore(compose.activity).load().toolbarDock)
     }

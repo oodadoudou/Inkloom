@@ -6,6 +6,8 @@ object FloatingToolbarPlacement {
     const val MARGIN_DP = 8f
     const val SHORT_EDGE_DP = 56f
     const val LONG_EDGE_DP = 360f
+    /** The vertical rail's width: tools 40 dp, divider 1 dp, size and opacity bar 64 dp. */
+    const val VERTICAL_RAIL_WIDTH_DP = 105f
 
     fun clamp(
         xDp: Float,
@@ -45,14 +47,17 @@ object FloatingToolbarPlacement {
             closest.first else ToolbarDock.FREE
     }
 
+    /**
+     * Where a docked toolbar starts floating when it is dragged off its edge: where it was docked
+     * (flush against the edge, from the start of it), within the floating margin. The container is
+     * the whole area, including the column the docked toolbar used.
+     */
     fun dockOrigin(dock: ToolbarDock, containerWidthDp: Float, containerHeightDp: Float,
                    measuredWidthDp: Float, measuredHeightDp: Float): FloatingToolbarPosition = when (dock) {
-        ToolbarDock.LEFT -> FloatingToolbarPosition(MARGIN_DP * 2f, (containerHeightDp - measuredHeightDp) / 2f)
-        ToolbarDock.RIGHT -> FloatingToolbarPosition(containerWidthDp - measuredWidthDp - MARGIN_DP * 2f,
-            (containerHeightDp - measuredHeightDp) / 2f)
-        ToolbarDock.TOP -> FloatingToolbarPosition((containerWidthDp - measuredWidthDp) / 2f, MARGIN_DP * 2f)
-        ToolbarDock.BOTTOM -> FloatingToolbarPosition((containerWidthDp - measuredWidthDp) / 2f,
-            containerHeightDp - measuredHeightDp - MARGIN_DP * 2f)
+        ToolbarDock.LEFT -> FloatingToolbarPosition(MARGIN_DP, MARGIN_DP)
+        ToolbarDock.RIGHT -> FloatingToolbarPosition(containerWidthDp - measuredWidthDp - MARGIN_DP, MARGIN_DP)
+        ToolbarDock.TOP -> FloatingToolbarPosition(MARGIN_DP, MARGIN_DP)
+        ToolbarDock.BOTTOM -> FloatingToolbarPosition(MARGIN_DP, containerHeightDp - measuredHeightDp - MARGIN_DP)
         ToolbarDock.FREE -> FloatingToolbarPosition(MARGIN_DP, MARGIN_DP)
     }
 

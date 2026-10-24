@@ -2549,11 +2549,26 @@ private fun EditorScreen(
                 else -> false
             }
         }, onReleaseInput = { canvasView?.requestFocus() }, onClose = ::closeEditorPanel, canvas = {
+            val dockVertical = settings.toolbarDock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT) || (settings.toolbarDock == ToolbarDock.FREE && settings.verticalToolbar)
+            // Start from the rail's real width so a docked rail does not shift the page once it is measured.
+            var measuredToolbarWidth by remember(dockVertical) { mutableFloatStateOf(if (dockVertical) FloatingToolbarPlacement.VERTICAL_RAIL_WIDTH_DP else FloatingToolbarPlacement.LONG_EDGE_DP) }
+            var measuredToolbarHeight by remember(dockVertical) { mutableFloatStateOf(if (dockVertical) 600f else FloatingToolbarPlacement.SHORT_EDGE_DP) }
+            // A toolbar snapped to an edge is docked like the palettes: it takes its own column (or
+            // row) and the page fits beside it. The clip stays on the whole area so it sits flush there.
+            val toolbarDocked = settings.showToolbar && settings.toolbarDock != ToolbarDock.FREE
+            val toolbarInset = when (settings.toolbarDock.takeIf { toolbarDocked }) {
+                ToolbarDock.LEFT -> PaddingValues(start = measuredToolbarWidth.dp)
+                ToolbarDock.RIGHT -> PaddingValues(end = measuredToolbarWidth.dp)
+                ToolbarDock.TOP -> PaddingValues(top = measuredToolbarHeight.dp)
+                ToolbarDock.BOTTOM -> PaddingValues(bottom = measuredToolbarHeight.dp)
+                else -> PaddingValues(0.dp)
+            }
             BoxWithConstraints(
                 Modifier
                     .fillMaxSize()
                     .clipToBounds()
                     .background(Workspace)
+                    .padding(toolbarInset)
                     .onGloballyPositioned { coordinates ->
                         viewportWidthPx = coordinates.size.width.toFloat()
                         viewportHeightPx = coordinates.size.height.toFloat()
@@ -3225,22 +3240,20 @@ private fun EditorScreen(
                 }
                 if (pageJumpOpen) PageJumpPopup(document.pages, selectedPage.id, navigatorBounds, LocalUiLanguage.current,
                     onSelect = { jumpToPage(it); pageJumpOpen = false }, onDismiss = { pageJumpOpen = false })
-                val dockVertical = settings.toolbarDock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT) || (settings.toolbarDock == ToolbarDock.FREE && settings.verticalToolbar)
-                var measuredToolbarWidth by remember(dockVertical) { mutableFloatStateOf(if (dockVertical) 88f else FloatingToolbarPlacement.LONG_EDGE_DP) }
-                var measuredToolbarHeight by remember(dockVertical) { mutableFloatStateOf(if (dockVertical) 600f else FloatingToolbarPlacement.SHORT_EDGE_DP) }
                 val dockAlignment = when (settings.toolbarDock) {
-                    ToolbarDock.TOP -> Alignment.TopCenter
-                    ToolbarDock.BOTTOM -> Alignment.BottomCenter
-                    ToolbarDock.LEFT -> Alignment.CenterStart
-                    ToolbarDock.RIGHT -> Alignment.CenterEnd
+                    ToolbarDock.TOP -> Alignment.TopStart
+                    ToolbarDock.BOTTOM -> Alignment.BottomStart
+                    ToolbarDock.LEFT -> Alignment.TopStart
+                    ToolbarDock.RIGHT -> Alignment.TopEnd
                     ToolbarDock.FREE -> Alignment.TopStart
                 }
-                val dockPadding = when (settings.toolbarDock) {
-                    ToolbarDock.TOP -> PaddingValues(top = 16.dp)
-                    ToolbarDock.BOTTOM -> PaddingValues(bottom = 16.dp)
-                    ToolbarDock.LEFT -> PaddingValues(start = 16.dp)
-                    ToolbarDock.RIGHT -> PaddingValues(end = 16.dp)
-                    ToolbarDock.FREE -> PaddingValues(0.dp)
+                // Docked, the toolbar moves out of the page area into the column reserved for it, along the whole edge.
+                val dockPlacement = when (settings.toolbarDock) {
+                    ToolbarDock.LEFT -> Modifier.offset { androidx.compose.ui.unit.IntOffset(-measuredToolbarWidth.dp.roundToPx(), 0) }.fillMaxHeight()
+                    ToolbarDock.RIGHT -> Modifier.offset { androidx.compose.ui.unit.IntOffset(measuredToolbarWidth.dp.roundToPx(), 0) }.fillMaxHeight()
+                    ToolbarDock.TOP -> Modifier.offset { androidx.compose.ui.unit.IntOffset(0, -measuredToolbarHeight.dp.roundToPx()) }.fillMaxWidth()
+                    ToolbarDock.BOTTOM -> Modifier.offset { androidx.compose.ui.unit.IntOffset(0, measuredToolbarHeight.dp.roundToPx()) }.fillMaxWidth()
+                    ToolbarDock.FREE -> Modifier
                 }
                 val boundedToolbarPosition = FloatingToolbarPlacement.clamp(toolbarX, toolbarY,
                     toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical,
@@ -3325,8 +3338,10 @@ private fun EditorScreen(
                         toolbarX = boundedToolbarPosition.xDp; toolbarY = boundedToolbarPosition.yDp
                     }
                     if (settings.toolbarDock != ToolbarDock.FREE) {
+                        // Undocked, the toolbar floats over the whole area, including the column it used.
                         val origin = FloatingToolbarPlacement.dockOrigin(settings.toolbarDock,
-                            toolbarAreaWidth.value, toolbarAreaHeight.value, measuredToolbarWidth, measuredToolbarHeight)
+                            toolbarAreaWidth.value + if (dockVertical) measuredToolbarWidth else 0f,
+                            toolbarAreaHeight.value + if (dockVertical) 0f else measuredToolbarHeight, measuredToolbarWidth, measuredToolbarHeight)
                         toolbarX = origin.xDp; toolbarY = origin.yDp
                         onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE,
                             toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY))
@@ -3358,7 +3373,7 @@ private fun EditorScreen(
                     changeCurrentBrushSize(raw)
                 }, onOpacity = { raw ->
                     changeCurrentBrushOpacity(raw)
-                }, onColor = ::changeBrushColor, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, backgroundColor, ::changeBrushColor, onSettingsChange, { gradientImportPicker.launch(arrayOf("application/json", GradientPresetLibraryCodec.MIME_TYPE, "*/*")) }, { gradientExportPicker.launch("Inkloom-gradients.json") }) }, liquifyControls = { LiquifyToolControls(settings, onSettingsChange) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f).onGloballyPositioned {
+                }, onColor = ::changeBrushColor, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, backgroundColor, ::changeBrushColor, onSettingsChange, { gradientImportPicker.launch(arrayOf("application/json", GradientPresetLibraryCodec.MIME_TYPE, "*/*")) }, { gradientExportPicker.launch("Inkloom-gradients.json") }) }, liquifyControls = { LiquifyToolControls(settings, onSettingsChange) }, docked = toolbarDocked, modifier = Modifier.align(dockAlignment).then(dockPlacement).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f).onGloballyPositioned {
                     val width = it.size.width / editorDensity.density
                     val height = it.size.height / editorDensity.density
                     if (kotlin.math.abs(measuredToolbarWidth - width) > .5f) measuredToolbarWidth = width
