@@ -27,6 +27,17 @@ class RasterLayerSurfaceRuntimeTest {
     }
 
     @Test
+    fun hiddenOnionSkinCelsAreLoadedAndHandedToTheCanvasButOtherHiddenLayersAreNot() {
+        val runtime = RasterLayerSurfaceRuntime(1200) { _, id, width -> PixelTileSurface(width, 800, surfaceId = "load-$id") }
+        val page = InkPage(layers = listOf(InkLayer(id = "shown", name = "Shown"), InkLayer(id = "cel", name = "Cel", visible = false),
+            InkLayer(id = "other", name = "Other", visible = false)))
+        assertEquals(setOf("shown"), runtime.reconcile(page).keys)
+        assertEquals(setOf("shown", "cel"), runtime.reconcile(page, onionSkin = setOf("cel")).keys)
+        // Turning onion skin off hands the canvas only the visible layers again.
+        assertEquals(setOf("shown"), runtime.reconcile(page).keys)
+    }
+
+    @Test
     fun locallyPublishedCheckpointDoesNotReplacePixelsFromLaterGestures() {
         var loads = 0
         val runtime = RasterLayerSurfaceRuntime(1200) { _, _, width ->

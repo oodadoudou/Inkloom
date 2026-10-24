@@ -32,7 +32,8 @@ internal class RasterLayerSurfaceRuntime(
 
     /** Returns stable live surfaces while bringing external document revisions into the runtime. */
     @Synchronized
-    fun reconcile(page: InkPage): Map<String, PixelTileSurface> {
+    /** [onionSkin]: hidden cels shown as onion skin, which need their pixels like visible layers. */
+    fun reconcile(page: InkPage, onionSkin: Set<String> = emptySet()): Map<String, PixelTileSurface> {
         val paintLayers = page.layers.filter(InkLayer::isPaintSurfaceLayer)
         val retainedIds = paintLayers.mapTo(mutableSetOf(), InkLayer::id)
         (surfaces.keys - retainedIds - historyLayers).forEach { layerId ->
@@ -43,7 +44,7 @@ internal class RasterLayerSurfaceRuntime(
         paintLayers.forEach { layer ->
             // Hidden surfaces may contain completed edits whose checkpoint is still saving.
             // Retain them; visibility must never turn a live edit into a reload of older pixels.
-            if (layer.id !in surfaces && !LayerHierarchy.effectiveVisible(page.layers, layer)) return@forEach
+            if (layer.id !in surfaces && layer.id !in onionSkin && !LayerHierarchy.effectiveVisible(page.layers, layer)) return@forEach
             val incoming = RasterSurfaceSourceKey.from(page, layer, renderWidth)
             val current = surfaces[layer.id]
             val currentSource = sourceKeys[layer.id]
@@ -69,7 +70,7 @@ internal class RasterLayerSurfaceRuntime(
             }
         }
         val visibleIds = paintLayers.filter { LayerHierarchy.effectiveVisible(page.layers, it) }.mapTo(mutableSetOf(), InkLayer::id)
-        return surfaces.filterKeys { it in visibleIds }
+        return surfaces.filterKeys { it in visibleIds || it in onionSkin }
     }
 
     @Synchronized

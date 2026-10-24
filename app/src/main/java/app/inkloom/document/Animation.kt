@@ -14,9 +14,51 @@ data class AnimationCel(val layerId: String, val frames: Int = 1) {
  * [frameRate] frames per second; only the [current] cel is shown on the canvas.
  */
 @Serializable
-data class AnimationFolder(val frameRate: Int = 12, val cels: List<AnimationCel> = emptyList(), val current: String? = null) {
+data class AnimationFolder(val frameRate: Int = 12, val cels: List<AnimationCel> = emptyList(), val current: String? = null,
+    /** CSP's onion skin: neighbouring cels shown faintly while drawing; null when off. */
+    val onionSkin: OnionSkin? = null) {
     init { require(frameRate in 1..60) { "1 to 60 frames per second" } }
     val totalFrames: Int get() = cels.sumOf { it.frames }
+}
+
+/**
+ * Onion skin settings, as CSP's Timeline offers them: how many cels before and after the current one
+ * show, and how strongly. Previous cels are tinted blue and next cels green; nearer cels show stronger.
+ */
+@Serializable
+data class OnionSkin(val before: Int = 1, val after: Int = 1, val opacity: Float = .35f) {
+    companion object { const val MAX_CELS = 5 }
+}
+
+/** How an onion-skin cel shows on the canvas: display only, never in exports, fills or the eyedropper. */
+data class OnionSkinCel(val opacity: Float, val tint: LayerColorReplacement)
+
+object AnimationOnionSkin {
+    val PREVIOUS = LayerColorReplacement(darkArgb = 0xff2f62e0L, lightArgb = 0xffffffffL)
+    val NEXT = LayerColorReplacement(darkArgb = 0xff23a046L, lightArgb = 0xffffffffL)
+
+    /** The onion-skin cels of every visible animation folder with onion skin on, by layer id. */
+    fun cels(layers: List<InkLayer>): Map<String, OnionSkinCel> = buildMap {
+        layers.forEach { folder ->
+            val animation = folder.animation ?: return@forEach
+            val skin = animation.onionSkin ?: return@forEach
+            if (!LayerHierarchy.effectiveVisible(layers, folder)) return@forEach
+            val index = animation.cels.indexOfFirst { it.layerId == animation.current }
+            if (index < 0) return@forEach
+            val opacity = skin.opacity.takeIf { it.isFinite() }?.coerceIn(.05f, 1f) ?: return@forEach
+            fun add(count: Int, step: Int, tint: LayerColorReplacement) {
+                val n = count.coerceIn(0, OnionSkin.MAX_CELS)
+                for (k in 1..n) {
+                    val cel = animation.cels.getOrNull(index + step * k) ?: break
+                    val layer = layers.firstOrNull { it.id == cel.layerId } ?: continue
+                    if (cel.layerId == animation.current || cel.layerId in this) continue
+                    put(cel.layerId, OnionSkinCel(opacity * layer.opacity * (n - k + 1) / n, tint))
+                }
+            }
+            add(skin.before, -1, PREVIOUS)
+            add(skin.after, 1, NEXT)
+        }
+    }
 }
 
 /** Display names for what animation commands create, in the user's language. */

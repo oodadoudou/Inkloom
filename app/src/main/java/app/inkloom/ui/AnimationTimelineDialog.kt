@@ -84,6 +84,19 @@ internal fun AnimationTimelineDialog(page: InkPage, folderId: String, assets: Do
             }
             StudioSliderRow(tr("Frame rate", "帧率"), animation.frameRate.toFloat(), 1f..60f, { rate ->
                 onEdit { current -> AnimationEdits.update(current, folderId) { it.copy(frameRate = rate.toInt().coerceIn(1, 60)) } } }, unit = "fps", decimals = 0)
+            // CSP Timeline › Enable onion skin: neighbouring cels show faintly while you draw.
+            val skin = animation.onionSkin
+            fun onion(change: (app.inkloom.document.OnionSkin?) -> app.inkloom.document.OnionSkin?) =
+                onEdit { current -> AnimationEdits.update(current, folderId) { it.copy(onionSkin = change(it.onionSkin)) } }
+            StudioCheckRow(tr("Onion skin", "洋葱皮"), skin != null, { on -> onion { if (on) it ?: app.inkloom.document.OnionSkin() else null } })
+            if (skin != null) {
+                val most = app.inkloom.document.OnionSkin.MAX_CELS.toFloat()
+                StudioSliderRow(tr("Cels before", "之前的赛璐"), skin.before.toFloat(), 0f..most, { v -> onion { it?.copy(before = v.toInt()) } }, decimals = 0)
+                StudioSliderRow(tr("Cels after", "之后的赛璐"), skin.after.toFloat(), 0f..most, { v -> onion { it?.copy(after = v.toInt()) } }, decimals = 0)
+                StudioSliderRow(tr("Onion skin opacity", "洋葱皮不透明度"), skin.opacity * 100f, 5f..100f, { v -> onion { it?.copy(opacity = v / 100f) } }, unit = "%", decimals = 0)
+                StudioNote(tr("Earlier cels show blue and later cels green, on screen only; exports, fills and the eyedropper ignore them.",
+                    "之前的赛璐显示为蓝色、之后的为绿色，仅在屏幕上显示；导出、填充和吸管不受影响。"))
+            }
             StudioSection(tr("Cels", "赛璐"))
             animation.cels.forEach { cel ->
                 val layer = page.layers.firstOrNull { it.id == cel.layerId } ?: return@forEach

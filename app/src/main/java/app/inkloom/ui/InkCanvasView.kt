@@ -869,6 +869,15 @@ class InkCanvasView(context: Context) : View(context) {
     private var layerMaskGesture: MaskBrushContact? = null
     var layerOrder: List<String> = emptyList()
         set(value) { if (field != value) { field = value; resetStrokeTiles() } }
+    /**
+     * Onion-skin cels of animation folders, by layer id: shown faintly and tinted on screen only.
+     * They are hidden layers, so references, the eyedropper, picking and exports never see them.
+     */
+    var onionSkin: Map<String, app.inkloom.document.OnionSkinCel> = emptyMap()
+        set(value) { if (field != value) { field = value; resetStrokeTiles(); invalidate() } }
+    /** [layerOrder] with the onion-skin cels in their document positions. */
+    var displayLayerOrder: List<String> = emptyList()
+        set(value) { if (field != value) { field = value; if (onionSkin.isNotEmpty()) invalidate() } }
     private var layerElementBitmaps: Map<String, LayerElementBitmaps> = emptyMap()
     var pagePaperColor: Int? = null
         set(value) { if (field != value) { field = value; invalidate() } }
@@ -1785,7 +1794,8 @@ class InkCanvasView(context: Context) : View(context) {
                 }
         }
         if (includeInteractionOverlays && colorPreview==null) drawSnapGrid(canvas)
-        drawV5LayerComposition(canvas, includeElements = true, layerFilter = referencedLayerIds, includeBackdrop = includePageBackground, applyColorManagement = applyColorManagement)
+        drawV5LayerComposition(canvas, includeElements = true, layerFilter = referencedLayerIds, includeBackdrop = includePageBackground, applyColorManagement = applyColorManagement,
+            onion = if (includeInteractionOverlays && referencedLayerIds == null) onionSkin else emptyMap())
         if (includeInteractionOverlays && colorPreview!=null) drawSnapGrid(canvas)
         if (includeInteractionOverlays) drawLayerMaskOverlay(canvas)
         if (includeInteractionOverlays) selectionCanvasTransform?.let { draft ->
@@ -2045,23 +2055,25 @@ class InkCanvasView(context: Context) : View(context) {
         layerFilter: Set<String>? = null,
         includeBackdrop: Boolean = true,
         applyColorManagement: Boolean = true,
+        onion: Map<String, app.inkloom.document.OnionSkinCel> = emptyMap(),
     ) {
-        if (drawV5RasterLayerProjection(canvas, includeElements, layerFilter, includeBackdrop, applyColorManagement)) return
+        if (drawV5RasterLayerProjection(canvas, includeElements, layerFilter, includeBackdrop, applyColorManagement, onion)) return
+        val order = if (onion.isEmpty()) layerOrder else displayLayerOrder.ifEmpty { layerOrder }
         // A reference filter hides layers but keeps the tree and every clipping base: a layer
         // clipped to an excluded base disappears instead of re-clipping to a lower layer.
         fun drawable(layerId: String) = layerFilter == null || layerId in layerFilter
         val elementLayerIds = if (includeElements) layerElementBitmaps.keys.toList() else emptyList()
         val rasterLayerIds = rasterLayerTileSurfaces.keys.toList()
         val availableLayerIds = elementLayerIds + rasterLayerIds
-        val orderedLayerIds = (layerOrder.filter { it in availableLayerIds } + availableLayerIds.filterNot { it in layerOrder }).distinct()
+        val orderedLayerIds = (order.filter { it in availableLayerIds } + availableLayerIds.filterNot { it in order }).distinct()
         val compositionBounds = RectF(canvas.clipBounds)
         if (compositionBounds.isEmpty) return
         lateinit var drawNode: (LayerCompositingNode, LayerCompositingNode?) -> Unit
         fun drawLeaf(layerId: String, lowerNode: LayerCompositingNode?) {
-            val opacity = (layerOpacities[layerId] ?: 1f).coerceIn(0f, 1f)
+            val opacity = (onion[layerId]?.opacity ?: layerOpacities[layerId] ?: 1f).coerceIn(0f, 1f)
             if (opacity <= 0f) return
             val layerBlendMode = layerBlendModes[layerId] ?: LayerBlendMode.NORMAL
-            val colorReplacement = layerColorReplacements[layerId]
+            val colorReplacement = onion[layerId]?.tint ?: layerColorReplacements[layerId]
             val clipped = layerId in clippedLayers
             val lowerLayerId = lowerNode?.layer?.id
             if (!clipped || lowerLayerId != null) {
@@ -2110,7 +2122,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         drawNode = draw@{ node, lower ->
             val layer = node.layer
-            if (!layer.visible) return@draw
+            if (!layer.visible && layer.id !in onion) return@draw
             if (layer.role != app.inkloom.document.LayerRole.FOLDER) {
                 if (layer.id in availableLayerIds && drawable(layer.id)) drawLeaf(layer.id, lower)
             } else {
@@ -2148,8 +2160,10 @@ class InkCanvasView(context: Context) : View(context) {
         layerFilter: Set<String>?,
         includeBackdrop: Boolean,
         applyColorManagement: Boolean,
+        onion: Map<String, app.inkloom.document.OnionSkinCel> = emptyMap(),
     ): Boolean {
         val preview=if(applyColorManagement) colorPreview else null
+        val order = if (onion.isEmpty()) layerOrder else displayLayerOrder.ifEmpty { layerOrder }
         if (!includeElements) return false
         // Reference sampling must use the same adjustment/group/mask math as the canvas.
         // The filter controls node visibility, never the tree or clipping-base identity.
@@ -2168,9 +2182,9 @@ class InkCanvasView(context: Context) : View(context) {
 
         val contentIds = rasterLayerTileSurfaces.keys + if (through || hasAdjustments || customBlend || preview!=null || reference)
             (layerElementBitmaps.keys + mixedElementOverrides.keys) else emptySet()
-        val orderedIds = (layerOrder.filter(contentIds::contains) + contentIds.filterNot(layerOrder::contains)).distinct()
+        val orderedIds = (order.filter(contentIds::contains) + contentIds.filterNot(order::contains)).distinct()
         if (orderedIds.isEmpty()) return false
-        val directSourceOverStack = !reference && preview==null && !hasElements && !hasAdjustments && boundDocumentLayers?.none { it.role == app.inkloom.document.LayerRole.FOLDER } != false && orderedIds.all { layerId ->
+        val directSourceOverStack = !reference && preview==null && !hasElements && !hasAdjustments && onion.isEmpty() && boundDocumentLayers?.none { it.role == app.inkloom.document.LayerRole.FOLDER } != false && orderedIds.all { layerId ->
             (layerOpacities[layerId] ?: 1f) >= .999f &&
                 (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL) == LayerBlendMode.NORMAL &&
                 layerColorReplacements[layerId] == null &&
@@ -2245,9 +2259,9 @@ class InkCanvasView(context: Context) : View(context) {
                 layerId in alphaLockedLayers && alphaLockBaseContentIds[layerId].orEmpty().isNotEmpty(), elements?.baseSurface, elements?.additionsSurface)
             val content = if (composed != null) PixelLayerProjectionInput(layerId, composed)
                 else raw ?: PixelLayerProjectionInput(layerId, cache.emptySnapshot)
-            content.copy(opacity = layerOpacities[layerId] ?: 1f,
+            content.copy(opacity = onion[layerId]?.opacity ?: layerOpacities[layerId] ?: 1f,
                 blendMode = (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL).toPixelBlendMode(),
-                colorReplacement = layerColorReplacements[layerId],
+                colorReplacement = onion[layerId]?.tint ?: layerColorReplacements[layerId],
                 mask = layerMasks[layerId]?.takeIf(LayerMask::enabled)?.let { mask ->
                     layerMaskSurfaces[layerId]?.let(mask::expressed) },
                 clipToBaseBelow = layerId in clippedLayers, visible = layerFilter == null || layerId in layerFilter)
@@ -2261,7 +2275,7 @@ class InkCanvasView(context: Context) : View(context) {
                         layerMaskSurfaces[layer.id]?.let(mask::expressed) }, layer.visible && (layerFilter == null || layer.id in layerFilter), layer.id in clippedLayers)
             else PixelProjectionNode.Paint((inputs[layer.id] ?: PixelLayerProjectionInput(layer.id,
                 cache.emptySnapshot, opacity = layer.opacity, blendMode = layer.blendMode.toPixelBlendMode(),
-                clipToBaseBelow = layer.clippedToBelow)).copy(visible = layer.visible && (layerFilter == null || layer.id in layerFilter))) },
+                clipToBaseBelow = layer.clippedToBelow)).copy(visible = (layer.visible || layer.id in onion) && (layerFilter == null || layer.id in layerFilter))) },
             group = { layer, children -> PixelProjectionNode.Group(layer.id, children,
                 layerOpacities[layer.id] ?: layer.opacity,
                 (layerBlendModes[layer.id] ?: layer.blendMode).toPixelBlendMode(),

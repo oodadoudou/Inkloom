@@ -429,7 +429,9 @@ internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<St
     // This page-scoped runtime, rather than a disk-derived Compose value, owns editable pixels.
     // Brush imports, preset switches and asynchronous checkpoint publication are UI changes and
     // must never reconstruct or replace the live painting surface.
-    val rasterLayerSurfaces = rasterSurfaceRuntime.reconcile(page)
+    // Animation folders with onion skin show their neighbouring cels faintly on screen.
+    val onionSkin = remember(page.layers) { app.inkloom.document.AnimationOnionSkin.cels(page.layers) }
+    val rasterLayerSurfaces = rasterSurfaceRuntime.reconcile(page, onionSkin.keys)
     val activeLayerGuide = page.layers.firstOrNull { it.id == activeLayerId && it.drawingAssist }?.drawingGuide
     val symmetryMode = activeLayerGuide?.let { enumOrDefault(it.symmetryMode, settings.symmetryMode) } ?: settings.symmetryMode
     val symmetryGuide = (activeLayerGuide?.let { SymmetryGuideState(it.symmetryCenterX, it.symmetryCenterY, it.symmetryAngleDegrees) }
@@ -618,6 +620,10 @@ internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<St
                 view.layerMasks = page.layers.mapNotNull { layer -> layer.mask?.let { layer.id to it } }.toMap()
                 view.bindLayerMaskSurfaces(layerMaskSurfaces)
                 view.layerOrder = page.layers.filter { it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && LayerHierarchy.effectiveVisible(page.layers, it) }.map(InkLayer::id)
+                view.onionSkin = onionSkin
+                view.displayLayerOrder = if (onionSkin.isEmpty()) emptyList() else page.layers.filter {
+                    it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && (it.id in onionSkin || LayerHierarchy.effectiveVisible(page.layers, it))
+                }.map(InkLayer::id)
                 view.pagePaperColor = if (renderedPage.background is PageBackground.Paper) (if (backgroundVisible) renderedPage.background.colorArgb.toInt() else AndroidColor.WHITE) else null
                 view.pagePaperDensity = (renderedPage.background as? PageBackground.Paper)?.density ?: PaperDensity.DENSE
                 view.pagePaperPattern = (renderedPage.background as? PageBackground.Paper)?.pattern?.takeIf { backgroundVisible }

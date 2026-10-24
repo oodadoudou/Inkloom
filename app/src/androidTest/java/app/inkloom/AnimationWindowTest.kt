@@ -62,11 +62,25 @@ class AnimationWindowTest {
         assertTrue(layer(first).visible); assertFalse(layer(second).visible)
         compose.waitUntil(5_000) { view.activeLayerId == first }
 
-        inDialog("Play").performClick()
+        // Onion skin: the cel after the current one shows, tinted, on screen only.
+        inDialog("Onion skin").performScrollTo().performClick()
+        compose.waitUntil(5_000) { folders().single().animation!!.onionSkin != null }
+        compose.waitUntil(5_000) { view.onionSkin.keys == setOf(second) }
+        assertEquals(app.inkloom.document.AnimationOnionSkin.NEXT, view.onionSkin.getValue(second).tint)
+        assertTrue(second in view.displayLayerOrder); assertFalse(second in view.layerOrder)
+        inDialog("Onion skin").performScrollTo().performClick()
+        compose.waitUntil(5_000) { folders().single().animation!!.onionSkin == null && view.onionSkin.isEmpty() }
+
+        inDialog("Play").performScrollTo().performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Animation preview").fetchSemanticsNodes().isNotEmpty() }
         inDialog("Stop").performClick()
         inDialog("Done").performClick()
 
+        // Turning onion skin on and off were two steps; the third undo brings back the second cel.
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        compose.waitUntil(5_000) { folders().single().animation!!.onionSkin != null }
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        compose.waitUntil(5_000) { folders().single().animation!!.onionSkin == null }
         compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
         compose.waitUntil(5_000) { folders().single().animation!!.current == second }
 
