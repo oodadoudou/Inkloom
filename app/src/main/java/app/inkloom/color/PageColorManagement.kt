@@ -14,6 +14,8 @@ data class PageColorManagement(
     val cmykProfile: String? = null,
     val softProof: Boolean = false,
     val intent: ColorRenderingIntent = ColorRenderingIntent.RELATIVE,
+    /** While soft proofing, colours the proof profile cannot reproduce show grey. */
+    val gamutWarning: Boolean = false,
 ) {
     fun assetPaths() = listOfNotNull(assignedProfile, outputProfile, proofProfile,cmykProfile)
     fun mapAssets(map: (String) -> String) = copy(assignedProfile=assignedProfile?.let(map),

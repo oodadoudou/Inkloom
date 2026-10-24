@@ -11,7 +11,7 @@ internal class IccColorPipeline(private val settings: PageColorManagement, previ
     private val output = IccTransform(destination=if(preview) null else cmykProfile ?: settings.outputProfile?.let(::profile),
         destinationBuiltin=if(preview || cmykProfile!=null) 1 else if(settings.outputSpace==RgbOutputSpace.DISPLAY_P3) 2 else 0,
         proof=if(preview && settings.softProof) settings.proofProfile?.let(::profile) else null,
-        intent=settings.intent.code, cmyk=cmykProfile!=null)
+        intent=settings.intent.code, cmyk=cmykProfile!=null, gamutCheck=preview && settings.softProof && settings.gamutWarning)
     private var scratch = FloatArray(0)
     fun convert(linearStraight: FloatArray, rgb: FloatArray? = null, cmyk: ByteArray? = null) {
         var input=linearStraight

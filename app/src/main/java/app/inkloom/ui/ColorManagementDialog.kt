@@ -58,6 +58,7 @@ internal fun ColorManagementDialog(page:InkPage,language:UiLanguage,busy:Boolean
                 ColorRenderingIntent.entries.forEach { intent -> StudioMenuItem(text={Text(intentName(intent))},onClick={state=state.copy(intent=intent);intentMenu=false}) }
             }
             StudioCheckRow(tr("Soft proof preview","软打样预览"),state.softProof,{state=state.copy(softProof=it)},enabled=state.proofProfile!=null)
+            StudioCheckRow(tr("Gamut warning","色域警告"),state.gamutWarning,{state=state.copy(gamutWarning=it)},enabled=state.proofProfile!=null && state.softProof)
             StudioNote(tr("PNG embeds RGB ICC. CMYK TIFF requires a printer profile and includes paper.","PNG 嵌入 RGB ICC；CMYK TIFF 需要印刷配置并包含纸张。"),Modifier.padding(top=4.dp))
             error?.let{Text(it,style=MaterialTheme.typography.bodySmall)}
         }

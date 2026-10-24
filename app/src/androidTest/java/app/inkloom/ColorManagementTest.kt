@@ -45,6 +45,19 @@ class ColorManagementTest {
             } } finally{proof.delete()}
         }finally{file.delete()}
     }
+    @Test fun gamutWarningGreysOnlyColoursThePrinterCannotReproduce() {
+        val source=PixelTileSurface(32,32,pixelFormat=PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16)
+        source.beginWrite("colours").use{ w -> w.setLinearPixel(1,1,LinearRgba(.2f,1f,0f,1f)); w.setLinearPixel(2,1,LinearRgba(.2f,.2f,.2f,1f)); w.commit().close() }
+        val proof=File(context.cacheDir,"gamut-proof-fixture.icc").apply{writeBytes(cmyk())}
+        try {
+            val plain=IccPreviewCache(PageColorManagement(proofProfile=proof.path,softProof=true)).use { it.update(source.snapshot()) }
+            val warned=IccPreviewCache(PageColorManagement(proofProfile=proof.path,softProof=true,gamutWarning=true)).use { it.update(source.snapshot()) }
+            val green=warned.linearPixelAt(1,1)
+            assertEquals("a vivid green outside the synthetic printer gamut shows the warning grey",green.red,green.green,.01f); assertEquals(green.green,green.blue,.01f)
+            assertNotEquals(plain.linearPixelAt(1,1).green,green.green,.01f)
+            assertEquals("an in-gamut grey is unchanged",plain.linearPixelAt(2,1).green,warned.linearPixelAt(2,1).green,.002f)
+        } finally { proof.delete() }
+    }
     @Test fun softProofComposesTransparentInkWithPaperBeforeTheIccTransform() {
         val proof=File(context.cacheDir,"alpha-proof-fixture.icc").apply { writeBytes(cmyk()) }
         val ink=PixelTileSurface(32,32,pixelFormat=PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16)

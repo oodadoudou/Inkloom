@@ -35,11 +35,16 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_app_inkloom_color_NativeColorManage
     std::vector<unsigned char> bytes(size); cmsSaveProfileToMem(profile.value,bytes.data(),&size);
     auto output=env->NewByteArray(static_cast<jsize>(size)); env->SetByteArrayRegion(output,0,static_cast<jsize>(size),reinterpret_cast<jbyte*>(bytes.data())); return output;
 }
-extern "C" JNIEXPORT jlong JNICALL Java_app_inkloom_color_NativeColorManagement_create(JNIEnv* env,jobject,jbyteArray source,jint sourceBuiltin,jbyteArray destination,jint destinationBuiltin,jbyteArray proof,jint intent,jboolean cmyk) {
+extern "C" JNIEXPORT jlong JNICALL Java_app_inkloom_color_NativeColorManagement_create(JNIEnv* env,jobject,jbyteArray source,jint sourceBuiltin,jbyteArray destination,jint destinationBuiltin,jbyteArray proof,jint intent,jboolean cmyk,jboolean gamutCheck) {
     if(intent<0 || intent>3){fail(env,"Invalid color rendering intent");return 0;}
     Profile src(open(env,source,sourceBuiltin)); Profile dst(open(env,destination,destinationBuiltin)); Profile prf(proof?open(env,proof,0):nullptr);
     if(!src.value || !dst.value || cmsGetColorSpace(src.value)!=cmsSigRgbData || (cmyk ? cmsGetColorSpace(dst.value)!=cmsSigCmykData : cmsGetColorSpace(dst.value)!=cmsSigRgbData) || (proof&&!prf.value)) {fail(env,"ICC profiles have incompatible color spaces");return 0;}
-    const auto flags=cmsFLAGS_BLACKPOINTCOMPENSATION|(cmyk?0:cmsFLAGS_COPY_ALPHA);
+    auto flags=cmsFLAGS_BLACKPOINTCOMPENSATION|(cmyk?0:cmsFLAGS_COPY_ALPHA);
+    if(proof && gamutCheck && !cmyk) {
+        // Colours the proof printer cannot reproduce show as the gamut warning grey, as in Photoshop.
+        cmsUInt16Number alarm[cmsMAXCHANNELS]={}; alarm[0]=alarm[1]=alarm[2]=0x3333; cmsSetAlarmCodes(alarm);
+        flags|=cmsFLAGS_GAMUTCHECK;
+    }
     const auto targetFormat=cmyk?TYPE_CMYK_8:TYPE_RGBA_FLT;
     cmsHTRANSFORM transform=proof ? cmsCreateProofingTransform(src.value,TYPE_RGBA_FLT,dst.value,targetFormat,prf.value,intent,INTENT_RELATIVE_COLORIMETRIC,flags|cmsFLAGS_SOFTPROOFING) : cmsCreateTransform(src.value,TYPE_RGBA_FLT,dst.value,targetFormat,intent,flags);
     if(!transform){fail(env,"ICC transform cannot be constructed");return 0;}
