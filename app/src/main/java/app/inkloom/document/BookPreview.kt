@@ -12,6 +12,57 @@ enum class BookBinding { LEFT, RIGHT }
 /** Saddle stitch folds the sheets round a curved spine; side stitch binds them flat with a square spine. */
 enum class BookStitch { SADDLE, SIDE }
 
+/** Softcover bends like the pages (paperback); hardcover boards are rigid, thicker and overhang the pages. */
+enum class BookCoverType { SOFT, HARD }
+
+/** How much the cover shines, as Clip Studio Share's 3D books offer: no finish, coated (light shine) or gloss. */
+enum class BookFinish(val shine: Float, val sharpness: Float) { NONE(0f, 8f), COATED(.32f, 9f), GLOSS(.85f, 26f) }
+
+/** Inside pages: matte book paper with a fine fibre, or coated paper with a slight shine. */
+enum class BookPaper(val shine: Float) { BOOK(0f), COATED(.14f) }
+
+/** The book's make-up for the preview. */
+data class BookMaterials(val coverType: BookCoverType = BookCoverType.SOFT, val coverFinish: BookFinish = BookFinish.COATED,
+                         val paper: BookPaper = BookPaper.BOOK)
+
+/** Light on the book: diffuse shade plus a Blinn–Phong highlight for shiny surfaces, all in view space. */
+object BookLight {
+    /** Light from the upper left, in front of the book. */
+    val direction: FloatArray = BookCamera.normalize(floatArrayOf(-.35f, .55f, .75f))
+
+    fun diffuse(normal: FloatArray): Float = .6f + .4f * maxOf(0f, dot(normal, direction))
+
+    /**
+     * Highlight strength (0–1) at a surface point [toCamera] from its unit [normal]: the light's
+     * reflection, plus the sheen a shiny surface takes on at glancing angles (Fresnel).
+     */
+    fun highlight(normal: FloatArray, toCamera: FloatArray, shine: Float, sharpness: Float): Float {
+        if (shine <= 0f) return 0f
+        val half = BookCamera.normalize(floatArrayOf(direction[0] + toCamera[0], direction[1] + toCamera[1], direction[2] + toCamera[2]))
+        val glancing = (1f - maxOf(0f, dot(normal, toCamera))).pow(2)
+        return (shine * (maxOf(0f, dot(normal, half)).pow(sharpness) + .6f * glancing)).coerceIn(0f, 1f)
+    }
+
+    /**
+     * How much a turning leaf darkens the stack beneath it, per point of the stack's cross-section:
+     * strongest where the leaf is closest above, fading as it lifts away (ambient occlusion).
+     */
+    fun occlusion(stack: FloatArray, turning: FloatArray, reach: Float = .45f, strength: Float = .42f): FloatArray {
+        val points = stack.size / 2
+        return FloatArray(points) { i ->
+            val x = stack[2 * i]; val z = stack[2 * i + 1]
+            var gap = Float.MAX_VALUE
+            for (j in 0 until turning.size / 2) {
+                val dx = turning[2 * j] - x; val dz = turning[2 * j + 1] - z
+                if (dz > 0f) gap = minOf(gap, sqrt(dx * dx + dz * dz))
+            }
+            if (gap == Float.MAX_VALUE) 0f else strength * (1f - gap / reach).coerceIn(0f, 1f).pow(2)
+        }
+    }
+
+    private fun dot(a: FloatArray, b: FloatArray) = a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
 /** What one side of a leaf shows. */
 sealed interface BookFace {
     data object FrontCover : BookFace
@@ -61,15 +112,24 @@ object BookLayout {
  * (unturned leaves lie at +x), y up the page and z out of the front of the unturned stack. Each leaf
  * is a strip bent only across its width, described by its cross-section from the spine outwards.
  */
-class BookGeometry(val aspect: Float, val leafCount: Int, val stitch: BookStitch, val segments: Int = 24) {
+class BookGeometry(val aspect: Float, val leafCount: Int, val stitch: BookStitch, val segments: Int = 24,
+                   /** The first and last leaves are hardcover boards (needs a cover). */ val hardCover: Boolean = false) {
     init { require(aspect > 0f && leafCount > 0 && segments >= 4) { "A book needs pages and a shape" } }
 
     /** Leaf thickness, exaggerated a little so thin notebooks still read as a book. */
     val leafThickness: Float = maxOf(.0012f, .012f / leafCount)
-    val thickness: Float get() = leafThickness * leafCount
+    /** A hardcover board: several sheets thick. */
+    val boardThickness: Float = maxOf(.012f, leafThickness * 3f)
 
-    fun unturnedHeight(leaf: Int): Float = (leafCount - 1 - leaf) * leafThickness
-    fun turnedHeight(leaf: Int): Float = leaf * leafThickness
+    fun isBoard(leaf: Int): Boolean = hardCover && leafCount >= 2 && (leaf == 0 || leaf == leafCount - 1)
+    fun thicknessOf(leaf: Int): Float = if (isBoard(leaf)) boardThickness else leafThickness
+    /** Boards overhang the page block at the fore-edge, head and tail. */
+    fun widthOf(leaf: Int): Float = if (isBoard(leaf)) 1.035f else 1f
+    fun heightScaleOf(leaf: Int): Float = if (isBoard(leaf)) 1.045f else 1f
+    val thickness: Float get() = (0 until leafCount).sumOf { thicknessOf(it).toDouble() }.toFloat()
+
+    fun unturnedHeight(leaf: Int): Float = ((leaf + 1) until leafCount).sumOf { thicknessOf(it).toDouble() }.toFloat()
+    fun turnedHeight(leaf: Int): Float = (0 until leaf).sumOf { thicknessOf(it).toDouble() }.toFloat()
 
     /**
      * The leaf's cross-section as (x, z) pairs from the spine to the fore-edge: lying on the
@@ -83,11 +143,15 @@ class BookGeometry(val aspect: Float, val leafCount: Int, val stitch: BookStitch
         var x = 0f
         var z = if (stitch == BookStitch.SADDLE) 0f else unturned + (turned - unturned) * turn
         out[1] = z
-        val bend = LAG * sin(PI.toFloat() * turn) * lag
+        // A hardcover board stays flat and swings on its hinge; paper bends and lags.
+        val board = isBoard(leaf)
+        val bend = if (board) 0f else LAG * sin(PI.toFloat() * turn) * lag
+        val length = widthOf(leaf)
         for (i in 0 until segments) {
             val s = (i + .5f) / segments
-            val angle = (1f - turn) * gutter(unturned, s, open) + turn * (PI.toFloat() - gutter(turned, s, open)) - bend * s.pow(1.5f)
-            x += cos(angle) / segments; z += sin(angle) / segments
+            val angle = if (board) PI.toFloat() * turn
+                else (1f - turn) * gutter(unturned, s, open) + turn * (PI.toFloat() - gutter(turned, s, open)) - bend * s.pow(1.5f)
+            x += cos(angle) * length / segments; z += sin(angle) * length / segments
             out[2 * i + 2] = x; out[2 * i + 3] = z
         }
         return out

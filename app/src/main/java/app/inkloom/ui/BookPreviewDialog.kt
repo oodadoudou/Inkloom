@@ -54,6 +54,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.createBitmap
 import app.inkloom.document.BookBinding
+import app.inkloom.document.BookCoverType
+import app.inkloom.document.BookFinish
+import app.inkloom.document.BookMaterials
+import app.inkloom.document.BookPaper
 import app.inkloom.document.BookCamera
 import app.inkloom.document.BookFace
 import app.inkloom.document.BookGeometry
@@ -93,13 +97,19 @@ internal fun BookPreviewDialog(document: InkDocument, initialPage: Int?, assets:
     var stitch by rememberSaveable { mutableStateOf(BookStitch.SIDE) }
     var cover by rememberSaveable { mutableStateOf(true) }
     var firstOnLeft by rememberSaveable { mutableStateOf(false) }
+    var coverType by rememberSaveable { mutableStateOf(BookCoverType.SOFT) }
+    var coverFinish by rememberSaveable { mutableStateOf(BookFinish.COATED) }
+    var paper by rememberSaveable { mutableStateOf(BookPaper.BOOK) }
+    val materials = BookMaterials(coverType, coverFinish, paper)
     var yaw by rememberSaveable { mutableFloatStateOf(0f) }
     var pitch by rememberSaveable { mutableFloatStateOf(DEFAULT_PITCH) }
     var zoom by rememberSaveable { mutableFloatStateOf(1f) }
     val first = document.pages.first()
     val aspect = (PageCropTransform.visibleHeight(first) / PageCropTransform.visibleWidth(first).coerceAtLeast(1f)).coerceIn(.3f, 3f)
     val leaves = remember(document.pages.size, cover, firstOnLeft) { BookLayout.leaves(document.pages.size, cover, firstOnLeft) }
-    val geometry = remember(aspect, leaves.size, stitch) { BookGeometry(aspect, leaves.size, stitch) }
+    val geometry = remember(aspect, leaves.size, stitch, coverType, cover) {
+        BookGeometry(aspect, leaves.size, stitch, hardCover = cover && coverType == BookCoverType.HARD)
+    }
     var target by rememberSaveable { mutableIntStateOf(initialPage?.let { BookLayout.turnedFor(leaves, it) } ?: 0) }
     var position by remember { mutableFloatStateOf(target.toFloat()) }
     var lag by remember { mutableFloatStateOf(1f) }
@@ -126,7 +136,7 @@ internal fun BookPreviewDialog(document: InkDocument, initialPage: Int?, assets:
         if (target in 1 until leaves.size) { lastOpen = target; target = 0 } else target = lastOpen.coerceIn(1, (leaves.size - 1).coerceAtLeast(1))
     }
 
-    val images = rememberBookImages(document, leaves, target, assets, aspect)
+    val images = rememberBookImages(document, leaves, target, assets, aspect, paper)
     val shown = BookLayout.pagesAt(leaves, target)
     val spread = when {
         target == 0 -> tr("Front cover", "封面")
@@ -151,6 +161,13 @@ internal fun BookPreviewDialog(document: InkDocument, initialPage: Int?, assets:
                     StudioCheckRow(tr("First page on the left", "首页在左"), firstOnLeft, { relayout { firstOnLeft = it } })
                     StudioButton(tr("Reset view", "重置视角"), { yaw = 0f; pitch = DEFAULT_PITCH; zoom = 1f })
                 }
+                // As Clip Studio Share's 3D books: cover stiffness and finish, and the inside paper.
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    StudioSegmented(listOf(tr("Softcover", "平装"), tr("Hardcover", "精装")), coverType.ordinal, { coverType = BookCoverType.entries[it] }, Modifier.width(220.dp))
+                    StudioSegmented(listOf(tr("No finish", "无覆膜"), tr("Coated", "哑光覆膜"), tr("Gloss", "亮光覆膜")), coverFinish.ordinal,
+                        { coverFinish = BookFinish.entries[it] }, Modifier.width(300.dp))
+                    StudioSegmented(listOf(tr("Book paper", "书写纸"), tr("Coated paper", "铜版纸")), paper.ordinal, { paper = BookPaper.entries[it] }, Modifier.width(240.dp))
+                }
                 Box(Modifier.fillMaxWidth().weight(1f).clipToBounds().background(Color(0xFF3A3A3A))
                     .semantics { contentDescription = tr("3D book", "3D 书本"); stateDescription = spread }
                     .pointerInput(Unit) {
@@ -164,8 +181,8 @@ internal fun BookPreviewDialog(document: InkDocument, initialPage: Int?, assets:
                         })
                     }) {
                     Canvas(Modifier.fillMaxSize()) {
-                        val scene = BookScene(geometry, leaves, binding, position, lag, BookCamera(yaw, pitch), zoom)
-                        drawIntoCanvas { BookPreviewRenderer.draw(it.nativeCanvas, size.width, size.height, scene, images::face, PAGE_EDGE, images.coverArgb) }
+                        val scene = BookScene(geometry, leaves, binding, position, lag, BookCamera(yaw, pitch), zoom, materials)
+                        drawIntoCanvas { BookPreviewRenderer.draw(it.nativeCanvas, size.width, size.height, scene, images::face, PAGE_EDGE, images.coverArgb, images.spine) }
                     }
                 }
                 StudioNote(tr("Tap the outer side of a page or use the arrows to turn it. Drag to turn the book, pinch to zoom, double-tap to close or open it.",
@@ -186,8 +203,9 @@ private fun BookPageField(pageCount: Int, language: UiLanguage, onPage: (Int) ->
     StudioTextField(text, { value -> text = value.filter(Char::isDigit).take(5) }, language.text("Go to page", "转到页"), Modifier.width(110.dp))
 }
 
-/** Textures for the book's faces: the cover, plain sides and the pages near the opening, rendered off the main thread. */
-private class BookImages(val coverArgb: Int, val cover: Bitmap, val back: Bitmap, val inside: Bitmap, val blank: Bitmap, val pages: Map<Int, Bitmap>) {
+/** Textures for the book's faces: the cover, plain sides, the spine and the pages near the opening, rendered off the main thread. */
+private class BookImages(val coverArgb: Int, val cover: Bitmap, val back: Bitmap, val inside: Bitmap, val blank: Bitmap, val pages: Map<Int, Bitmap>,
+                         val spine: Bitmap) {
     fun face(face: BookFace): Bitmap = when (face) {
         BookFace.FrontCover -> cover
         BookFace.BackCover -> back
@@ -198,7 +216,8 @@ private class BookImages(val coverArgb: Int, val cover: Bitmap, val back: Bitmap
 }
 
 @Composable
-private fun rememberBookImages(document: InkDocument, leaves: List<BookLeaf>, target: Int, assets: DocumentAssetService, aspect: Float): BookImages {
+private fun rememberBookImages(document: InkDocument, leaves: List<BookLeaf>, target: Int, assets: DocumentAssetService, aspect: Float,
+                               paper: BookPaper): BookImages {
     val width = TEXTURE_WIDTH; val height = (TEXTURE_WIDTH * aspect).roundToInt()
     val light = document.coverStyle in setOf(CoverStyle.MINIMAL, CoverStyle.PAPER, CoverStyle.GRID, CoverStyle.WHITE, CoverStyle.WHITE_GRID)
     val coverArgb = if (light) 0xFFF4F4F4.toInt() else document.coverArgb.toInt()
@@ -209,23 +228,52 @@ private fun rememberBookImages(document: InkDocument, leaves: List<BookLeaf>, ta
     val cover by produceState(plain.third, document.id, document.title, document.coverImagePath, coverArgb) {
         value = withContext(Dispatchers.IO) { runCatching { renderCover(document, coverArgb, light, width, height) }.getOrDefault(plain.third) }
     }
-    val pages = remember(document.id) { mutableStateMapOf<Int, Bitmap>() }
-    LaunchedEffect(document, leaves, target) {
+    val pages = remember(document.id, paper) { mutableStateMapOf<Int, Bitmap>() }
+    val spine = remember(document.title, coverArgb, light, width) { renderSpine(document.title, coverArgb, light, width) }
+    // Book paper shows a faint fibre; coated paper is smooth.
+    val grain = remember(paper) { if (paper == BookPaper.BOOK) paperGrain() else null }
+    LaunchedEffect(document, leaves, target, paper) {
         val wanted = ((target - 3)..(target + 2)).mapNotNull(leaves::getOrNull).flatMap { listOf(it.front, it.back) }
             .filterIsInstance<BookFace.Page>().map { it.index }.toSet()
         pages.keys.filter { it !in wanted }.forEach { pages.remove(it) }
         wanted.sortedBy { abs(it - (BookLayout.pagesAt(leaves, target).firstOrNull() ?: 0)) }.forEach { index ->
             if (index in pages) return@forEach
             val page = document.pages.getOrNull(index) ?: return@forEach
-            withContext(Dispatchers.IO) { runCatching { fitted(assets.renderPageBitmap(page, width), width, height) }.getOrNull() }?.let { pages[index] = it }
+            withContext(Dispatchers.IO) { runCatching { fitted(assets.renderPageBitmap(page, width), width, height, grain) }.getOrNull() }?.let { pages[index] = it }
         }
     }
-    return BookImages(coverArgb, cover, plain.third, plain.second, plain.first, pages)
+    return BookImages(coverArgb, cover, plain.third, plain.second, plain.first, pages, spine)
 }
 
-/** A page image letterboxed onto paper at the book's page shape. */
-private fun fitted(source: Bitmap, width: Int, height: Int): Bitmap =
-    createBitmap(width, height).apply { eraseColor(PAPER); drawFitted(android.graphics.Canvas(this), source, width, height) }
+/** A tile of fine paper grain for book paper. */
+private fun paperGrain(): Bitmap {
+    val image = app.inkloom.brushpresetv5.BrushSourceImages.generate(app.inkloom.brushpresetv5.BuiltInBrushSource.FINE_GRAIN)
+    return Bitmap.createBitmap(image.argb, image.width, image.height, Bitmap.Config.ARGB_8888)
+}
+
+/** The spine in the cover colour with the title along it (head on the left, top towards the front cover). */
+private fun renderSpine(title: String, argb: Int, light: Boolean, length: Int): Bitmap {
+    val thickness = (length / 9).coerceAtLeast(24)
+    val out = createBitmap(length, thickness).apply { eraseColor(argb) }
+    val paint = TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = if (light) 0xDD222222.toInt() else 0xEEFFFFFF.toInt(); textSize = thickness * .55f
+    }
+    val text = TextUtils.ellipsize(title, paint, length * .8f, TextUtils.TruncateAt.END).toString()
+    android.graphics.Canvas(out).drawText(text, length * .08f, thickness / 2f - (paint.descent() + paint.ascent()) / 2f, paint)
+    return out
+}
+
+/** A page image letterboxed onto paper at the book's page shape, with the paper's fibre when [grain] is given. */
+private fun fitted(source: Bitmap, width: Int, height: Int, grain: Bitmap? = null): Bitmap =
+    createBitmap(width, height).apply {
+        eraseColor(PAPER)
+        val canvas = android.graphics.Canvas(this)
+        drawFitted(canvas, source, width, height)
+        if (grain != null) canvas.drawPaint(android.graphics.Paint().apply {
+            shader = android.graphics.BitmapShader(grain, android.graphics.Shader.TileMode.REPEAT, android.graphics.Shader.TileMode.REPEAT)
+            blendMode = android.graphics.BlendMode.MULTIPLY; alpha = 22
+        })
+    }
 
 /** Draws [source] centred and scaled to fit, then releases it. */
 private fun drawFitted(canvas: android.graphics.Canvas, source: Bitmap, width: Int, height: Int) {
