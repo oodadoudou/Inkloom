@@ -74,6 +74,13 @@ class PanelPlacementTest {
         assertSame(reference, PanelPlacement.openWhereFree(reference, emptySet(), EditorPanel.LAYERS, PanelPlacement.referenceWidth, height))
     }
 
+    @Test fun aWindowOpeningInFreeSpaceKeepsClearOfThePageNavigator() {
+        var layout = EditorPanelLayout()
+        listOf(EditorPanel.BRUSHES, EditorPanel.LAYERS, EditorPanel.WHEEL, EditorPanel.NAVIGATOR).forEach { layout = open(layout, it) }
+        val navigator = PanelRect(width - 320f, height - 80f, 320f, 80f)
+        listOf(EditorPanel.LAYERS, EditorPanel.WHEEL, EditorPanel.NAVIGATOR).forEach { assertEquals(0f, overlap(rect(layout, it), navigator), .01f) }
+    }
+
     @Test fun aFloatingWindowAvoidsDockedPalettesToo() {
         val painting = BuiltInWorkspaces.snapshot(BuiltInWorkspace.PAINTING).layout
         val brushes = open(painting, EditorPanel.BRUSHES)

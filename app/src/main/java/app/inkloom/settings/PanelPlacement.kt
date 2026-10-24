@@ -13,6 +13,7 @@ object PanelPlacement {
     private const val gap = 8f
     /** Default windows keep clear of the tool rail at the left of the canvas. */
     private const val railClearance = 120f
+    private val navigatorClearance = PanelRect(0f, 0f, 320f, 80f)
     /** The workspace width the default window spots were chosen for. */
     const val referenceWidth = 1280f
 
@@ -36,8 +37,12 @@ object PanelPlacement {
         if (members.any { it in before } || members.any { it in layout.placed } || original.node.id in layout.minimized) return layout
         val anchored = anchored(layout, width).floating.first { it.node.id == original.node.id }
         val root = original.copy(rect = anchored.rect)
-        val obstacles = EditorPanelLayouts.slots(layout, width, height)
-            .filter { (it.node is PanelNode.Tabs || it.collapsed) && it.rootId != root.node.id }.map { it.rect }
+        val slots = EditorPanelLayouts.slots(layout, width, height)
+        // The page navigator sits in the canvas's bottom-right corner.
+        val navigator = slots.firstOrNull { it.node is PanelNode.Canvas }?.rect?.let {
+            PanelRect(it.right - navigatorClearance.width, it.bottom - navigatorClearance.height, navigatorClearance.width, navigatorClearance.height)
+        }
+        val obstacles = slots.filter { (it.node is PanelNode.Tabs || it.collapsed) && it.rootId != root.node.id }.map { it.rect } + listOfNotNull(navigator)
         val start = root.rect.bounded(width, height)
         val current = overlap(start, obstacles)
         fun placed(rect: PanelRect) = layout.copy(floating = layout.floating.map { if (it === original) it.copy(rect = rect) else it })
