@@ -44,4 +44,22 @@ class BrushSourceWorkspaceTest {
         val workspace=BrushSourceWorkspace(InstrumentationRegistry.getInstrumentation().targetContext)
         workspace.close()
     }
+    @Test fun identicalSourcesShareOneFileAndClosingNeverRemovesOneThatAlreadyExisted() {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val first=BrushSourceWorkspace(context)
+        val chalk=first.builtIn(BuiltInBrushSource.CHALK)
+        assertEquals("the same image is stored once",chalk,first.builtIn(BuiltInBrushSource.CHALK))
+        assertTrue(File(chalk).name.startsWith("source-"))
+        val preset=BrushPresetV5(identity=PresetIdentity("source","Source",family=BrushFamily.INK,renderBrushId="source"),renderSeed=1,tip=TipSettings(18f),deposition=DepositionSettings(),dynamics=DynamicsSettings(PressureMappings(),TiltMappings()))
+        first.retain(BrushSourceWorkspace.replace(preset,BrushSourceRole.SHAPE,chalk));first.close()
+        assertTrue(File(chalk).isFile)
+        // A later session that reaches the same image and is cancelled leaves the saved brush's file alone.
+        val second=BrushSourceWorkspace(context)
+        assertEquals(chalk,second.builtIn(BuiltInBrushSource.CHALK))
+        val splatter=second.builtIn(BuiltInBrushSource.SPLATTER)
+        second.close()
+        assertTrue(File(chalk).isFile)
+        assertFalse("an unsaved new source is removed",File(splatter).exists())
+        File(chalk).delete()
+    }
 }

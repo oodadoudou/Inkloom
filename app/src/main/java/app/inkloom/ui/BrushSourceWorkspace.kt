@@ -16,12 +16,23 @@ internal class BrushSourceWorkspace(private val context:Context): AutoCloseable 
     private var closed=false
     @Synchronized fun retain(preset:BrushPresetV5) { retained=paths(preset).toSet() }
     @Synchronized override fun close() { closed=true;created.filter { it.path !in retained }.forEach(File::delete) }
+    /**
+     * Sources are named by the SHA-256 of their PNG bytes, so the same image is stored once however
+     * often it is imported, generated or edited back to. Only files this session created are removed
+     * when it closes unsaved; a file that already existed may belong to another brush.
+     */
     @Synchronized private fun write(bitmap:Bitmap):String {
         check(!closed)
         val dir=File(context.filesDir,"brush-sources").apply { mkdirs() }
-        val file=File(dir,"${UUID.randomUUID()}.png")
-        created += file
-        file.outputStream().use { require(bitmap.compress(Bitmap.CompressFormat.PNG,100,it)) }
+        val bytes=java.io.ByteArrayOutputStream().use { out -> require(bitmap.compress(Bitmap.CompressFormat.PNG,100,out)); out.toByteArray() }
+        val file=File(dir,"source-${contentHash(bytes)}.png")
+        if(!file.isFile) {
+            val partial=File(dir,"${file.name}.${UUID.randomUUID()}.part")
+            partial.writeBytes(bytes)
+            check(partial.renameTo(file) || file.isFile) { "Could not save the source image" }
+            partial.delete()
+            created += file
+        }
         return file.path
     }
     fun import(uri:Uri):String {
@@ -61,6 +72,7 @@ internal class BrushSourceWorkspace(private val context:Context): AutoCloseable 
         } finally { if(result!==bitmap) result?.recycle();bitmap.recycle() }
     }
     companion object {
+        fun contentHash(bytes:ByteArray):String = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         fun paths(p:BrushPresetV5):List<String> = p.tipTexture?.let { it.assetPaths.ifEmpty { listOfNotNull(it.assetPath) } }.orEmpty()+listOfNotNull(p.textureGrain?.assetPath)+p.dual?.tipAssetPaths.orEmpty()+listOfNotNull(p.dual?.textureGrain?.assetPath)
         fun replace(p:BrushPresetV5,role:BrushSourceRole,path:String,index:Int=0):BrushPresetV5 {
             fun replaced(paths:List<String>):List<String> = paths.toMutableList().apply { if(index in indices) set(index,path) else add(path) }
