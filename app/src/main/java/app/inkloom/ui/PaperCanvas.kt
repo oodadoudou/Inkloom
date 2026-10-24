@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.inkloom.document.*
@@ -1001,7 +1002,7 @@ internal fun ObjectElementView(
                 onDoubleClick = {
                     onSelect()
                     when (element) {
-                        is PageElement.Sticky -> editing = true
+                        is PageElement.Sticky, is PageElement.Text -> editing = true
                         is PageElement.Link -> if (InternalLinkTarget.isInternal(element)) {
                             val documentId = element.targetDocumentId
                             val pageId = element.targetPageId
@@ -1016,10 +1017,14 @@ internal fun ObjectElementView(
             when (element) {
             is PageElement.Text -> {
                 val scaledTextSize = (element.textSize * canvasWidth.value / page.width).coerceIn(10f, 40f)
+                val fontsRoot = LocalContext.current.filesDir
+                val typeface = remember(element.fontFamily) { app.inkloom.document.TextTypefaces.base(fontsRoot, element.fontFamily) }
                 Text(
                     RichTextFormatter.displayText(element.text, element.listStyle),
                     color = Color(element.colorArgb),
                     fontSize = scaledTextSize.sp,
+                    fontFamily = typeface?.let { androidx.compose.ui.text.font.FontFamily(it) },
+                    letterSpacing = element.letterSpacing.coerceIn(-.1f, .5f).em,
                     lineHeight = (scaledTextSize * element.lineSpacing.coerceIn(.8f, 2f)).sp,
                     fontWeight = if (element.bold) FontWeight.Bold else FontWeight.Normal,
                     fontStyle = if (element.italic) FontStyle.Italic else FontStyle.Normal,
@@ -1202,6 +1207,8 @@ internal fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, on
                 is PageElement.Text -> {
                     item { StudioOutlinedTextField(current.text, { draft = current.copy(text = it) }, label = { Text(tr("Text", "文本")) }, minLines = 3, modifier = Modifier.fillMaxWidth()) }
                     item { BrushSettingSlider("Text size", current.textSize, 16f..160f) { draft = current.copy(textSize = it) } }
+                    item { TextFontField(current.fontFamily, LocalUiLanguage.current) { draft = current.copy(fontFamily = it) } }
+                    item { BrushSettingSlider("Letter spacing", current.letterSpacing * 100f, -10f..50f) { draft = current.copy(letterSpacing = it / 100f) } }
                     item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         StudioFilterChip(selected = current.bold, onClick = { draft = current.copy(bold = !current.bold) }, label = { Text(tr("Bold", "粗体"), fontWeight = FontWeight.Bold) })
                         StudioFilterChip(selected = current.italic, onClick = { draft = current.copy(italic = !current.italic) }, label = { Text(tr("Italic", "斜体"), fontStyle = FontStyle.Italic) })

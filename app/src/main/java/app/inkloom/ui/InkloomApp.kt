@@ -340,6 +340,7 @@ internal fun localizedBrushLabel(raw: String): String {
         "Random minimum" -> "最小随机响应"
         "Text size" -> "文本大小"
         "Line spacing" -> "行距"
+        "Letter spacing" -> "字距"
         "Collapsed" -> "折叠"
         "Show only the first line." -> "只显示第一行。"
         "Stroke width" -> "描边宽度"

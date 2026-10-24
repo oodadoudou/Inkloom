@@ -602,7 +602,9 @@ sealed interface PageElement {
     val deformation: ElementDeformation?
 
     @Serializable @SerialName("text")
-    data class Text(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float = 600f, override val height: Float = 120f, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, override val deformation: ElementDeformation? = null, val text: String, val colorArgb: Long = 0xFF111111, val textSize: Float = 42f, val bold: Boolean = false, val italic: Boolean = false, val underline: Boolean = false, val alignment: InkTextAlignment = InkTextAlignment.START, val listStyle: TextListStyle = TextListStyle.NONE, val lineSpacing: Float = 1.2f) : PageElement
+    data class Text(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float = 600f, override val height: Float = 120f, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, override val deformation: ElementDeformation? = null, val text: String, val colorArgb: Long = 0xFF111111, val textSize: Float = 42f, val bold: Boolean = false, val italic: Boolean = false, val underline: Boolean = false, val alignment: InkTextAlignment = InkTextAlignment.START, val listStyle: TextListStyle = TextListStyle.NONE, val lineSpacing: Float = 1.2f,
+        /** `system:<family>`, `font:<id>` (see [TextFonts]) or null for the default font. */ val fontFamily: String? = null,
+        /** Extra space between letters, in em. */ val letterSpacing: Float = 0f) : PageElement
 
     @Serializable @SerialName("sticky")
     data class Sticky(

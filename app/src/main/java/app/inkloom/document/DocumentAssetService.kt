@@ -1364,14 +1364,15 @@ class DocumentAssetService(private val context: Context) {
             when (element) {
                 is PageElement.Text -> {
                     paint.style = Paint.Style.FILL; paint.color = element.colorArgb.toInt(); paint.textSize = element.textSize * width / page.width
-                    paint.typeface = Typeface.create(Typeface.DEFAULT, when { element.bold && element.italic -> Typeface.BOLD_ITALIC; element.bold -> Typeface.BOLD; element.italic -> Typeface.ITALIC; else -> Typeface.NORMAL })
+                    paint.typeface = TextTypefaces.styled(context.filesDir, element.fontFamily, element.bold, element.italic)
+                    paint.letterSpacing = element.letterSpacing.coerceIn(-.1f, .5f)
                     paint.isUnderlineText = element.underline
                     paint.textAlign = when (element.alignment) { InkTextAlignment.START -> Paint.Align.LEFT; InkTextAlignment.CENTER -> Paint.Align.CENTER; InkTextAlignment.END -> Paint.Align.RIGHT }
                     val textX = when (element.alignment) { InkTextAlignment.START -> left; InkTextAlignment.CENTER -> (left + right) / 2f; InkTextAlignment.END -> right }
                     val lineHeight = paint.textSize * element.lineSpacing.coerceIn(.8f, 2f)
                     val maxLines = ((bottom - top) / lineHeight).toInt().coerceAtLeast(1)
                     RichTextFormatter.lines(element.text, element.listStyle).take(maxLines).forEachIndexed { index, line -> canvas.drawText(line, textX, top + paint.textSize + index * lineHeight, paint) }
-                    paint.typeface = Typeface.DEFAULT; paint.isUnderlineText = false; paint.textAlign = Paint.Align.LEFT
+                    paint.typeface = Typeface.DEFAULT; paint.isUnderlineText = false; paint.textAlign = Paint.Align.LEFT; paint.letterSpacing = 0f
                 }
                 is PageElement.Sticky -> {
                     paint.style = Paint.Style.FILL
