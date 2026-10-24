@@ -8,6 +8,9 @@ import kotlin.math.roundToInt
  * for its timeline duration at the folder's frame rate, rendered with the page's paper and the
  * other layers exactly as an image export would (onion skin is display only and never included).
  */
+/** Animation export file types, as CSP's Export animation offers them. */
+enum class AnimationExportFormat(val mimeType: String, val extension: String) { GIF("image/gif", "gif"), MP4("video/mp4", "mp4") }
+
 object AnimationExport {
     data class Frame(val page: InkPage, val celId: String, val delayCentiseconds: Int)
 

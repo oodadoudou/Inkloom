@@ -904,14 +904,22 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    /** An animation folder of the current page as an animated GIF [width] pixels wide. */
-    fun exportAnimationGif(uri: Uri, folderId: String, width: Int, onComplete: (Result<Unit>) -> Unit) {
+    /** An animation folder of the current page as an animated GIF or MP4 video [width] pixels wide. */
+    fun exportAnimation(uri: Uri, folderId: String, width: Int, format: app.inkloom.document.AnimationExportFormat, onComplete: (Result<Unit>) -> Unit) {
         val page = currentPage() ?: run { onComplete(Result.failure(IllegalStateException("No page is open for export"))); return }
+        val resolver = getApplication<Application>().contentResolver
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    requireNotNull(getApplication<Application>().contentResolver.openOutputStream(uri, "wt")) { "Could not open the file" }.use { out ->
-                        app.inkloom.document.AnimationExport.writeGif(assets, page, folderId, width, out.buffered())
+                    when (format) {
+                        app.inkloom.document.AnimationExportFormat.GIF ->
+                            requireNotNull(resolver.openOutputStream(uri, "wt")) { "Could not open the file" }.use { out ->
+                                app.inkloom.document.AnimationExport.writeGif(assets, page, folderId, width, out.buffered())
+                            }
+                        app.inkloom.document.AnimationExportFormat.MP4 ->
+                            requireNotNull(resolver.openFileDescriptor(uri, "rwt")) { "Could not open the file" }.use { file ->
+                                app.inkloom.document.AnimationVideoExport.write(assets, page, folderId, width, file.fileDescriptor)
+                            }
                     }
                 }
             }

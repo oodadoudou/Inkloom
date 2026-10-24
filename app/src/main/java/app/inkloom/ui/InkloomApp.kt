@@ -613,16 +613,17 @@ fun InkloomApp(initialIntent: Intent?) {
     // The file picker returns after the editor or Library chose a notebook; remember which one.
     var pendingExportDocumentId by rememberSaveable { mutableStateOf<String?>(null) }
     var bookPreview by remember { mutableStateOf<Pair<InkDocument, Int?>?>(null) }
-    // Animated GIF export: the folder and width chosen in the timeline, until the file is picked.
-    var pendingGifExport by remember { mutableStateOf<Pair<String, Int>?>(null) }
-    val gifExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/gif")) { uri ->
-        val (folderId, width) = pendingGifExport ?: return@rememberLauncherForActivityResult
-        pendingGifExport = null
-        if (uri != null) {
-            Toast.makeText(context, settings.language.text("Exporting animation…", "正在导出动画…"), Toast.LENGTH_SHORT).show()
-            viewModel.exportAnimationGif(uri, folderId, width) { exportFinished(it) }
-        }
+    // Animation export: the folder and width chosen in the timeline, until the file is picked.
+    var pendingAnimationExport by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    fun animationPicked(uri: android.net.Uri?, format: app.inkloom.document.AnimationExportFormat) {
+        val (folderId, width) = pendingAnimationExport ?: return
+        pendingAnimationExport = null
+        if (uri == null) return
+        Toast.makeText(context, settings.language.text("Exporting animation…", "正在导出动画…"), Toast.LENGTH_SHORT).show()
+        viewModel.exportAnimation(uri, folderId, width, format) { exportFinished(it) }
     }
+    val gifExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/gif")) { animationPicked(it, app.inkloom.document.AnimationExportFormat.GIF) }
+    val videoExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")) { animationPicked(it, app.inkloom.document.AnimationExportFormat.MP4) }
     fun takeExportDocumentId(): String? = (pendingExportDocumentId ?: viewModel.currentDocument()?.id).also { pendingExportDocumentId = null }
     val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         val documentId = takeExportDocumentId()
@@ -917,9 +918,10 @@ fun InkloomApp(initialIntent: Intent?) {
             onDeleteFolders = viewModel::deleteFolders,
             onSettings = { settingsOpen = true },
         ) }
-        // The timeline's GIF export opens this shell's file picker; a local keeps EditorScreen's parameter list unchanged.
-        AppDestination.EDITOR -> CompositionLocalProvider(LocalAnimationGifExport provides { folderId, width, name ->
-            pendingGifExport = folderId to width; gifExportPicker.launch("$name.gif")
+        // The timeline's exports open this shell's file pickers; a local keeps EditorScreen's parameter list unchanged.
+        AppDestination.EDITOR -> CompositionLocalProvider(LocalAnimationExport provides { folderId, width, name, format ->
+            pendingAnimationExport = folderId to width
+            (if (format == app.inkloom.document.AnimationExportFormat.GIF) gifExportPicker else videoExportPicker).launch("$name.${format.extension}")
         }) { EditorScreen(
             panelState = panelState,
             document = libraryState.documents.firstOrNull { it.id == libraryState.selectedDocumentId } ?: viewModel.currentDocument(),

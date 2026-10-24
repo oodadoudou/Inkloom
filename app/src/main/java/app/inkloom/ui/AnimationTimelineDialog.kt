@@ -52,7 +52,7 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun AnimationTimelineDialog(page: InkPage, folderId: String, assets: DocumentAssetService, language: UiLanguage,
                                      onEdit: ((InkPage) -> InkPage?) -> Unit, onSelectCel: (String) -> Unit, onDismiss: () -> Unit) {
-    val exportGif = LocalAnimationGifExport.current
+    val export = LocalAnimationExport.current
     fun tr(en: String, zh: String) = language.text(en, zh)
     val folder = page.layers.firstOrNull { it.id == folderId }
     val animation = folder?.animation ?: run { onDismiss(); return }
@@ -124,13 +124,16 @@ internal fun AnimationTimelineDialog(page: InkPage, folderId: String, assets: Do
                     StudioFilterChip(selected = gifWidth == w, onClick = { gifWidth = w }, label = { Text("$w px") })
                 }
             }
-            StudioButton(tr("Export animated GIF…", "导出 GIF 动画…"), { exportGif(folderId, gifWidth, folder.name) }, enabled = animation.cels.isNotEmpty())
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                StudioButton(tr("Export animated GIF…", "导出 GIF 动画…"), { export(folderId, gifWidth, folder.name, app.inkloom.document.AnimationExportFormat.GIF) }, enabled = animation.cels.isNotEmpty())
+                StudioButton(tr("Export video (MP4)…", "导出视频（MP4）…"), { export(folderId, gifWidth, folder.name, app.inkloom.document.AnimationExportFormat.MP4) }, enabled = animation.cels.isNotEmpty())
+            }
         }
     }, confirmButton = { TextButton(onDismiss) { Text(tr("Done", "完成")) } })
 }
 
-/** Starts an animated GIF export of an animation folder at a width; provided by the app shell, which owns the file picker. */
-internal val LocalAnimationGifExport = androidx.compose.runtime.staticCompositionLocalOf<(folderId: String, width: Int, name: String) -> Unit> { { _, _, _ -> } }
+/** Starts exporting an animation folder at a width; provided by the app shell, which owns the file pickers. */
+internal val LocalAnimationExport = androidx.compose.runtime.staticCompositionLocalOf<(folderId: String, width: Int, name: String, format: app.inkloom.document.AnimationExportFormat) -> Unit> { { _, _, _, _ -> } }
 
 /** The animation folder that [layerId] is, or lies in. */
 internal fun activeAnimationFolder(layers: List<app.inkloom.document.InkLayer>, layerId: String): app.inkloom.document.InkLayer? {

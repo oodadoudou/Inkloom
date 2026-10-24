@@ -77,4 +77,26 @@ class AnimationRenderingTest {
         } finally { first.recycle(); second.recycle() }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size).also { assertEquals(64, it.width); it.recycle() }
     }
+
+    @Test fun anMp4HasEveryAnimationFrameAtTheFrameRate() {
+        val file = java.io.File(instrumentation.targetContext.cacheDir, "animation-test.mp4").apply { delete() }
+        android.os.ParcelFileDescriptor.open(file, android.os.ParcelFileDescriptor.MODE_CREATE or android.os.ParcelFileDescriptor.MODE_READ_WRITE or android.os.ParcelFileDescriptor.MODE_TRUNCATE).use {
+            AnimationVideoExport.write(assets, page(OnionSkin()), "walk", 160, it.fileDescriptor)
+        }
+        val retriever = android.media.MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(file.path)
+            assertEquals("video/avc", android.media.MediaExtractor().run { setDataSource(file.path); getTrackFormat(0).getString(android.media.MediaFormat.KEY_MIME).also { release() } })
+            assertEquals(160, retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)!!.toInt())
+            // 1 + 2 frames at 4 fps.
+            assertEquals(3, retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)!!.toInt())
+            val first = retriever.getFrameAtIndex(0)!!; val last = retriever.getFrameAtIndex(2)!!
+            try {
+                // Cel 1's shape is at the left, cel 2's at the right (the frames are scaled from 64 px).
+                assertTrue(Color.red(first.getPixel(first.width / 4, first.height / 2)) < 80)
+                assertTrue(Color.red(last.getPixel(first.width / 4, first.height / 2)) > 180)
+                assertTrue(Color.red(last.getPixel(first.width * 3 / 4, first.height / 2)) < 80)
+            } finally { first.recycle(); last.recycle() }
+        } finally { retriever.release(); file.delete() }
+    }
 }
