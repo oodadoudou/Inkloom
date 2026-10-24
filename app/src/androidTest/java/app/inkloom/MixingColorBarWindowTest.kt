@@ -14,6 +14,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
@@ -106,7 +108,8 @@ class MixingColorBarWindowTest {
         compose.waitForIdle()
         tap("Notebook $notebook. Long press to move.")
         tap("Colors")
-        // Mix is the last open tab, and its separate library must survive Activity recreation.
+        // The chip brings the wheel forward; Mix stays open beside it, and its separate library must survive Activity recreation.
+        tap("Mix")
         bounds("Color mixing board")
         bounds(colorLabel(replacementColor))
         assertEquals(deleted, mixingBar().activeSet)
@@ -180,7 +183,9 @@ class MixingColorBarWindowTest {
         assertEquals("Color-bar edits must not write to the notebook's raster history", documentRevision, view.activeRasterSnapshotForTest()?.revision)
         val beforeReopen = mixingBar()
         closeColorPanel()
+        // The chip reopens the wheel; reopening Mix shows the same board and colours.
         tap("Colors")
+        tap("Mix")
         bounds("Color mixing board")
         assertEquals(beforeReopen, mixingBar())
         assertEquals(mainPaletteBefore, mainPalette())
@@ -248,7 +253,18 @@ class MixingColorBarWindowTest {
         bounds("Choose color")
     }
 
+    /** The colour chips open only the Color Wheel; the other colour palettes open from Actions › Views › Views…. */
+    private fun showColorView(name: String) {
+        if (compose.onAllNodesWithContentDescription("Drag ${name.lowercase()} panel").fetchSemanticsNodes().isNotEmpty()) return
+        tap("Actions"); tap("Actions Views")
+        compose.onNodeWithText("Views…").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Show $name view").performScrollTo().performClick()
+        compose.onNodeWithText("Done").performClick()
+        compose.waitForIdle()
+    }
+
     private fun tap(label: String) {
+        if (label in setOf("Palettes", "Mix", "Nearby")) showColorView(label)
         val target = bounds(label)
         tapAt(Offset(target.exactCenterX(), target.exactCenterY()))
         compose.waitForIdle()

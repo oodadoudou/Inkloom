@@ -13,6 +13,7 @@ import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
@@ -443,10 +444,19 @@ class ColorSetWindowTest {
         compose.waitForIdle()
     }
 
+    /** The colour chips open only the Color Wheel; the other colour palettes open from Actions › Views › Views…. */
+    private fun showColorView(name: String) {
+        if (compose.onAllNodesWithContentDescription("Drag ${name.lowercase()} panel").fetchSemanticsNodes().isNotEmpty()) return
+        tap("Actions"); tap("Actions Views")
+        compose.onNodeWithText("Views…").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Show $name view").performScrollTo().performClick()
+        compose.onNodeWithText("Done").performClick()
+        compose.waitForIdle()
+    }
+
     private fun tap(label: String) {
-        if (label in setOf("Wheel", "Palettes", "Mix", "Nearby")) {
-            compose.onNodeWithContentDescription("Drag ${label.lowercase()} panel").performScrollTo()
-        }
+        // Tabs share the title row (no scrolling); the colour palettes other than the wheel open from Views.
+        if (label in setOf("Palettes", "Mix", "Nearby")) showColorView(label)
         val rectangle = bounds(label)
         tapAt(Offset(rectangle.exactCenterX(), rectangle.exactCenterY()))
         compose.waitForIdle()
