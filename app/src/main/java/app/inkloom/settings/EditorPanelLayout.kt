@@ -58,11 +58,24 @@ data class EditorPanelLayout(
     val placed: Set<EditorPanel> = emptySet(),
     val nextId: Int = 1,
     val locked: Boolean = false,
+    /** Palette docks shown as icons (CSP's simple view) or hidden, by dock column id. */
+    val iconDocks: Set<String> = emptySet(),
+    val hiddenDocks: Set<String> = emptySet(),
+    /** Floating palettes showing only their title bar. */
+    val minimized: Set<String> = emptySet(),
 )
 
 enum class PanelEdge { LEFT, RIGHT, TOP, BOTTOM, TAB }
 data class PanelDropTarget(val nodeId: String, val edge: PanelEdge, val tabIndex: Int = 0)
-data class PanelSlot(val node: PanelNode, val rect: PanelRect, val rootId: String, val floating: Boolean)
+
+/** CSP's palette dock display: full palettes, icons only, or hidden to a thin strip. */
+enum class DockDisplay { NORMAL, ICONS, HIDDEN }
+/** A palette dock column (or bottom/top row) on [side] of the canvas; [header] holds its display buttons. */
+data class DockColumn(val id: String, val side: PanelEdge, val display: DockDisplay, val header: PanelRect?)
+data class PanelSlot(val node: PanelNode, val rect: PanelRect, val rootId: String, val floating: Boolean, val column: DockColumn? = null) {
+    /** An icon or hidden dock: its palettes are not laid out, only the strip. */
+    val collapsed get() = column != null && column.display != DockDisplay.NORMAL
+}
 
 /** Small immutable layout transactions: a panel has one owner, preview never edits the document. */
 object EditorPanelLayouts {
@@ -88,6 +101,12 @@ object EditorPanelLayouts {
 
     /** Close button at the right of every title row. */
     const val closeWidth = 30f
+    /** Minimize button of a palette shown by itself. */
+    const val minimizeWidth = 26f
+    /** Bar above each dock column with its hide and icon buttons. */
+    const val dockHeaderHeight = 22f
+    const val iconDockWidth = 48f
+    const val hiddenDockWidth = 20f
 
     /** Below this width a panel shows its tabs as icons; content otherwise stays visible and scrolls. */
     fun compactThreshold(panel: EditorPanel): Float = when (panel) {
@@ -99,14 +118,16 @@ object EditorPanelLayouts {
     }
 
     /** Tabs share the title row equally, as CSP's stacked palettes do, so every tab stays reachable without scrolling. */
-    fun tabWidth(tabs: PanelNode.Tabs, panelWidth: Float): Float =
-        ((panelWidth - groupGripWidth - closeWidth) / tabs.panels.size.coerceAtLeast(1)).coerceAtLeast(1f)
-    fun tabInsertionIndex(tabs: PanelNode.Tabs, pointerX: Float, panelX: Float, panelWidth: Float): Int {
-        val width = tabWidth(tabs, panelWidth)
+    fun tabWidth(tabs: PanelNode.Tabs, panelWidth: Float, minimizable: Boolean = false): Float =
+        ((panelWidth - groupGripWidth - closeWidth - if (minimizable) minimizeWidth else 0f) / tabs.panels.size.coerceAtLeast(1)).coerceAtLeast(1f)
+    fun tabInsertionIndex(tabs: PanelNode.Tabs, pointerX: Float, panelX: Float, panelWidth: Float, minimizable: Boolean = false): Int {
+        val width = tabWidth(tabs, panelWidth, minimizable)
         return ((pointerX - panelX - groupGripWidth + width / 2f) / width).toInt().coerceIn(0, tabs.panels.size)
     }
-    fun tabInsertionX(tabs: PanelNode.Tabs, index: Int, panelX: Float, panelWidth: Float): Float =
-        panelX + groupGripWidth + tabWidth(tabs, panelWidth) * index.coerceIn(0, tabs.panels.size)
+    fun tabInsertionX(tabs: PanelNode.Tabs, index: Int, panelX: Float, panelWidth: Float, minimizable: Boolean = false): Float =
+        panelX + groupGripWidth + tabWidth(tabs, panelWidth, minimizable) * index.coerceIn(0, tabs.panels.size)
+    /** CSP offers minimize only on a palette shown by itself: a floating window that is one tab group. */
+    fun minimizable(slot: PanelSlot) = slot.floating && slot.rootId == slot.node.id && slot.node is PanelNode.Tabs
 
     fun isValid(layout: EditorPanelLayout): Boolean {
         val ids = mutableSetOf<String>()
@@ -213,23 +234,89 @@ object EditorPanelLayouts {
         if (total >= first+second+4f) (total*fraction).coerceIn(first+2f,total-second-2f)
         else total*first/(first+second)
     fun slots(layout: EditorPanelLayout, width: Float, height: Float): List<PanelSlot> = buildList {
-        fun place(node: PanelNode, rect: PanelRect, rootId: String, floating: Boolean) {
-            add(PanelSlot(node,rect,rootId,floating))
-            if(node is PanelNode.Split) {
-                val f = node.fraction.coerceIn(0f,1f)
-                if(node.horizontal) {
-                    val cut = cut(rect.width,f,minimumWidth(node.first),minimumWidth(node.second))
-                    place(node.first,rect.copy(width=cut-2f),rootId,floating)
-                    place(node.second,PanelRect(rect.x+cut+2f,rect.y,rect.width-cut-2f,rect.height),rootId,floating)
-                } else {
-                    val cut=cut(rect.height,f,minimumHeight(node.first),minimumHeight(node.second))
-                    place(node.first,rect.copy(height=cut-2f),rootId,floating)
-                    place(node.second,PanelRect(rect.x,rect.y+cut+2f,rect.width,rect.height-cut-2f),rootId,floating)
-                }
+        val full = columns(layout.dock)
+        fun display(column: PanelNode): DockDisplay = full.firstOrNull { find(it.first, column.id) != null }?.first?.id.let { id ->
+            when (id) { in layout.hiddenDocks -> DockDisplay.HIDDEN; in layout.iconDocks -> DockDisplay.ICONS; else -> DockDisplay.NORMAL }
+        }
+        fun place(node: PanelNode, outer: PanelRect, rootId: String, floating: Boolean, column: DockColumn? = null) {
+            val header = if (column?.display == DockDisplay.NORMAL) outer.copy(height = minOf(dockHeaderHeight, outer.height / 2f)) else null
+            val rect = header?.let { outer.copy(y = it.bottom, height = outer.height - it.height) } ?: outer
+            add(PanelSlot(node, rect, rootId, floating, column?.copy(header = header)))
+            if (node !is PanelNode.Split || (column != null && column.display != DockDisplay.NORMAL)) return
+            val f = node.fraction.coerceIn(0f,1f)
+            val total = if (node.horizontal) rect.width else rect.height
+            // The canvas's neighbour in the dock is a palette dock; a collapsed one keeps its strip's fixed size.
+            val canvasFirst = containsCanvas(node.first)
+            val docked = if (floating || !containsCanvas(node)) null else if (canvasFirst) node.second else node.first
+            val shown = docked?.let(::display) ?: DockDisplay.NORMAL
+            val strip = when (shown) { DockDisplay.ICONS -> iconDockWidth; DockDisplay.HIDDEN -> hiddenDockWidth; DockDisplay.NORMAL -> null }
+            val cut = when {
+                strip != null && total > strip + 4f -> if (canvasFirst) total - strip - 2f else strip + 2f
+                node.horizontal -> cut(total,f,minimumWidth(node.first),minimumWidth(node.second))
+                else -> cut(total,f,minimumHeight(node.first),minimumHeight(node.second))
+            }
+            val side = when { node.horizontal && canvasFirst -> PanelEdge.RIGHT; node.horizontal -> PanelEdge.LEFT; canvasFirst -> PanelEdge.BOTTOM; else -> PanelEdge.TOP }
+            fun columnOf(child: PanelNode) = if (docked != null && child.id == docked.id) DockColumn(child.id, side, shown, null) else null
+            if(node.horizontal) {
+                place(node.first,rect.copy(width=cut-2f),rootId,floating,columnOf(node.first))
+                place(node.second,PanelRect(rect.x+cut+2f,rect.y,rect.width-cut-2f,rect.height),rootId,floating,columnOf(node.second))
+            } else {
+                place(node.first,rect.copy(height=cut-2f),rootId,floating,columnOf(node.first))
+                place(node.second,PanelRect(rect.x,rect.y+cut+2f,rect.width,rect.height-cut-2f),rootId,floating,columnOf(node.second))
             }
         }
         visible(layout.dock,layout.open)?.let { place(it,PanelRect(0f,0f,width,height),layout.dock.id,false) }
-        layout.floating.forEach { root -> visible(root.node,layout.open)?.let { place(it,root.rect.bounded(width,height),root.node.id,true) } }
+        layout.floating.forEach { root -> visible(root.node,layout.open)?.let { node ->
+            val rect = root.rect.bounded(width,height)
+            place(node, if (root.node.id in layout.minimized && node is PanelNode.Tabs) rect.copy(height = titleHeight) else rect, root.node.id, true)
+        } }
+    }
+
+    /** CSP's palette docks: every non-canvas child of a split holding the canvas, with the side of the canvas it sits on. */
+    fun columns(dock: PanelNode): List<Pair<PanelNode, PanelEdge>> = buildList {
+        var node = dock
+        while (node is PanelNode.Split && containsCanvas(node)) {
+            val canvasFirst = containsCanvas(node.first)
+            add((if (canvasFirst) node.second else node.first) to when {
+                node.horizontal && canvasFirst -> PanelEdge.RIGHT; node.horizontal -> PanelEdge.LEFT
+                canvasFirst -> PanelEdge.BOTTOM; else -> PanelEdge.TOP
+            })
+            node = if (canvasFirst) node.first else node.second
+        }
+    }
+    /** The dock column holding node [id] (any palette group inside it), if that node is docked. */
+    fun column(layout: EditorPanelLayout, id: String): PanelNode? = columns(layout.dock).firstOrNull { find(it.first, id) != null }?.first
+    fun dockDisplay(layout: EditorPanelLayout, id: String): DockDisplay = when (column(layout, id)?.id) {
+        null -> DockDisplay.NORMAL
+        in layout.hiddenDocks -> DockDisplay.HIDDEN
+        in layout.iconDocks -> DockDisplay.ICONS
+        else -> DockDisplay.NORMAL
+    }
+    /** Shows the dock column holding [id] in full, as icons or hidden; it is a display choice, so a locked layout allows it. */
+    fun setDockDisplay(layout: EditorPanelLayout, id: String, display: DockDisplay): EditorPanelLayout {
+        val column = column(layout, id)?.id ?: return layout
+        return layout.copy(
+            iconDocks = if (display == DockDisplay.ICONS) layout.iconDocks + column else layout.iconDocks - column,
+            hiddenDocks = if (display == DockDisplay.HIDDEN) layout.hiddenDocks + column else layout.hiddenDocks - column)
+    }
+    /** Whether [panel] sits in an icon or hidden dock, where it shows as a pop-up. */
+    fun inCollapsedDock(layout: EditorPanelLayout, panel: EditorPanel): Boolean {
+        fun owner(node: PanelNode): PanelNode.Tabs? = when (node) {
+            is PanelNode.Tabs -> node.takeIf { panel in it.panels }
+            is PanelNode.Split -> owner(node.first) ?: owner(node.second)
+            else -> null
+        }
+        return owner(layout.dock)?.let { dockDisplay(layout, it.id) != DockDisplay.NORMAL } == true
+    }
+    fun toggleMinimized(layout: EditorPanelLayout, rootId: String): EditorPanelLayout =
+        if (layout.floating.none { it.node.id == rootId && it.node is PanelNode.Tabs }) layout
+        else layout.copy(minimized = if (rootId in layout.minimized) layout.minimized - rootId else layout.minimized + rootId)
+    /** Display choices follow their dock or window; once it is gone they are dropped so a later one does not inherit them. */
+    fun pruned(layout: EditorPanelLayout): EditorPanelLayout {
+        val columns = columns(layout.dock).mapTo(mutableSetOf()) { it.first.id }
+        val windows = layout.floating.filter { it.node is PanelNode.Tabs }.mapTo(mutableSetOf()) { it.node.id }
+        return layout.copy(iconDocks = layout.iconDocks.intersect(columns), hiddenDocks = layout.hiddenDocks.intersect(columns),
+            minimized = layout.minimized.intersect(windows))
     }
 
     /** Null target means float. Empty source tabs/splits collapse, other groups remain untouched. */
@@ -272,8 +359,8 @@ object EditorPanelLayouts {
                 if(before) payload else destination,if(before) destination else payload)
             result=update(result,destination.id) { split }
         }
-        return result.copy(placed=result.placed+members(payload),nextId=layout.nextId+1,
-            floating=result.floating.map { root -> root.copy(rect=root.rect.copy(width=maxOf(root.rect.width,minimumWidth(root.node)),height=maxOf(root.rect.height,minimumHeight(root.node)))) })
+        return pruned(result.copy(placed=result.placed+members(payload),nextId=layout.nextId+1,
+            floating=result.floating.map { root -> root.copy(rect=root.rect.copy(width=maxOf(root.rect.width,minimumWidth(root.node)),height=maxOf(root.rect.height,minimumHeight(root.node)))) }))
     }
     fun containsCanvas(node: PanelNode): Boolean = when(node) {
         is PanelNode.Canvas -> true
@@ -295,10 +382,10 @@ object EditorPanelLayouts {
         val candidates=slots.asReversed().filter { it.node.id !in excludedIds }
         for(slot in candidates) {
             val r=slot.rect
-            if(!r.contains(pointerX,pointerY) || slot.node is PanelNode.Split) continue
+            if(!r.contains(pointerX,pointerY) || slot.node is PanelNode.Split || slot.collapsed) continue
             when (val node = slot.node) {
                 is PanelNode.Tabs -> {
-                    if (pointerY <= r.y + titleHeight) return PanelDropTarget(node.id, PanelEdge.TAB, tabInsertionIndex(node, pointerX, r.x, r.width))
+                    if (pointerY <= r.y + titleHeight) return PanelDropTarget(node.id, PanelEdge.TAB, tabInsertionIndex(node, pointerX, r.x, r.width, minimizable(slot)))
                     val fx = ((pointerX - r.x) / r.width.coerceAtLeast(1f)).coerceIn(0f, 1f)
                     val fy = ((pointerY - r.y - titleHeight) / (r.height - titleHeight).coerceAtLeast(1f)).coerceIn(0f, 1f)
                     val nearest = listOf(PanelEdge.LEFT to fx, PanelEdge.RIGHT to 1f - fx, PanelEdge.TOP to fy, PanelEdge.BOTTOM to 1f - fy).minBy { it.second }

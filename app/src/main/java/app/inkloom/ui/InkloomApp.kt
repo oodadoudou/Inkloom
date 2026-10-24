@@ -114,6 +114,7 @@ import app.inkloom.settings.ToolboxQuickSlotKind
 import app.inkloom.settings.ToolboxQuickSlots
 import app.inkloom.settings.UiLanguage
 import app.inkloom.settings.EditorPanel
+import app.inkloom.settings.EditorPanelLayouts
 import app.inkloom.settings.text
 import app.inkloom.ui.theme.*
 import kotlinx.coroutines.Dispatchers
@@ -1433,9 +1434,10 @@ private fun EditorScreen(
     var deletingPanelLayout by remember { mutableStateOf<String?>(null) }
     val colorPanelOpen = panelState.layout.open.any { it.ordinal >= EditorPanel.WHEEL.ordinal }
     fun showColors() { panelState.colors(true) }
-    fun setBrushPanelOpen(open: Boolean) {
-        panelState.show(EditorPanel.BRUSHES, open)
-        if (open) panelState.focus(EditorPanel.BRUSHES)
+    /** [toolbar] closing keeps a palette in an icon or hidden dock and only closes its pop-up. */
+    fun setBrushPanelOpen(open: Boolean, toolbar: Boolean = true) {
+        if (open) { panelState.show(EditorPanel.BRUSHES, true); panelState.focus(EditorPanel.BRUSHES) }
+        else if (toolbar) panelState.hide(EditorPanel.BRUSHES) else panelState.show(EditorPanel.BRUSHES, false)
     }
     fun toggleBrushPanel() = setBrushPanelOpen(!panelState.isActive(EditorPanel.BRUSHES))
     var zoom by remember(document.id) { mutableFloatStateOf(1f) }
@@ -1760,10 +1762,10 @@ private fun EditorScreen(
         brushOpacity = savedBrushOpacity(restored, restored.defaultOpacity, restoredTool)
         syncCanvasInput(prepareAssets = true)
     }
-    fun setLayersPanelOpen(open: Boolean, pageId: String? = null) {
+    fun setLayersPanelOpen(open: Boolean, pageId: String? = null, toolbar: Boolean = true) {
         pageId?.let(::selectPageWithViewport)
-        panelState.show(EditorPanel.LAYERS, open)
-        if (open) panelState.focus(EditorPanel.LAYERS)
+        if (open) { panelState.show(EditorPanel.LAYERS, true); panelState.focus(EditorPanel.LAYERS) }
+        else if (toolbar) panelState.hide(EditorPanel.LAYERS) else panelState.show(EditorPanel.LAYERS, false)
     }
     fun setManagedPanelVisible(panel: EditorPanel, open: Boolean) {
         when (panel) {
@@ -1771,8 +1773,8 @@ private fun EditorScreen(
                 panelState.show(panel, open)
                 if (open) panelState.focus(panel)
             }
-            EditorPanel.BRUSHES -> setBrushPanelOpen(open)
-            EditorPanel.LAYERS -> setLayersPanelOpen(open)
+            EditorPanel.BRUSHES -> setBrushPanelOpen(open, toolbar = false)
+            EditorPanel.LAYERS -> setLayersPanelOpen(open, toolbar = false)
             else -> {
                 panelState.show(panel, open)
                 if (open) panelState.focus(panel)
@@ -1788,8 +1790,10 @@ private fun EditorScreen(
     }
     /** A colour chip: shows the wheel for that colour; tapping the chip already being edited hides the wheel again. */
     fun colorChipTapped(secondary: Boolean) {
-        if (EditorPanel.WHEEL in panelState.layout.open && modes.editSecondaryColor == secondary) setManagedPanelVisible(EditorPanel.WHEEL, false)
-        else { modes.editSecondaryColor = secondary; showColors() }
+        if (panelState.shown(EditorPanel.WHEEL) && modes.editSecondaryColor == secondary) {
+            if (EditorPanelLayouts.inCollapsedDock(panelState.layout, EditorPanel.WHEEL)) panelState.hide(EditorPanel.WHEEL)
+            else setManagedPanelVisible(EditorPanel.WHEEL, false)
+        } else { modes.editSecondaryColor = secondary; showColors() }
     }
     fun selectLayerContents(layerId: String, mode: app.inkloom.engine.v5.surface.MaskComposeMode) {
         exitCanvasNavigation()
@@ -1922,14 +1926,12 @@ private fun EditorScreen(
                         ProcreateTopButton(Icons.Outlined.OpenWith, tr("Move canvas", "移动画布"), selected = modes.handToolEnabled, onClick = { modes.handToolEnabled = !modes.handToolEnabled; modes.rotateToolEnabled = false })
                     }
                     ProcreateTopButton(
-                        if ((EditorPanel.PAGES in panelState.layout.open)) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows,
+                        if (panelState.shown(EditorPanel.PAGES)) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows,
                         tr("Toggle pages", "显示或隐藏页面栏"),
-                        selected = (EditorPanel.PAGES in panelState.layout.open),
+                        selected = panelState.shown(EditorPanel.PAGES),
                         onClick = {
-                            val open = !(EditorPanel.PAGES in panelState.layout.open)
-                            panelState.show(EditorPanel.PAGES, open)
-                            if (open) panelState.focus(EditorPanel.PAGES)
-                            panelState.show(EditorPanel.PAGES, open)
+                            if (panelState.shown(EditorPanel.PAGES)) panelState.hide(EditorPanel.PAGES)
+                            else { panelState.show(EditorPanel.PAGES, true); panelState.focus(EditorPanel.PAGES) }
                         },
                     )
                     Spacer(Modifier.weight(1f))
@@ -2917,7 +2919,7 @@ private fun EditorScreen(
                             ShortcutAction.NEXT_PAGE -> document.pages.indexOfFirst { it.id == selectedPage.id }.takeIf { it in 0 until document.pages.lastIndex }?.let { selectPageWithViewport(document.pages[it + 1].id) }
                             ShortcutAction.TOGGLE_BRUSH_PANEL -> toggleBrushPanel()
                             ShortcutAction.TOGGLE_LAYER_PANEL -> {
-                                setLayersPanelOpen(!layersOpen)
+                                setLayersPanelOpen(!panelState.shown(EditorPanel.LAYERS))
                             }
                             ShortcutAction.TOGGLE_PANELS -> if (!modes.panelsHiddenByShortcut) {
                                 openPanelsBeforeShortcut = panelState.layout.open

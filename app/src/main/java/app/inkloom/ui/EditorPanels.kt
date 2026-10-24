@@ -18,6 +18,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DragIndicator
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -76,14 +78,31 @@ internal class EditorPanelState(context: Context) {
         layout = store.updateLayout(next).layout
     }
     var activeTabId: String? = null
+    /** The palette open as a pop-up from an icon or hidden dock (CSP's simple view); tapping outside closes it. */
+    var popup by mutableStateOf<EditorPanel?>(null)
     fun raise(rootId: String, tabId: String) {
         activeTabId = tabId
         val root = layout.floating.firstOrNull { it.node.id == rootId } ?: return
         if (layout.floating.lastOrNull() != root) commit(layout.copy(floating = layout.floating - root + root))
     }
     fun show(panel: EditorPanel, open: Boolean) {
+        if (!open && popup == panel) popup = null
         val next = if(open) layout.open+panel else layout.open-panel
         if(next != layout.open) commit(layout.copy(open=next))
+    }
+    private fun collapsed(panel: EditorPanel) = EditorPanelLayouts.inCollapsedDock(layout, panel)
+    /** Visible on screen: in a full dock or window, or as the current pop-up of a collapsed dock. */
+    fun shown(panel: EditorPanel) = panel in layout.open && (!collapsed(panel) || popup == panel)
+    /**
+     * A toolbar button closing its palette: a palette in an icon or hidden dock only closes its
+     * pop-up and keeps its icon, as in CSP; elsewhere the palette closes.
+     */
+    fun hide(panel: EditorPanel) {
+        if (panel in layout.open && collapsed(panel)) { if (popup == panel) popup = null } else show(panel, false)
+    }
+    fun setDockDisplay(id: String, display: DockDisplay) {
+        popup = null
+        commit(EditorPanelLayouts.setDockDisplay(layout, id, display))
     }
     private fun owner(panel: EditorPanel): PanelNode.Tabs? {
         fun find(node: PanelNode): PanelNode.Tabs? = when (node) {
@@ -93,13 +112,14 @@ internal class EditorPanelState(context: Context) {
         }
         return find(layout.dock) ?: layout.floating.firstNotNullOfOrNull { find(it.node) }
     }
-    fun isActive(panel: EditorPanel): Boolean = panel in layout.open && owner(panel)?.let {
+    fun isActive(panel: EditorPanel): Boolean = panel in layout.open && (if (collapsed(panel)) popup == panel else owner(panel)?.let {
         it.active == panel && it.id == activeTabId
-    } == true
+    } == true)
     fun focus(panel: EditorPanel) {
         if (panel !in layout.open) return
         val tabId = owner(panel)?.id ?: return
         activeTabId = tabId
+        if (collapsed(panel)) { popup = panel; return }
         val selected = EditorPanelLayouts.select(layout, panel)
         val root = selected.floating.firstOrNull { EditorPanelLayouts.find(it.node, tabId) != null }
         commit(if (root == null || selected.floating.lastOrNull() == root) selected
@@ -115,7 +135,8 @@ internal class EditorPanelState(context: Context) {
         }
     }
     fun closeTopPanel(onClose: (EditorPanel) -> Unit): Boolean {
-        val slots = EditorPanelLayouts.slots(layout, 1000f, 800f)
+        if (popup != null) { popup = null; return true }
+        val slots = EditorPanelLayouts.slots(layout, 1000f, 800f).filterNot(PanelSlot::collapsed)
         val tabs = (slots.firstOrNull { it.node.id == activeTabId && it.node is PanelNode.Tabs }
             ?: slots.lastOrNull { it.node is PanelNode.Tabs })?.node as? PanelNode.Tabs ?: return false
         show(tabs.active, false)
@@ -246,7 +267,7 @@ internal fun EditorPanels(
                 val down=awaitFirstDown(requireUnconsumed=false,pass=PointerEventPass.Initial)
                 gestureOrigin[0] = state.layout
                 gestureDown[0] = down.position
-                val pendingPerimeterResize = if(!state.layout.locked) state.layout.floating.asReversed().firstNotNullOfOrNull { root ->
+                val pendingPerimeterResize = if(!state.layout.locked) state.layout.floating.asReversed().filter { it.node.id !in state.layout.minimized }.firstNotNullOfOrNull { root ->
                     val visible=EditorPanelLayouts.visible(root.node,state.layout.open) ?: return@firstNotNullOfOrNull null
                     val rect=root.rect.bounded(w,h)
                     // The title row owns move/detach/close; a held grip must never turn into a
@@ -302,7 +323,7 @@ internal fun EditorPanels(
         }) {
         val canvasRect=slots.firstOrNull { it.node is PanelNode.Canvas }?.rect ?: PanelRect(0f,0f,w,h)
         Box(geometry(canvasRect)) { canvas() }
-        slots.filter { it.node is PanelNode.Tabs }.forEach { slot ->
+        slots.filter { it.node is PanelNode.Tabs && !it.collapsed }.forEach { slot ->
             val tabs=slot.node as PanelNode.Tabs
             key(tabs.id) {
                 val currentSlot by rememberUpdatedState(slot)
@@ -312,6 +333,8 @@ internal fun EditorPanels(
                 val rect=if(moving) slot.rect.moved(d!!.dx,d.dy) else slot.rect
                 val active=if(individual && tabs.active==d?.panel) tabs.panels.first { it != d.panel } else tabs.active
                 val compact = rect.width < EditorPanelLayouts.compactThreshold(active) || rect.height < 80f
+                val minimizable = EditorPanelLayouts.minimizable(slot)
+                val minimized = minimizable && tabs.id in layout.minimized
                 Column(geometry(rect).testTag("editor-panel-${tabs.id}").zIndex(if(moving) 100f else if(slot.floating) 5f+layout.floating.indexOfFirst { it.node.id==slot.rootId } else 1f)
                     .background(Paper).border(1.dp,OutlineSoft).pointerInput(slot.rootId) {
                         awaitEachGesture { awaitFirstDown(requireUnconsumed=false,pass=PointerEventPass.Initial);state.raise(slot.rootId,tabs.id) }
@@ -328,7 +351,7 @@ internal fun EditorPanels(
                             tabs.panels.forEachIndexed { index,panel ->
                                 // CSP: tap a tab to bring it forward, drag it to move or detach that palette.
                                 Box(Modifier
-                                    .width(EditorPanelLayouts.tabWidth(tabs, rect.width).dp)
+                                    .width(EditorPanelLayouts.tabWidth(tabs, rect.width, minimizable).dp)
                                     .fillMaxHeight().graphicsLayer { alpha=if(individual && panel==d?.panel) 0f else 1f }.background(if(panel==active) SageContainer else Color.Transparent)
                                     .semantics { contentDescription=language.text("Drag ${title(panel).lowercase()} panel","拖动${title(panel)}面板") }
                                     .then(if (layout.locked) Modifier else Modifier.pointerInput(tabs.id,panel) {
@@ -346,11 +369,19 @@ internal fun EditorPanels(
                                 }
                             }
                         }
+                        // CSP: a palette shown by itself folds to its title bar.
+                        if (minimizable) IconButton(onClick={ state.commit(EditorPanelLayouts.toggleMinimized(state.layout,tabs.id)) },
+                            modifier=Modifier.size(EditorPanelLayouts.minimizeWidth.dp,30.dp)) {
+                            Icon(if (minimized) Icons.Outlined.ExpandMore else Icons.Outlined.ExpandLess,
+                                if (minimized) language.text("Restore ${title(active).lowercase()} panel","展开${title(active)}面板")
+                                else language.text("Minimize ${title(active).lowercase()} panel","最小化${title(active)}面板"),Modifier.size(18.dp),tint=Ink)
+                        }
                         IconButton(onClick={ closeCurrent(tabs) },modifier=Modifier.size(30.dp)) {
                             Icon(Icons.Outlined.Close,language.text("Close ${title(active).lowercase()} panel","关闭${title(active)}面板"),Modifier.size(16.dp),tint=Ink)
                         }
                     }
-                    if(compact) {
+                    if (minimized) Unit
+                    else if(compact) {
                         Column(Modifier.weight(1f).fillMaxWidth().clipToBounds(),
                             horizontalAlignment=androidx.compose.ui.Alignment.CenterHorizontally) {
                             tabs.panels.forEach { panel ->
@@ -364,6 +395,31 @@ internal fun EditorPanels(
                     } else Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                         bodies.getValue(active).invoke()
                     }
+                }
+            }
+        }
+        val popup = state.popup?.takeIf { it in layout.open && EditorPanelLayouts.inCollapsedDock(layout, it) }
+        slots.forEach { slot -> val column = slot.column ?: return@forEach
+            key("dock-${column.id}") {
+                if (column.display == DockDisplay.NORMAL) column.header?.let { header ->
+                    // Above the docked palettes' resize handles (≤ 1.7) so its buttons always get the tap.
+                    PaletteDockHeader(column.side, language, geometry(header).zIndex(1.9f)) { state.setDockDisplay(column.id, it) }
+                } else PaletteDockStrip(column.side, column.display, EditorPanelLayouts.members(slot.node), popup, language,
+                    geometry(slot.rect).zIndex(if (popup != null) 297f else 1.7f), ::title, ::icon,
+                    { state.setDockDisplay(column.id, it) }, { state.popup = it; it?.let { panel -> state.focus(panel) } })
+            }
+        }
+        popup?.let { panel ->
+            slots.firstOrNull { it.collapsed && panel in EditorPanelLayouts.members(it.node) }?.let { strip ->
+                val column = strip.column!!
+                // The pop-up has the size the palette has in the expanded dock.
+                val expanded = EditorPanelLayouts.slots(EditorPanelLayouts.setDockDisplay(layout, column.id, DockDisplay.NORMAL), w, h)
+                    .firstOrNull { (it.node as? PanelNode.Tabs)?.panels?.contains(panel) == true }?.rect
+                val index = if (column.display == DockDisplay.ICONS) EditorPanelLayouts.members(strip.node).indexOf(panel) else -1
+                val rect = PalettePopups.place(strip.rect, column.side, index, maxOf(expanded?.width ?: 300f, 260f),
+                    maxOf(expanded?.height ?: 420f, 360f).coerceAtMost(h - 16f), w, h)
+                key("popup") {
+                    PalettePopup(panel, title(panel), icon(panel), language, geometry(rect), { state.popup = null }) { bodies.getValue(panel).invoke() }
                 }
             }
         }
@@ -402,11 +458,11 @@ internal fun EditorPanels(
                 else -> AndroidPointerIcon.TYPE_VERTICAL_DOUBLE_ARROW
             }))
         if (drag == null && !layout.locked) {
-            val roots = layout.floating.mapNotNull { root ->
+            val roots = layout.floating.filter { it.node.id !in layout.minimized }.mapNotNull { root ->
                 EditorPanelLayouts.visible(root.node, layout.open)?.let {
                     PanelSlot(it, root.rect.bounded(w,h), root.node.id, true)
                 }
-            } + slots.filter { !it.floating && it.node is PanelNode.Tabs }
+            } + slots.filter { !it.floating && it.node is PanelNode.Tabs && !it.collapsed }
             roots.forEach { slot -> key("resize-${slot.rootId}-${slot.node.id}") {
                 val rect = slot.rect
                 val resizePanel = (slot.node as? PanelNode.Tabs)?.active ?: EditorPanelLayouts.members(slot.node).first()
@@ -428,7 +484,9 @@ internal fun EditorPanels(
                         })
                 } }
             } }
-            slots.filter { it.node is PanelNode.Split }.forEach { slot -> key("divider-${slot.node.id}") {
+            // An icon or hidden dock keeps its strip's fixed width.
+            slots.filter { slot -> slot.node is PanelNode.Split && !slot.collapsed && (slot.node as PanelNode.Split).let { split ->
+                slots.none { it.collapsed && (it.node.id == split.first.id || it.node.id == split.second.id) } } }.forEach { slot -> key("divider-${slot.node.id}") {
                 val split = slot.node as PanelNode.Split
                 val r = slot.rect
                 val firstRect = slots.first { it.node.id == split.first.id }.rect
@@ -464,7 +522,7 @@ internal fun EditorPanels(
                     PanelEdge.TOP->PanelRect(r.x,r.y,r.width,4f)
                     PanelEdge.BOTTOM->PanelRect(r.x,r.bottom-4,r.width,4f)
                     PanelEdge.TAB->PanelRect(EditorPanelLayouts.tabInsertionX(slot.node as PanelNode.Tabs,
-                        target.tabIndex,r.x,r.width).coerceIn(r.x, (r.right-3).coerceAtLeast(r.x)),r.y,3f,EditorPanelLayouts.titleHeight)
+                        target.tabIndex,r.x,r.width,EditorPanelLayouts.minimizable(slot)).coerceIn(r.x, (r.right-3).coerceAtLeast(r.x)),r.y,3f,EditorPanelLayouts.titleHeight)
                 }
                 Box(geometry(area).zIndex(199f).background(DropIndicator.copy(alpha=.22f)).border(2.dp, DropIndicator))
                 Box(geometry(line).zIndex(200f).background(DropIndicator).semantics { contentDescription=language.text("Release to place panel","松开以放置面板") })

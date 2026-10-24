@@ -54,7 +54,12 @@ object PanelResizing {
         val slots = EditorPanelLayouts.slots(layout, width, height)
         val slot = slots.firstOrNull { it.node.id == id } ?: return layout
         val split = slot.node as? PanelNode.Split ?: return layout
-        val first = slots.first { it.node.id == split.first.id }.rect
+        // An icon or hidden dock keeps its strip's width.
+        val firstSlot = slots.firstOrNull { it.node.id == split.first.id } ?: return layout
+        val secondSlot = slots.firstOrNull { it.node.id == split.second.id } ?: return layout
+        if (slot.collapsed || firstSlot.collapsed || secondSlot.collapsed) return layout
+        // A dock column's header belongs to its share of the split.
+        val first = firstSlot.rect.let { r -> firstSlot.column?.header?.let { PanelRect(r.x, it.y, r.width, r.bottom - it.y) } ?: r }
         val total = if (split.horizontal) slot.rect.width else slot.rect.height
         val initial = if (split.horizontal) first.width + 2f else first.height + 2f
         val minFirst = if (split.horizontal) EditorPanelLayouts.minimumWidth(split.first) else EditorPanelLayouts.minimumHeight(split.first)
@@ -78,8 +83,11 @@ object PanelResizing {
         delta: Float, width: Float, height: Float): EditorPanelLayout {
         val slots = EditorPanelLayouts.slots(layout, width, height).filterNot(PanelSlot::floating)
         val leaf = slots.firstOrNull { it.node.id == id } ?: return layout
+        // A dock column's top palette sits under the column's header; its top edge is the header's.
+        val header = slots.firstNotNullOfOrNull { slot -> slot.column?.header?.takeIf {
+            abs(it.bottom - leaf.rect.y) < .5f && leaf.rect.x >= it.x - .5f && leaf.rect.right <= it.right + .5f } }
         val edge = if (horizontal) { if (side < 0) leaf.rect.x else leaf.rect.right }
-            else if (side < 0) leaf.rect.y else leaf.rect.bottom
+            else if (side < 0) header?.y ?: leaf.rect.y else leaf.rect.bottom
         val parents = slots.filter { it.node is PanelNode.Split && EditorPanelLayouts.find(it.node, id) != null }.asReversed()
         for (parent in parents) {
             val split = parent.node as PanelNode.Split
