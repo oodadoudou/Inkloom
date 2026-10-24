@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -35,7 +35,7 @@ internal fun InterfaceSizeSetting(setting: Float, language: UiLanguage, onChange
     // The screen as Android reports it, before this app's own scaling.
     val measured = remember(context) { InterfaceScaling.resolve(context, InterfaceScale.AUTO) }
     val current = if (setting <= InterfaceScale.AUTO) measured else setting
-    var draft by remember(current) { mutableStateOf(current) }
+    var draft by remember(current) { mutableFloatStateOf(current) }
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(tr("Interface size", "界面大小"), Modifier.weight(1f), color = MutedInk, fontSize = 12.sp)
