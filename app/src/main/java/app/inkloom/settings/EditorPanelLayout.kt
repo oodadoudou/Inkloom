@@ -5,7 +5,7 @@ import kotlin.math.abs
 
 @Serializable
 /** Colour panels come last: code treats every panel from [WHEEL] on as a colour panel. */
-enum class EditorPanel { PAGES, BRUSHES, LAYERS, SUBTOOLS, PROPERTIES, NAVIGATOR, WHEEL, PALETTES, MIX, NEARBY }
+enum class EditorPanel { PAGES, BRUSHES, LAYERS, SUBTOOLS, PROPERTIES, NAVIGATOR, SUBVIEW, WHEEL, PALETTES, MIX, NEARBY }
 
 @Serializable
 data class PanelRect(val x: Float, val y: Float, val width: Float, val height: Float) {
@@ -50,7 +50,8 @@ data class EditorPanelLayout(
         FloatingPanels(PanelNode.Tabs("brushes", listOf(EditorPanel.BRUSHES, EditorPanel.SUBTOOLS)), PanelRect(720f, 12f, 340f, 600f)),
         FloatingPanels(PanelNode.Tabs("layers", listOf(EditorPanel.LAYERS, EditorPanel.PROPERTIES)), PanelRect(800f, 80f, 270f, 500f)),
         // Colours stay the front-most window by default.
-        FloatingPanels(PanelNode.Tabs("navigator", listOf(EditorPanel.NAVIGATOR)), PanelRect(880f, 300f, 280f, 340f)),
+        FloatingPanels(PanelNode.Tabs("navigator", listOf(EditorPanel.NAVIGATOR)), PanelRect(880f, 364f, 280f, 340f)),
+        FloatingPanels(PanelNode.Tabs("subview", listOf(EditorPanel.SUBVIEW)), PanelRect(128f, 180f, 296f, 380f)),
         FloatingPanels(PanelNode.Tabs("colors", listOf(EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY)), PanelRect(850f, 12f, 324f, 340f)),
     ),
     val open: Set<EditorPanel> = emptySet(),
@@ -91,7 +92,7 @@ object EditorPanelLayouts {
         EditorPanel.BRUSHES -> 196f
         EditorPanel.LAYERS, EditorPanel.SUBTOOLS, EditorPanel.PROPERTIES -> 200f
         EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY -> 180f
-        EditorPanel.NAVIGATOR -> 160f
+        EditorPanel.NAVIGATOR, EditorPanel.SUBVIEW -> 160f
     }
 
     /** Stable width keeps tab hit targets and drop insertion aligned in both UI languages. */
@@ -102,6 +103,7 @@ object EditorPanelLayouts {
         EditorPanel.NEARBY -> 68f
         EditorPanel.BRUSHES -> 66f
         EditorPanel.NAVIGATOR -> 78f
+        EditorPanel.SUBVIEW -> 74f
         else -> 60f
     }
     fun tabInsertionIndex(tabs: PanelNode.Tabs, pointerX: Float, panelX: Float, panelWidth: Float): Int {

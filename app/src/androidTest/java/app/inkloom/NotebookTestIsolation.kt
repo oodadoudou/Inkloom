@@ -11,6 +11,7 @@ internal fun resetNotebookTestLibrary(context: Context) {
     context.filesDir.resolve("journal.jsonl").let { check(!it.exists() || it.delete()) }
     context.filesDir.resolve("library.json").let { check(!it.exists() || it.delete()) }
     context.filesDir.resolve("materials.json").let { check(!it.exists() || it.delete()) }
+    context.filesDir.resolve("reference-images").deleteRecursively()
     seedTestNotebooks(context)
 }
 
