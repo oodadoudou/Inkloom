@@ -418,19 +418,23 @@ internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<St
     val layerBlendModes = page.layers.associate { it.id to it.blendMode }
     val layerOrder = page.layers.mapIndexed { index, layer -> layer.id to index }.toMap()
     val retainedLayerKeys = RetainedLayerRenderKey.forPage(page)
-    val layerElementBitmaps = remember(page.id, page.width, page.height, page.elements, retainedLayerKeys, page.crop, page.backgroundRotationQuarterTurns, rasterRenderWidth, page.colorManagement) {
+    // Animation folders with onion skin show their neighbouring cels faintly on screen.
+    val onionSkin = remember(page.layers) { app.inkloom.document.AnimationOnionSkin.cels(page.layers) }
+    val layerElementBitmaps = remember(page.id, page.width, page.height, page.elements, retainedLayerKeys, page.crop, page.backgroundRotationQuarterTurns, rasterRenderWidth, page.colorManagement, onionSkin.keys) {
         page.layers.mapNotNull { layer ->
             val elementIds = page.elements.filter { it.layerId == layer.id }.mapTo(linkedSetOf(), PageElement::id)
-            if (elementIds.isEmpty() || !LayerHierarchy.effectiveVisible(page.layers, layer)) return@mapNotNull null
-            layer.id to renderRetainedLayerElements(assets, page, layer, rasterRenderWidth)
+            val onion = layer.id in onionSkin
+            if (elementIds.isEmpty() || !(onion || LayerHierarchy.effectiveVisible(page.layers, layer))) return@mapNotNull null
+            // An onion-skin cel is a hidden layer: draw its objects as if it were shown.
+            val shown = if (onion) layer.copy(visible = true) else layer
+            val source = if (onion) page.copy(layers = page.layers.map { if (it.id == layer.id) shown else it }) else page
+            layer.id to renderRetainedLayerElements(assets, source, shown, rasterRenderWidth)
         }.toMap()
     }
     DisposableEffect(layerElementBitmaps) { onDispose { layerElementBitmaps.values.forEach(LayerElementBitmaps::recycle) } }
     // This page-scoped runtime, rather than a disk-derived Compose value, owns editable pixels.
     // Brush imports, preset switches and asynchronous checkpoint publication are UI changes and
     // must never reconstruct or replace the live painting surface.
-    // Animation folders with onion skin show their neighbouring cels faintly on screen.
-    val onionSkin = remember(page.layers) { app.inkloom.document.AnimationOnionSkin.cels(page.layers) }
     val rasterLayerSurfaces = rasterSurfaceRuntime.reconcile(page, onionSkin.keys)
     val activeLayerGuide = page.layers.firstOrNull { it.id == activeLayerId && it.drawingAssist }?.drawingGuide
     val symmetryMode = activeLayerGuide?.let { enumOrDefault(it.symmetryMode, settings.symmetryMode) } ?: settings.symmetryMode
