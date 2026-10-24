@@ -613,6 +613,16 @@ fun InkloomApp(initialIntent: Intent?) {
     // The file picker returns after the editor or Library chose a notebook; remember which one.
     var pendingExportDocumentId by rememberSaveable { mutableStateOf<String?>(null) }
     var bookPreview by remember { mutableStateOf<Pair<InkDocument, Int?>?>(null) }
+    // Animated GIF export: the folder and width chosen in the timeline, until the file is picked.
+    var pendingGifExport by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    val gifExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/gif")) { uri ->
+        val (folderId, width) = pendingGifExport ?: return@rememberLauncherForActivityResult
+        pendingGifExport = null
+        if (uri != null) {
+            Toast.makeText(context, settings.language.text("Exporting animation…", "正在导出动画…"), Toast.LENGTH_SHORT).show()
+            viewModel.exportAnimationGif(uri, folderId, width) { exportFinished(it) }
+        }
+    }
     fun takeExportDocumentId(): String? = (pendingExportDocumentId ?: viewModel.currentDocument()?.id).also { pendingExportDocumentId = null }
     val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         val documentId = takeExportDocumentId()
@@ -907,7 +917,10 @@ fun InkloomApp(initialIntent: Intent?) {
             onDeleteFolders = viewModel::deleteFolders,
             onSettings = { settingsOpen = true },
         ) }
-        AppDestination.EDITOR -> EditorScreen(
+        // The timeline's GIF export opens this shell's file picker; a local keeps EditorScreen's parameter list unchanged.
+        AppDestination.EDITOR -> CompositionLocalProvider(LocalAnimationGifExport provides { folderId, width, name ->
+            pendingGifExport = folderId to width; gifExportPicker.launch("$name.gif")
+        }) { EditorScreen(
             panelState = panelState,
             document = libraryState.documents.firstOrNull { it.id == libraryState.selectedDocumentId } ?: viewModel.currentDocument(),
             documents = libraryState.documents,
@@ -1029,7 +1042,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onOpenNotebook = viewModel::select,
             onSettings = { settingsOpen = true },
             onSettingsChange = ::updateSettings,
-        )
+        ) }
     }
     }
     libraryState.legacyFillMigrationError?.let { reason ->

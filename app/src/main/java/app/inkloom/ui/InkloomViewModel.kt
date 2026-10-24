@@ -904,6 +904,21 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /** An animation folder of the current page as an animated GIF [width] pixels wide. */
+    fun exportAnimationGif(uri: Uri, folderId: String, width: Int, onComplete: (Result<Unit>) -> Unit) {
+        val page = currentPage() ?: run { onComplete(Result.failure(IllegalStateException("No page is open for export"))); return }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    requireNotNull(getApplication<Application>().contentResolver.openOutputStream(uri, "wt")) { "Could not open the file" }.use { out ->
+                        app.inkloom.document.AnimationExport.writeGif(assets, page, folderId, width, out.buffered())
+                    }
+                }
+            }
+            onComplete(result)
+        }
+    }
+
     fun exportLibraryBackup(uri: Uri, brushes: List<ImportedBrush>, brushGroups: List<String>, preferences: ByteArray?, onComplete: (Result<Unit>) -> Unit) {
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {

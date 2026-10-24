@@ -52,6 +52,7 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun AnimationTimelineDialog(page: InkPage, folderId: String, assets: DocumentAssetService, language: UiLanguage,
                                      onEdit: ((InkPage) -> InkPage?) -> Unit, onSelectCel: (String) -> Unit, onDismiss: () -> Unit) {
+    val exportGif = LocalAnimationGifExport.current
     fun tr(en: String, zh: String) = language.text(en, zh)
     val folder = page.layers.firstOrNull { it.id == folderId }
     val animation = folder?.animation ?: run { onDismiss(); return }
@@ -115,9 +116,21 @@ internal fun AnimationTimelineDialog(page: InkPage, folderId: String, assets: Do
             }
             StudioNote(tr("Tap a cel to show and draw on it; the other cels are hidden. Durations are in frames.",
                 "点按赛璐以显示并在其上绘画，其他赛璐会隐藏。时长以帧为单位。"))
+            // CSP File › Export animation › Animated GIF: the page with each cel in turn, looping.
+            StudioSection(tr("Export", "导出"))
+            var gifWidth by remember { mutableIntStateOf(720) }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                listOf(480, 720, 1080).forEach { w ->
+                    StudioFilterChip(selected = gifWidth == w, onClick = { gifWidth = w }, label = { Text("$w px") })
+                }
+            }
+            StudioButton(tr("Export animated GIF…", "导出 GIF 动画…"), { exportGif(folderId, gifWidth, folder.name) }, enabled = animation.cels.isNotEmpty())
         }
     }, confirmButton = { TextButton(onDismiss) { Text(tr("Done", "完成")) } })
 }
+
+/** Starts an animated GIF export of an animation folder at a width; provided by the app shell, which owns the file picker. */
+internal val LocalAnimationGifExport = androidx.compose.runtime.staticCompositionLocalOf<(folderId: String, width: Int, name: String) -> Unit> { { _, _, _ -> } }
 
 /** The animation folder that [layerId] is, or lies in. */
 internal fun activeAnimationFolder(layers: List<app.inkloom.document.InkLayer>, layerId: String): app.inkloom.document.InkLayer? {
