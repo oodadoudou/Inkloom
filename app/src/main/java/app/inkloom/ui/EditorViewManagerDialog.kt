@@ -84,7 +84,8 @@ internal fun EditorViewManagerDialog(
         modifier = Modifier.widthIn(max = 400.dp),
         title = { Text(tr("Views", "视图")) },
         text = {
-            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+            // Tall enough on a tablet for every view at once; shorter windows scroll.
+            Column(Modifier.heightIn(max = 600.dp).verticalScroll(rememberScrollState())) {
                 listOf(
                     tr("Notebook", "笔记") to listOf(EditorPanel.PAGES, EditorPanel.NAVIGATOR, EditorPanel.SUBVIEW),
                     tr("Painting", "绘画") to listOf(EditorPanel.BRUSHES, EditorPanel.LAYERS, EditorPanel.SUBTOOLS, EditorPanel.PROPERTIES),

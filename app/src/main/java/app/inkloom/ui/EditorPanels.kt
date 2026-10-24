@@ -105,20 +105,13 @@ internal class EditorPanelState(context: Context) {
         commit(if (root == null || selected.floating.lastOrNull() == root) selected
             else selected.copy(floating = selected.floating - root + root))
     }
+    /** The colour chips: opening shows the Color Wheel alone; the other colour palettes open from Views. */
     fun colors(open: Boolean) {
         val colors=EditorPanel.entries.filter { it.ordinal >= EditorPanel.WHEEL.ordinal }.toSet()
         if(!open) commit(layout.copy(open=layout.open-colors))
         else {
-            fun activeColor(node: PanelNode): EditorPanel? = when (node) {
-                is PanelNode.Tabs -> node.active.takeIf { it in colors }
-                is PanelNode.Split -> activeColor(node.first) ?: activeColor(node.second)
-                is PanelNode.Canvas, is PanelNode.Space -> null
-            }
-            val last = layout.floating.asReversed().firstNotNullOfOrNull { activeColor(it.node) }
-                ?: activeColor(layout.dock) ?: EditorPanel.WHEEL
-            val nextOpen = if (layout.open.intersect(colors).isEmpty()) layout.open + colors else layout.open + last
-            if (nextOpen != layout.open) commit(layout.copy(open = nextOpen))
-            focus(last)
+            show(EditorPanel.WHEEL, true)
+            focus(EditorPanel.WHEEL)
         }
     }
     fun closeTopPanel(onClose: (EditorPanel) -> Unit): Boolean {
@@ -167,7 +160,6 @@ internal fun EditorPanels(
     var drag by remember { mutableStateOf<PanelDrag?>(null) }
     var resize by remember { mutableStateOf<PanelResize?>(null) }
     val gestureDown = remember { arrayOf(Offset.Zero) }
-    val tabScrolls = remember { mutableMapOf<String, androidx.compose.foundation.ScrollState>() }
     val dragFocus = remember { FocusRequester() }
     val gestureOrigin = remember { arrayOfNulls<EditorPanelLayout>(1) }
     val currentClose by rememberUpdatedState(onClose)
@@ -232,19 +224,11 @@ internal fun EditorPanels(
             if(old.panel != null && source is PanelNode.Tabs && source.panels.size>1) excluded.remove(source.id)
             var target=EditorPanelLayouts.target(currentSlots,excluded,old.x+dx,old.y+dy,moved,
                 delta.x/density,delta.y/density,w,h)
-            if (target?.edge == PanelEdge.TAB) {
-                val targetSlot = currentSlots.firstOrNull { it.node.id == target?.nodeId }
-                val tabs = targetSlot?.node as? PanelNode.Tabs
-                if (targetSlot != null && tabs != null) {
-                    val scroll = tabScrolls[tabs.id]
-                    val px = old.x + dx
-                    if (scroll != null) {
-                        if (px < targetSlot.rect.x + 42f) scroll.dispatchRawDelta(-8f * density)
-                        else if (px > targetSlot.rect.right - 46f) scroll.dispatchRawDelta(8f * density)
-                    }
-                    target = target?.copy(tabIndex = EditorPanelLayouts.tabInsertionIndex(tabs,
-                        px + (scroll?.value ?: 0) / density, targetSlot.rect.x, targetSlot.rect.width))
-                }
+            // A tab's own group takes it back only in its title row (reordering); anywhere else
+            // over that group it comes loose and floats, so a short drag never splits the group with itself.
+            if (target != null && target.nodeId == old.sourceId) {
+                val own = currentSlots.firstOrNull { it.node.id == old.sourceId }?.rect
+                if (target.edge != PanelEdge.TAB || own == null || old.y + dy > own.y + EditorPanelLayouts.titleHeight) target = null
             }
             drag=old.copy(dx=dx,dy=dy,target=target)
         }
@@ -322,15 +306,12 @@ internal fun EditorPanels(
             val tabs=slot.node as PanelNode.Tabs
             key(tabs.id) {
                 val currentSlot by rememberUpdatedState(slot)
-                val tabScroll = rememberScrollState()
-                SideEffect { tabScrolls[tabs.id] = tabScroll }
-                DisposableEffect(tabs.id) { onDispose { tabScrolls.remove(tabs.id) } }
                 val d=drag
                 val individual = d?.sourceId == tabs.id && d.panel != null && tabs.panels.size > 1
                 val moving=!individual && d!=null && (d.sourceId==tabs.id || (d.panel==null && EditorPanelLayouts.find(EditorPanelLayouts.node(d.original,d.sourceId) ?: tabs,tabs.id)!=null))
                 val rect=if(moving) slot.rect.moved(d!!.dx,d.dy) else slot.rect
                 val active=if(individual && tabs.active==d?.panel) tabs.panels.first { it != d.panel } else tabs.active
-                val compact = rect.width < EditorPanelLayouts.compactThreshold(active) || rect.height < 112f
+                val compact = rect.width < EditorPanelLayouts.compactThreshold(active) || rect.height < 80f
                 Column(geometry(rect).testTag("editor-panel-${tabs.id}").zIndex(if(moving) 100f else if(slot.floating) 5f+layout.floating.indexOfFirst { it.node.id==slot.rootId } else 1f)
                     .background(Paper).border(1.dp,OutlineSoft).pointerInput(slot.rootId) {
                         awaitEachGesture { awaitFirstDown(requireUnconsumed=false,pass=PointerEventPass.Initial);state.raise(slot.rootId,tabs.id) }
@@ -343,22 +324,22 @@ internal fun EditorPanels(
                             },contentAlignment=androidx.compose.ui.Alignment.Center) {
                             Icon(Icons.Outlined.DragIndicator,null,Modifier.size(17.dp),tint=MutedInk)
                         }
-                        Row(Modifier.weight(1f).horizontalScroll(tabScroll)) {
+                        Row(Modifier.weight(1f)) {
                             tabs.panels.forEachIndexed { index,panel ->
+                                // CSP: tap a tab to bring it forward, drag it to move or detach that palette.
                                 Box(Modifier
-                                    .width(if(tabs.panels.size==1) (rect.width-60f).coerceAtLeast(55f).dp else EditorPanelLayouts.tabWidth(panel).dp)
+                                    .width(EditorPanelLayouts.tabWidth(tabs, rect.width).dp)
                                     .fillMaxHeight().graphicsLayer { alpha=if(individual && panel==d?.panel) 0f else 1f }.background(if(panel==active) SageContainer else Color.Transparent)
                                     .semantics { contentDescription=language.text("Drag ${title(panel).lowercase()} panel","拖动${title(panel)}面板") }
+                                    .then(if (layout.locked) Modifier else Modifier.pointerInput(tabs.id,panel) {
+                                        detectDragGestures(onDragStart={ begin(currentSlot,panel) },onDragEnd={ finish() },onDragCancel={ cancel() }) { change,_ -> change.consume() }
+                                    })
                                     .clickable { state.commit(EditorPanelLayouts.select(state.layout,panel)) }
-                                    .padding(horizontal=if(tabs.panels.size > 1) 2.dp else 7.dp), contentAlignment=androidx.compose.ui.Alignment.CenterStart) {
+                                    .padding(horizontal=6.dp), contentAlignment=androidx.compose.ui.Alignment.CenterStart) {
                                     Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                        if(!layout.locked) Icon(Icons.Outlined.DragIndicator,
-                                            language.text("Move ${title(panel).lowercase()} tab","移动${title(panel)}标签"),
-                                            Modifier.size(18.dp).pointerInput(tabs.id,panel) {
-                                                // Only this explicit grip may detach a tab. The label area remains
-                                                // owned by horizontalScroll even during a long swipe.
-                                                detectDragGestures(onDragStart={ begin(currentSlot,panel) },onDragEnd={ finish() },onDragCancel={ cancel() }) { change,_ -> change.consume() }
-                                            },tint=MutedInk)
+                                        Icon(icon(panel), language.text("Move ${title(panel).lowercase()} tab","移动${title(panel)}标签"),
+                                            Modifier.size(15.dp), tint=MutedInk)
+                                        Spacer(Modifier.width(4.dp))
                                         Text(title(panel),fontSize=11.sp,lineHeight=14.sp,color=Ink,maxLines=1,
                                             overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                     }
@@ -465,21 +446,36 @@ internal fun EditorPanels(
         }
         drag?.target?.let { target ->
             slots.firstOrNull { it.node.id==target.nodeId }?.let { slot ->
+                // CSP's red indicators: the whole palette for stacking, a red band where the panel docks.
                 val r=slot.rect
-                val preview=when(target.edge) {
-                    PanelEdge.LEFT->PanelRect(r.x,r.y,2f,r.height)
-                    PanelEdge.RIGHT->PanelRect(r.right-2,r.y,2f,r.height)
-                    PanelEdge.TOP->PanelRect(r.x,r.y,r.width,2f)
-                    PanelEdge.BOTTOM->PanelRect(r.x,r.bottom-2,r.width,2f)
-                    PanelEdge.TAB->PanelRect(EditorPanelLayouts.tabInsertionX(slot.node as PanelNode.Tabs,
-                        target.tabIndex,r.x,r.width).minus((tabScrolls[target.nodeId]?.value ?: 0) / density).coerceIn(r.x, (r.right-2).coerceAtLeast(r.x)),r.y,2f,32f)
+                val canvasSide = slot.node is PanelNode.Canvas
+                val reach = if (canvasSide) minOf(drag?.start?.width ?: 280f, r.width * .4f) else r.width / 2f
+                val tall = if (canvasSide) minOf(drag?.start?.height ?: 300f, r.height * .4f) else r.height / 2f
+                val area=when(target.edge) {
+                    PanelEdge.LEFT->PanelRect(r.x,r.y,reach,r.height)
+                    PanelEdge.RIGHT->PanelRect(r.right-reach,r.y,reach,r.height)
+                    PanelEdge.TOP->PanelRect(r.x,r.y,r.width,tall)
+                    PanelEdge.BOTTOM->PanelRect(r.x,r.bottom-tall,r.width,tall)
+                    PanelEdge.TAB->r
                 }
-                Box(geometry(preview).zIndex(200f).background(Ink).semantics { contentDescription=language.text("Release to place panel","松开以放置面板") })
+                val line=when(target.edge) {
+                    PanelEdge.LEFT->PanelRect(r.x,r.y,4f,r.height)
+                    PanelEdge.RIGHT->PanelRect(r.right-4,r.y,4f,r.height)
+                    PanelEdge.TOP->PanelRect(r.x,r.y,r.width,4f)
+                    PanelEdge.BOTTOM->PanelRect(r.x,r.bottom-4,r.width,4f)
+                    PanelEdge.TAB->PanelRect(EditorPanelLayouts.tabInsertionX(slot.node as PanelNode.Tabs,
+                        target.tabIndex,r.x,r.width).coerceIn(r.x, (r.right-3).coerceAtLeast(r.x)),r.y,3f,EditorPanelLayouts.titleHeight)
+                }
+                Box(geometry(area).zIndex(199f).background(DropIndicator.copy(alpha=.22f)).border(2.dp, DropIndicator))
+                Box(geometry(line).zIndex(200f).background(DropIndicator).semantics { contentDescription=language.text("Release to place panel","松开以放置面板") })
             }
         }
     }
     }
 }
+
+/** CSP marks where a dragged palette will land in red. */
+private val DropIndicator = Color(0xFFE5483B)
 
 /** Panel bodies omit their former window chrome when rendered in the shared workspace host. */
 internal val LocalEditorPanelHosted=staticCompositionLocalOf { false }

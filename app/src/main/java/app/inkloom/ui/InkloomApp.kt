@@ -1786,6 +1786,11 @@ private fun EditorScreen(
             }
         }
     }
+    /** A colour chip: shows the wheel for that colour; tapping the chip already being edited hides the wheel again. */
+    fun colorChipTapped(secondary: Boolean) {
+        if (EditorPanel.WHEEL in panelState.layout.open && modes.editSecondaryColor == secondary) setManagedPanelVisible(EditorPanel.WHEEL, false)
+        else { modes.editSecondaryColor = secondary; showColors() }
+    }
     fun selectLayerContents(layerId: String, mode: app.inkloom.engine.v5.surface.MaskComposeMode) {
         exitCanvasNavigation()
         rememberSelectionReturnTarget()
@@ -2007,11 +2012,11 @@ private fun EditorScreen(
                         Box(Modifier.size(44.dp).semantics { contentDescription = colorsDescription }, contentAlignment = Alignment.Center) {
                             Box(Modifier.size(32.dp)) {
                                 Box(
-                                    Modifier.align(Alignment.TopEnd).size(21.dp).clip(CircleShape).background(Color(backgroundColor)).border(1.5.dp, if (colorPanelOpen && modes.editSecondaryColor) Ink else OutlineSoft, CircleShape).clickable { modes.editSecondaryColor = true; showColors() },
+                                    Modifier.align(Alignment.TopEnd).size(21.dp).clip(CircleShape).background(Color(backgroundColor)).border(1.5.dp, if (colorPanelOpen && modes.editSecondaryColor) Ink else OutlineSoft, CircleShape).clickable { colorChipTapped(secondary = true) },
                                 )
                                 Box(
                                     Modifier.align(Alignment.BottomStart).size(23.dp).clip(CircleShape).background(Color(brushColor)).border(2.dp, if (colorPanelOpen && !modes.editSecondaryColor) Ink else OutlineSoft, CircleShape).combinedClickable(
-                                        onClick = { modes.editSecondaryColor = false; showColors() },
+                                        onClick = { colorChipTapped(secondary = false) },
                                         onLongClick = { editorHostView.startDragAndDrop(ClipData.newPlainText("Inkloom color", brushColor.toUInt().toString()), ColorDropDragShadow(brushColor), CanvasColorDrop(brushColor), 0) },
                                     ),
                                 )

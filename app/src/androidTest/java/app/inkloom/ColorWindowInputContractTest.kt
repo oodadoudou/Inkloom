@@ -15,6 +15,7 @@ import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.ui.InkCanvasView
@@ -415,7 +416,8 @@ class ColorWindowInputContractTest {
         tap("Nearby color 1, 7")
         assertEquals("Picking twice must not shift the grid", selected, view.inkColor)
         instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
-        tap("Colors")
+        // The colour chips open the wheel; Nearby is reopened from Views and keeps its settings.
+        tap("Nearby")
         assertTrue(hasText("Saturation × brightness (HSV)"))
         tap("Use current color as reference")
         tap("Nearby color 4, 4")
@@ -481,7 +483,7 @@ class ColorWindowInputContractTest {
         assertTrue("Picking the painted line should be dark", android.graphics.Color.red(picked) < 80)
         assertEquals("Mixing must never touch document history", revision, canvas.activeRasterSnapshotForTest()?.revision)
         instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
-        tap("Colors")
+        tap("Mix")
         SystemClock.sleep(500)
         tap("Pick from mixing board")
         val restored = bounds("Color mixing board")
@@ -505,7 +507,7 @@ class ColorWindowInputContractTest {
         compose.waitUntil(5_000) {
             compose.onAllNodesWithContentDescription("Color mixing board").fetchSemanticsNodes().isEmpty()
         }
-        tap("Colors")
+        tap("Mix")
         compose.onNodeWithContentDescription("Blend on mixing board").assertIsSelected()
         tap("Undo mixing")
         tap("Pick from mixing board")
@@ -515,7 +517,7 @@ class ColorWindowInputContractTest {
         instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
         compose.activityRule.scenario.recreate()
         compose.waitForIdle()
-        tap("Colors")
+        tap("Mix")
         tap("Redo mixing"); tap("Pick from mixing board")
         val restored = bounds("Color mixing board")
         tapAt(Offset(restored.exactCenterX(), restored.exactCenterY())); compose.waitForIdle()
@@ -676,8 +678,19 @@ class ColorWindowInputContractTest {
     }
 
     private fun tap(node: String) {
-        if (node == "Nearby") compose.onNodeWithContentDescription("Drag nearby panel").performScrollTo()
+        if (node in setOf("Palettes", "Mix", "Nearby")) showColorView(node)
         tapAt(center(node))
+        compose.waitForIdle()
+    }
+
+    /** The colour chips open only the wheel; the other colour palettes are opened from Views, as a user does. */
+    private fun showColorView(name: String) {
+        if (compose.onAllNodesWithContentDescription("Drag ${name.lowercase()} panel").fetchSemanticsNodes().isNotEmpty()) return
+        tapAt(center("Actions")); compose.waitForIdle()
+        tapAt(center("Actions Views")); compose.waitForIdle()
+        compose.onNodeWithText("Views…").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Show $name view").performScrollTo().performClick()
+        compose.onNodeWithText("Done").performClick()
         compose.waitForIdle()
     }
 

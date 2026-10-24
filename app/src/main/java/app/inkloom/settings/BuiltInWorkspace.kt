@@ -15,8 +15,8 @@ object BuiltInWorkspaces {
             BuiltInWorkspace.PAINTING -> {
                 val colors = EditorPanelLayouts.move(defaults, "colors", null, PanelDropTarget("canvas", PanelEdge.RIGHT), PanelRect(0f, 0f, 320f, 300f))
                 EditorPanelLayouts.move(colors, "layers", null, PanelDropTarget("colors", PanelEdge.BOTTOM), PanelRect(0f, 0f, 320f, 400f))
-                    // Every colour tab, as the Colors button opens them, plus layers.
-                    .copy(open = EditorPanel.entries.filter { it.ordinal >= EditorPanel.WHEEL.ordinal }.toSet() + EditorPanel.LAYERS)
+                    // The colour wheel, as the colour chips open it, plus layers; other colour palettes join as tabs.
+                    .copy(open = setOf(EditorPanel.WHEEL, EditorPanel.LAYERS))
             }
             BuiltInWorkspace.STUDIO -> defaults
         }

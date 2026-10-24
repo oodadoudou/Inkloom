@@ -1071,6 +1071,8 @@ class InkloomLaunchTest {
         val seededColor = view.inkColor
 
         composeRule.onNodeWithContentDescription("Colors").performClick()
+        // The chip closed the wheel and opened it again; let the new wheel settle before measuring a drag.
+        composeRule.waitForIdle()
         ColorPickerInteractionTrace.reset()
         ColorPickerInteractionTrace.enabled = true
         try {

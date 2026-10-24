@@ -86,39 +86,27 @@ object EditorPanelLayouts {
         return dx * dx + dy * dy >= minimum * minimum
     }
 
+    /** Close button at the right of every title row. */
+    const val closeWidth = 30f
+
+    /** Below this width a panel shows its tabs as icons; content otherwise stays visible and scrolls. */
     fun compactThreshold(panel: EditorPanel): Float = when (panel) {
-        EditorPanel.PAGES -> 144f
-        // 56 dp categories + 24 dp splitter + a useful 112 dp brush preview.
-        EditorPanel.BRUSHES -> 196f
-        EditorPanel.LAYERS, EditorPanel.SUBTOOLS, EditorPanel.PROPERTIES -> 200f
-        EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY -> 180f
-        EditorPanel.NAVIGATOR, EditorPanel.SUBVIEW -> 160f
+        EditorPanel.PAGES -> 104f
+        EditorPanel.BRUSHES -> 160f
+        EditorPanel.LAYERS, EditorPanel.SUBTOOLS, EditorPanel.PROPERTIES -> 140f
+        EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY -> 120f
+        EditorPanel.NAVIGATOR, EditorPanel.SUBVIEW -> 110f
     }
 
-    /** Stable width keeps tab hit targets and drop insertion aligned in both UI languages. */
-    fun tabWidth(panel: EditorPanel): Float = when (panel) {
-        EditorPanel.SUBTOOLS -> 78f
-        EditorPanel.PROPERTIES -> 100f
-        EditorPanel.PALETTES -> 74f
-        EditorPanel.NEARBY -> 68f
-        EditorPanel.BRUSHES -> 66f
-        EditorPanel.NAVIGATOR -> 78f
-        EditorPanel.SUBVIEW -> 74f
-        else -> 60f
-    }
+    /** Tabs share the title row equally, as CSP's stacked palettes do, so every tab stays reachable without scrolling. */
+    fun tabWidth(tabs: PanelNode.Tabs, panelWidth: Float): Float =
+        ((panelWidth - groupGripWidth - closeWidth) / tabs.panels.size.coerceAtLeast(1)).coerceAtLeast(1f)
     fun tabInsertionIndex(tabs: PanelNode.Tabs, pointerX: Float, panelX: Float, panelWidth: Float): Int {
-        var cursor = panelX + groupGripWidth
-        tabs.panels.forEachIndexed { index, panel ->
-            val width = if (tabs.panels.size == 1) (panelWidth - 60f).coerceAtLeast(55f) else tabWidth(panel)
-            if (pointerX < cursor + width / 2f) return index
-            cursor += width
-        }
-        return tabs.panels.size
+        val width = tabWidth(tabs, panelWidth)
+        return ((pointerX - panelX - groupGripWidth + width / 2f) / width).toInt().coerceIn(0, tabs.panels.size)
     }
     fun tabInsertionX(tabs: PanelNode.Tabs, index: Int, panelX: Float, panelWidth: Float): Float =
-        panelX + groupGripWidth + tabs.panels.take(index.coerceIn(0, tabs.panels.size)).sumOf {
-            (if (tabs.panels.size == 1) (panelWidth - 60f).coerceAtLeast(55f) else tabWidth(it)).toDouble()
-        }.toFloat()
+        panelX + groupGripWidth + tabWidth(tabs, panelWidth) * index.coerceIn(0, tabs.panels.size)
 
     fun isValid(layout: EditorPanelLayout): Boolean {
         val ids = mutableSetOf<String>()
@@ -293,42 +281,42 @@ object EditorPanelLayouts {
         else -> false
     }
 
-    /** Title means tabs; a visible band along any other edge means a split. */
+    /** How far from the canvas sides (left, right, bottom) a finger docks a panel to the window side. */
+    const val windowDockZone = 64f
+
+    /**
+     * CSP's drop rules, by where the finger is: over a palette's title bar the palette stacks as a tab;
+     * over its body the nearest edge within 30% places it beside, above or below (the middle stacks it);
+     * near the canvas's left, right or bottom side it docks to that side of the window; elsewhere it floats.
+     * [dragged], [dx] and [dy] are kept for callers that track the moving window.
+     */
     fun target(slots: List<PanelSlot>, excludedIds: Set<String>, pointerX: Float, pointerY: Float,
         dragged: PanelRect, dx: Float, dy: Float, width: Float, height: Float, tolerance: Float = 12f): PanelDropTarget? {
         val candidates=slots.asReversed().filter { it.node.id !in excludedIds }
-        // Explicit pointer targets win over an unrelated edge of a large moving window.
         for(slot in candidates) {
             val r=slot.rect
             if(!r.contains(pointerX,pointerY) || slot.node is PanelNode.Split) continue
-            if(slot.node is PanelNode.Tabs && pointerY <= r.y+32f) {
-                val index=tabInsertionIndex(slot.node,pointerX,r.x,r.width)
-                return PanelDropTarget(slot.node.id,PanelEdge.TAB,index)
-            }
-            val edges=listOf(PanelEdge.LEFT to abs(pointerX-r.x), PanelEdge.RIGHT to abs(pointerX-r.right),
-                PanelEdge.TOP to abs(pointerY-r.y),PanelEdge.BOTTOM to abs(pointerY-r.bottom))
-            val edge=edges.minByOrNull { it.second }!!
-            val splitBand = when (slot.node) {
-                is PanelNode.Tabs -> when (edge.first) {
-                    PanelEdge.LEFT, PanelEdge.RIGHT -> (r.width * .22f).coerceIn(24f, 48f)
-                    PanelEdge.TOP, PanelEdge.BOTTOM -> (r.height * .18f).coerceIn(24f, 48f)
-                    PanelEdge.TAB -> tolerance
+            when (val node = slot.node) {
+                is PanelNode.Tabs -> {
+                    if (pointerY <= r.y + titleHeight) return PanelDropTarget(node.id, PanelEdge.TAB, tabInsertionIndex(node, pointerX, r.x, r.width))
+                    val fx = ((pointerX - r.x) / r.width.coerceAtLeast(1f)).coerceIn(0f, 1f)
+                    val fy = ((pointerY - r.y - titleHeight) / (r.height - titleHeight).coerceAtLeast(1f)).coerceIn(0f, 1f)
+                    val nearest = listOf(PanelEdge.LEFT to fx, PanelEdge.RIGHT to 1f - fx, PanelEdge.TOP to fy, PanelEdge.BOTTOM to 1f - fy).minBy { it.second }
+                    return if (nearest.second < .3f) PanelDropTarget(node.id, nearest.first) else PanelDropTarget(node.id, PanelEdge.TAB, node.panels.size)
                 }
-                is PanelNode.Space -> maxOf(r.width, r.height)
-                else -> tolerance
+                is PanelNode.Space -> {
+                    val edges = listOf(PanelEdge.LEFT to abs(pointerX - r.x), PanelEdge.RIGHT to abs(pointerX - r.right),
+                        PanelEdge.TOP to abs(pointerY - r.y), PanelEdge.BOTTOM to abs(pointerY - r.bottom))
+                    return PanelDropTarget(node.id, edges.minBy { it.second }.first)
+                }
+                is PanelNode.Canvas -> {
+                    val zone = minOf(windowDockZone, r.width * .2f, r.height * .2f)
+                    val sides = listOf(PanelEdge.LEFT to pointerX - r.x, PanelEdge.RIGHT to r.right - pointerX, PanelEdge.BOTTOM to r.bottom - pointerY)
+                    return sides.filter { it.second <= zone }.minByOrNull { it.second }?.let { PanelDropTarget(node.id, it.first) }
+                }
+                is PanelNode.Split -> Unit
             }
-            if(edge.second <= splitBand) return PanelDropTarget(slot.node.id,edge.first)
-            // Floating content in front blocks targets belonging to windows behind it.
-            if(slot.floating) return null
         }
-        val canvas=candidates.firstOrNull { it.node is PanelNode.Canvas } ?: return null
-        val r=canvas.rect
-        val edgeCandidates=buildList {
-            if(dx < 0 && abs(dragged.x-r.x)<=tolerance && dragged.bottom>r.y && dragged.y<r.bottom) add(PanelEdge.LEFT to abs(dragged.x-r.x))
-            if(dx > 0 && abs(dragged.right-r.right)<=tolerance && dragged.bottom>r.y && dragged.y<r.bottom) add(PanelEdge.RIGHT to abs(dragged.right-r.right))
-            if(dy < 0 && abs(dragged.y-r.y)<=tolerance && dragged.right>r.x && dragged.x<r.right) add(PanelEdge.TOP to abs(dragged.y-r.y))
-            if(dy > 0 && abs(dragged.bottom-r.bottom)<=tolerance && dragged.right>r.x && dragged.x<r.right) add(PanelEdge.BOTTOM to abs(dragged.bottom-r.bottom))
-        }
-        return edgeCandidates.minByOrNull { it.second }?.let { PanelDropTarget(canvas.node.id,it.first) }
+        return null
     }
 }

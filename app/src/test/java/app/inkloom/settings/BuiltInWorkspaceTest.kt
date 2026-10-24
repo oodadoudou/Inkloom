@@ -21,7 +21,8 @@ class BuiltInWorkspaceTest {
     @Test fun paintingDocksColorsAboveLayersBesideTheCanvasWithoutCoveringIt() {
         val preset=BuiltInWorkspaces.snapshot(BuiltInWorkspace.PAINTING)
         assertTrue(EditorPanelLayouts.isValid(preset.layout))
-        assertTrue(preset.layout.open.containsAll(setOf(EditorPanel.WHEEL,EditorPanel.PALETTES,EditorPanel.MIX,EditorPanel.NEARBY,EditorPanel.LAYERS)))
+        // The colour wheel alone, as the colour chips open it; other colour palettes join as tabs when opened.
+        assertEquals(setOf(EditorPanel.WHEEL,EditorPanel.LAYERS), preset.layout.open)
         val docked=EditorPanelLayouts.members(preset.layout.dock)
         assertTrue(EditorPanel.WHEEL in docked);assertTrue(EditorPanel.LAYERS in docked)
         assertTrue(preset.toolRail!!.visible);assertTrue(preset.toolRail!!.vertical)

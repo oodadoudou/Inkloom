@@ -95,7 +95,7 @@ class EditorPanelsWindowTest {
         instrumentation.uiAutomation.executeShellCommand("screencap -p /data/local/tmp/editor-panels-window.png").close()
     }
 
-    @Test fun stackedWindowTitleMovesTheWholeGroupAndOnlyAnExplicitTabGripDetaches() {
+    @Test fun stackedWindowTitleMovesTheWholeGroupAndATabReordersOrDetaches() {
         lateinit var state: EditorPanelState
         var start = EditorPanelLayout(open = EditorPanel.entries.toSet())
         start = start.copy(floating = start.floating.map { root -> root.copy(rect = when (root.node.id) {
@@ -128,13 +128,17 @@ class EditorPanelsWindowTest {
         drag(tabGrip, tabGrip + Offset(12f * density, 0f), holdMillis = 0)
         assertEquals("A short accidental tab gesture must not alter the saved layout", beforeSlip, state.layout)
 
+        // CSP: dragging a tab along its own title row reorders the stack.
         val label = point("Drag layers panel") + Offset(9f * density, 0f)
         drag(label, label + Offset(56f * density, 0f), holdMillis = 0)
-        assertEquals("A tab label swipe must not detach its panel", beforeSlip, state.layout)
+        val reordered = EditorPanelLayouts.node(state.layout, "layers") as PanelNode.Tabs
+        assertEquals(listOf(EditorPanel.PROPERTIES, EditorPanel.LAYERS), reordered.panels)
+        assertEquals(beforeSlip.floating.size, state.layout.floating.size)
 
+        // Dropped over empty canvas, away from every window and side, it floats on its own.
         val deliberate = point("Move layers tab")
-        drag(deliberate, deliberate + Offset(150f * density, 145f * density), holdMillis = 0)
-        val detached = state.layout.floating.last()
+        drag(deliberate, Offset(420f * density, 60f * density), holdMillis = 0)
+        val detached = state.layout.floating.first { EditorPanel.LAYERS in EditorPanelLayouts.members(it.node) }
         assertEquals(listOf(EditorPanel.LAYERS), EditorPanelLayouts.members(detached.node))
         assertEquals(members.toSet() - EditorPanel.LAYERS,
             EditorPanelLayouts.members(state.layout.floating.first { EditorPanel.BRUSHES in EditorPanelLayouts.members(it.node) }.node).toSet())
@@ -299,7 +303,7 @@ class EditorPanelsWindowTest {
         }
     }
 
-    @Test fun scrolledTabDetachesFromItsActualPointerPosition() {
+    @Test fun aTabInACrowdedStripDetachesFromItsActualPointerPosition() {
         lateinit var state: EditorPanelState
         val original = EditorPanelLayout(open = setOf(EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY))
             .let { l -> l.copy(floating = l.floating.map { it.copy(rect = PanelRect(100f, 100f, 240f, 340f)) }) }
@@ -307,18 +311,17 @@ class EditorPanelsWindowTest {
             state = EditorPanelState(compose.activity); state.layout = original
             compose.activity.setContent { MaterialTheme { ResizeHost(state) } }
         }
-        compose.onNodeWithContentDescription("Drag nearby panel").performScrollTo()
         val start = point("Move nearby tab")
         val density = compose.activity.resources.displayMetrics.density
         drag(start, start + Offset(340f * density, 100f * density))
         val moved = state.layout.floating.last()
         assertEquals(listOf(EditorPanel.NEARBY), EditorPanelLayouts.members(moved.node))
-        assertEquals("Scrolled tabs must not jump sideways", 440f, moved.rect.x, 3f)
+        assertEquals("A detached tab must not jump sideways", 440f, moved.rect.x, 3f)
         assertEquals(200f, moved.rect.y, 3f)
         compose.onAllNodesWithText("Body NEARBY").assertCountEquals(1)
     }
 
-    @Test fun swipingCrowdedTabStripScrollsWithoutDetachingAPalette() {
+    @Test fun crowdedTabsShareTheTitleRowWithoutScrolling() {
         lateinit var state: EditorPanelState
         val original = EditorPanelLayout(open = setOf(EditorPanel.WHEEL, EditorPanel.PALETTES, EditorPanel.MIX, EditorPanel.NEARBY))
             .let { layout -> layout.copy(floating = layout.floating.map { it.copy(rect = PanelRect(100f, 100f, 240f, 340f)) }) }
@@ -326,12 +329,12 @@ class EditorPanelsWindowTest {
             state = EditorPanelState(compose.activity); state.layout = original
             compose.activity.setContent { MaterialTheme { ResizeHost(state) } }
         }
-        val before = state.layout
-        val density = compose.activity.resources.displayMetrics.density
-        val start = point("Drag wheel panel") + Offset(12f * density, 0f)
-        drag(start, start - Offset(150f * density, 0f), holdMillis = 0)
-        assertEquals("Scrolling tabs must not move or detach the palette group", before, state.layout)
-        compose.onNodeWithContentDescription("Drag nearby panel").assertIsDisplayed()
+        val window = compose.onNodeWithTag("editor-panel-colors").fetchSemanticsNode().boundsInRoot
+        listOf("wheel", "palettes", "mix", "nearby").forEach { name ->
+            val tab = compose.onNodeWithContentDescription("Drag $name panel").fetchSemanticsNode().boundsInRoot
+            assertTrue("$name tab is inside the window", tab.left >= window.left - 1f && tab.right <= window.right + 1f)
+        }
+        assertEquals(original, state.layout)
     }
 
     @Test fun nestedDockDividerResizesBothNeighborsAndCancelRestoresTheSplit() {

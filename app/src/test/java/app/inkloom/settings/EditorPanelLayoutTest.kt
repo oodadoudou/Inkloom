@@ -35,13 +35,17 @@ class EditorPanelLayoutTest {
         assertEquals(stacked,EditorPanelLayouts.move(stacked,root.node.id,null,PanelDropTarget("colors",PanelEdge.TAB),rect))
         valid(EditorPanelLayouts.move(stacked,root.node.id,null,null,rect.moved(30f,50f)))
     }
-    @Test fun interiorOverlapDoesNotDockButRealBottomEdgeDoes() {
+    @Test fun theFingerDocksNearTheWindowSidesAndFloatsInTheMiddle() {
         val slots=listOf(PanelSlot(PanelNode.Canvas(),PanelRect(0f,0f,1000f,800f),"canvas",false))
-        assertNull(EditorPanelLayouts.target(slots,emptySet(),500f,500f,rect,10f,10f,1000f,800f))
-        assertEquals(PanelEdge.BOTTOM,EditorPanelLayouts.target(slots,emptySet(),500f,500f,PanelRect(200f,490f,300f,300f),0f,10f,1000f,800f)?.edge)
+        assertNull("the middle of the canvas floats", EditorPanelLayouts.target(slots,emptySet(),500f,500f,rect,10f,10f,1000f,800f))
+        assertEquals(PanelEdge.BOTTOM,EditorPanelLayouts.target(slots,emptySet(),500f,770f,rect,0f,10f,1000f,800f)?.edge)
+        assertEquals(PanelEdge.LEFT,EditorPanelLayouts.target(slots,emptySet(),20f,300f,rect,-10f,0f,1000f,800f)?.edge)
+        assertEquals(PanelEdge.RIGHT,EditorPanelLayouts.target(slots,emptySet(),980f,300f,rect,10f,0f,1000f,800f)?.edge)
+        assertNull("there is no top dock, as in CSP", EditorPanelLayouts.target(slots,emptySet(),500f,10f,rect,0f,-10f,1000f,800f))
         val floating=PanelSlot(PanelNode.Tabs("target",listOf(EditorPanel.MIX)),rect,"target",true)
-        assertEquals(PanelEdge.TAB,EditorPanelLayouts.target(slots+floating,emptySet(),250f,110f,rect,0f,1f,1000f,800f)?.edge)
-        assertNull(EditorPanelLayouts.target(slots+floating,emptySet(),250f,200f,rect,0f,1f,1000f,800f))
+        assertEquals(PanelEdge.TAB,EditorPanelLayouts.target(slots+floating,emptySet(),rect.x+rect.width/2,rect.y+10f,rect,0f,1f,1000f,800f)?.edge)
+        assertEquals("the middle of a palette stacks onto it", PanelEdge.TAB,
+            EditorPanelLayouts.target(slots+floating,emptySet(),rect.x+rect.width/2,rect.y+rect.height/2+16f,rect,0f,1f,1000f,800f)?.edge)
     }
     @Test fun hiddenTabsRetainOrderAndActiveChoice() {
         val selected=EditorPanelLayouts.select(initial,EditorPanel.MIX)
@@ -54,12 +58,13 @@ class EditorPanelLayoutTest {
         assertEquals(18f,compact.y); assertEquals(282f,compact.height)
         assertEquals(saved,saved.bounded(1280f,900f))
     }
-    @Test fun mixedWidthTabsUseTheSameGeometryForHitTestingAndDropPreview() {
+    @Test fun tabsShareTheTitleRowAndUseTheSameGeometryForHitTestingAndDropPreview() {
         val tabs = PanelNode.Tabs("tools", listOf(EditorPanel.BRUSHES, EditorPanel.SUBTOOLS, EditorPanel.PROPERTIES))
         val secondStart = EditorPanelLayouts.tabInsertionX(tabs, 1, 100f, 330f)
         val thirdStart = EditorPanelLayouts.tabInsertionX(tabs, 2, 100f, 330f)
-        assertEquals(196f, secondStart)
-        assertEquals(274f, thirdStart)
+        // 330 wide less the 30 dp group grip and 30 dp close button: three 90 dp tabs.
+        assertEquals(220f, secondStart)
+        assertEquals(310f, thirdStart)
         assertEquals(1, EditorPanelLayouts.tabInsertionIndex(tabs, secondStart + 20f, 100f, 330f))
         assertEquals(2, EditorPanelLayouts.tabInsertionIndex(tabs, thirdStart + 20f, 100f, 330f))
         assertEquals(3, EditorPanelLayouts.tabInsertionIndex(tabs, 360f, 100f, 330f))
