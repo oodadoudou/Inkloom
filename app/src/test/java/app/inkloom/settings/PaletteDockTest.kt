@@ -155,6 +155,20 @@ class PaletteDockTest {
         assertEquals(240f, EditorPanelLayouts.slots(bottom, width, 1100f).single { it.column != null }.let { it.rect.height + it.column!!.header!!.height }, .01f)
     }
 
+    @Test fun aTabPaletteExpandsItsIconDockForNowWithoutChangingTheSavedDisplay() {
+        val icons = EditorPanelLayouts.setTabPalette(EditorPanelLayouts.setDockDisplay(painting, "layers", DockDisplay.ICONS), EditorPanel.WHEEL, true)
+        assertEquals(setOf(EditorPanel.WHEEL), icons.tabPalettes)
+        val column = EditorPanelLayouts.dockColumnOf(icons, EditorPanel.WHEEL)!!.id
+        // Expanded, the dock lays out as in full and its palettes are no longer collapsed; the saved display stays icons.
+        assertEquals(EditorPanelLayouts.slots(painting, width, height), EditorPanelLayouts.slots(icons, width, height, expanded = column))
+        assertFalse(EditorPanelLayouts.inCollapsedDock(icons, EditorPanel.LAYERS, expanded = column))
+        assertTrue(EditorPanelLayouts.inCollapsedDock(icons, EditorPanel.LAYERS))
+        assertEquals(DockDisplay.ICONS, EditorPanelLayouts.dockDisplay(icons, "layers"))
+        val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+        assertEquals(icons, json.decodeFromString<EditorPanelLayout>(json.encodeToString(EditorPanelLayout.serializer(), icons)))
+        assertTrue(EditorPanelLayouts.setTabPalette(icons, EditorPanel.WHEEL, false).tabPalettes.isEmpty())
+    }
+
     @Test fun resizingTheBottomDockStillMovesItsBoundaryBelowTheHeader() {
         val docked = EditorPanelLayouts.move(EditorPanelLayout().copy(open = setOf(EditorPanel.LAYERS)), "layers", null,
             PanelDropTarget("canvas", PanelEdge.BOTTOM), PanelRect(0f, 0f, 400f, 240f))

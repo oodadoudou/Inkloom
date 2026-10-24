@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performTouchInput
 import app.inkloom.settings.BuiltInWorkspace
 import app.inkloom.settings.BuiltInWorkspaces
@@ -113,5 +114,32 @@ class PaletteDockWindowTest {
         compose.onNodeWithText("Body LAYERS").assertExists()
         assertEquals(stored, state.layout.floating.first { it.node.id == "layers" }.rect)
         assertTrue(state.layout.minimized.isEmpty())
+    }
+
+    @Test fun aPaletteSetToDisplayAsATabExpandsTheIconDockUntilItGoesBackToIcons() {
+        val state = host(BuiltInWorkspaces.snapshot(BuiltInWorkspace.PAINTING).layout)
+        click("Show palette dock as icons")
+        compose.onNodeWithContentDescription("Wheel palette").performTouchInput { longClick() }
+        compose.onNodeWithText("Display as tab").performClick()
+        compose.waitForIdle()
+        assertEquals(setOf(EditorPanel.WHEEL), state.layout.tabPalettes)
+        click("Wheel palette")
+        // The whole dock shows, the wheel in front; nothing pops up and the saved display is still icons.
+        compose.onNodeWithText("Body WHEEL").assertExists()
+        compose.onNodeWithText("Body LAYERS").assertExists()
+        assertNull(state.popup)
+        assertEquals(1, state.layout.iconDocks.size)
+        click("Show palette dock as icons")
+        compose.onNodeWithText("Body WHEEL").assertDoesNotExist()
+        assertNull(state.expandedDock)
+        // Opening it from a toolbar expands it too; Back folds it again. Layers still pops up.
+        compose.runOnUiThread { state.focus(EditorPanel.WHEEL) }
+        compose.waitForIdle()
+        compose.onNodeWithText("Body LAYERS").assertExists()
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.waitForIdle()
+        compose.onNodeWithText("Body WHEEL").assertDoesNotExist()
+        click("Layers palette")
+        assertEquals(EditorPanel.LAYERS, state.popup)
     }
 }

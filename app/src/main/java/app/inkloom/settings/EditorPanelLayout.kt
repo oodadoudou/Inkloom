@@ -68,6 +68,8 @@ data class EditorPanelLayout(
     val hiddenDocks: Set<String> = emptySet(),
     /** Floating palettes showing only their title bar. */
     val minimized: Set<String> = emptySet(),
+    /** Palettes that an icon dock opens by expanding the whole dock (CSP's "display palette as tab"); the others pop up. */
+    val tabPalettes: Set<EditorPanel> = emptySet(),
 )
 
 enum class PanelEdge { LEFT, RIGHT, TOP, BOTTOM, TAB }
@@ -238,10 +240,11 @@ object EditorPanelLayouts {
     private fun cut(total: Float, fraction: Float, first: Float, second: Float): Float =
         if (total >= first+second+4f) (total*fraction).coerceIn(first+2f,total-second-2f)
         else total*first/(first+second)
-    fun slots(layout: EditorPanelLayout, width: Float, height: Float): List<PanelSlot> = buildList {
+    /** [expanded]: an icon dock shown in full for now because a palette in it opens as a tab. */
+    fun slots(layout: EditorPanelLayout, width: Float, height: Float, expanded: String? = null): List<PanelSlot> = buildList {
         val full = columns(layout.dock)
         fun display(column: PanelNode): DockDisplay = full.firstOrNull { find(it.first, column.id) != null }?.first?.id.let { id ->
-            when (id) { in layout.hiddenDocks -> DockDisplay.HIDDEN; in layout.iconDocks -> DockDisplay.ICONS; else -> DockDisplay.NORMAL }
+            when (id) { expanded -> DockDisplay.NORMAL; in layout.hiddenDocks -> DockDisplay.HIDDEN; in layout.iconDocks -> DockDisplay.ICONS; else -> DockDisplay.NORMAL }
         }
         fun place(node: PanelNode, outer: PanelRect, rootId: String, floating: Boolean, column: DockColumn? = null) {
             val header = if (column?.display == DockDisplay.NORMAL) outer.copy(height = minOf(dockHeaderHeight, outer.height / 2f)) else null
@@ -312,15 +315,20 @@ object EditorPanelLayouts {
             iconDocks = if (display == DockDisplay.ICONS) layout.iconDocks + column else layout.iconDocks - column,
             hiddenDocks = if (display == DockDisplay.HIDDEN) layout.hiddenDocks + column else layout.hiddenDocks - column)
     }
-    /** Whether [panel] sits in an icon or hidden dock, where it shows as a pop-up. */
-    fun inCollapsedDock(layout: EditorPanelLayout, panel: EditorPanel): Boolean {
+    /** Whether [panel] sits in an icon or hidden dock (other than the [expanded] one), where it opens as a pop-up or tab. */
+    fun inCollapsedDock(layout: EditorPanelLayout, panel: EditorPanel, expanded: String? = null): Boolean =
+        dockColumnOf(layout, panel)?.let { it.id != expanded && dockDisplay(layout, it.id) != DockDisplay.NORMAL } == true
+    /** The dock column holding [panel], if it is docked. */
+    fun dockColumnOf(layout: EditorPanelLayout, panel: EditorPanel): PanelNode? {
         fun owner(node: PanelNode): PanelNode.Tabs? = when (node) {
             is PanelNode.Tabs -> node.takeIf { panel in it.panels }
             is PanelNode.Split -> owner(node.first) ?: owner(node.second)
             else -> null
         }
-        return owner(layout.dock)?.let { dockDisplay(layout, it.id) != DockDisplay.NORMAL } == true
+        return owner(layout.dock)?.let { column(layout, it.id) }
     }
+    fun setTabPalette(layout: EditorPanelLayout, panel: EditorPanel, tab: Boolean): EditorPanelLayout =
+        layout.copy(tabPalettes = if (tab) layout.tabPalettes + panel else layout.tabPalettes - panel)
     fun toggleMinimized(layout: EditorPanelLayout, rootId: String): EditorPanelLayout =
         if (layout.floating.none { it.node.id == rootId && it.node is PanelNode.Tabs }) layout
         else layout.copy(minimized = if (rootId in layout.minimized) layout.minimized - rootId else layout.minimized + rootId)

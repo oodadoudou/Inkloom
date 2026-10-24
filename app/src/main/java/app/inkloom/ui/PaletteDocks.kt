@@ -2,7 +2,9 @@ package app.inkloom.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
@@ -30,10 +33,15 @@ import androidx.compose.material.icons.outlined.KeyboardDoubleArrowDown
 import androidx.compose.material.icons.outlined.KeyboardDoubleArrowLeft
 import androidx.compose.material.icons.outlined.KeyboardDoubleArrowRight
 import androidx.compose.material.icons.outlined.KeyboardDoubleArrowUp
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -135,13 +143,15 @@ internal fun PaletteDockHeader(side: PanelEdge, language: UiLanguage, modifier: 
 }
 
 /**
- * A collapsed palette dock. As icons it lists its palettes; tapping one opens it as a pop-up.
- * Hidden, it is a thin strip that shows the dock again.
+ * A collapsed palette dock. As icons it lists its palettes; tapping one opens it as a pop-up, or for a
+ * palette set to display as a tab, expands the dock with it in front. Hidden, it is a thin strip that shows the dock again.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun PaletteDockStrip(
     side: PanelEdge, display: DockDisplay, panels: List<EditorPanel>, popup: EditorPanel?, language: UiLanguage, modifier: Modifier,
-    title: (EditorPanel) -> String, icon: (EditorPanel) -> ImageVector, onDisplay: (DockDisplay) -> Unit, onPopup: (EditorPanel?) -> Unit,
+    title: (EditorPanel) -> String, icon: (EditorPanel) -> ImageVector, onDisplay: (DockDisplay) -> Unit, onOpen: (EditorPanel) -> Unit,
+    tabPanels: Set<EditorPanel> = emptySet(), onTabMode: (EditorPanel, Boolean) -> Unit = { _, _ -> },
 ) {
     val vertical = side == PanelEdge.LEFT || side == PanelEdge.RIGHT
     val frame = modifier.background(Paper).border(1.dp, OutlineSoft).clipToBounds()
@@ -157,9 +167,22 @@ internal fun PaletteDockStrip(
         DockButton(expandIcon(side), language.text("Expand palette dock", "展开面板停靠栏"), PalettePopups.controlSize, { onDisplay(DockDisplay.NORMAL) })
         DockButton(hideIcon(side), language.text("Hide palette dock", "隐藏面板停靠栏"), PalettePopups.controlSize, { onDisplay(DockDisplay.HIDDEN) })
     }
+    // Tap opens the palette; a long press chooses how, as CSP's icon menu does.
     @Composable fun icons() = panels.forEach { panel ->
-        DockButton(icon(panel), language.text("${title(panel)} palette", "${title(panel)}面板"), PalettePopups.iconSize,
-            { onPopup(if (popup == panel) null else panel) }, selected = popup == panel)
+        var menu by remember { mutableStateOf(false) }
+        Box {
+            Box(Modifier.size(PalettePopups.iconSize.dp).background(if (popup == panel) SageContainer else Color.Transparent)
+                .combinedClickable(onClick = { onOpen(panel) }, onLongClick = { menu = true })
+                .semantics { contentDescription = language.text("${title(panel)} palette", "${title(panel)}面板") },
+                contentAlignment = Alignment.Center) { Icon(icon(panel), null, Modifier.size(20.dp), tint = Ink) }
+            DropdownMenu(menu, { menu = false }) {
+                val tab = panel in tabPanels
+                StudioMenuItem(text = { Text(language.text("Display as pop-up", "以弹出方式显示")) }, onClick = { onTabMode(panel, false); menu = false },
+                    trailingIcon = { if (!tab) Icon(Icons.Outlined.Check, null, Modifier.size(16.dp)) })
+                StudioMenuItem(text = { Text(language.text("Display as tab", "以标签方式显示")) }, onClick = { onTabMode(panel, true); menu = false },
+                    trailingIcon = { if (tab) Icon(Icons.Outlined.Check, null, Modifier.size(16.dp)) })
+            }
+        }
     }
     if (vertical) Column(frame, horizontalAlignment = Alignment.CenterHorizontally) {
         controls()

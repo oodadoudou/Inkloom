@@ -80,6 +80,8 @@ internal class EditorPanelState(context: Context) {
     var activeTabId: String? = null
     /** The palette open as a pop-up from an icon or hidden dock (CSP's simple view); tapping outside closes it. */
     var popup by mutableStateOf<EditorPanel?>(null)
+    /** An icon dock shown in full for now because a palette set to "display as tab" was opened from it. */
+    var expandedDock by mutableStateOf<String?>(null)
     fun raise(rootId: String, tabId: String) {
         activeTabId = tabId
         val root = layout.floating.firstOrNull { it.node.id == rootId } ?: return
@@ -94,7 +96,7 @@ internal class EditorPanelState(context: Context) {
         val shown = layout.copy(open=next)
         commit(viewport?.takeIf { open }?.let { PanelPlacement.openWhereFree(shown, layout.open, panel, it.width, it.height) } ?: shown)
     }
-    private fun collapsed(panel: EditorPanel) = EditorPanelLayouts.inCollapsedDock(layout, panel)
+    private fun collapsed(panel: EditorPanel) = EditorPanelLayouts.inCollapsedDock(layout, panel, expandedDock)
     /** Visible on screen: in a full dock or window, or as the current pop-up of a collapsed dock. */
     fun shown(panel: EditorPanel) = panel in layout.open && (!collapsed(panel) || popup == panel)
     /**
@@ -102,12 +104,25 @@ internal class EditorPanelState(context: Context) {
      * pop-up and keeps its icon, as in CSP; elsewhere the palette closes.
      */
     fun hide(panel: EditorPanel) {
-        if (panel in layout.open && collapsed(panel)) { if (popup == panel) popup = null } else show(panel, false)
+        val column = EditorPanelLayouts.dockColumnOf(layout, panel)
+        when {
+            panel in layout.open && collapsed(panel) -> if (popup == panel) popup = null
+            // A palette shown as a tab of a temporarily expanded icon dock folds the dock back to icons.
+            panel in layout.open && column != null && column.id == expandedDock -> expandedDock = null
+            else -> show(panel, false)
+        }
     }
     fun setDockDisplay(id: String, display: DockDisplay) {
         popup = null
+        expandedDock = null
         commit(EditorPanelLayouts.setDockDisplay(layout, id, display))
     }
+    /** An icon in an icon or hidden dock: a tab palette expands the dock with it in front, the others pop up (CSP). */
+    fun openFromDock(panel: EditorPanel) {
+        if (popup == panel) { popup = null; return }
+        focus(panel)
+    }
+    fun setTabPalette(panel: EditorPanel, tab: Boolean) = commit(EditorPanelLayouts.setTabPalette(layout, panel, tab))
     private fun owner(panel: EditorPanel): PanelNode.Tabs? {
         fun find(node: PanelNode): PanelNode.Tabs? = when (node) {
             is PanelNode.Tabs -> node.takeIf { panel in it.panels }
@@ -123,7 +138,11 @@ internal class EditorPanelState(context: Context) {
         if (panel !in layout.open) return
         val tabId = owner(panel)?.id ?: return
         activeTabId = tabId
-        if (collapsed(panel)) { popup = panel; return }
+        if (collapsed(panel)) {
+            if (panel !in layout.tabPalettes) { popup = panel; return }
+            popup = null
+            expandedDock = EditorPanelLayouts.dockColumnOf(layout, panel)?.id
+        }
         val selected = EditorPanelLayouts.select(layout, panel)
         val root = selected.floating.firstOrNull { EditorPanelLayouts.find(it.node, tabId) != null }
         commit(if (root == null || selected.floating.lastOrNull() == root) selected
@@ -140,6 +159,7 @@ internal class EditorPanelState(context: Context) {
     }
     fun closeTopPanel(onClose: (EditorPanel) -> Unit): Boolean {
         if (popup != null) { popup = null; return true }
+        if (expandedDock != null) { expandedDock = null; return true }
         val slots = EditorPanelLayouts.slots(layout, 1000f, 800f).filterNot(PanelSlot::collapsed)
         val tabs = (slots.firstOrNull { it.node.id == activeTabId && it.node is PanelNode.Tabs }
             ?: slots.lastOrNull { it.node is PanelNode.Tabs })?.node as? PanelNode.Tabs ?: return false
@@ -224,7 +244,11 @@ internal fun EditorPanels(
         LaunchedEffect(w,h) { cancel(); if (resize != null) cancelResize() }
         SideEffect { state.viewport = PanelRect(0f, 0f, w, h) }
         val layout=state.layout
-        val slots=EditorPanelLayouts.slots(layout,w,h)
+        val expandedDock=state.expandedDock?.takeIf { id -> EditorPanelLayouts.columns(layout.dock).any { it.first.id == id } }
+        val slots=EditorPanelLayouts.slots(layout,w,h,expandedDock)
+        // A dock expanded for a tab palette goes back to icons; its sizes are not edited meanwhile.
+        val expandedColumn=expandedDock?.let { id -> EditorPanelLayouts.columns(layout.dock).first { it.first.id == id }.first }
+        fun inExpandedDock(id: String) = expandedColumn?.let { EditorPanelLayouts.find(it, id) != null } == true
         val currentSlots by rememberUpdatedState(slots)
         
         fun begin(slot: PanelSlot, panel: EditorPanel?) {
@@ -411,7 +435,7 @@ internal fun EditorPanels(
                     PaletteDockHeader(column.side, language, geometry(header).zIndex(1.9f)) { state.setDockDisplay(column.id, it) }
                 } else PaletteDockStrip(column.side, column.display, EditorPanelLayouts.members(slot.node), popup, language,
                     geometry(slot.rect).zIndex(if (popup != null) 297f else 1.7f), ::title, ::icon,
-                    { state.setDockDisplay(column.id, it) }, { state.popup = it; it?.let { panel -> state.focus(panel) } })
+                    { state.setDockDisplay(column.id, it) }, state::openFromDock, layout.tabPalettes, state::setTabPalette)
             }
         }
         popup?.let { panel ->
@@ -467,7 +491,7 @@ internal fun EditorPanels(
                 EditorPanelLayouts.visible(root.node, layout.open)?.let {
                     PanelSlot(it, root.rect.bounded(w,h), root.node.id, true)
                 }
-            } + slots.filter { !it.floating && it.node is PanelNode.Tabs && !it.collapsed }
+            } + slots.filter { !it.floating && it.node is PanelNode.Tabs && !it.collapsed && !inExpandedDock(it.node.id) }
             roots.forEach { slot -> key("resize-${slot.rootId}-${slot.node.id}") {
                 val rect = slot.rect
                 val resizePanel = (slot.node as? PanelNode.Tabs)?.active ?: EditorPanelLayouts.members(slot.node).first()
@@ -491,7 +515,8 @@ internal fun EditorPanels(
             } }
             // An icon or hidden dock keeps its strip's fixed width.
             slots.filter { slot -> slot.node is PanelNode.Split && !slot.collapsed && (slot.node as PanelNode.Split).let { split ->
-                slots.none { it.collapsed && (it.node.id == split.first.id || it.node.id == split.second.id) } } }.forEach { slot -> key("divider-${slot.node.id}") {
+                slots.none { it.collapsed && (it.node.id == split.first.id || it.node.id == split.second.id) } &&
+                    listOf(split.id, split.first.id, split.second.id).none(::inExpandedDock) } }.forEach { slot -> key("divider-${slot.node.id}") {
                 val split = slot.node as PanelNode.Split
                 val r = slot.rect
                 val firstRect = slots.first { it.node.id == split.first.id }.rect
