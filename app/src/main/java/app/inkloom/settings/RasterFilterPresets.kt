@@ -48,11 +48,13 @@ data class RasterFilterPreset(val id:String=UUID.randomUUID().toString(),val nam
     val glowStrength:Float=100f,val glowArea:Float=50f,val glowBlur:Float=30f,
     val inflateShadow:Float=50f,val inflateShine:Float=50f,val inflateHeight:Float=30f,val inflateSmoothness:Float=2f,
     val shadowBlur:Float=8f,val shadowDistance:Float=12f,val shadowOpacity:Float=60f,
-    val glitchShift:Float=40f,val glitchBand:Float=24f,val glitchDensity:Float=40f,val glitchSplit:Float=6f) {
+    val glitchShift:Float=40f,val glitchBand:Float=24f,val glitchDensity:Float=40f,val glitchSplit:Float=6f,
+    /** The version of [kind]'s algorithm the preset was saved with ([RasterFilterAlgorithms]); presets saved before versions were recorded are version 1. */
+    val algorithmVersion:Int=1) {
     fun normalized():RasterFilterPreset {
         fun Float.bounded(range:ClosedFloatingPointRange<Float>,fallback:Float)=takeIf{it.isFinite()}?.coerceIn(range)?:fallback
         val lengthMin=wavelengthMin.bounded(2f..2000f,40f);val heightMin=amplitudeMin.bounded(0f..1000f,5f)
-        return copy(name=name.trim().take(48),kind=kind.coerceIn(0,LAST_KIND),strength=strength.bounded(1f..20f,2f),
+        return copy(name=name.trim().take(48),kind=kind.coerceIn(0,LAST_KIND),algorithmVersion=algorithmVersion.coerceAtLeast(1),strength=strength.bounded(1f..20f,2f),
         amount=amount.bounded(0f..4f,1.2f),wavelength=wavelength.bounded(16f..512f,64f),
         angle=angle.bounded(-180f..180f,0f),centerX=centerX.bounded(0f..1f,.5f),centerY=centerY.bounded(0f..1f,.5f),
         distortion=distortion.bounded(-100f..100f,50f),radius=radius.bounded(0f..1f,0f),shape=shape.bounded(-100f..100f,0f),
@@ -130,6 +132,17 @@ data class RasterFilterPreset(val id:String=UUID.randomUUID().toString(),val nam
         val GLITCH_KIND=DROP_SHADOW_KIND+1
         val LAST_KIND=GLITCH_KIND
     }
+}
+/**
+ * Each filter's algorithm version. Bump a kind's version whenever the same settings would give
+ * different pixels, so presets saved earlier can say their result may differ.
+ */
+object RasterFilterAlgorithms {
+    private val versions = emptyMap<Int, Int>()
+    fun current(kind: Int): Int = versions[kind] ?: 1
+    /** A preset is stamped with the version that made it when it is saved. */
+    fun stamped(preset: RasterFilterPreset): RasterFilterPreset = preset.copy(algorithmVersion = current(preset.kind))
+    fun outdated(preset: RasterFilterPreset): Boolean = preset.normalized().algorithmVersion < current(preset.kind)
 }
 object RasterFilterPresetsCodec {
     private val json=Json{ignoreUnknownKeys=true;encodeDefaults=true}

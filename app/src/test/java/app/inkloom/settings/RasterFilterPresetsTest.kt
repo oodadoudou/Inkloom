@@ -29,4 +29,19 @@ class RasterFilterPresetsTest {
         assertEquals(app.inkloom.engine.v5.tools.RasterImageFilter.Effect.Sharpen(strong=false),presets[0].effect())
         assertEquals(app.inkloom.engine.v5.tools.RasterImageFilter.Effect.Sharpen(strong=true),presets[1].effect())
     }
+
+    @Test fun presetsRecordTheirFiltersAlgorithmVersion() {
+        val saved=RasterFilterAlgorithms.stamped(RasterFilterPreset(name="Glow",kind=RasterFilterPreset.GLOW_KIND))
+        assertEquals(RasterFilterAlgorithms.current(RasterFilterPreset.GLOW_KIND),saved.algorithmVersion)
+        assertEquals(saved,RasterFilterPresetsCodec.decode(RasterFilterPresetsCodec.encode(listOf(saved))).single())
+        assertFalse(RasterFilterAlgorithms.outdated(saved))
+        // Presets saved before versions were recorded were made by the first version of every filter.
+        val legacy=RasterFilterPresetsCodec.encode(listOf(RasterFilterPreset(id="old",name="Old",kind=3))).replace(Regex(",\"algorithmVersion\":\\d+"),"")
+        assertFalse(legacy.contains("algorithmVersion"))
+        assertEquals(1,RasterFilterPresetsCodec.decode(legacy).single().algorithmVersion)
+        // A preset from a newer filter version keeps its number.
+        val newer=saved.copy(algorithmVersion=7)
+        assertEquals(7,RasterFilterPresetsCodec.decode(RasterFilterPresetsCodec.encode(listOf(newer))).single().algorithmVersion)
+        assertTrue(RasterFilterAlgorithms.outdated(saved.copy(algorithmVersion=0)).not())
+    }
 }

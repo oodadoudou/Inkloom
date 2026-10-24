@@ -83,7 +83,10 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
             }
             Row(Modifier.padding(top=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){
                 StudioTextField(name,{name=it.take(48)},tr("Preset name","预设名称"),Modifier.weight(1f))
-                StudioButton(tr("Save","保存"),{val p=state.copy(id=java.util.UUID.randomUUID().toString(),name=name.trim());onPresets((presets+p).takeLast(100));state=p},enabled=name.isNotBlank())
+                StudioButton(tr("Save","保存"),{val p=app.inkloom.settings.RasterFilterAlgorithms.stamped(state.copy(id=java.util.UUID.randomUUID().toString(),name=name.trim()));onPresets((presets+p).takeLast(100));state=p},enabled=name.isNotBlank())
+            }
+            presets.firstOrNull{it.id==state.id && it.kind==state.kind}?.takeIf(app.inkloom.settings.RasterFilterAlgorithms::outdated)?.let {
+                StudioNote(tr("This preset was saved with an earlier version of this filter; the result may differ slightly.","此预设由旧版本的滤镜算法保存，结果可能略有不同。"),Modifier.padding(top=4.dp))
             }
             presets.firstOrNull{it.id==state.id}?.let{saved->Row(Modifier.padding(top=6.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)){
                 StudioButton(if(saved.favorite) tr("★ Favorite","★ 已收藏") else tr("☆ Favorite","☆ 收藏"),{onPresets(presets.map{if(it.id==saved.id)it.copy(favorite=!it.favorite)else it})})
