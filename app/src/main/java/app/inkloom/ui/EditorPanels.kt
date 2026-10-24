@@ -85,10 +85,14 @@ internal class EditorPanelState(context: Context) {
         val root = layout.floating.firstOrNull { it.node.id == rootId } ?: return
         if (layout.floating.lastOrNull() != root) commit(layout.copy(floating = layout.floating - root + root))
     }
+    /** The workspace size in dp, kept by the panel host so opening a window can find a free spot. */
+    var viewport: PanelRect? = null
     fun show(panel: EditorPanel, open: Boolean) {
         if (!open && popup == panel) popup = null
         val next = if(open) layout.open+panel else layout.open-panel
-        if(next != layout.open) commit(layout.copy(open=next))
+        if(next == layout.open) return
+        val shown = layout.copy(open=next)
+        commit(viewport?.takeIf { open }?.let { PanelPlacement.openWhereFree(shown, layout.open, panel, it.width, it.height) } ?: shown)
     }
     private fun collapsed(panel: EditorPanel) = EditorPanelLayouts.inCollapsedDock(layout, panel)
     /** Visible on screen: in a full dock or window, or as the current pop-up of a collapsed dock. */
@@ -218,6 +222,7 @@ internal fun EditorPanels(
     }) {
         val w=maxWidth.value; val h=maxHeight.value
         LaunchedEffect(w,h) { cancel(); if (resize != null) cancelResize() }
+        SideEffect { state.viewport = PanelRect(0f, 0f, w, h) }
         val layout=state.layout
         val slots=EditorPanelLayouts.slots(layout,w,h)
         val currentSlots by rememberUpdatedState(slots)
