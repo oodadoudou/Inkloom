@@ -1,0 +1,20 @@
+{
+  "version": "0.241.0",
+  "versionCode": 241,
+  "variant": "debug",
+  "commit": "206a832151ca73a133edc1f0cb3b9488985b1ddd",
+  "sha256": "9c9bb37cf33e11b29d76232abfc871aa36cd75ea60a35bf2bc9be63549a7a85a",
+  "bytes": 184211112,
+  "generatedUtc": "2026-10-24T16:50:42.781167+00:00",
+  "verification": {
+    "JVM": "PASS 1223 tests, 0 failures/errors, 8 skipped",
+    "Android15Targeted": "InterfaceScaleWindowTest, PaletteDockWindowTest, EditorPanelsWindowTest, ColorWindowInputContractTest, InkloomLaunchTest, EditorWorkspaceStoreTest, DialogLayoutAuditTest, PanelCanvasIsolationWindowTest, NavigatorWindowTest, SubViewWindowTest, NamedPanelLayoutWindowTest, ToolWorkspacePanelsWindowTest: 149/150 then the fixed EditorPanelsWindowTest 14/14; BrushSourceLibraryWindowTest, BrushSourceWorkspaceTest, BrushStudioWindowTest, RasterFilterWindowTest passed.",
+    "Android15Full": "Last full run (942 tests) was on 0.238.0 source.",
+    "lint": "PASS 0 errors, 116 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS emulator clean install, versionCode 241, cold start Status ok (1146-1221 ms), crash buffer empty",
+    "DriveDesktop": "APK only in My Drive/Inkloom/Debug, SHA-256 verified in the local sync folder; cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING"
+}
