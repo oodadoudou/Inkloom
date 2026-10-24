@@ -1,0 +1,19 @@
+{
+  "version": "0.245.0",
+  "versionCode": 245,
+  "variant": "debug",
+  "commit": "dd71b5184fbb864aef7b97c894ea1c27b2ff6547",
+  "sha256": "e4bfd8499d53e276f7faf8f4ac02c17275a9829137bebc6c8de2ff415725ff38",
+  "bytes": 184309416,
+  "generatedUtc": "2026-10-24T19:42:07.989936+00:00",
+  "verification": {
+    "JVM": "PASS 1233 tests, 0 failures/errors, 8 skipped",
+    "Android15Full": "Full run with the docked-toolbar change: 954 tests, 6 failures traced to a one-time page shift (toolbar measured late) and the navigator corner moving the Brushes window over the page; both fixed. Afterwards the failing classes plus PaletteDock, EditorPanels, ToolRail and InkloomLaunch suites 97/97, and the final build's toolbar and drawing suites 22/22.",
+    "lint": "PASS 0 errors, 116 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS clean install, versionCode 245, cold start ok (1045-1200 ms), crash buffer empty",
+    "DriveDesktop": "APK only, SHA-256 verified in the local sync folder; cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING"
+}
