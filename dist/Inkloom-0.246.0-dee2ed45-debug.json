@@ -1,0 +1,20 @@
+{
+  "version": "0.246.0",
+  "versionCode": 246,
+  "variant": "debug",
+  "commit": "dee2ed4532d07d19605a88c9b4137131413104ad",
+  "sha256": "e90147985e9628b20ddf42c815cd9ad266b66ed596e16b8eed5f8d31c3121ec0",
+  "bytes": 184374952,
+  "generatedUtc": "2026-10-24T20:29:43.583899+00:00",
+  "verification": {
+    "JVM": "PASS 1237 tests, 0 failures/errors, 8 skipped",
+    "Android15Targeted": "PaletteDockWindowTest (tab mode), EditorPanelsWindowTest, ColorWindowInputContractTest 39/39; BrushSourceWorkspaceTest, BrushSourceLibraryWindowTest, BrushStudioWindowTest 6/6; BookPreviewRenderTest and BookPreviewWindowTest 4/4.",
+    "Android15Full": "Last full run on 0.245.0 changes (954 tests, fixes verified).",
+    "lint": "PASS 0 errors, 116 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS clean install, versionCode 246, cold start ok (1157-1184 ms), crash buffer empty",
+    "DriveDesktop": "APK only, SHA-256 verified in the local sync folder; cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING"
+}
