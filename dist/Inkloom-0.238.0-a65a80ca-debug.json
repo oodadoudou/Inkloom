@@ -1,0 +1,22 @@
+{
+  "version": "0.238.0",
+  "versionCode": 238,
+  "variant": "debug",
+  "commit": "a65a80caef90961310e73723d89566c73479e2c3",
+  "sha256": "f364c7009bec917c053b310c25d1602e15f9126cee5b261c7c265dba529ac815",
+  "bytes": 184047564,
+  "generatedUtc": "2026-10-24T14:34:40.076295+00:00",
+  "verification": {
+    "JVM": "PASS 1199 tests, 0 failures/errors, 8 skipped",
+    "Android15Full": "942 tests on 11139d98 (the source of this build before the version bump): 940 passed; BrushWindowReturnTest and LayerGroupMaskWindowTest each failed once and passed 13/13 when their classes were rerun.",
+    "KnownFlaky": "BrushWindowReturnTest, LayerGroupMaskWindowTest mask expression, SelectionWindowRegressionTest stroke dialog, NotebookCreationWindowTest batch selection and NavigationContextWindowTest page list fail intermittently and pass on rerun.",
+    "BuildNote": "Clean build.",
+    "lint": "PASS 0 errors, 116 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS emulator install, versionCode 238, cold start Status ok (886-1062 ms), crash buffer empty",
+    "DriveDesktop": "See tasks/APK_DRIVE_SYNC.json; cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING",
+  "evidenceRoot": "app/build/test-results, app/build/outputs/androidTest-results/connected/debug and ignored tasks/ux-review/"
+}
