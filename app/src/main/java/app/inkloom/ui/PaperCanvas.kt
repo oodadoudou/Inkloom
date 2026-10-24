@@ -892,6 +892,10 @@ internal fun InkCanvasView.applyBrushConfiguration(
             pressure.widthCurve.map { it.x to it.y })
     } ?: app.inkloom.engine.v5.material.PressureResponse.CONSTANT
     smudgeStrength = borrowedSmudge?.let { (brushOpacity * it.deposition.opacity * it.deposition.flow).coerceIn(0f, 1f) } ?: 1f
+    cloneStamp.enabled = selectedTool == EditorTool.SMUDGE && BrushRoleClassifier.isClone(activeBrush)
+    cloneStamp.opacity = brushOpacity.coerceIn(0f, 1f)
+    cloneStamp.hardness = activeBrush?.hardness ?: .6f
+    cloneStamp.aligned = settings.cloneAligned
     rasterToolMotionFiltering = compiledBrushProgramV5Cache.resolveEncoded(activeBrush?.v5PresetJson)?.preset?.stroke?.motionFiltering ?: app.inkloom.brushpresetv5.MotionFilteringSettings()
     rasterToolStrokeStabilization = if (selectedTool in setOf(EditorTool.SMUDGE, EditorTool.LIQUIFY)) {
         compiledBrushProgramV5Cache.resolveEncoded(activeBrush?.v5PresetJson)?.strokeShaping?.smoothing ?: 0f

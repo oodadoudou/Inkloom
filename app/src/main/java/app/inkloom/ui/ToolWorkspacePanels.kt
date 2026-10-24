@@ -207,6 +207,8 @@ internal fun WorkspaceToolPropertiesPanel(
     modifier: Modifier = Modifier,
     onRulerCommand: (RulerCommand) -> Unit = {},
     onFrameAction: (FrameAction) -> Unit = {},
+    cloneBrush: Boolean = false,
+    onCloneCommand: (CloneCommand) -> Unit = {},
 ) {
     val language = settings.language
     var organizerOpen by remember { mutableStateOf(false) }
@@ -252,6 +254,7 @@ internal fun WorkspaceToolPropertiesPanel(
                             settings.liquifyMomentum, 0f..1f, { onSettings(settings.copy(liquifyMomentum = it)) })
                     } else WorkspacePropertySlider(language.text("Opacity", "不透明度"), "${(brushOpacity * 100).toInt()}%",
                         brushOpacity.coerceIn(0f, 1f), 0f..1f, onBrushOpacity)
+                    if (tool == EditorTool.SMUDGE && cloneBrush) CloneStampProperties(settings, onSettings, onCloneCommand)
                 }
                 EditorTool.SELECT -> {
                     if (settings.selectionShape == SelectionShape.BRUSH) WorkspacePropertySlider(
@@ -490,6 +493,19 @@ private fun RulerToolProperties(settings: AppSettings, onSettings: (AppSettings)
             StudioButton(language.text("Cancel", "取消"), { onCommand(RulerCommand.CANCEL) })
         }
         if (settings.rulerToolMode == app.inkloom.document.RulerToolMode.EDIT) StudioButton(language.text("Delete ruler", "删除尺规"), { onCommand(RulerCommand.DELETE) })
+    }
+}
+
+/** The copy stamp: whether the source offset carries over, and choosing or clearing the source. */
+@Composable
+private fun CloneStampProperties(settings: AppSettings, onSettings: (AppSettings) -> Unit, onCommand: (CloneCommand) -> Unit) {
+    val language = settings.language
+    WorkspacePropertySwitch(language.text("Aligned", "对齐"), settings.cloneAligned) { onSettings(settings.copy(cloneAligned = it)) }
+    WorkspacePropertyHint(language.text("Tap Choose source, then tap the spot to copy from. Strokes paint what lies at the same offset from it.",
+        "点按「选择复制源」后点按要复制的位置，之后的笔画会绘制与其保持相同偏移处的内容。"))
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        StudioButton(language.text("Choose source", "选择复制源"), { onCommand(CloneCommand.PICK_SOURCE) })
+        StudioButton(language.text("Clear source", "清除复制源"), { onCommand(CloneCommand.CLEAR_SOURCE) })
     }
 }
 

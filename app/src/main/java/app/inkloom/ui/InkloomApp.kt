@@ -3744,6 +3744,8 @@ private fun EditorScreen(
                         shapeKind = insertShape, onShapeKind = { insertShape = it },
                         onRulerCommand = { canvasView?.rulerCommand(it) },
                         onFrameAction = { frameAction = it },
+                        cloneBrush = app.inkloom.importer.BrushRoleClassifier.isClone(activeBrush),
+                        onCloneCommand = { canvasView?.cloneCommand(it) },
                     )
                     EditorPanel.NAVIGATOR -> NavigatorPanel(canvasView?.takeIf { it.width > 0 && it.height > 0 && viewportWidthPx > 0f && viewportHeightPx > 0f }?.let {
                         NavigatorTarget(selectedPage, ViewportState(zoom, panX, panY, viewRotation, viewMirrored), it.width.toFloat(), it.height.toFloat(), viewportWidthPx, viewportHeightPx)

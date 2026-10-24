@@ -79,7 +79,7 @@ object AppSettingsBackupCodec {
         put("gradientKind", gradientKind.name); put("gradientEdgeMode", gradientEdgeMode.name); put("gradientReverse", gradientReverse); put("gradientDither", gradientDither)
         put("gradientEllipseRatio", gradientEllipseRatio); put("gradientAngleSnapEnabled", gradientAngleSnapEnabled); put("gradientAngleSnapDegrees", gradientAngleSnapDegrees); put("gradientStops", app.inkloom.document.GradientStopCodec.encode(gradientStops))
         put("gradientPresets", json.parseToJsonElement(GradientPresetLibraryCodec.encode(gradientPresets).toString(Charsets.UTF_8)))
-        put("liquifyStrengthScale", liquifyStrengthScale); put("liquifyDistortion", liquifyDistortion); put("liquifyMomentum", liquifyMomentum)
+        put("liquifyStrengthScale", liquifyStrengthScale); put("liquifyDistortion", liquifyDistortion); put("liquifyMomentum", liquifyMomentum); put("cloneAligned", cloneAligned)
         put("brushGridLayout", brushGridLayout); put("brushCategoryWidthDp",brushCategoryWidthDp);
         put("layerPanelDualList", layerPanelDualList); put("layerPanelSplitFraction", layerPanelSplitFraction); put("layerRowDensity", layerRowDensity.name)
         put("layerShowThumbnails", layerShowThumbnails); put("layerShowDetails", layerShowDetails); put("vectorEraseWholeLine", vectorEraseWholeLine)
@@ -126,6 +126,7 @@ object AppSettingsBackupCodec {
             liquifyStrengthScale = float("liquifyStrengthScale", defaults.liquifyStrengthScale).coerceIn(0f, 2f),
             liquifyDistortion = float("liquifyDistortion", defaults.liquifyDistortion).coerceIn(0f, 1f),
             liquifyMomentum = float("liquifyMomentum", defaults.liquifyMomentum).coerceIn(0f, 1f),
+            cloneAligned = boolean("cloneAligned", defaults.cloneAligned),
             uiGrayTheme = UiGrayTheme.decode(text("uiGrayTheme")),
             language = enum("language", defaults.language), fingerDrawing = boolean("fingerDrawing", defaults.fingerDrawing),
 

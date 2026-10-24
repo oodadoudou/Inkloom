@@ -44,6 +44,8 @@ data class AppSettings(
     val liquifyStrengthScale: Float = 1f,
     val liquifyDistortion: Float = 0f,
     val liquifyMomentum: Float = 0f,
+    /** Copy stamp: keep the source offset between strokes. */
+    val cloneAligned: Boolean = true,
     val brushCategoryWidthDp: Float = 120f,
     val brushGridLayout: Boolean = false,
     val layerPanelDualList: Boolean = false,
@@ -239,6 +241,7 @@ class AppSettingsStore(context: Context) {
             liquifyStrengthScale = preferences.getFloat("liquifyStrengthScale", 1f).takeIf(Float::isFinite)?.coerceIn(0f, 2f) ?: 1f,
             liquifyDistortion = preferences.getFloat("liquifyDistortion", 0f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f,
             liquifyMomentum = preferences.getFloat("liquifyMomentum", 0f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f,
+            cloneAligned = preferences.getBoolean("cloneAligned", true),
             brushGridLayout = preferences.getBoolean("brushGridLayout", false),
             brushCategoryWidthDp = preferences.getFloat("brushCategoryWidthDp",120f).takeIf(Float::isFinite)?.coerceIn(56f,360f) ?: 120f,
             layerPanelDualList = preferences.getBoolean("layerPanelDualList", false),
@@ -404,6 +407,7 @@ class AppSettingsStore(context: Context) {
             .putFloat("liquifyStrengthScale", persisted.liquifyStrengthScale.coerceIn(0f, 2f))
             .putFloat("liquifyDistortion", persisted.liquifyDistortion.coerceIn(0f, 1f))
             .putFloat("liquifyMomentum", persisted.liquifyMomentum.coerceIn(0f, 1f))
+            .putBoolean("cloneAligned", persisted.cloneAligned)
             .putBoolean("brushGridLayout", persisted.brushGridLayout)
             .putFloat("brushCategoryWidthDp", persisted.brushCategoryWidthDp.takeIf(Float::isFinite)?.coerceIn(56f,360f) ?: 120f)
             .putBoolean("layerPanelDualList", persisted.layerPanelDualList)

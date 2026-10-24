@@ -5,7 +5,8 @@ import kotlinx.serialization.Serializable
 
 /** Executable tool identity, independent of editable names, groups and tags. */
 @Serializable
-enum class BrushToolRole { PAINT, ERASE, SMUDGE, LIQUIFY, UNSUPPORTED }
+/** CLONE is the Blend tool's copy stamp: it paints pixels taken from a source point. */
+enum class BrushToolRole { PAINT, ERASE, SMUDGE, LIQUIFY, UNSUPPORTED, CLONE }
 
 @Serializable
 data class BrushToolBinding(

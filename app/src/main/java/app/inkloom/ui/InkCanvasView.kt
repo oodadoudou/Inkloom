@@ -349,6 +349,14 @@ class InkCanvasView(context: Context) : View(context) {
     private var smudgeChanged = false
     private var smudgeDirtyBounds: Rect? = null
     private var rasterTileBlendSession: RasterTileBlendSession? = null
+    /** The Blend tool's copy stamp brush; while enabled it replaces smearing. */
+    internal val cloneStamp = CloneStampController()
+    private val cloneOverlayPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    /** The copy stamp chose its source from a touch. */
+    var onCloneSourceChosen: () -> Unit = {
+        android.widget.Toast.makeText(context, if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
+            "已设置复制源，在要复制到的位置绘画" else "Copy source set. Now paint where the copy should go.", android.widget.Toast.LENGTH_SHORT).show()
+    }
     private val v5MainHandler = Handler(Looper.getMainLooper())
     private data class MaskBrushContact(val layerId: String, val mask: MaskTileSurface,
         val coverage: PixelTileSurface, val projection: app.inkloom.engine.v5.selection.LayerMaskBrushCoverage,
@@ -1458,6 +1466,7 @@ class InkCanvasView(context: Context) : View(context) {
                     landed.surfaceId == current?.surfaceId && landed.revision >= current.revision
                 }
                 ?: rasterTileBlendSession?.previewSnapshot()
+                ?: cloneStamp.previewSnapshot
                 ?: rasterTileLiquifySession?.previewSnapshot()
         }.getOrNull()
     }
@@ -1834,6 +1843,7 @@ class InkCanvasView(context: Context) : View(context) {
         rulerTool.draw(canvas, width.toFloat(), height.toFloat(), rulerScale(), applicableRulers, activeLayerId, tool == EditorTool.RULER, layerPerspective)
         if (tool == EditorTool.FRAME) frameTool.draw(canvas, width.toFloat(), height.toFloat(), rulerScale())
         drawShapeHandles(canvas)
+        if (tool == EditorTool.SMUDGE) cloneStamp.drawOverlay(canvas, width.toFloat(), height.toFloat(), viewportScale, cloneOverlayPaint)
         drawLaserTrail(canvas, SystemClock.uptimeMillis())
         drawFillPreview(canvas)
         drawGradientPreview(canvas)
@@ -5007,6 +5017,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun beginSmudgeGesture(normalizedX: Float, normalizedY: Float): Boolean {
+        if (cloneStamp.enabled) return beginCloneStroke(normalizedX, normalizedY)
         if (smudgeTipFailure != null) return false
         removeCallbacks(smudgeFrame)
         smudgeFrameScheduled = false
@@ -5031,6 +5042,25 @@ class InkCanvasView(context: Context) : View(context) {
         return true
     }
 
+    /** A copy stamp touch: chooses the source when one is needed, otherwise starts cloning from it. */
+    private fun beginCloneStroke(normalizedX: Float, normalizedY: Float): Boolean {
+        removeCallbacks(smudgeFrame)
+        smudgeFrameScheduled = false
+        hasPendingSmudge = false
+        pendingSmudge.clear()
+        if (cloneStamp.needsSource) {
+            cloneStamp.setSource(normalizedX, normalizedY)
+            onCloneSourceChosen()
+            invalidate()
+            return true
+        }
+        val surface = rasterTileSurfaceFor(activeLayerId)?.takeUnless { activeLayerId in protectedLayerIds } ?: return false
+        beginRasterToolInput(normalizedX, normalizedY, surface)
+        return cloneStamp.begin(surface, selectionMaskForRasterTools(), activeLayerId in alphaLockedLayers, normalizedX, normalizedY)
+    }
+
+    fun cloneCommand(command: CloneCommand) { cloneStamp.command(command); invalidate() }
+
     private fun scheduleSmudge(x: Float, y: Float, pressure: Float) {
         if (pendingSmudge.size >= 64) flushSmudgeFrame()
         pendingSmudge.addLast(stabilizeRasterToolPoint(x, y, pressure.coerceIn(0f, 1f)))
@@ -5050,6 +5080,14 @@ class InkCanvasView(context: Context) : View(context) {
     private fun extendSmudge(normalizedX: Float, normalizedY: Float, pressure: Float = 1f) {
         val x = normalizedX.coerceIn(0f, 1f)
         val y = normalizedY.coerceIn(0f, 1f)
+        if (cloneStamp.stroking) {
+            val surface = rasterTileSurfaceFor(activeLayerId) ?: return
+            val radius = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH * surface.logicalWidth *
+                smudgeWidthPressure.evaluate(pressure)).coerceAtLeast(.5f)
+            cloneStamp.extend(x, y, radius)?.let { invalidateV5Damage(surface, it, InvalidationReason.ACTIVE_DELTA) }
+            invalidate()
+            return
+        }
         val tileSession = rasterTileBlendSession
         val surface = rasterTileSurfaceFor(activeLayerId)
         if (surface != null && tileSession != null) {
@@ -5087,6 +5125,14 @@ class InkCanvasView(context: Context) : View(context) {
         smudgeFrameScheduled = false
         hasPendingSmudge = false
         pendingSmudge.clear()
+        if (cloneStamp.enabled) {
+            val surface = rasterTileSurfaceFor(activeLayerId)
+            cloneStamp.finish()?.let { (record, bounds) ->
+                if (surface != null && record.changedTileCount > 0) recordRasterToolTransaction(activeLayerId, surface, record, android.graphics.Rect(bounds.left, bounds.top, bounds.right, bounds.bottom)) else record.close()
+            }
+            invalidate()
+            return
+        }
         val tileSession = rasterTileBlendSession
         var committed = false
         if (tileSession != null) {
@@ -5114,6 +5160,12 @@ class InkCanvasView(context: Context) : View(context) {
         smudgeFrameScheduled = false
         hasPendingSmudge = false
         pendingSmudge.clear()
+        if (cloneStamp.stroking) {
+            val surface = rasterTileSurfaceFor(activeLayerId)
+            cloneStamp.cancel()?.let { dirty -> if (surface != null) invalidateV5Damage(surface, dirty, InvalidationReason.ACTIVE_DELTA) }
+            invalidate()
+            return
+        }
         val tileSession = rasterTileBlendSession
         val surface = rasterTileSurfaceFor(activeLayerId)
         val dirty = smudgeDirtyBounds
