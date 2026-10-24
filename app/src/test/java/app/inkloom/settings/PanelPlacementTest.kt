@@ -81,6 +81,12 @@ class PanelPlacementTest {
         listOf(EditorPanel.LAYERS, EditorPanel.WHEEL, EditorPanel.NAVIGATOR).forEach { assertEquals(0f, overlap(rect(layout, it), navigator), .01f) }
     }
 
+    @Test fun aSlightOverlapWithTheNavigatorCornerAloneDoesNotMoveAWindow() {
+        // Brushes' default spot reaches into the navigator corner of a short workspace; it stays put.
+        val short = PanelPlacement.openWhereFree(EditorPanelLayout().copy(open = setOf(EditorPanel.BRUSHES)), emptySet(), EditorPanel.BRUSHES, width, 668f)
+        assertEquals(rect(EditorPanelLayout(), EditorPanel.BRUSHES), rect(short, EditorPanel.BRUSHES))
+    }
+
     @Test fun aFloatingWindowAvoidsDockedPalettesToo() {
         val painting = BuiltInWorkspaces.snapshot(BuiltInWorkspace.PAINTING).layout
         val brushes = open(painting, EditorPanel.BRUSHES)

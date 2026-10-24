@@ -42,9 +42,12 @@ object PanelPlacement {
         val navigator = slots.firstOrNull { it.node is PanelNode.Canvas }?.rect?.let {
             PanelRect(it.right - navigatorClearance.width, it.bottom - navigatorClearance.height, navigatorClearance.width, navigatorClearance.height)
         }
-        val obstacles = slots.filter { (it.node is PanelNode.Tabs || it.collapsed) && it.rootId != root.node.id }.map { it.rect } + listOfNotNull(navigator)
+        val windows = slots.filter { (it.node is PanelNode.Tabs || it.collapsed) && it.rootId != root.node.id }.map { it.rect }
+        // Only other windows and docks move a window; the navigator corner then steers where it goes,
+        // so a slight overlap with that corner never pushes a large window over the page.
+        val obstacles = windows + listOfNotNull(navigator)
         val start = root.rect.bounded(width, height)
-        val current = overlap(start, obstacles)
+        val current = overlap(start, windows)
         fun placed(rect: PanelRect) = layout.copy(floating = layout.floating.map { if (it === original) it.copy(rect = rect) else it })
         if (current <= 0f) return if (root.rect == original.rect) layout else placed(root.rect)
         val minX = min(start.x, railClearance)
@@ -54,7 +57,7 @@ object PanelPlacement {
             .map { it.coerceIn(0f, max(0f, height - start.height)) }
         val best = xs.flatMap { x -> ys.map { y -> start.copy(x = x, y = y) } }
             .minWith(compareBy<PanelRect> { overlap(it, obstacles) }.thenBy { abs(it.x - start.x) + abs(it.y - start.y) })
-        if (overlap(best, obstacles) >= current) return if (root.rect == original.rect) layout else placed(root.rect)
+        if (overlap(best, windows) >= current) return if (root.rect == original.rect) layout else placed(root.rect)
         return placed(root.rect.copy(x = best.x, y = best.y))
     }
 
