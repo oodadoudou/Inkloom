@@ -66,7 +66,10 @@ object PanelResizing {
         val minSecond = if (split.horizontal) EditorPanelLayouts.minimumWidth(split.second) else EditorPanelLayouts.minimumHeight(split.second)
         if (total < minFirst + minSecond + 4f) return layout
         val cut = (initial + if (split.horizontal) dx else dy).coerceIn(minFirst + 2f, total - minSecond - 2f)
-        return EditorPanelLayouts.update(layout, id) { (it as PanelNode.Split).copy(fraction = cut / total) }
+        return EditorPanelLayouts.update(layout, id) { node ->
+            (node as PanelNode.Split).copy(fraction = cut / total,
+                dockSize = node.dockSize?.let { if (EditorPanelLayouts.containsCanvas(node.first)) total - cut - 2f else cut - 2f })
+        }
     }
 
     /** Dock edges resize their shared split; an exposed cross-axis edge creates empty dock space. */

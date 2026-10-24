@@ -84,10 +84,12 @@ class PanelResizingTest {
     @Test fun minimumClampedSplitStartsAtItsActualBoundaryNotItsStoredFraction() {
         val dock = EditorPanelLayouts.move(original, "brushes", null, PanelDropTarget("canvas", PanelEdge.LEFT), original.floating[1].rect)
         val split = dock.dock as PanelNode.Split
-        val narrow = dock.copy(dock = split.copy(fraction = .01f))
-        val moved = PanelResizing.divider(narrow, split.id, 40f, 0f, width, height)
-        val first = EditorPanelLayouts.slots(moved, width, height).first { it.node.id == "brushes" }.rect
-        assertEquals(112f, first.width, .01f)
+        // A shared split stored below its minimum, and a dock whose own width is below it, both start at the minimum.
+        for (narrow in listOf(dock.copy(dock = split.copy(fraction = .01f, dockSize = null)), dock.copy(dock = split.copy(dockSize = 10f)))) {
+            val moved = PanelResizing.divider(narrow, split.id, 40f, 0f, width, height)
+            val first = EditorPanelLayouts.slots(moved, width, height).first { it.node.id == "brushes" }.rect
+            assertEquals(112f, first.width, .01f)
+        }
     }
 
     @Test fun lockingDisablesGeometryChangesButNotSelectionOrVisibility() {

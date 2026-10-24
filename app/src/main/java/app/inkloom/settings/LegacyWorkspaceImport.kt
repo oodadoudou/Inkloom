@@ -78,7 +78,8 @@ object LegacyWorkspaceImport {
                         else desired/(desired+EditorPanelLayouts.members(destination).mapNotNull(originalRects::get).maxOfOrNull { if(horizontal) it.width else it.height }.let { it ?: desired })
                     val before=target.edge in setOf(PanelEdge.LEFT,PanelEdge.TOP)
                     result=EditorPanelLayouts.update(result,splitId) { node -> (node as PanelNode.Split).copy(
-                        fraction=(if(before) portion else 1f-portion).coerceIn(.05f,.95f)) }
+                        fraction=(if(before) portion else 1f-portion).coerceIn(.05f,.95f),
+                        dockSize=if(EditorPanelLayouts.containsCanvas(destination)) desired else node.dockSize) }
                 }
                 targetId = tabsId(result, panel)
             }

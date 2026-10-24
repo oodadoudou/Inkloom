@@ -31,8 +31,13 @@ sealed interface PanelNode {
     @Serializable data class Space(override val id: String) : PanelNode
     @Serializable data class Canvas(override val id: String = "canvas") : PanelNode
     @Serializable data class Tabs(override val id: String, val panels: List<EditorPanel>, val active: EditorPanel = panels.first()) : PanelNode
+    /**
+     * [dockSize] is set on a split between the canvas and a palette dock: the dock's own width (or
+     * height for a bottom dock) in dp, kept when the window or interface size changes, as CSP's docks
+     * are. Other splits share their space by [fraction].
+     */
     @Serializable data class Split(override val id: String, val horizontal: Boolean, val fraction: Float,
-        val first: PanelNode, val second: PanelNode) : PanelNode
+        val first: PanelNode, val second: PanelNode, val dockSize: Float? = null) : PanelNode
 }
 
 @Serializable
@@ -250,8 +255,16 @@ object EditorPanelLayouts {
             val docked = if (floating || !containsCanvas(node)) null else if (canvasFirst) node.second else node.first
             val shown = docked?.let(::display) ?: DockDisplay.NORMAL
             val strip = when (shown) { DockDisplay.ICONS -> iconDockWidth; DockDisplay.HIDDEN -> hiddenDockWidth; DockDisplay.NORMAL -> null }
+            val fixed = node.dockSize?.takeIf { docked != null && it.isFinite() && it > 0f }
             val cut = when {
                 strip != null && total > strip + 4f -> if (canvasFirst) total - strip - 2f else strip + 2f
+                fixed != null && docked != null -> {
+                    val canvas = if (canvasFirst) node.first else node.second
+                    val dockMinimum = if (node.horizontal) minimumWidth(docked) else minimumHeight(docked)
+                    val canvasMinimum = if (node.horizontal) minimumWidth(canvas) else minimumHeight(canvas)
+                    val size = fixed.coerceAtMost(total - canvasMinimum - 4f).coerceAtLeast(minOf(dockMinimum, total / 2f))
+                    if (canvasFirst) total - size - 2f else size + 2f
+                }
                 node.horizontal -> cut(total,f,minimumWidth(node.first),minimumWidth(node.second))
                 else -> cut(total,f,minimumHeight(node.first),minimumHeight(node.second))
             }
@@ -355,8 +368,10 @@ object EditorPanelLayouts {
             val before=target.edge in setOf(PanelEdge.LEFT,PanelEdge.TOP)
             val includesCanvas = containsCanvas(destination)
             val fraction=if(includesCanvas) { if(before) .25f else .75f } else .5f
+            // A new palette dock beside the canvas is as wide (or tall) as the window that made it.
+            val dockSize=if(includesCanvas) (if(horizontal) floatingRect.width else floatingRect.height).takeIf { it.isFinite() && it > 0f } else null
             val split=PanelNode.Split("split-${layout.nextId}",horizontal,fraction,
-                if(before) payload else destination,if(before) destination else payload)
+                if(before) payload else destination,if(before) destination else payload,dockSize)
             result=update(result,destination.id) { split }
         }
         return pruned(result.copy(placed=result.placed+members(payload),nextId=layout.nextId+1,

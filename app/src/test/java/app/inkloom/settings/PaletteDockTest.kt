@@ -134,6 +134,27 @@ class PaletteDockTest {
         assertEquals(8f, PalettePopups.place(PanelRect(width - 20f, 0f, 20f, height), PanelEdge.RIGHT, -1, 300f, 400f, width, height).y, .01f)
     }
 
+    @Test fun aDockKeepsItsOwnWidthWhenTheWorkspaceGetsWiderAndRemembersAResize() {
+        // Painting docks colours and layers in a 320 dp column beside the canvas.
+        fun column(layout: EditorPanelLayout, w: Float) = EditorPanelLayouts.slots(layout, w, height).single { it.column != null }.rect
+        assertEquals(320f, column(painting, 1280f).width, .01f)
+        assertEquals(320f, column(painting, 1900f).width, .01f)
+        assertEquals(1900f, column(painting, 1900f).right, .01f)
+        val split = slots(painting).first { it.node is PanelNode.Split && EditorPanelLayouts.containsCanvas(it.node) }.node.id
+        val wider = PanelResizing.divider(painting, split, -80f, 0f, width, height)
+        assertEquals(400f, column(wider, 1280f).width, .1f)
+        assertEquals(400f, column(wider, 1900f).width, .1f)
+        // A narrow window still leaves the canvas its minimum width.
+        assertTrue(column(painting, 450f).width <= 450f - EditorPanelLayouts.minimumWidth(PanelNode.Canvas()) - 4f + .01f)
+        // Layouts saved before docks had their own size keep sharing by fraction.
+        val legacy = EditorPanelLayouts.update(painting, split) { (it as PanelNode.Split).copy(dockSize = null) }
+        assertEquals(1900f * .25f - 2f, column(legacy, 1900f).width, .5f)
+        // A bottom dock keeps its height.
+        val bottom = EditorPanelLayouts.move(EditorPanelLayout().copy(open = setOf(EditorPanel.LAYERS)), "layers", null,
+            PanelDropTarget("canvas", PanelEdge.BOTTOM), PanelRect(0f, 0f, 400f, 240f))
+        assertEquals(240f, EditorPanelLayouts.slots(bottom, width, 1100f).single { it.column != null }.let { it.rect.height + it.column!!.header!!.height }, .01f)
+    }
+
     @Test fun resizingTheBottomDockStillMovesItsBoundaryBelowTheHeader() {
         val docked = EditorPanelLayouts.move(EditorPanelLayout().copy(open = setOf(EditorPanel.LAYERS)), "layers", null,
             PanelDropTarget("canvas", PanelEdge.BOTTOM), PanelRect(0f, 0f, 400f, 240f))
