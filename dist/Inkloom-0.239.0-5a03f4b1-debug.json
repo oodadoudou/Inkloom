@@ -1,0 +1,23 @@
+{
+  "version": "0.239.0",
+  "versionCode": 239,
+  "variant": "debug",
+  "commit": "5a03f4b158614a607ba0f6695e8bca10fd039230",
+  "sha256": "13662f042b81ef9910e7c77bd00370623e4f780ffae359fa745f0ceb2735dc34",
+  "bytes": 184047272,
+  "generatedUtc": "2026-10-24T14:40:47.220310+00:00",
+  "verification": {
+    "JVM": "PASS 1199 tests, 0 failures/errors, 8 skipped",
+    "Android15Full": "942 tests on 11139d98 (0.238.0 source): 940 passed, the two intermittent classes passed 13/13 on rerun.",
+    "Android15Targeted": "After merging the ML Kit privacy fix: PrivacyManifestTest, ScannedPdfRecognitionTest, SuperResolutionTest, InkloomLaunchTest, BookPreviewWindowTest and SubViewWindowTest, 68/68.",
+    "BuildNote": "Clean build.",
+    "lint": "PASS 0 errors, 116 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS emulator install, versionCode 239, cold start Status ok (905-970 ms), crash buffer empty",
+    "privacy": "No INTERNET or ACCESS_NETWORK_STATE permission; ONNX Runtime telemetry and ML Kit datatransport removed from the merged manifest.",
+    "DriveDesktop": "See tasks/APK_DRIVE_SYNC.json; cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING",
+  "evidenceRoot": "app/build/test-results, app/build/outputs/androidTest-results/connected/debug and ignored tasks/ux-review/"
+}
