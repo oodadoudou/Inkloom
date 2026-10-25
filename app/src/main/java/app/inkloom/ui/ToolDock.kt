@@ -390,29 +390,31 @@ internal fun ToolDock(tool: EditorTool, toolPaletteLayout: String, onTool: (Edit
                 liquifyControls = liquifyControls,
             )
         }
-        if (vertical) Row(verticalAlignment = Alignment.Top) {
-            val railScroll = rememberScrollState()
-            // Docked, the tools use the whole edge and scroll only when it is too short.
-            Column(
-                Modifier.width(40.dp).then(if (docked) Modifier.fillMaxHeight() else Modifier.heightIn(max = 600.dp))
-                    .scrollEdgeFades(railScroll, Paper).verticalScroll(railScroll),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) { content() }
-            VerticalDivider(if (docked) Modifier.fillMaxHeight() else Modifier.height(600.dp), color = OutlineSoft)
-            ProcreateSidebar(
-                brushSize = brushSize,
-                brushOpacity = brushOpacity,
-                gestureOwnerKey = "${tool.name}:${selectedBrushId ?: "default"}",
-                onSize = onSize,
-                onOpacity = onOpacity,
-                onModify = { onTool(EditorTool.EYEDROPPER) },
-                onUndo = onUndo,
-                onRedo = onRedo,
-                showGradientControls = tool == EditorTool.GRADIENT,
-                gradientControls = gradientControls,
-                dragModifier = dragModifier.semantics { contentDescription = dragToolbarDescription },
-            )
-        } else Row(verticalAlignment = Alignment.CenterVertically) { content() }
+        CompositionLocalProvider(LocalTooltipBeside provides vertical) {
+            if (vertical) Row(verticalAlignment = Alignment.Top) {
+                val railScroll = rememberScrollState()
+                // Docked, the tools use the whole edge and scroll only when it is too short.
+                Column(
+                    Modifier.width(40.dp).then(if (docked) Modifier.fillMaxHeight() else Modifier.heightIn(max = 600.dp))
+                        .scrollEdgeFades(railScroll, Paper).verticalScroll(railScroll),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) { content() }
+                VerticalDivider(if (docked) Modifier.fillMaxHeight() else Modifier.height(600.dp), color = OutlineSoft)
+                ProcreateSidebar(
+                    brushSize = brushSize,
+                    brushOpacity = brushOpacity,
+                    gestureOwnerKey = "${tool.name}:${selectedBrushId ?: "default"}",
+                    onSize = onSize,
+                    onOpacity = onOpacity,
+                    onModify = { onTool(EditorTool.EYEDROPPER) },
+                    onUndo = onUndo,
+                    onRedo = onRedo,
+                    showGradientControls = tool == EditorTool.GRADIENT,
+                    gradientControls = gradientControls,
+                    dragModifier = dragModifier.semantics { contentDescription = dragToolbarDescription },
+                )
+            } else Row(verticalAlignment = Alignment.CenterVertically) { content() }
+        }
     }
 }
 
