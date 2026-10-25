@@ -1,0 +1,20 @@
+{
+  "version": "0.247.0",
+  "versionCode": 247,
+  "variant": "debug",
+  "commit": "a6dd5ba3296e898d556ba4957d1aae2c1045e6cb",
+  "sha256": "ea68324b30ea1d91d856703e578497ad85dcffd1080dee6c3cae778040cdd251",
+  "bytes": 184391340,
+  "generatedUtc": "2026-10-25T19:05:26.375128+00:00",
+  "verification": {
+    "JVM": "PASS 1241 tests, 0 failures/errors, 8 skipped",
+    "Android15Targeted": "PASS 158/158: PenTapWindowTest (pen tap while a hover name shows, rail and top bar; finger hold), ToolRailWindowTest, SelectionWindowRegressionTest, SelectionInteractionTest, TemporaryToolWindowContractTest, ColorSetWindowTest, ColorWindowInputContractTest, MixingColorBarWindowTest, EditorPanelsWindowTest, PaletteDockWindowTest, InkloomLaunchTest, ImageLongPressWindowTest.",
+    "Android15Full": "Last full run on 0.245.0 changes (954 tests, fixes verified).",
+    "lint": "PASS 0 errors, 114 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS clean install, versionCode 247, cold start ok (1146-1151 ms), crash buffer empty",
+    "DriveDesktop": "APK only, SHA-256 verified in the local sync folder; cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING"
+}
