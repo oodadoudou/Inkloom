@@ -86,6 +86,9 @@ internal fun SelectionStudioPanel(
     var featherOpen by remember { mutableStateOf(false) }
     var colorRangeOpen by remember { mutableStateOf(false) }
     var strokeOpen by remember { mutableStateOf(false) }
+    val handwriting = LocalHandwritingToText.current
+    var convertOpen by remember { mutableStateOf(false) }
+    if (convertOpen && handwriting != null) HandwritingToTextDialog(handwriting, LocalUiLanguage.current) { convertOpen = false }
     if (strokeOpen) SelectionStrokeDialog(strokeColor, strokeOpacity, LocalUiLanguage.current,
         onApply = { width, placement, color, opacity -> if (onStroke(width, placement, color, opacity)) strokeOpen = false },
         onDismiss = { strokeOpen = false })
@@ -291,6 +294,7 @@ internal fun SelectionStudioPanel(
                         StudioMenuItem(text = { Text(tr("Paste to shown position", "粘贴至显示位置")) }, onClick = { settingsOpen = false; onPasteAtView() })
                         StudioMenuItem(text = { Text(tr("Fill selection", "填充选区")) }, enabled = hasSelection, onClick = { settingsOpen = false; onFill() })
                         StudioMenuItem(text = { Text(tr("Stroke selection…", "选区描边…")) }, enabled = hasSelection, onClick = { settingsOpen = false; strokeOpen = true })
+                        if (handwriting != null) StudioMenuItem(text = { Text(tr("Convert to text…", "转换为文字…")) }, enabled = hasSelection, onClick = { settingsOpen = false; convertOpen = true })
                         StudioMenuItem(text = { Text(tr("Quick mask", "快速蒙版")) }, trailingIcon = { if (quickMask) Icon(Icons.Outlined.Check, null) }, onClick = { settingsOpen = false; onQuickMask() })
                         HorizontalDivider()
                         StudioMenuItem(text = { Text(tr("New selection", "新建选区")) }, onClick = { settingsOpen = false; onMode(SelectionMode.REPLACE) })

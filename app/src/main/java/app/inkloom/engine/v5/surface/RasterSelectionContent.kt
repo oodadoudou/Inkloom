@@ -53,6 +53,13 @@ object RasterSelectionContent {
         }
     }
 
+    /** Coverage of each copied pixel, 0..255, whatever its colour. */
+    fun alphaPlane(clipboard: RasterSelectionClipboard): IntArray = when (clipboard.pixelFormat) {
+        PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> requireNotNull(clipboard.rgba8).let { source -> IntArray(source.size) { source[it] ushr 24 } }
+        PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 ->
+            requireNotNull(clipboard.rgbaF16).let { source -> IntArray(source.size) { PackedRgbaF16.toPremultipliedArgb8888(source[it]) ushr 24 } }
+    }
+
     /** Imports a transparent system image without discarding its alpha channel. */
     fun fromBitmap(
         bitmap: Bitmap,

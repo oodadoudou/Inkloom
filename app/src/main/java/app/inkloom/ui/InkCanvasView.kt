@@ -7449,6 +7449,28 @@ class InkCanvasView(context: Context) : View(context) {
         return false
     }
 
+    /**
+     * The lassoed handwriting on the active layer for text recognition: its coverage cropped to the
+     * ink, and the ink's page bounds (fractions of the page). Ink colour is ignored so light ink
+     * still reads. Null without a selection or without ink inside it.
+     */
+    internal fun selectedInkForRecognition(): SelectedInk? {
+        commitSelectionContour()
+        finishSelectionTransform(apply = true)
+        val selection = selectionMaskForRasterTools()?.takeUnless { it.isEmpty } ?: return null
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return null
+        v5StrokeController.awaitIdle()
+        val copied = RasterSelectionContent.copy(surface.snapshot(), selection) ?: return null
+        val alpha = RasterSelectionContent.alphaPlane(copied)
+        val ink = HandwritingImage.inkBounds(alpha, copied.width, copied.height) ?: return null
+        val cropped = HandwritingImage.crop(alpha, copied.width, ink)
+        val pageWidth = surface.logicalWidth.toFloat().coerceAtLeast(1f)
+        val pageHeight = surface.logicalHeight.toFloat().coerceAtLeast(1f)
+        return SelectedInk(cropped, ink.width, ink.height, app.inkloom.document.PdfTextBounds(
+            (copied.sourceLeft + ink.left) / pageWidth, (copied.sourceTop + ink.top) / pageHeight,
+            (copied.sourceLeft + ink.right) / pageWidth, (copied.sourceTop + ink.bottom) / pageHeight), activeLayerId)
+    }
+
     fun cutSelectionToClipboard(): Boolean {
         if (rejectLayerContentEdit()) return false
         finishSelectionTransform(apply = true)

@@ -615,6 +615,16 @@ fun InkloomApp(initialIntent: Intent?) {
     var bookPreview by remember { mutableStateOf<Pair<InkDocument, Int?>?>(null) }
     // Animation export: the folder and width chosen in the timeline, until the file is picked.
     var pendingAnimationExport by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    val handwritingToText = remember(viewModel) {
+        HandwritingToTextHost(
+            pageSize = { viewModel.currentPage()?.let { it.width to it.height } },
+            insert = { element ->
+                val document = viewModel.currentDocument()
+                val page = viewModel.currentPage()
+                if (document != null && page != null) viewModel.addElement(document.id, page.id, element)
+            },
+        )
+    }
     fun animationPicked(uri: android.net.Uri?, format: app.inkloom.document.AnimationExportFormat) {
         val (folderId, width) = pendingAnimationExport ?: return
         pendingAnimationExport = null
@@ -922,7 +932,7 @@ fun InkloomApp(initialIntent: Intent?) {
         AppDestination.EDITOR -> CompositionLocalProvider(LocalAnimationExport provides { folderId, width, name, format ->
             pendingAnimationExport = folderId to width
             (if (format == app.inkloom.document.AnimationExportFormat.GIF) gifExportPicker else videoExportPicker).launch("$name.${format.extension}")
-        }) { EditorScreen(
+        }, LocalHandwritingToText provides handwritingToText) { EditorScreen(
             panelState = panelState,
             document = libraryState.documents.firstOrNull { it.id == libraryState.selectedDocumentId } ?: viewModel.currentDocument(),
             documents = libraryState.documents,

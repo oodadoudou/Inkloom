@@ -87,6 +87,33 @@ class SelectionWindowRegressionTest {
         compose.waitUntil(15_000) { reopened.activeRasterSnapshotForTest()?.copyPremultipliedPixels(bounds)?.contentEquals(pasted) == true }
     }
 
+    /** GoodNotes-style lasso > Convert to text: recognised on the device, editable, then it replaces the ink. */
+    @Test fun lassoedHandwritingBecomesATextObjectThatReplacesTheInk() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync { model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java] }
+        // Block capitals "HI".
+        stroke(pagePoint(view, .20f, .20f), pagePoint(view, .20f, .30f))
+        stroke(pagePoint(view, .27f, .20f), pagePoint(view, .27f, .30f))
+        stroke(pagePoint(view, .20f, .25f), pagePoint(view, .27f, .25f))
+        stroke(pagePoint(view, .32f, .20f), pagePoint(view, .32f, .30f))
+        compose.waitUntil(15_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 && !view.hasPendingPaintPublicationForMerge() }
+        tap("Selection"); tap("Rectangle selection")
+        stroke(pagePoint(view, .16f, .16f), pagePoint(view, .38f, .34f))
+        tap("Selection actions"); tap("Convert to text…")
+        compose.waitUntil(20_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
+        val recognized = compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().first()
+            .config.getOrElseNullable(SemanticsProperties.EditableText) { null }?.text.orEmpty()
+        android.util.Log.i("HandwritingToText", "recognized '$recognized'")
+        compose.onNode(hasSetTextAction()).performTextReplacement("Hi there")
+        tap("Replace handwriting")
+        compose.waitUntil(15_000) { model.currentPage()?.elements?.any { it is app.inkloom.document.PageElement.Text && it.text == "Hi there" } == true }
+        val text = model.currentPage()!!.elements.filterIsInstance<app.inkloom.document.PageElement.Text>().first { it.text == "Hi there" }
+        assertEquals(.2f, text.x, .03f); assertEquals(.2f, text.y, .03f)
+        compose.waitUntil(15_000) { view.activeRasterSnapshotForTest()?.tileCount == 0 }
+    }
+
     @Test fun strokeDialogCancelApplyColorUndoAndReopenKeepSelectionAndPixels() {
         tap("New Note"); tap("Create")
         val view = canvas()
