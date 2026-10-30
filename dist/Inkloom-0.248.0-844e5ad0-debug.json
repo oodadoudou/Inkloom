@@ -1,0 +1,20 @@
+{
+  "version": "0.248.0",
+  "versionCode": 248,
+  "variant": "debug",
+  "commit": "844e5ad048ae6e86407de56438ac9eb97c7a3fab",
+  "sha256": "a5af26d67a5dc8feb4b50912f74d0b3aedeea57c4fff3719a5126ac9c9a1a00d",
+  "bytes": 184506024,
+  "generatedUtc": "2026-10-30T19:54:58.968632+00:00",
+  "verification": {
+    "JVM": "PASS 1252 tests, 0 failures/errors, 8 skipped",
+    "Android15Full": "973 tests, 972 passed; lassoedHandwritingBecomesATextObjectThatReplacesTheInk timed out once (passes alone; the test matched any text field before the dialog's, fixed in the test).",
+    "Android15ReleaseBuild": "Shrunk release build: 96 + 63 instrumented tests (app classes kept for the tests) and a UI smoke run of the fully shrunk build.",
+    "lint": "PASS 0 errors, 114 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS clean install, versionCode 248, cold start ok (1022-1025 ms), crash buffer empty",
+    "DriveDesktop": "APK only, SHA-256 verified in the local sync folder; cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING"
+}
