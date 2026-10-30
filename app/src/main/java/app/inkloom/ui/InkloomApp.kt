@@ -91,7 +91,6 @@ import app.inkloom.settings.ColorSetLibraryStore
 import app.inkloom.settings.ColorSetLibrary
 import app.inkloom.settings.FloatingToolbarPlacement
 import app.inkloom.settings.FloatingToolbarPosition
-import app.inkloom.settings.SelectionLauncherLayout
 import app.inkloom.settings.SelectionMode
 import app.inkloom.settings.SelectionShape
 import app.inkloom.settings.BrushMasterSettingsStore
@@ -3492,10 +3491,6 @@ private fun EditorScreen(
                 )
                 if (tool == EditorTool.SELECT && imageCanvasTransform == null && selectionTransformState == null) SelectionStudioPanel(
                     shape = settings.selectionShape, mode = settings.selectionMode, hasSelection = selectionActive,
-                    launcherVisible = settings.selectionLauncherVisible,
-                    launcherOrder = SelectionLauncherLayout.decode(settings.selectionLauncherOrder),
-                    onLauncherVisible = { onSettingsChange(settings.copy(selectionLauncherVisible = it)) },
-                    onLauncherOrder = { onSettingsChange(settings.copy(selectionLauncherOrder = SelectionLauncherLayout.encode(it))) },
                     brushSize = settings.selectionBrushSize, onBrushSize = { onSettingsChange(settings.copy(selectionBrushSize = it)) },
                     threshold = settings.selectionThreshold, onThreshold = { onSettingsChange(settings.copy(selectionThreshold = it)) },
                     referenceTarget = settings.referenceTarget, onReferenceTarget = { onSettingsChange(settings.copy(referenceTarget = it)) },

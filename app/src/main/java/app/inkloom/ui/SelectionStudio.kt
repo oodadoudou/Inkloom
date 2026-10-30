@@ -43,8 +43,6 @@ import app.inkloom.document.*
 import app.inkloom.model.*
 import app.inkloom.settings.FloatingToolbarPlacement
 import app.inkloom.settings.SelectionFilter
-import app.inkloom.settings.SelectionLauncherAction
-import app.inkloom.settings.SelectionLauncherLayout
 import app.inkloom.settings.SelectionMode
 import app.inkloom.settings.SelectionShape
 import app.inkloom.settings.ReferenceTarget
@@ -55,8 +53,6 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun SelectionStudioPanel(
     shape: SelectionShape, mode: SelectionMode, hasSelection: Boolean,
-    launcherVisible: Boolean, launcherOrder: List<SelectionLauncherAction>,
-    onLauncherVisible: (Boolean) -> Unit, onLauncherOrder: (List<SelectionLauncherAction>) -> Unit,
     brushSize: Float, onBrushSize: (Float) -> Unit,
     threshold: Float, onThreshold: (Float) -> Unit,
     referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit,
@@ -196,7 +192,7 @@ internal fun SelectionStudioPanel(
                 }
                 SelectionDivider()
                 Box {
-                    SelectionLauncherButton(Icons.Outlined.MoreHoriz, tr("Selection actions", "选区操作")) { settingsOpen = true }
+                    SelectionBarButton(Icons.Outlined.MoreHoriz, tr("Selection actions", "选区操作")) { settingsOpen = true }
                     DropdownMenu(settingsOpen, { settingsOpen = false }) {
                         if (hasSelection) {
                             StudioMenuItem(text = { Text(tr("Stroke selection…", "选区描边…")) }, onClick = { settingsOpen = false; strokeOpen = true })
@@ -216,8 +212,8 @@ internal fun SelectionStudioPanel(
                         StudioMenuItem(text = { Text(tr("Selection settings", "选区设置")) }, onClick = { settingsOpen = false; optionsOpen = true })
                     }
                 }
-                SelectionLauncherButton(Icons.Outlined.Check, tr("Exit selection tool", "退出选区工具"), onDone)
-                SelectionLauncherButton(Icons.Outlined.Close, tr("Deselect and exit", "取消选区并退出"), onDeselect)
+                SelectionBarButton(Icons.Outlined.Check, tr("Exit selection tool", "退出选区工具"), onDone)
+                SelectionBarButton(Icons.Outlined.Close, tr("Deselect and exit", "取消选区并退出"), onDeselect)
             }
             // The current tool's options, where they are used (Photoshop's options bar, CSP's tool property).
             Row(Modifier.fillMaxWidth().heightIn(min = 36.dp).padding(start = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -412,7 +408,7 @@ private fun SelectionStudioAction(icon: ImageVector, label: String, selected: Bo
 }
 
 @Composable
-private fun SelectionLauncherButton(icon: ImageVector, description: String, onClick: () -> Unit) {
+private fun SelectionBarButton(icon: ImageVector, description: String, onClick: () -> Unit) {
     HoverTooltip(description) {
         IconButton(onClick = onClick, modifier = Modifier.size(40.dp).semantics { contentDescription = description }) {
             Icon(icon, null, Modifier.size(17.dp), tint = Ink)

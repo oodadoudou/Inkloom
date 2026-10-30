@@ -65,8 +65,6 @@ data class AppSettings(
     val toolbarOffsetYDp: Float = 16f,
     val selectionStudioXDp: Float = -1f,
     val selectionStudioYDp: Float = -1f,
-    val selectionLauncherVisible: Boolean = true,
-    val selectionLauncherOrder: String = SelectionLauncherLayout.encode(SelectionLauncherLayout.default),
     val verticalToolbar: Boolean = true,
     val toolbarDock: ToolbarDock = ToolbarDock.LEFT,
     val toolPaletteLayout: String = ToolPaletteLayout.encode(ToolPaletteLayout.defaultEntries),
@@ -273,8 +271,6 @@ class AppSettingsStore(context: Context) {
             layerCommandsAtBottom = preferences.getBoolean("layerCommandsAtBottom", false),
             selectionStudioXDp = preferences.getFloat("selectionStudioXDp", -1f).takeIf(Float::isFinite)?.coerceIn(-1f, 2400f) ?: -1f,
             selectionStudioYDp = preferences.getFloat("selectionStudioYDp", -1f).takeIf(Float::isFinite)?.coerceIn(-1f, 2400f) ?: -1f,
-            selectionLauncherVisible = preferences.getBoolean("selectionLauncherVisible", true),
-            selectionLauncherOrder = SelectionLauncherLayout.encode(SelectionLauncherLayout.decode(preferences.getString("selectionLauncherOrder", null))),
             singleFingerDoubleTapUndo = preferences.getBoolean("singleFingerDoubleTapUndo", true),
             twoFingerDoubleTapUndo = preferences.getBoolean("twoFingerDoubleTapUndo", true),
             threeFingerTapRedo = preferences.getBoolean("threeFingerTapRedo", true),
@@ -448,8 +444,8 @@ class AppSettingsStore(context: Context) {
             .putBoolean("layerCommandsAtBottom", persisted.layerCommandsAtBottom)
             .putFloat("selectionStudioXDp", persisted.selectionStudioXDp.takeIf(Float::isFinite)?.coerceIn(-1f, 2400f) ?: -1f)
             .putFloat("selectionStudioYDp", persisted.selectionStudioYDp.takeIf(Float::isFinite)?.coerceIn(-1f, 2400f) ?: -1f)
-            .putBoolean("selectionLauncherVisible", persisted.selectionLauncherVisible)
-            .putString("selectionLauncherOrder", SelectionLauncherLayout.encode(SelectionLauncherLayout.decode(persisted.selectionLauncherOrder)))
+            // The customizable Procreate-style launcher row was replaced by the fixed selection bar.
+            .remove("selectionLauncherVisible").remove("selectionLauncherOrder")
             .putBoolean("singleFingerDoubleTapUndo", persisted.singleFingerDoubleTapUndo)
             .putBoolean("twoFingerDoubleTapUndo", persisted.twoFingerDoubleTapUndo)
             .putBoolean("threeFingerTapRedo", persisted.threeFingerTapRedo)
