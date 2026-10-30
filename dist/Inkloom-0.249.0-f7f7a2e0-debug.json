@@ -1,0 +1,20 @@
+{
+  "version": "0.249.0",
+  "versionCode": 249,
+  "variant": "debug",
+  "commit": "f7f7a2e00db114f5422536164359d4dcb8cf7f3c",
+  "sha256": "17f17c278deb90ae43996276ba83c09733d7db68bb563a59a6a5c71a33a7b128",
+  "bytes": 184506024,
+  "generatedUtc": "2026-10-30T20:30:40.677044+00:00",
+  "verification": {
+    "JVM": "PASS 1256 tests, 0 failures/errors, 8 skipped",
+    "Android15Targeted": "PASS 188/188 (SelectionWindowRegressionTest, InkloomLaunchTest, InkCanvasNavigationTest, ToolWorkspacePanelsWindowTest, SelectionInteractionTest, LassoSelectionModesTest, FreeLassoInteractionTest, InkCanvasLassoTest, MaterialsWindowTest, CloneStampWindowTest, PenTapWindowTest, ToolRailWindowTest, InkloomPinchThenWriteTest); after the launcher cleanup 53/53 (selection, settings store, rail).",
+    "Android15Full": "Last full run on 0.248.0 (972/973, test-side wait fixed).",
+    "lint": "PASS 0 errors, 114 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS clean install, versionCode 249, cold start ok (1077-1097 ms), crash buffer empty",
+    "DriveDesktop": "APK only, SHA-256 verified in the local sync folder; cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING"
+}
