@@ -189,14 +189,6 @@ class RasterTileEditSession(
         return plan.writeBounds
     }
 
-    /** Materializes only a bounded region of the current private transaction for sampling. */
-    internal fun sampleCurrent(bounds: PixelRect): Bitmap? {
-        requireActive()
-        val clipped = bounds.intersect(PixelRect(0, 0, surface.logicalWidth, surface.logicalHeight))
-        if (clipped.isEmpty) return null
-        return PixelTileBitmapAdapter.render(transaction, clipped)
-    }
-
     private fun materializeRead(plan: RasterRoiPlan, generation: RasterSampleGeneration): Bitmap {
         val requested = requireNotNull(plan.requestedReadBounds)
         val clipped = plan.clippedReadBounds

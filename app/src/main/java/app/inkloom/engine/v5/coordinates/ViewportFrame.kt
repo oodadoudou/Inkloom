@@ -10,7 +10,6 @@ value class ViewportFrameId(val value: Long)
 
 data class ViewportPoint(val x: Float, val y: Float)
 data class PagePoint(val x: Float, val y: Float)
-data class NormalizedPagePoint(val x: Float, val y: Float)
 
 /**
  * One affine truth shared by viewport input and active-stroke rendering.
@@ -50,21 +49,6 @@ internal class ViewportFrame private constructor(
         viewportToPageMatrix().mapPoints(mapped)
         return PagePoint(mapped[0], mapped[1])
     }
-
-    fun pageToNormalized(point: PagePoint): NormalizedPagePoint = NormalizedPagePoint(
-        (point.x / pageWidth).coerceIn(0f, 1f),
-        (point.y / pageHeight).coerceIn(0f, 1f),
-    )
-
-    fun normalizedToPage(point: NormalizedPagePoint): PagePoint = PagePoint(
-        point.x.coerceIn(0f, 1f) * pageWidth,
-        point.y.coerceIn(0f, 1f) * pageHeight,
-    )
-
-    fun isCurrent(frameId: ViewportFrameId): Boolean = id == frameId
-
-    fun copyPageToViewportValues(): FloatArray = pageToViewportValues.copyOf()
-    fun copyViewportToPageValues(): FloatArray = viewportToPageValues.copyOf()
 
     override fun toString(): String =
         "ViewportFrame(id=${id.value}, viewport=${viewportWidth}x$viewportHeight, page=${pageWidth}x$pageHeight, scale=$scale, rotation=$rotationDegrees, pan=($panX,$panY))"

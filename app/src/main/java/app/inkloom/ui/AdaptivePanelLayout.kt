@@ -7,13 +7,6 @@ internal enum class BrushLibraryLayout {
     GRID,
 }
 
-internal enum class BrushLibrarySort {
-    CUSTOM,
-    RECENT,
-    NAME,
-    SIZE,
-}
-
 internal enum class ToolLibraryLayout {
     LIST,
     GRID,

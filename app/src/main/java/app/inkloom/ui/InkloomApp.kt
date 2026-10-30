@@ -124,7 +124,6 @@ import kotlinx.coroutines.withContext
 
 private enum class AppDestination { LIBRARY, EDITOR }
 internal enum class BrushBatchGroupOperation { MOVE, COPY }
-private const val UNGROUPED_BRUSH_FILTER = "\u0000ungrouped"
 internal val LocalUiLanguage = staticCompositionLocalOf { UiLanguage.ENGLISH }
 
 private class ColorDropDragShadow(private val color: Int) : View.DragShadowBuilder() {
@@ -148,10 +147,6 @@ internal fun tr(english: String, simplifiedChinese: String): String = LocalUiLan
 
 @Composable
 internal fun pageCount(count: Int): String = tr(if (count == 1) "1 page" else "$count pages", "$count 页")
-
-@Composable
-private fun layerBlendModeLabel(mode: LayerBlendMode): String =
-    LayerBlendModeDisplayName.of(mode, LocalUiLanguage.current)
 
 @Composable
 internal fun localizedShapeKind(kind: ShapeKind): String = when (kind) {
@@ -184,13 +179,6 @@ internal fun localizedImageMask(mask: ImageMask): String = when (mask) {
     ImageMask.RECTANGLE -> tr("Rectangle", "矩形")
     ImageMask.ROUNDED -> tr("Rounded", "圆角")
     ImageMask.OVAL -> tr("Oval", "椭圆")
-}
-
-@Composable
-private fun localizedTaperMode(mode: BrushTaperMode): String = when (mode) {
-    BrushTaperMode.DISTANCE -> tr("Distance", "距离")
-    BrushTaperMode.PERCENTAGE -> tr("Percentage", "百分比")
-    BrushTaperMode.FADE -> tr("Fade", "淡出")
 }
 
 @Composable
@@ -3342,7 +3330,7 @@ private fun EditorScreen(
                         else -> Unit
                     }
                     syncCanvasInput(prepareAssets = activeBrush != null)
-                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, referenceTarget = settings.referenceTarget, onReferenceTarget = { onSettingsChange(settings.copy(referenceTarget = it)) }, correctLineMode = settings.correctLineMode, correctLineAmount = settings.correctLineAmount, onCorrectLineMode = { onSettingsChange(settings.copy(correctLineMode = it)) }, onCorrectLineAmount = { onSettingsChange(settings.copy(correctLineAmount = it.coerceIn(0f, 1f))) }, eraserPreset = settings.eraserPreset, onEraserPreset = { preset -> onSettingsChange(settings.copy(eraserPreset = preset, nonDestructiveEraser = preset.usesMask)) }, rulerEnabled = settings.rulerEnabled, rulerSnapDegrees = settings.rulerSnapDegrees, onToggleRuler = { onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) }, onRulerSnap = { onSettingsChange(settings.copy(rulerSnapDegrees = it)) }, onResetRuler = { onSettingsChange(settings.copy(rulerCenterX = .5f, rulerCenterY = .5f, rulerAngleDegrees = 0f)) }, gridSnapEnabled = settings.gridSnapEnabled, gridSpacing = settings.gridSpacing, alignmentGuidesEnabled = settings.alignmentGuidesEnabled, onToggleGridSnap = { onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) }, onGridSpacing = { onSettingsChange(settings.copy(gridSpacing = it)) }, onToggleAlignmentGuides = { onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) }, onResetAlignmentGuides = { onSettingsChange(settings.copy(verticalGuideX = .5f, horizontalGuideY = .5f)) }, onDragStart = {
+                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, referenceTarget = settings.referenceTarget, onReferenceTarget = { onSettingsChange(settings.copy(referenceTarget = it)) }, correctLineMode = settings.correctLineMode, correctLineAmount = settings.correctLineAmount, onCorrectLineMode = { onSettingsChange(settings.copy(correctLineMode = it)) }, onCorrectLineAmount = { onSettingsChange(settings.copy(correctLineAmount = it.coerceIn(0f, 1f))) }, eraserPreset = settings.eraserPreset, onEraserPreset = { preset -> onSettingsChange(settings.copy(eraserPreset = preset)) }, rulerEnabled = settings.rulerEnabled, rulerSnapDegrees = settings.rulerSnapDegrees, onToggleRuler = { onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) }, onRulerSnap = { onSettingsChange(settings.copy(rulerSnapDegrees = it)) }, onResetRuler = { onSettingsChange(settings.copy(rulerCenterX = .5f, rulerCenterY = .5f, rulerAngleDegrees = 0f)) }, gridSnapEnabled = settings.gridSnapEnabled, gridSpacing = settings.gridSpacing, alignmentGuidesEnabled = settings.alignmentGuidesEnabled, onToggleGridSnap = { onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) }, onGridSpacing = { onSettingsChange(settings.copy(gridSpacing = it)) }, onToggleAlignmentGuides = { onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) }, onResetAlignmentGuides = { onSettingsChange(settings.copy(verticalGuideX = .5f, horizontalGuideY = .5f)) }, onDragStart = {
                     toolbarDragOrigin = Triple(settings.toolbarDock, toolbarX, toolbarY)
                     toolbarDragTravel = 0f
                     if (settings.toolbarDock == ToolbarDock.FREE) {

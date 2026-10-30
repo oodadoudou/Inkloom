@@ -133,24 +133,5 @@ class ActiveStrokeDeltaTileSurface(
                 ((((source and 0xff) * destinationAlpha + (destination and 0xff) * inverse) / 255).coerceAtMost(destinationAlpha))
         }
 
-        private fun compositeReference(
-            destination: IntArray,
-            source: IntArray,
-            stride: Int,
-            dirtyRect: PixelRect,
-            blend: ActiveStrokeDeltaBlend,
-        ) {
-            for (y in dirtyRect.top until dirtyRect.bottom) {
-                val row = y * stride
-                for (x in dirtyRect.left until dirtyRect.right) {
-                    val index = row + x
-                    destination[index] = when (blend) {
-                        ActiveStrokeDeltaBlend.SOURCE_OVER -> sourceOver(destination[index], source[index])
-                        ActiveStrokeDeltaBlend.DESTINATION_OUT -> destinationOut(destination[index], source[index] ushr 24)
-                        ActiveStrokeDeltaBlend.SOURCE_ATOP -> sourceAtop(destination[index], source[index])
-                    }
-                }
-            }
-        }
     }
 }

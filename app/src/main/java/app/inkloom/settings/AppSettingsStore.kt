@@ -175,7 +175,6 @@ data class AppSettings(
     /** Gutters between divided frames, in page units: left–right and top–bottom. */
     val frameHorizontalGutter: Float = 40f,
     val frameVerticalGutter: Float = 60f,
-    val nonDestructiveEraser: Boolean = false,
     val shortcutBindings: List<ShortcutBinding> = CspShortcutResolver.defaultBindings,
     val shortcutAxisBindings: List<AxisShortcutBinding> = emptyList(),
     val shortcutButtonBindings: List<ButtonShortcutBinding> = emptyList(),
@@ -367,7 +366,6 @@ class AppSettingsStore(context: Context) {
             frameDivision = enumValue(preferences.getString("frameDivision", null), app.inkloom.document.FrameDivision.BORDER_ONLY),
             frameHorizontalGutter = preferences.getFloat("frameHorizontalGutter", 40f).coerceIn(0f, 500f),
             frameVerticalGutter = preferences.getFloat("frameVerticalGutter", 60f).coerceIn(0f, 500f),
-            nonDestructiveEraser = preferences.getBoolean("nonDestructiveEraser", false),
             shortcutBindings = ShortcutBindingCodec.decode(preferences.getString("shortcutBindings", null)),
             shortcutAxisBindings = ToolboxMotionBindingCodec.decodeAxes(preferences.getString("shortcutAxisBindings", null)),
             shortcutButtonBindings = ToolboxMotionBindingCodec.decodeButtons(preferences.getString("shortcutButtonBindings", null)),
@@ -538,7 +536,6 @@ class AppSettingsStore(context: Context) {
             .putString("frameDivision", persisted.frameDivision.name)
             .putFloat("frameHorizontalGutter", persisted.frameHorizontalGutter.coerceIn(0f, 500f))
             .putFloat("frameVerticalGutter", persisted.frameVerticalGutter.coerceIn(0f, 500f))
-            .putBoolean("nonDestructiveEraser", persisted.nonDestructiveEraser)
             .putString("shortcutBindings", ShortcutBindingCodec.encode(persisted.shortcutBindings))
             .putString("shortcutAxisBindings", ToolboxMotionBindingCodec.encodeAxes(persisted.shortcutAxisBindings))
             .putString("shortcutButtonBindings", ToolboxMotionBindingCodec.encodeButtons(persisted.shortcutButtonBindings))

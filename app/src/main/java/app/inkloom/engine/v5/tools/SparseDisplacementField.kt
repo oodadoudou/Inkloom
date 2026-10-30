@@ -240,12 +240,6 @@ internal class SparseDisplacementField(
         )
     }
 
-    private fun nodeAt(gridX: Int, gridY: Int): Pair<Float, Float> {
-        val tile = tiles[tileKey(gridX, gridY)] ?: return 0f to 0f
-        val index = ((gridY % tileNodes) * tileNodes + gridX % tileNodes) * 2
-        return tile[index] to tile[index + 1]
-    }
-
     private fun nodeComponent(gridX: Int, gridY: Int, component: Int): Float {
         val tile = tiles[tileKey(gridX, gridY)] ?: return 0f
         return tile[((gridY % tileNodes) * tileNodes + gridX % tileNodes) * 2 + component]

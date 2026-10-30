@@ -95,11 +95,6 @@ class DocumentSelectionRuntime(
     }
 
     @Synchronized
-    fun clearPage(documentId: String, pageId: String) {
-        states[DocumentPageKey(documentId, pageId)]?.clear()
-    }
-
-    @Synchronized
     fun releasePage(documentId: String, pageId: String) {
         states.remove(DocumentPageKey(documentId, pageId))
     }

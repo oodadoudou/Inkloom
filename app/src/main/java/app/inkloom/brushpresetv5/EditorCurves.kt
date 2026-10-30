@@ -50,7 +50,4 @@ object EditorCurves {
     fun evaluate(points: List<BrushCurvePoint>, input: Float): Float =
         BrushDynamics.curve(points, input.coerceIn(0f, 1f)).coerceIn(0f, 1f)
 
-    /** Applies the pressure mapping formula exactly as production: minimum + (1-minimum)*curve. */
-    fun pressureFactor(minimum: Float, points: List<BrushCurvePoint>, input: Float): Float =
-        BrushDynamics.pressure(enabled = true, minimum = minimum, curve = points, input = input)
 }

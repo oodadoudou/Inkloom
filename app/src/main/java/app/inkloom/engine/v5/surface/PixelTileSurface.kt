@@ -400,18 +400,6 @@ class PixelTileSurface(
         }
     }
 
-    internal fun requireRecordCurrent(
-        record: PixelTileTransactionRecord,
-        direction: HistoryDirection,
-    ) {
-        record.requireOpen()
-        require(record.surfaceId == surfaceId) { "Transaction belongs to another surface" }
-        synchronized(monitor) {
-            check(activeTransactionId == null) { "Cannot inspect history while a write is active" }
-            requireCurrentGenerations(record, record.deltas(), direction)
-        }
-    }
-
     internal fun publishedTile(key: PixelTileKey): PixelTileGeneration? = synchronized(monitor) {
         generations[key]
     }

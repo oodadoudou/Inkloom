@@ -109,10 +109,6 @@ class MaskTileSurfaceSnapshot internal constructor(
         return if (found) PixelRect(left, top, right, bottom) else null
     }
 
-    /** Zero-copy internal read. The alpha array must not be retained or modified. */
-    internal fun <T> readTile(key: PixelTileKey, block: (ByteArray) -> T): T? =
-        tiles[key]?.alpha?.let(block)
-
     fun copyAlpha(source: PixelRect): ByteArray {
         requireInside(source, logicalWidth, logicalHeight)
         val output = ByteArray(Math.multiplyExact(source.width, source.height)) { defaultAlpha.toByte() }

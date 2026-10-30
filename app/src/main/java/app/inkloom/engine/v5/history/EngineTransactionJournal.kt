@@ -25,19 +25,7 @@ class EngineTransactionJournal(private val capacity: Int = 100) {
     fun takeUndo(): EngineTransaction? = undo.removeLastOrNull()?.also(redo::addLast)
 
     @Synchronized
-    fun restoreUndo(edit: EngineTransaction) {
-        if (redo.lastOrNull() === edit) redo.removeLast()
-        undo.addLast(edit)
-    }
-
-    @Synchronized
     fun takeRedo(): EngineTransaction? = redo.removeLastOrNull()?.also(undo::addLast)
-
-    @Synchronized
-    fun restoreRedo(edit: EngineTransaction) {
-        if (undo.lastOrNull() === edit) undo.removeLast()
-        redo.addLast(edit)
-    }
 
     /** Undo and redo steps currently held. */
     val size: Int @Synchronized get() = undo.size + redo.size

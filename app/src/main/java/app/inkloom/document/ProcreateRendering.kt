@@ -30,13 +30,6 @@ object ProcreateRendering {
     fun usesMaximumTransfer(mode: ProcreateRenderingMode): Boolean =
         mode == ProcreateRenderingMode.LIGHT_GLAZE || mode == ProcreateRenderingMode.HEAVY_GLAZE
 
-    fun usesRecursiveMixing(mode: ProcreateRenderingMode): Boolean = when (mode) {
-        ProcreateRenderingMode.HEAVY_GLAZE,
-        ProcreateRenderingMode.UNIFORM_BLENDING,
-        ProcreateRenderingMode.INTENSE_BLENDING -> true
-        else -> false
-    }
-
     /** Calibrated source-over transfer from the official lightest-to-strongest ordering. Uniform
      * Glaze is the identity because Procreate documents it as the Photoshop-style transfer. */
     fun depositedAlpha(mode: ProcreateRenderingMode, alpha: Float): Float {

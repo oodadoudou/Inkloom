@@ -36,8 +36,6 @@ class LayerMaskRuntime(
     val snapshot: MaskTileSurfaceSnapshot get() = surface.snapshot()
     val historyByteSize: Long get() = undoBytes + redoBytes
 
-    fun setEnabled(value: Boolean) { enabled = value }
-
     fun paint(bounds: PixelRect, alpha: ByteArray, rowStride: Int = bounds.width): LayerMaskEdit? =
         edit("paint layer mask") { composeAlpha(bounds, alpha, rowStride, MaskComposeMode.ADD) }
 

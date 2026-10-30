@@ -96,6 +96,5 @@ object ToolboxQuickSlotCodec {
     private fun kotlinx.serialization.json.JsonObject.optionalText(key: String): String = get(key)?.jsonPrimitive?.content.orEmpty()
     private fun kotlinx.serialization.json.JsonObject.optionalFloat(key: String, fallback: Float): Float = runCatching { get(key)?.jsonPrimitive?.float }.getOrNull() ?: fallback
     private fun kotlinx.serialization.json.JsonObject.optionalInt(key: String, fallback: Int): Int = runCatching { get(key)?.jsonPrimitive?.int }.getOrNull() ?: fallback
-    private fun kotlinx.serialization.json.JsonObject.optionalBoolean(key: String, fallback: Boolean = false): Boolean = runCatching { get(key)?.jsonPrimitive?.content?.toBooleanStrict() }.getOrNull() ?: fallback
     private inline fun <reified T : Enum<T>> kotlinx.serialization.json.JsonObject.optionalEnum(key: String, fallback: T): T = runCatching { enumValueOf<T>(optionalText(key)) }.getOrDefault(fallback)
 }

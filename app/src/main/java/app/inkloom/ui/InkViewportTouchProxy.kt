@@ -136,9 +136,6 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         addView(cursorSurface, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
 
-    private fun currentFrame(canvas: InkCanvasView): ViewportFrame? =
-        coordinateMapper.snapshot(this, canvas, canvas.viewportState())
-
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (updatePageActivation(event)) return true
         if (updateImageHold(event)) return true

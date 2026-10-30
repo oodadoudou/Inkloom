@@ -328,7 +328,6 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun deleteMaterial(materialId: String) { mutableMaterials.value = materialStore.delete(materialId); scheduleAssetGarbageCollection() }
-    fun renameMaterial(materialId: String, name: String) { mutableMaterials.value = materialStore.rename(materialId, name) }
 
     /** CSP Create file object: the linked image goes on a new layer named after its file. */
     fun insertFileObject(uri: Uri) {

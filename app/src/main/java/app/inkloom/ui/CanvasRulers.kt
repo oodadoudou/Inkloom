@@ -57,8 +57,6 @@ internal class RulerToolController(private val density: Float) {
     private var editPerspective: app.inkloom.document.PerspectiveRuler? = null
     private var lastTapTime = 0L
 
-    val hasDraft: Boolean get() = draft.isNotEmpty()
-
     fun down(x: Float, y: Float, width: Float, height: Float, scale: Float) {
         dragStartX = x; dragStartY = y; dragX = x; dragY = y; dragging = true
         if (mode != RulerToolMode.EDIT) {

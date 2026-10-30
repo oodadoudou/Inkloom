@@ -37,7 +37,6 @@ import app.inkloom.brushpresetv5.CompiledBrushProgramV5
 import app.inkloom.brushpresetv5.CompiledBrushProgramV5Cache
 import app.inkloom.brushpresetv5.RenderBackend as RenderBackendV5
 import app.inkloom.brushpresetv5.ProceduralTipKind
-import app.inkloom.engine.v5.diagnostics.PaintingTruthDiagnostics
 import app.inkloom.engine.v5.diagnostics.StrokeTrace
 import app.inkloom.engine.v5.diagnostics.BrushExecutionFingerprint
 import app.inkloom.engine.v5.diagnostics.BrushExecutionFingerprints
@@ -255,7 +254,6 @@ class InkCanvasView(context: Context) : View(context) {
             StrokeTrace.enabled = BuildConfig.PAINTING_DIAGNOSTICS && value
             if (!value) {
                 StrokeTrace.reset()
-                PaintingTruthDiagnostics.reset()
                 pendingProjectionStrokeId = null
                 pendingStableFrameStrokeId = null
             }
@@ -711,9 +709,6 @@ class InkCanvasView(context: Context) : View(context) {
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
-    // Stamped brushes can deposit hundreds of dabs per display frame. Reusing these objects keeps
-    // the input/render hot path out of ART's allocator and prevents GC pauses under the pen.
-    private val primaryStampMatrix = Matrix()
     private val paperFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val brushSizePreviewPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val brushSizePreviewTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 30f; typeface = android.graphics.Typeface.DEFAULT_BOLD }
@@ -1774,8 +1769,7 @@ class InkCanvasView(context: Context) : View(context) {
         val tx = stable?.tileCount ?: 0
         val gen = stable?.revision ?: 0L
         val sid = currentStrokeId.take(8)
-        val truth = PaintingTruthDiagnostics.snapshot()
-        val line = "ACT=${if (active) "1" else "0"}  STABLE=${if (stablePresented) "1" else "0"}  TX=$tx  GEN=$gen  DIFF=${truth.totalMismatchCount}  GAP=${truth.presentationGapCount}  FULL=${truth.fullCanvasInvalidationCount}  SID=$sid"
+        val line = "ACT=${if (active) "1" else "0"}  STABLE=${if (stablePresented) "1" else "0"}  TX=$tx  GEN=$gen  SID=$sid"
         val baseline = 38f
         val widthPx = strokeTraceOverlayPaint.measureText(line) + 24f
         strokeTraceOverlayBackground.setShadowLayer(6f, 0f, 0f, Color.BLACK)
@@ -2472,8 +2466,6 @@ class InkCanvasView(context: Context) : View(context) {
         val pixelFormat: PixelTileFormat,
     )
 
-    private fun beginActiveStrokePreview() = Unit
-
     private fun finishActiveStrokePreview() = Unit
 
     private fun releaseActiveStrokePreview() {
@@ -2497,8 +2489,6 @@ class InkCanvasView(context: Context) : View(context) {
         compiledBrushProgramV5?.let(::prepareCompiledBrushAssets)
         eraserTipAssetPath?.let { path -> v5BrushTipMasks.resolve(v5EraserTipRequest(path)) }
     }
-
-    fun prewarmBrushAssets() = prepareBrushAssetsNow()
 
     fun switchInputConfiguration(nextTool: EditorTool, nextBrushId: String?) {
         if (configuredInputTool == nextTool && configuredInputBrushId == nextBrushId) return
@@ -5478,8 +5468,6 @@ class InkCanvasView(context: Context) : View(context) {
         )
     }
 
-    private fun normalizeAngleDelta(first: Float, second: Float): Float = ((first - second + 180f).mod(360f)) - 180f
-
     private fun recordRasterToolTransaction(
         layerId: String,
         surface: PixelTileSurface,
@@ -6056,8 +6044,6 @@ class InkCanvasView(context: Context) : View(context) {
         if (activeTool != EditorTool.RULER) rulerTool.rulers = layers[activeLayerId]?.let { RulerCrop.project(it, crop) }
         invalidate()
     }
-
-    internal fun layerRulers(layerId: String): app.inkloom.document.LayerRulers? = documentRulers[layerId]
 
     /** Saves a change to a layer's rulers without history; returns the rulers before and after. */
     private fun changeLayerRulers(layerId: String, change: (app.inkloom.document.LayerRulers?) -> app.inkloom.document.LayerRulers?):
@@ -7454,10 +7440,6 @@ class InkCanvasView(context: Context) : View(context) {
         documentSelectionState?.key == app.inkloom.engine.v5.selection.DocumentPageKey(documentId, pageId)
     internal fun refreshSelectionTransferPixels() { invalidateLayerComposition(); invalidate() }
 
-    fun copySelection() {
-        if (copySelectionToClipboard()) pasteSelectionFromClipboard()
-    }
-
     fun copySelectionToClipboard(): Boolean {
         finishSelectionTransform(apply = true)
         val selection = selectionMaskForRasterTools()
@@ -7955,12 +7937,6 @@ class InkCanvasView(context: Context) : View(context) {
         invalidate()
     }
 
-    internal fun setSelectionTransformDimensions(width: Float, height: Float, angle: Float) {
-        if (!listOf(width, height, angle).all(Float::isFinite) || width < 1f || height < 1f) return
-        val draft = selectionCanvasTransform ?: return
-        draft.setGeometry(draft.pivotX, draft.pivotY, width, height, angle)
-    }
-
     internal fun setSelectionTransformGeometry(x: Float, y: Float, width: Float, height: Float, angle: Float) {
         selectionCanvasTransform?.setGeometry(x, y, width, height, angle)
     }
@@ -8439,5 +8415,4 @@ class InkCanvasView(context: Context) : View(context) {
         return (channel(24) shl 24) or (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
     }
 
-    private fun Float?.orDefault() = this ?: 1f
 }

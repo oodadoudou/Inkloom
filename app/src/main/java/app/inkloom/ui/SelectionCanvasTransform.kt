@@ -83,11 +83,6 @@ internal class SelectionCanvasTransform(
         return true
     }
     fun clearPuppetPins() { puppetPins.clear(); reset() }
-    fun alignToCanvas(alignment: SelectionAlignment) {
-        val next = pose.aligned(alignment, rasterWidth.toFloat(), rasterHeight.toFloat())
-        pivotX += next.centerX - pose.centerX; pivotY += next.centerY - pose.centerY
-        replace(next)
-    }
     fun alignToBounds(alignment: SelectionAlignment, referenceLeft: Float, referenceTop: Float,
                       referenceRight: Float, referenceBottom: Float) {
         val corners = pose.sourceCorners()

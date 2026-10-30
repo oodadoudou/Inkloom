@@ -310,16 +310,6 @@ private fun SelectionShape.icon(): ImageVector = when (this) {
     SelectionShape.SMART_BORDER -> Icons.Outlined.HighlightAlt
 }
 
-@Composable
-internal fun selectionToolName(shape: SelectionShape): String = when (shape) {
-    SelectionShape.MAGIC_WAND -> tr("Magic wand", "魔棒")
-    SelectionShape.FREEFORM -> tr("Lasso", "套索")
-    SelectionShape.RECTANGLE -> tr("Rectangle", "矩形")
-    SelectionShape.ELLIPSE -> tr("Ellipse", "椭圆")
-    SelectionShape.BRUSH -> tr("Selection pen", "选区笔")
-    SelectionShape.SMART_BORDER -> tr("Smart border", "智能边界")
-}
-
 /** Named as a selection tool, so the bar's magic wand differs from the rail's. */
 @Composable
 private fun selectionToolDescription(shape: SelectionShape): String = when (shape) {

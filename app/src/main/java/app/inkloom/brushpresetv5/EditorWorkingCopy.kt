@@ -75,13 +75,5 @@ class EditorWorkingCopy private constructor(
         fun start(source: OwnedBrushPreset): EditorWorkingCopy =
             EditorWorkingCopy(source, source.preset)
 
-        /** Starts a from-scratch session (no source; saving creates a fresh user preset). */
-        fun startFresh(preset: BrushPresetV5): EditorWorkingCopy {
-            val owned = OwnedBrushPreset(
-                preset = preset,
-                ownership = PresetOwnership.User(userId = preset.identity.id, derivedFromFactoryId = null),
-            )
-            return EditorWorkingCopy(owned, preset)
-        }
     }
 }

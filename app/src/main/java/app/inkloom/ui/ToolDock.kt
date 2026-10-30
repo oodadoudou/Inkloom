@@ -68,23 +68,6 @@ private fun EraserPreset.displayName(): String = when (this) {
 }
 
 @Composable
-private fun EraserPresetMenu(selected: EraserPreset, onSelect: (EraserPreset) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        TextButton(onClick = { expanded = true }) { Text(selected.displayName()) }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            EraserPreset.entries.forEach { preset ->
-                StudioMenuItem(
-                    text = { Text(preset.displayName()) },
-                    leadingIcon = { if (preset == selected) Icon(Icons.Outlined.Check, null) },
-                    onClick = { expanded = false; onSelect(preset) },
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun EraserPresetPicker(selected: EraserPreset, onSelect: (EraserPreset) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         EraserPreset.entries.toList().chunked(3).forEach { row ->
@@ -905,48 +888,6 @@ private fun CspToolbarColorSwatches(color: Int, onColor: (Int) -> Unit) {
             ),
         )
     }
-}
-
-private data class HslColor(val hue: Float, val saturation: Float, val lightness: Float)
-
-private fun colorToHsl(color: Int): HslColor {
-    val red = AndroidColor.red(color) / 255f
-    val green = AndroidColor.green(color) / 255f
-    val blue = AndroidColor.blue(color) / 255f
-    val maximum = maxOf(red, green, blue)
-    val minimum = minOf(red, green, blue)
-    val delta = maximum - minimum
-    val lightness = (maximum + minimum) / 2f
-    val saturation = if (delta == 0f) 0f else delta / (1f - kotlin.math.abs(2f * lightness - 1f))
-    val hueSector = when {
-        delta == 0f -> 0f
-        maximum == red -> ((green - blue) / delta) % 6f
-        maximum == green -> (blue - red) / delta + 2f
-        else -> (red - green) / delta + 4f
-    }
-    return HslColor((hueSector * 60f).let { if (it < 0f) it + 360f else it }, saturation.coerceIn(0f, 1f), lightness.coerceIn(0f, 1f))
-}
-
-private fun hslToColor(alpha: Int, hue: Float, saturation: Float, lightness: Float): Int {
-    val normalizedHue = ((hue % 360f) + 360f) % 360f
-    val chroma = (1f - kotlin.math.abs(2f * lightness - 1f)) * saturation
-    val section = normalizedHue / 60f
-    val intermediate = chroma * (1f - kotlin.math.abs(section % 2f - 1f))
-    val (rawRed, rawGreen, rawBlue) = when (section.toInt()) {
-        0 -> Triple(chroma, intermediate, 0f)
-        1 -> Triple(intermediate, chroma, 0f)
-        2 -> Triple(0f, chroma, intermediate)
-        3 -> Triple(0f, intermediate, chroma)
-        4 -> Triple(intermediate, 0f, chroma)
-        else -> Triple(chroma, 0f, intermediate)
-    }
-    val match = lightness - chroma / 2f
-    return AndroidColor.argb(
-        alpha,
-        ((rawRed + match) * 255f).toInt().coerceIn(0, 255),
-        ((rawGreen + match) * 255f).toInt().coerceIn(0, 255),
-        ((rawBlue + match) * 255f).toInt().coerceIn(0, 255),
-    )
 }
 
 @Composable

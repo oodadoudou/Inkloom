@@ -413,7 +413,6 @@ internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<St
     val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, page.backgroundFrame, page.backgroundSourceCrop, page.colorManagement, backgroundVisible, rasterRenderWidth) { if (backgroundVisible) runCatching { if(page.colorManagement.highPrecision || page.colorManagement.assignedProfile!=null || page.colorManagement.softProof) assets.renderManagedBackground(page,rasterRenderWidth) else assets.renderBackground(page.background, rasterRenderWidth, page.backgroundRotationQuarterTurns, page.backgroundSourceCrop ?: page.crop) }.getOrNull() else null }
     DisposableEffect(background) { onDispose { background?.recycle() } }
     val paperColor = (page.background as? PageBackground.Paper)?.colorArgb?.let(::Color) ?: Color.White
-    val visibleLayerIds = page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role != LayerRole.FOLDER }.mapTo(mutableSetOf()) { it.id }
     val lockedLayerIds = page.layers.filter { LayerHierarchy.effectiveLocked(page.layers, it) || it.role == LayerRole.FOLDER }.mapTo(mutableSetOf()) { it.id }
     val layerOpacities = page.layers.associate { it.id to it.opacity }
     val layerBlendModes = page.layers.associate { it.id to it.blendMode }
@@ -1303,8 +1302,6 @@ private fun moveElement(element: PageElement, dx: Float, dy: Float): PageElement
     is PageElement.Link -> element.copy(x = (element.x + dx).coerceIn(0f, .98f), y = (element.y + dy).coerceIn(0f, .98f))
 }
 
-private fun resizeElement(element: PageElement, factor: Float): PageElement = setElementSize(element, (element.width * factor).coerceIn(40f, 1600f), (element.height * factor).coerceIn(40f, 2263f))
-private fun rotateElement(element: PageElement, delta: Float): PageElement = setElementRotation(element, ((element.rotationDegrees + delta + 180f) % 360f) - 180f)
 private fun setElementSize(element: PageElement, width: Float, height: Float): PageElement = when (element) { is PageElement.Text -> element.copy(width = width, height = height); is PageElement.Sticky -> element.copy(width = width, height = height); is PageElement.Shape -> element.copy(width = width, height = height); is PageElement.Image -> element.copy(width = width, height = height); is PageElement.Fill -> element.copy(width = width, height = height); is PageElement.Link -> element.copy(width = width, height = height) }
 private fun setElementRotation(element: PageElement, value: Float): PageElement = when (element) { is PageElement.Text -> element.copy(rotationDegrees = value); is PageElement.Sticky -> element.copy(rotationDegrees = value); is PageElement.Shape -> element.copy(rotationDegrees = value); is PageElement.Image -> element.copy(rotationDegrees = value); is PageElement.Fill -> element.copy(rotationDegrees = value); is PageElement.Link -> element.copy(rotationDegrees = value) }
 private fun setElementOpacity(element: PageElement, value: Float): PageElement = when (element) { is PageElement.Text -> element.copy(opacity = value); is PageElement.Sticky -> element.copy(opacity = value); is PageElement.Shape -> element.copy(opacity = value); is PageElement.Image -> element.copy(opacity = value); is PageElement.Fill -> element.copy(opacity = value); is PageElement.Link -> element.copy(opacity = value) }

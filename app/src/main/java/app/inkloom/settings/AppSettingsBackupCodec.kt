@@ -110,7 +110,6 @@ object AppSettingsBackupCodec {
         put("alignToTextPixels", alignToTextPixels); put("alignToVectorPaths", alignToVectorPaths)
         put("frameToolMode", frameToolMode.name); put("frameDivision", frameDivision.name)
         put("frameHorizontalGutter", frameHorizontalGutter); put("frameVerticalGutter", frameVerticalGutter)
-        put("nonDestructiveEraser", nonDestructiveEraser)
         put("rasterFilterPresets",json.parseToJsonElement(RasterFilterPresetsCodec.encode(rasterFilterPresets)))
     }
 
@@ -193,7 +192,6 @@ object AppSettingsBackupCodec {
             frameHorizontalGutter = float("frameHorizontalGutter", defaults.frameHorizontalGutter).coerceIn(0f, 500f),
             frameVerticalGutter = float("frameVerticalGutter", defaults.frameVerticalGutter).coerceIn(0f, 500f),
             correctLineMode = enum("correctLineMode", defaults.correctLineMode), correctLineAmount = float("correctLineAmount", defaults.correctLineAmount).coerceIn(0f, 1f),
-            nonDestructiveEraser = boolean("nonDestructiveEraser", defaults.nonDestructiveEraser),
             rasterFilterPresets = RasterFilterPresetsCodec.decode(get("rasterFilterPresets")?.toString()),
 
         )
