@@ -43,6 +43,7 @@ internal class ColorMixingView @JvmOverloads constructor(context: Context, priva
         set(value) { field = value; if (session.storageFailed) value() }
     private val bitmap = Bitmap.createBitmap(board.width, board.height, Bitmap.Config.ARGB_8888)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val boardBounds = RectF()
     private var pointer = -1
     val ready get() = session.ready
     private val displayPixels = IntArray(board.width * board.height)
@@ -71,7 +72,8 @@ internal class ColorMixingView @JvmOverloads constructor(context: Context, priva
         val scale = contentScale()
         val left = width / 2f - board.width * scale / 2f + panX
         val top = height / 2f - board.height * scale / 2f + panY
-        canvas.drawBitmap(bitmap, null, RectF(left, top, left + board.width * scale, top + board.height * scale), paint)
+        boardBounds.set(left, top, left + board.width * scale, top + board.height * scale)
+        canvas.drawBitmap(bitmap, null, boardBounds, paint)
         if (hoverX >= 0f) {
             val radius = if (tool == MixingBoard.Tool.PICK) 8f * resources.displayMetrics.density else brushRadius * contentScale()
             paint.style = Paint.Style.STROKE; paint.strokeWidth = 3f; paint.color = android.graphics.Color.WHITE

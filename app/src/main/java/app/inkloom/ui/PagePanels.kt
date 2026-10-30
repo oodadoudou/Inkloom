@@ -493,10 +493,25 @@ internal fun PageRail(
     )
 }
 
+/**
+ * Rendered page thumbnails, so scrolling back through a long notebook does not render every page
+ * again. Pages are immutable: an entry is reused only for the same page snapshot.
+ */
+private object PageThumbnailCache {
+    private val cache = object : android.util.LruCache<String, Pair<InkPage, android.graphics.Bitmap>>(32 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: Pair<InkPage, android.graphics.Bitmap>) = value.second.allocationByteCount
+    }
+
+    fun get(page: InkPage): android.graphics.Bitmap? = cache.get(page.id)?.takeIf { it.first === page }?.second
+    fun put(page: InkPage, bitmap: android.graphics.Bitmap) { cache.put(page.id, page to bitmap) }
+}
+
 @Composable
 private fun PageInkPreview(page: InkPage, assets: DocumentAssetService, modifier: Modifier = Modifier) {
-    val thumbnail by produceState<android.graphics.Bitmap?>(initialValue = null, page) {
-        value = withContext(Dispatchers.IO) { runCatching { assets.renderPageBitmap(page, 512) }.getOrNull() }
+    val thumbnail by produceState(initialValue = PageThumbnailCache.get(page), page) {
+        value = PageThumbnailCache.get(page) ?: withContext(Dispatchers.IO) {
+            runCatching { assets.renderPageBitmap(page, 512) }.getOrNull()?.also { PageThumbnailCache.put(page, it) }
+        }
     }
     if (thumbnail != null) {
         Image(

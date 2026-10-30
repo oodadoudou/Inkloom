@@ -10,6 +10,8 @@ class NotebookResumeStore(context: Context) {
         ?.takeIf { saved -> document.pages.any { it.id==saved } }
 
     fun remember(documentId: String, pageId: String) {
+        // Called after every pen-up; skip the preferences file write when the page did not change.
+        if (preferences.getString(documentId,null)==pageId) return
         preferences.edit().putString(documentId,pageId).apply()
     }
 

@@ -1257,11 +1257,20 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         is PageElement.Link -> copy(x = (x + dx).coerceIn(0f, .95f), y = (y + dy).coerceIn(0f, .95f))
     }
 
-    private fun loadFolders(): List<InkFolder> = if (!indexFile.isFile) emptyList() else runCatching { json.decodeFromString<List<InkFolder>>(indexFile.readText()) }.getOrDefault(emptyList())
+    /** Every refresh (each pen-up) asks for the folders; parse library.json only when it changed. */
+    private var cachedFolders: Pair<Pair<Long, Long>, List<InkFolder>>? = null
+    private fun loadFolders(): List<InkFolder> {
+        if (!indexFile.isFile) return emptyList()
+        val stamp = indexFile.lastModified() to indexFile.length()
+        cachedFolders?.let { (cachedStamp, folders) -> if (cachedStamp == stamp) return folders }
+        return runCatching { json.decodeFromString<List<InkFolder>>(indexFile.readText()) }.getOrDefault(emptyList())
+            .also { cachedFolders = stamp to it }
+    }
     private fun saveFolders(folders: List<InkFolder>) {
         val temporary = File(indexFile.parentFile, ".library.json.tmp")
         temporary.writeText(json.encodeToString(folders))
         if (!temporary.renameTo(indexFile)) { indexFile.writeText(temporary.readText()); temporary.delete() }
+        cachedFolders = (indexFile.lastModified() to indexFile.length()) to folders
     }
 
     private fun normalizeTags(tags: List<String>): List<String> = tags.map(String::trim).filter(String::isNotBlank).distinctBy(String::lowercase).take(24)
