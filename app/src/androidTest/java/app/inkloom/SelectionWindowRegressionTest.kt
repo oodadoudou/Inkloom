@@ -102,11 +102,13 @@ class SelectionWindowRegressionTest {
         tap("Selection"); tap("Rectangle selection")
         stroke(pagePoint(view, .16f, .16f), pagePoint(view, .38f, .34f))
         tap("Selection actions"); tap("Convert to text…")
-        compose.waitUntil(20_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
-        val recognized = compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().first()
+        // The dialog's own field, once reading is done (the first recognition loads its model).
+        val field = hasSetTextAction() and androidx.compose.ui.test.hasAnyAncestor(androidx.compose.ui.test.isDialog())
+        compose.waitUntil(30_000) { compose.onAllNodes(field).fetchSemanticsNodes().isNotEmpty() }
+        val recognized = compose.onAllNodes(field).fetchSemanticsNodes().first()
             .config.getOrElseNullable(SemanticsProperties.EditableText) { null }?.text.orEmpty()
         android.util.Log.i("HandwritingToText", "recognized '$recognized'")
-        compose.onNode(hasSetTextAction()).performTextReplacement("Hi there")
+        compose.onNode(field).performTextReplacement("Hi there")
         tap("Replace handwriting")
         compose.waitUntil(15_000) { model.currentPage()?.elements?.any { it is app.inkloom.document.PageElement.Text && it.text == "Hi there" } == true }
         val text = model.currentPage()!!.elements.filterIsInstance<app.inkloom.document.PageElement.Text>().first { it.text == "Hi there" }
