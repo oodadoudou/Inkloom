@@ -2,7 +2,11 @@ package app.inkloom.document
 
 import kotlin.math.hypot
 
-class ThreeFingerTapRedoGesture(
+/**
+ * A short, stationary tap of several fingers: three for redo, four for full screen (Procreate).
+ * The fingers' centre must stay within [movementSlop]; pinching or rotating cancels it.
+ */
+class MultiFingerTapGesture(
     private val movementSlop: Float,
     private val maximumTapDurationMs: Long = 240L,
 ) {
@@ -10,6 +14,9 @@ class ThreeFingerTapRedoGesture(
     private var startX = 0f
     private var startY = 0f
     private var eligible = false
+
+    /** Still a candidate: stationary so far. A hold that stays eligible repeats the action. */
+    val isEligible: Boolean get() = eligible
 
     fun start(timeMs: Long, focusX: Float, focusY: Float) {
         startedAt = timeMs

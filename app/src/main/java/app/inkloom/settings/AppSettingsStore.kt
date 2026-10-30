@@ -73,6 +73,17 @@ data class AppSettings(
     val singleFingerDoubleTapUndo: Boolean = true,
     val twoFingerDoubleTapUndo: Boolean = true,
     val threeFingerTapRedo: Boolean = true,
+    /** Procreate gesture controls: a still finger samples a colour after this delay. */
+    val touchHoldEyedropper: Boolean = true,
+    val touchHoldEyedropperDelayMillis: Long = 400L,
+    /** Four-finger tap hides the panels and toolbar; tap again to bring them back. */
+    val fourFingerTapFullScreen: Boolean = true,
+    /** A fast pinch in snaps the page to fit. */
+    val quickPinchToFit: Boolean = true,
+    /** Three fingers scrubbing side to side clear the current layer (one undo step). */
+    val threeFingerScrubClear: Boolean = true,
+    /** Holding the undo or redo tap repeats it, faster the longer the fingers stay. */
+    val holdToRepeatUndo: Boolean = true,
     val twoFingerRotation: Boolean = true,
     /** One-finger horizontal flick at fit zoom turns the page when the finger is not drawing. */
     val swipeToTurnPages: Boolean = true,
@@ -263,6 +274,12 @@ class AppSettingsStore(context: Context) {
             singleFingerDoubleTapUndo = preferences.getBoolean("singleFingerDoubleTapUndo", true),
             twoFingerDoubleTapUndo = preferences.getBoolean("twoFingerDoubleTapUndo", true),
             threeFingerTapRedo = preferences.getBoolean("threeFingerTapRedo", true),
+            touchHoldEyedropper = preferences.getBoolean("touchHoldEyedropper", true),
+            touchHoldEyedropperDelayMillis = preferences.getLong("touchHoldEyedropperDelayMillis", 400L).coerceIn(100L, 1500L),
+            fourFingerTapFullScreen = preferences.getBoolean("fourFingerTapFullScreen", true),
+            quickPinchToFit = preferences.getBoolean("quickPinchToFit", true),
+            threeFingerScrubClear = preferences.getBoolean("threeFingerScrubClear", true),
+            holdToRepeatUndo = preferences.getBoolean("holdToRepeatUndo", true),
             swipeToTurnPages = preferences.getBoolean("swipeToTurnPages", true),
             continuousPages = preferences.getBoolean("continuousPages", false),
             twoFingerRotation = if (migrateCanvasRotation) true else preferences.getBoolean("twoFingerRotation", true),
@@ -430,6 +447,12 @@ class AppSettingsStore(context: Context) {
             .putBoolean("singleFingerDoubleTapUndo", persisted.singleFingerDoubleTapUndo)
             .putBoolean("twoFingerDoubleTapUndo", persisted.twoFingerDoubleTapUndo)
             .putBoolean("threeFingerTapRedo", persisted.threeFingerTapRedo)
+            .putBoolean("touchHoldEyedropper", persisted.touchHoldEyedropper)
+            .putLong("touchHoldEyedropperDelayMillis", persisted.touchHoldEyedropperDelayMillis.coerceIn(100L, 1500L))
+            .putBoolean("fourFingerTapFullScreen", persisted.fourFingerTapFullScreen)
+            .putBoolean("quickPinchToFit", persisted.quickPinchToFit)
+            .putBoolean("threeFingerScrubClear", persisted.threeFingerScrubClear)
+            .putBoolean("holdToRepeatUndo", persisted.holdToRepeatUndo)
             .putBoolean("swipeToTurnPages", persisted.swipeToTurnPages)
             .putBoolean("continuousPages", persisted.continuousPages)
             .putBoolean("twoFingerRotation", persisted.twoFingerRotation)

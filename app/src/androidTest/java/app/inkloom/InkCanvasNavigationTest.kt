@@ -446,6 +446,128 @@ class InkCanvasNavigationTest {
         assertEquals("Three-finger navigation must never leave ink", 0L, paintSurface(view).revision)
     }
 
+    @Test fun threeFingerTapWithDigitizerJitterStillRedoes() {
+        val view = canvas().apply { fingerDrawingEnabled = false; threeFingerTapRedo = true }
+        var redoCount = 0
+        view.onRedoGesture = { redoCount++ }
+        send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 100f, 100f))
+        send(view, 20L, pointerDown(1), point(0, 100f, 100f), point(1, 220f, 100f))
+        send(view, 40L, pointerDown(2), point(0, 100f, 100f), point(1, 220f, 100f), point(2, 160f, 210f))
+        send(view, 70L, MotionEvent.ACTION_MOVE, point(0, 101f, 101f), point(1, 221f, 100f), point(2, 160f, 211f))
+        send(view, 100L, pointerUp(2), point(0, 101f, 101f), point(1, 221f, 100f), point(2, 160f, 211f))
+        send(view, 120L, pointerUp(1), point(0, 101f, 101f), point(1, 221f, 100f))
+        send(view, 140L, MotionEvent.ACTION_UP, point(0, 101f, 101f))
+        assertEquals(1, redoCount)
+    }
+
+    @Test fun fourFingerTapTogglesFullScreenWithoutRedoOrUndo() {
+        val view = canvas().apply { fingerDrawingEnabled = false }
+        val actions = mutableListOf<ShortcutAction>()
+        var undoOrRedo = 0
+        view.onShortcutAction = { actions += it.action }
+        view.onUndoGesture = { undoOrRedo++ }; view.onRedoGesture = { undoOrRedo++ }
+        val fingers = arrayOf(point(0, 100f, 100f), point(1, 220f, 100f), point(2, 340f, 110f), point(3, 460f, 140f))
+        send(view, 0L, MotionEvent.ACTION_DOWN, fingers[0])
+        for (count in 2..4) send(view, 10L * count, pointerDown(count - 1), *fingers.copyOfRange(0, count))
+        send(view, 120L, pointerUp(3), *fingers)
+        send(view, 130L, pointerUp(2), *fingers.copyOfRange(0, 3))
+        send(view, 140L, pointerUp(1), *fingers.copyOfRange(0, 2))
+        send(view, 150L, MotionEvent.ACTION_UP, fingers[0])
+        assertEquals(listOf(ShortcutAction.TOGGLE_PANELS), actions)
+        assertEquals(0, undoOrRedo)
+    }
+
+    @Test fun aQuickPinchFitsThePageAndASlowPinchOnlyZooms() {
+        val view = canvas().apply { fingerDrawingEnabled = false; twoFingerRotationEnabled = false }
+        val actions = mutableListOf<ShortcutAction>()
+        view.onShortcutAction = { actions += it.action }
+        fun pinch(start: Long, duration: Long) {
+            send(view, start, MotionEvent.ACTION_DOWN, point(0, 300f, 500f))
+            send(view, start + 10L, pointerDown(1), point(0, 300f, 500f), point(1, 700f, 500f))
+            send(view, start + duration / 2, MotionEvent.ACTION_MOVE, point(0, 380f, 500f), point(1, 620f, 500f))
+            send(view, start + duration, MotionEvent.ACTION_MOVE, point(0, 450f, 500f), point(1, 550f, 500f))
+            send(view, start + duration + 10L, pointerUp(1), point(0, 450f, 500f), point(1, 550f, 500f))
+            send(view, start + duration + 20L, MotionEvent.ACTION_UP, point(0, 450f, 500f))
+        }
+        pinch(1_000L, 150L)
+        assertEquals(listOf(ShortcutAction.FIT_PAGE), actions)
+        pinch(5_000L, 700L)
+        assertEquals("a slow pinch is ordinary zooming", listOf(ShortcutAction.FIT_PAGE), actions)
+    }
+
+    @Test fun threeFingerScrubClearsTheLayerAsOneUndoStep() {
+        val view = canvas().apply { tool = EditorTool.PEN; fingerDrawingEnabled = false }
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 100f, 300f)
+        sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 400f, 300f)
+        sendStylus(view, 40L, MotionEvent.ACTION_UP, 600f, 300f)
+        assertTrue(paintSurface(view).tileCount > 0)
+        val y = arrayOf(500f, 520f, 640f)
+        fun at(dx: Float) = arrayOf(point(0, 300f + dx, y[0]), point(1, 420f + dx, y[1]), point(2, 360f + dx, y[2]))
+        send(view, 5_000L, MotionEvent.ACTION_DOWN, at(0f)[0])
+        send(view, 5_010L, pointerDown(1), *at(0f).copyOfRange(0, 2))
+        send(view, 5_020L, pointerDown(2), *at(0f))
+        listOf(150f, 0f, 150f, 0f, 150f).forEachIndexed { index, dx -> send(view, 5_080L + index * 60L, MotionEvent.ACTION_MOVE, *at(dx)) }
+        send(view, 5_500L, pointerUp(2), *at(150f))
+        send(view, 5_510L, pointerUp(1), *at(150f).copyOfRange(0, 2))
+        send(view, 5_520L, MotionEvent.ACTION_UP, at(150f)[0])
+        settlePublishedStroke(view)
+        assertEquals(0, paintSurface(view).tileCount)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.undo() }
+        settlePublishedStroke(view)
+        assertTrue("undo brings the layer back", paintSurface(view).tileCount > 0)
+    }
+
+    @Test fun touchAndHoldSamplesWithARingAndNeverPans() {
+        val view = canvas().apply { tool = EditorTool.PEN; fingerDrawingEnabled = false }
+        repeat(6) { row ->
+            sendStylus(view, row * 60L, MotionEvent.ACTION_DOWN, 100f, 296f + row * 2f)
+            sendStylus(view, row * 60L + 20L, MotionEvent.ACTION_MOVE, 400f, 296f + row * 2f)
+            sendStylus(view, row * 60L + 40L, MotionEvent.ACTION_UP, 600f, 296f + row * 2f)
+        }
+        val sampled = mutableListOf<Int>()
+        var panned = 0f
+        view.onColorSampled = { sampled += it }
+        view.onViewportPan = { dx, dy -> panned += dx + dy }
+        send(view, 5_000L, MotionEvent.ACTION_DOWN, point(0, 350f, 300f))
+        send(view, 5_050L, MotionEvent.ACTION_MOVE, point(0, 352f, 301f))
+        Thread.sleep(700L)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { }
+        assertTrue("holding still picks a colour", sampled.isNotEmpty())
+        assertTrue("the ring shows while held", view.eyedropperRingColors() != null)
+        send(view, 5_800L, MotionEvent.ACTION_MOVE, point(0, 450f, 301f))
+        send(view, 5_900L, MotionEvent.ACTION_UP, point(0, 450f, 301f))
+        assertEquals(null, view.eyedropperRingColors())
+        assertEquals("sampling never moves the canvas", 0f, panned, .001f)
+    }
+
+    @Test fun holdingTwoFingersKeepsUndoingUntilTheyLift() {
+        val view = canvas().apply { fingerDrawingEnabled = false; twoFingerDoubleTapUndo = true }
+        var undoCount = 0
+        view.onUndoGesture = { undoCount++ }
+        send(view, 1_000L, MotionEvent.ACTION_DOWN, point(0, 300f, 300f))
+        send(view, 1_020L, pointerDown(1), point(0, 300f, 300f), point(1, 500f, 300f))
+        Thread.sleep(1_300L)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { }
+        send(view, 2_400L, pointerUp(1), point(0, 300f, 300f), point(1, 500f, 300f))
+        send(view, 2_410L, MotionEvent.ACTION_UP, point(0, 300f, 300f))
+        val held = undoCount
+        assertTrue("rapid undo repeats, got $held", held >= 3)
+        Thread.sleep(400L)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { }
+        assertEquals("lifting stops it", held, undoCount)
+    }
+
+    @Test fun deleteWithNothingSelectedClearsTheLayer() {
+        val view = canvas().apply { tool = EditorTool.PEN }
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 100f, 300f)
+        sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 400f, 300f)
+        sendStylus(view, 40L, MotionEvent.ACTION_UP, 600f, 300f)
+        assertTrue(paintSurface(view).tileCount > 0)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.deleteSelection() }
+        settlePublishedStroke(view)
+        assertEquals(0, paintSurface(view).tileCount)
+    }
+
     @Test fun holdShortcutEmitsPressAndReleaseForTemporaryToolSwitching() {
         val view = canvas().apply {
             shortcutBindings = listOf(ShortcutBinding(ShortcutAction.TOGGLE_ERASER, ShortcutChord(KeyEvent.KEYCODE_E), ShortcutTrigger.HOLD))
@@ -763,6 +885,8 @@ class InkCanvasNavigationTest {
     }
 
     private fun paintSurface(view: InkCanvasView): PixelTileSurface = requireNotNull(paintSurfaces[view])
+    private fun pointerDown(index: Int) = MotionEvent.ACTION_POINTER_DOWN or (index shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+    private fun pointerUp(index: Int) = MotionEvent.ACTION_POINTER_UP or (index shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
 
     private fun point(id: Int, x: Float, y: Float): Pair<MotionEvent.PointerProperties, MotionEvent.PointerCoords> =
         MotionEvent.PointerProperties().apply { this.id = id; toolType = MotionEvent.TOOL_TYPE_FINGER } to

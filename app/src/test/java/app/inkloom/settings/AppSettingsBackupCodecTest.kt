@@ -23,6 +23,18 @@ class AppSettingsBackupCodecTest {
         assertEquals(UiGrayTheme.DEFAULT, UiGrayTheme.decode("future-theme"))
     }
 
+    @Test fun `procreate gesture controls round trip and old backups turn them on`() {
+        val custom = AppSettings(touchHoldEyedropper = false, touchHoldEyedropperDelayMillis = 900L, fourFingerTapFullScreen = false,
+            quickPinchToFit = false, threeFingerScrubClear = false, holdToRepeatUndo = false)
+        val restored = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(custom)).getOrThrow().settings
+        assertFalse(restored.touchHoldEyedropper); assertEquals(900L, restored.touchHoldEyedropperDelayMillis)
+        assertFalse(restored.fourFingerTapFullScreen); assertFalse(restored.quickPinchToFit)
+        assertFalse(restored.threeFingerScrubClear); assertFalse(restored.holdToRepeatUndo)
+        val old = AppSettingsBackupCodec.decode("""{"format":"inkloom-app-settings","version":1,"settings":{}}""".encodeToByteArray()).getOrThrow().settings
+        assertTrue(old.touchHoldEyedropper && old.fourFingerTapFullScreen && old.quickPinchToFit && old.threeFingerScrubClear && old.holdToRepeatUndo)
+        assertEquals(400L, old.touchHoldEyedropperDelayMillis)
+    }
+
     @Test fun `draft reference exclusion can be disabled and old backups keep exclusion`() {
         val restored = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(
             AppSettings(excludeDraftLayersFromReference = false))).getOrThrow().settings

@@ -192,7 +192,7 @@ import app.inkloom.document.CorrectLineMode
 import app.inkloom.document.StylusInputClassifier
 import app.inkloom.document.TwoFingerTapUndoGesture
 import app.inkloom.document.TwoPointerRotationGesture
-import app.inkloom.document.ThreeFingerTapRedoGesture
+import app.inkloom.document.MultiFingerTapGesture
 import app.inkloom.document.ViewportTransform
 import app.inkloom.document.FloodFill
 import app.inkloom.document.LiquifyMode
@@ -565,7 +565,58 @@ class InkCanvasView(context: Context) : View(context) {
     private val navigationTouchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val singleFingerDoubleTapUndoGesture = SingleFingerDoubleTapUndoGesture(navigationTouchSlop)
     private val twoFingerTapUndoGesture = TwoFingerTapUndoGesture(navigationTouchSlop)
-    private val threeFingerTapRedoGesture = ThreeFingerTapRedoGesture(navigationTouchSlop)
+    private val threeFingerTapRedoGesture = MultiFingerTapGesture(navigationTouchSlop)
+    private val gestureHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val fingerGestures = FingerGestureControls(navigationTouchSlop, 24f * resources.displayMetrics.density, object : FingerGestureControls.Host {
+        override fun postDelayed(action: Runnable, delayMillis: Long) = gestureHandler.postDelayed(action, delayMillis)
+        override fun removeCallbacks(action: Runnable): Boolean { gestureHandler.removeCallbacks(action); return true }
+        override fun beginHoldEyedropper() = beginFingerEyedropper()
+        override fun undoGesture() = onUndoGesture()
+        override fun redoGesture() = onRedoGesture()
+        override fun toggleFullScreen() = onShortcutAction(ShortcutActivation(ShortcutAction.TOGGLE_PANELS, ShortcutPhase.PRESS, ShortcutTrigger.PRESS))
+        override fun fitToScreen() = onShortcutAction(ShortcutActivation(ShortcutAction.FIT_PAGE, ShortcutPhase.PRESS, ShortcutTrigger.PRESS))
+        override fun clearLayer() { clearLayerContents() }
+    })
+    /** Procreate gesture controls: eyedropper hold, full screen, quick pinch, scrub, rapid undo. */
+    internal var fingerGestureSettings: FingerGestureSettings
+        get() = fingerGestures.settings
+        set(value) { if (fingerGestures.settings != value) fingerGestures.settings = value }
+    /** Set by the viewport proxy when a contact starts on an image, whose long press edits it instead. */
+    internal var touchHoldBlocked = false
+    private var fingerEyedropperActive = false
+    private var fingerHoldX = 0f
+    private var fingerHoldY = 0f
+    private var eyedropperPreviousColor = 0
+    @Volatile private var eyedropperRing: IntArray? = null
+
+    /** The sampling ring while an eyedropper contact is down: [sampled colour, colour before it], or null. */
+    internal fun eyedropperRingColors(): IntArray? = eyedropperRing
+
+    private fun beginFingerEyedropper(): Boolean {
+        if (activeTool != null) return false
+        fingerEyedropperActive = true
+        navigationTapEligible = false
+        navigationSwipeEligible = false
+        singleFingerDoubleTapUndoGesture.cancel()
+        // The finger may have nudged the view while it was deciding; put the view back.
+        onViewportPan(-navigationSwipePanX, -navigationSwipePanY)
+        navigationSwipePanX = 0f; navigationSwipePanY = 0f
+        performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        eyedropperPreviousColor = inkColor
+        sampleEyedropperAt(fingerHoldX, fingerHoldY)
+        return true
+    }
+
+    private fun sampleEyedropperAt(x: Float, y: Float) {
+        val color = sampleRenderedColor(x, y) ?: return
+        eyedropperRing = intArrayOf(color, eyedropperPreviousColor)
+        onColorSampled(color)
+    }
+
+    private fun endEyedropperContact() {
+        fingerEyedropperActive = false
+        eyedropperRing = null
+    }
     private val twoPointerRotationGesture = TwoPointerRotationGesture()
     private val colorSampleBitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
     private var activeTool: EditorTool? = null
@@ -1194,6 +1245,8 @@ class InkCanvasView(context: Context) : View(context) {
             singleFingerDoubleTapUndoGesture.cancel()
             twoFingerTapUndoGesture.cancel()
             threeFingerTapRedoGesture.cancel()
+            fingerGestures.cancel()
+            endEyedropperContact()
             twoPointerRotationGesture.reset()
             shortcutAxisAccumulator.clear()
             heldMotionButtons.values.forEach { binding ->
@@ -2013,6 +2066,8 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onDetachedFromWindow() {
+        fingerGestures.cancel()
+        endEyedropperContact()
         colorPreview?.close();colorPreview=null
         colorBackgroundPreview?.close();colorBackgroundPreview=null;colorBackdropPixels=null
         clearLiquifyReconstruction()
@@ -2713,12 +2768,18 @@ class InkCanvasView(context: Context) : View(context) {
                     if (singleFingerDoubleTapUndo && navigationTapEligible) {
                         singleFingerDoubleTapUndoGesture.start(event.eventTime, event.x, event.y)
                     } else singleFingerDoubleTapUndoGesture.cancel()
+                    endEyedropperContact()
+                    fingerHoldX = inputPoint.first; fingerHoldY = inputPoint.second
+                    fingerGestures.fingerDown(navigationTapEligible && !forceNavigation && !buttonForcesNavigation &&
+                        !rotateNavigation && !viewportGestureActive && !touchHoldBlocked)
                 }
                 MotionEvent.ACTION_POINTER_DOWN -> {
                     navigationMoved = true
                     navigationTapEligible = false
                     navigationSwipeEligible = false
                     singleFingerDoubleTapUndoGesture.cancel()
+                    endEyedropperContact()
+                    event.centroid().let { (x, y) -> fingerGestures.pointersDown(event.pointerCount, event.eventTime, x, y, event.localSpan()) }
                     if (event.pointerCount == 3 && threeFingerTapRedo) {
                         twoFingerTapUndoGesture.cancel()
                         val focus = event.centroid()
@@ -2741,6 +2802,7 @@ class InkCanvasView(context: Context) : View(context) {
                     } else twoPointerRotationGesture.reset()
                 }
                 MotionEvent.ACTION_POINTER_UP -> {
+                    fingerGestures.pointerUp(event.pointerCount, event.eventTime, event.localSpan(), navigationGestureRotation)
                     if (event.pointerCount == 3 && threeFingerTapRedo && threeFingerTapRedoGesture.finish(event.eventTime)) onRedoGesture()
                     else if (event.pointerCount == 2 && twoFingerDoubleTapUndo && twoFingerTapUndoGesture.finish(event.eventTime)) onUndoGesture()
                     ViewportTransform.remainingPointerIndex(event.pointerCount, event.actionIndex)?.let { remaining ->
@@ -2770,11 +2832,10 @@ class InkCanvasView(context: Context) : View(context) {
                         navigationGestureRotation += kotlin.math.abs(delta)
                         onViewportRotate(delta)
                     }
-                    if (event.pointerCount == 3) threeFingerTapRedoGesture.move(focus.first, focus.second, transforming = true)
-                    else twoFingerTapUndoGesture.move(
-                        event.getX(0),event.getY(0),event.getX(1),event.getY(1),
-                        transforming = kotlin.math.abs(span - navigationGestureStartSpan) > navigationTouchSlop || navigationGestureRotation > 2f,
-                    )
+                    val transforming = kotlin.math.abs(span - navigationGestureStartSpan) > navigationTouchSlop || navigationGestureRotation > 2f
+                    if (event.pointerCount == 3) threeFingerTapRedoGesture.move(focus.first, focus.second, transforming)
+                    else twoFingerTapUndoGesture.move(event.getX(0), event.getY(0), event.getX(1), event.getY(1), transforming)
+                    fingerGestures.pointersMoved(event.pointerCount, event.eventTime, focus.first, focus.second, transforming)
                     onViewportPinch?.invoke(factor, navigationX, navigationY, focus.first, focus.second) ?: run {
                         if (factor != 1f) onViewportScale(factor, navigationX, navigationY)
                         onViewportPan(focus.first - navigationX, focus.second - navigationY)
@@ -2787,9 +2848,12 @@ class InkCanvasView(context: Context) : View(context) {
                     onViewportRotate((event.x - navigationX) * VIEW_ROTATION_DEGREES_PER_PIXEL)
                     navigationX = event.x; navigationY = event.y
                     navigationMoved = true
+                } else if (fingerEyedropperActive) {
+                    sampleEyedropperAt(inputPoint.first, inputPoint.second)
                 } else {
                     singleFingerDoubleTapUndoGesture.move(event.x, event.y, transforming = false)
-                    if (hypot(event.x - navigationDownX, event.y - navigationDownY) > navigationTouchSlop) navigationMoved = true
+                    fingerHoldX = inputPoint.first; fingerHoldY = inputPoint.second
+                    if (hypot(event.x - navigationDownX, event.y - navigationDownY) > navigationTouchSlop) { navigationMoved = true; fingerGestures.fingerMoved() }
                     onViewportPan(event.x - navigationX, event.y - navigationY)
                     navigationSwipePanX += event.x - navigationX; navigationSwipePanY += event.y - navigationY
                     navigationX = event.x; navigationY = event.y
@@ -2798,6 +2862,15 @@ class InkCanvasView(context: Context) : View(context) {
                     twoPointerRotationGesture.reset()
                     navigationSpan = 0f
                     threeFingerTapRedoGesture.cancel()
+                    fingerGestures.cancel()
+                    if (fingerEyedropperActive) {
+                        sampleEyedropperAt(inputPoint.first, inputPoint.second)
+                        endEyedropperContact()
+                        navigationTapEligible = false
+                        navigationSwipeEligible = false
+                        viewportGestureActive = false
+                        return true
+                    }
                     val movedFromDown = navigationMoved || hypot(event.x - navigationDownX, event.y - navigationDownY) > navigationTouchSlop
                     if (navigationTapEligible && !movedFromDown && !viewportGestureActive) {
                         val link = PdfGotoLinkNavigation.hit(
@@ -2832,6 +2905,8 @@ class InkCanvasView(context: Context) : View(context) {
                     singleFingerDoubleTapUndoGesture.cancel()
                     twoFingerTapUndoGesture.cancel()
                     threeFingerTapRedoGesture.cancel()
+                    fingerGestures.cancel()
+                    endEyedropperContact()
                     twoPointerRotationGesture.reset()
                     navigationSpan = 0f
                     stylusHandNavigationContact = false
@@ -2906,7 +2981,8 @@ class InkCanvasView(context: Context) : View(context) {
                     return true
                 }
                 if (activeTool == EditorTool.EYEDROPPER) {
-                    sampleRenderedColor(inputPoint.first, inputPoint.second)?.let(onColorSampled)
+                    eyedropperPreviousColor = inkColor
+                    sampleEyedropperAt(inputPoint.first, inputPoint.second)
                     return true
                 }
                 if (activeTool == EditorTool.SELECT) {
@@ -3042,7 +3118,7 @@ class InkCanvasView(context: Context) : View(context) {
                     v5PaintFinishedWithDamageInvalidation = true
                 }
                 else if (activeTool == EditorTool.EYEDROPPER) {
-                    sampleRenderedColor(inputPoint.first, inputPoint.second)?.let(onColorSampled)
+                    sampleEyedropperAt(inputPoint.first, inputPoint.second)
                 }
                 else if (activeTool == EditorTool.SELECT) {
                     if (automaticSelectionDraft != null) {
@@ -3164,7 +3240,8 @@ class InkCanvasView(context: Context) : View(context) {
                     v5PaintFinishedWithDamageInvalidation = true
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.EYEDROPPER) {
-                    sampleRenderedColor(inputPoint.first, inputPoint.second)?.let(onColorSampled)
+                    sampleEyedropperAt(inputPoint.first, inputPoint.second)
+                    endEyedropperContact()
                 } else if (activeTool == EditorTool.SELECT) {
                     if (selectionShape == SelectionShape.SMART_BORDER || selectionShape == SelectionShape.MAGIC_WAND) {
                         updateAutomaticSelection(event.getX(pointerIndex))

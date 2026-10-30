@@ -14,6 +14,8 @@ class TwoFingerTapUndoGesture(
     private var secondY = 0f
     private var eligible = false
 
+    val isEligible: Boolean get() = eligible
+
     fun start(firstDownTimeMs: Long, secondDownTimeMs: Long,
         firstX: Float, firstY: Float, secondX: Float, secondY: Float) {
         startedAt = firstDownTimeMs

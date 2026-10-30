@@ -551,6 +551,7 @@ internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<St
                 view.symmetryAssisted = activeDrawingAssist
                 view.twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
                 view.threeFingerTapRedo = settings.threeFingerTapRedo
+                view.fingerGestureSettings = FingerGestureSettings.from(settings)
                 view.twoFingerRotationEnabled = settings.twoFingerRotation && !settings.continuousPages
                 view.onInputDiagnostic = onInputDiagnostic
                 view.showStrokeTraceOverlay = settings.showStrokeTraceOverlay
@@ -674,6 +675,7 @@ internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<St
                 view.symmetryAssisted = activeDrawingAssist
                 view.twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
                 view.threeFingerTapRedo = settings.threeFingerTapRedo
+                view.fingerGestureSettings = FingerGestureSettings.from(settings)
                 view.twoFingerRotationEnabled = settings.twoFingerRotation && !settings.continuousPages
                 view.onInputDiagnostic = onInputDiagnostic
                 view.showStrokeTraceOverlay = settings.showStrokeTraceOverlay
@@ -737,6 +739,7 @@ internal fun InkCanvasView.applyBrushPresetV5Configuration(
     pageSwipeEnabled = settings.swipeToTurnPages && !settings.continuousPages
     twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
     threeFingerTapRedo = settings.threeFingerTapRedo
+    fingerGestureSettings = FingerGestureSettings.from(settings)
     pressureSensitivity = settings.pressureSensitivity
     pressureMinimumInput = settings.pressureMinimumInput
     pressureMaximumInput = settings.pressureMaximumInput
@@ -834,6 +837,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     pageSwipeEnabled = settings.swipeToTurnPages && !settings.continuousPages
     twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
     threeFingerTapRedo = settings.threeFingerTapRedo
+    fingerGestureSettings = FingerGestureSettings.from(settings)
     globalStrokeStabilization = settings.globalStrokeStabilization
     globalMotionFiltering = app.inkloom.brushpresetv5.MotionFilteringSettings(settings.globalMotionFiltering, settings.globalMotionExpression)
     pressureSensitivity = settings.pressureSensitivity

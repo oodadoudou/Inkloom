@@ -149,9 +149,54 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         if (event.actionMasked == MotionEvent.ACTION_DOWN && event.isStylusEvent()) {
             requestUnbufferedDispatch(event)
         }
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) target?.touchHoldBlocked = heldImageId != null
         val handled = forward(event, retainDrawingFrame = true) { canvas, forwarded -> canvas.dispatchTouchEvent(forwarded) }
         updateContactCursor(event)
+        updateEyedropperRing(event)
         return handled
+    }
+
+    /** Procreate's and Photoshop's sampling ring: the sampled colour above, the colour before it below. */
+    private fun updateEyedropperRing(event: MotionEvent) {
+        val colors = target?.eyedropperRingColors()
+        val terminal = event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL
+        if (colors == null || terminal) {
+            if (ringColors != null) { ringColors = null; cursorSurface.renderFrontBufferedLayer() }
+            return
+        }
+        val index = event.stylusPointerIndex(activeStylusPointerId).takeIf { it >= 0 } ?: 0
+        ringX = event.getX(index)
+        ringY = event.getY(index)
+        ringColors = colors
+        cursorSurface.renderFrontBufferedLayer()
+    }
+
+    @Volatile private var ringColors: IntArray? = null
+    @Volatile private var ringX = 0f
+    @Volatile private var ringY = 0f
+    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val ringBounds = android.graphics.RectF()
+
+    @WorkerThread
+    private fun drawEyedropperRing(canvas: Canvas) {
+        val colors = ringColors ?: return
+        val density = resources.displayMetrics.density
+        val radius = EYEDROPPER_RING_RADIUS_DP * density
+        val thickness = EYEDROPPER_RING_THICKNESS_DP * density
+        ringBounds.set(ringX - radius, ringY - radius, ringX + radius, ringY + radius)
+        ringPaint.style = Paint.Style.STROKE
+        ringPaint.strokeWidth = thickness
+        ringPaint.color = colors[0] or 0xFF000000.toInt()
+        canvas.drawArc(ringBounds, 180f, 180f, false, ringPaint)
+        ringPaint.color = colors[1] or 0xFF000000.toInt()
+        canvas.drawArc(ringBounds, 0f, 180f, false, ringPaint)
+        ringPaint.strokeWidth = 1.5f * density
+        ringPaint.color = Color.argb(150, 0, 0, 0)
+        canvas.drawCircle(ringX, ringY, radius + thickness / 2f, ringPaint)
+        canvas.drawCircle(ringX, ringY, radius - thickness / 2f, ringPaint)
+        ringPaint.color = Color.argb(210, 255, 255, 255)
+        canvas.drawCircle(ringX, ringY, radius + thickness / 2f + density, ringPaint)
+        canvas.drawCircle(ringX, ringY, radius - thickness / 2f - density, ringPaint)
     }
 
     private fun updatePageActivation(event: MotionEvent): Boolean {
@@ -192,6 +237,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
     @WorkerThread
     private fun drawCursor(canvas: Canvas) {
         canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
+        drawEyedropperRing(canvas)
         if (!hoverVisible) return
         if (toolCursorGlyph.draw(canvas, hoverToolCode, hoverX, hoverY, resources.displayMetrics.density)) return
         val radiusX = (hoverWidth / 2f).coerceAtLeast(1.5f)
@@ -327,7 +373,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         hoverHasDirection = false
         hoverDynamicRotationDegrees = 0f
         hoverDirectionDegrees = 0f
-        cursorSurface.clear()
+        if (ringColors != null) cursorSurface.renderFrontBufferedLayer() else cursorSurface.clear()
     }
 
     private val toolCursorGlyph = ToolCursorGlyph()
@@ -404,5 +450,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
 
     private companion object {
         const val SMALL_CURSOR_MARK_THRESHOLD_PX = 8f
+        const val EYEDROPPER_RING_RADIUS_DP = 52f
+        const val EYEDROPPER_RING_THICKNESS_DP = 16f
     }
 }

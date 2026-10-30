@@ -139,6 +139,17 @@ internal fun SettingsDialog(
                 item { SettingSwitch(tr("Two-finger tap to undo", "双指轻点撤销"), null, settings.twoFingerDoubleTapUndo) { onChange(settings.copy(twoFingerDoubleTapUndo = it)) } }
                 item { SettingSwitch(tr("Three-finger tap to redo", "三指轻点重做"), null, settings.threeFingerTapRedo) { onChange(settings.copy(threeFingerTapRedo = it)) } }
                 item { SettingSwitch(tr("Two-finger canvas rotation", "双指旋转画布"), null, settings.twoFingerRotation) { onChange(settings.copy(twoFingerRotation = it)) } }
+                item { Text(tr("GESTURES FROM PROCREATE", "Procreate 手势"), color = MutedInk, fontSize = 12.sp) }
+                item { SettingSwitch(tr("Touch and hold for eyedropper", "按住取色"), tr("Keep a finger still on the canvas to pick a colour; drag to look around, lift to keep it.", "手指在画布上按住不动即可取色；拖动查看，抬起确定。"), settings.touchHoldEyedropper) { onChange(settings.copy(touchHoldEyedropper = it)) } }
+                if (settings.touchHoldEyedropper) item {
+                    Text(tr("Hold delay · ${settings.touchHoldEyedropperDelayMillis} ms", "按住时间 · ${settings.touchHoldEyedropperDelayMillis} 毫秒"), fontSize = 12.sp)
+                    BrushParameterSlider(settings.touchHoldEyedropperDelayMillis.toFloat(), { onChange(settings.copy(touchHoldEyedropperDelayMillis = it.toLong())) },
+                        valueRange = 100f..1500f, steps = 27, modifier = Modifier.semantics { contentDescription = "Eyedropper hold delay" })
+                }
+                item { SettingSwitch(tr("Hold two or three fingers to keep undoing or redoing", "双指／三指按住连续撤销／重做"), null, settings.holdToRepeatUndo) { onChange(settings.copy(holdToRepeatUndo = it)) } }
+                item { SettingSwitch(tr("Quick pinch to fit", "快速捏合适合屏幕"), tr("A fast pinch in snaps the page to the screen.", "快速向内捏合，页面即适合屏幕。"), settings.quickPinchToFit) { onChange(settings.copy(quickPinchToFit = it)) } }
+                item { SettingSwitch(tr("Four-finger tap for full screen", "四指轻点全屏"), tr("Hides the panels and toolbar; tap again to bring them back.", "隐藏面板与工具栏；再次轻点恢复。"), settings.fourFingerTapFullScreen) { onChange(settings.copy(fourFingerTapFullScreen = it)) } }
+                item { SettingSwitch(tr("Three-finger scrub to clear layer", "三指来回滑动清除图层"), tr("Scrub three fingers side to side. Undo brings the layer back.", "三指左右来回滑动；可撤销恢复。"), settings.threeFingerScrubClear) { onChange(settings.copy(threeFingerScrubClear = it)) } }
                 item { SettingSwitch(tr("Show input diagnostics", "显示输入诊断"), tr("Displays stylus data plus Toolbox keys, scan codes, rotary axes, pointer buttons, source and device identity.", "显示手写笔数据，以及 Toolbox 的按键、扫描码、旋钮轴、侧键、来源和设备标识。"), settings.showInputDiagnostics) { onChange(settings.copy(showInputDiagnostics = it)) } }
                 if (app.inkloom.BuildConfig.PAINTING_DIAGNOSTICS) {
                     item { SettingSwitch(tr("Show V5 stroke diagnostics", "显示 V5 落笔诊断"), tr("Debug only: shows the active V5 transaction, stable generation, dirty tiles and frame counters.", "仅调试版：显示 V5 活动事务、稳定代数、脏瓦片与帧计数。"), settings.showStrokeTraceOverlay) { onChange(settings.copy(showStrokeTraceOverlay = it)) } }
