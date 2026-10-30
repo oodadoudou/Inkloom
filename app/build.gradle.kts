@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.gradle.api.tasks.testing.Test
 
 plugins {
@@ -30,12 +31,30 @@ android {
         }
     }
 
+    // Release signing comes from an ignored keystore.properties (storeFile, storePassword, keyAlias,
+    // keyPassword). Without it, local release builds use the debug key so they still install.
+    val releaseKeystore = rootProject.file("keystore.properties").takeIf { it.isFile }?.let { file ->
+        Properties().apply { file.inputStream().use(::load) }
+    }
+    signingConfigs {
+        if (releaseKeystore != null) create("release") {
+            storeFile = rootProject.file(releaseKeystore.getProperty("storeFile"))
+            storePassword = releaseKeystore.getProperty("storePassword")
+            keyAlias = releaseKeystore.getProperty("keyAlias")
+            keyPassword = releaseKeystore.getProperty("keyPassword")
+        }
+    }
+
     buildTypes {
         getByName("debug") {
             buildConfigField("boolean", "PAINTING_DIAGNOSTICS", "true")
         }
         getByName("release") {
             buildConfigField("boolean", "PAINTING_DIAGNOSTICS", "false")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
         create("profile") {
             initWith(getByName("release"))
@@ -44,8 +63,19 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
             isMinifyEnabled = false
+            isShrinkResources = false
             matchingFallbacks += listOf("release", "debug")
             buildConfigField("boolean", "PAINTING_DIAGNOSTICS", "true")
+        }
+    }
+
+    // -PinkloomReleaseTests runs the instrumented tests against the shrunk release build, with the
+    // app's own classes kept for the tests; this checks the libraries' shrinking rules.
+    if (providers.gradleProperty("inkloomReleaseTests").isPresent) {
+        testBuildType = "release"
+        buildTypes.getByName("release").apply {
+            proguardFiles("proguard-release-tests.pro")
+            testProguardFiles("proguard-release-tests.pro")
         }
     }
 
@@ -79,6 +109,14 @@ android {
 
 }
 
+// Release builds ship for tablets only; the x86_64 libraries exist for the emulator.
+// -PinkloomEmulatorRelease keeps them, to smoke-test a release build on the emulator.
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        if (!providers.gradleProperty("inkloomEmulatorRelease").isPresent) variant.packaging.jniLibs.excludes.add("lib/x86_64/**")
+    }
+}
+
 tasks.withType<Test>().configureEach {
     providers.gradleProperty("brushSamplesDir").orNull?.let {
         systemProperty("brush.samples.dir", it)
@@ -106,7 +144,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
-    // ED-10 super-resolution: on-device inference of the bundled Real-ESRGAN model (MIT licence).
+    // ED-10 super resolution: ONNX Runtime (MIT) runs the bundled Real-ESRGAN model (BSD 3-Clause) on the device.
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
