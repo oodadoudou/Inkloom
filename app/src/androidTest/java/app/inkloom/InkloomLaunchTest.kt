@@ -887,18 +887,14 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Selection").performClick()
         composeRule.onNodeWithContentDescription("Selection studio").assertIsDisplayed()
-        listOf("Freehand", "Rectangle", "Ellipse", "Automatic").forEach {
-            composeRule.onNodeWithText(it).assertIsDisplayed()
+        listOf("Magic wand selection", "Lasso selection", "Rectangle selection", "Ellipse selection", "Selection pen", "Smart border selection").forEach {
+            composeRule.onNodeWithContentDescription(it).assertIsDisplayed()
         }
-        composeRule.onNodeWithContentDescription("Selection actions").performClick()
-        composeRule.onNodeWithText("Brush selection").performClick()
+        composeRule.onNodeWithContentDescription("Selection pen").performClick()
         composeRule.waitForIdle()
         assertEquals(app.inkloom.settings.SelectionShape.BRUSH, findInkCanvasView()!!.selectionShape)
-        composeRule.onNodeWithContentDescription("Selection actions").performClick()
-        // The selection actions menu is longer than the window; its later entries scroll into view.
-        composeRule.onNodeWithText("Selection settings").performScrollTo().performClick()
-        composeRule.onNodeWithText("Brush size  42 px").assertIsDisplayed()
-        composeRule.onNodeWithText("Done").performClick()
+        // The pen's size sits in the bar, not in a settings dialog.
+        composeRule.onNodeWithText("42 px").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Exit selection tool").performClick()
         composeRule.waitUntil(5_000) { findInkCanvasView()?.tool == app.inkloom.model.EditorTool.PEN }
     }
@@ -925,7 +921,7 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
         assertTrue(composeRule.onAllNodesWithContentDescription("Selection studio").fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithContentDescription("Selection").performClick()
-        composeRule.onNodeWithText("Freehand").performClick()
+        composeRule.onNodeWithContentDescription("Lasso selection").performClick()
         composeRule.waitForIdle()
 
         val view = requireNotNull(findInkCanvasView())

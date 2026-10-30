@@ -17,6 +17,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.onAllNodesWithText
@@ -134,6 +135,54 @@ class SelectionWindowRegressionTest {
         val found = page.recognizedTextBlocks.filter { it.source == app.inkloom.document.RecognizedTextSource.HANDWRITING }
         android.util.Log.i("HandwritingToText", "indexed ${found.map { it.text }}")
         assertTrue(found.any { it.bounds.left < .3f && it.bounds.top < .3f })
+    }
+
+    /** Photoshop/CSP magic wand: New replaces, Contiguous off selects the colour everywhere. */
+    @Test fun magicWandFromTheRailReplacesInNewModeAndCanSelectAColourEverywhere() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        fun square(left: Float, top: Float, right: Float, bottom: Float) {
+            stroke(pagePoint(view, left, top), pagePoint(view, right, top)); stroke(pagePoint(view, right, top), pagePoint(view, right, bottom))
+            stroke(pagePoint(view, right, bottom), pagePoint(view, left, bottom)); stroke(pagePoint(view, left, bottom), pagePoint(view, left, top))
+        }
+        square(.15f, .2f, .4f, .4f); square(.55f, .2f, .8f, .4f)
+        compose.waitUntil(15_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 && !view.hasPendingPaintPublicationForMerge() }
+        tap("Magic wand")
+        assertEquals(EditorTool.SELECT, view.tool)
+        assertEquals(app.inkloom.settings.SelectionShape.MAGIC_WAND, app.inkloom.settings.AppSettingsStore(compose.activity).load().selectionShape)
+        fun alphaAt(x: Float, y: Float): Int {
+            val mask = view.selectionMaskSurfaceSnapshot() ?: return 0
+            return mask.alphaAt((mask.logicalWidth * x).toInt(), (mask.logicalHeight * y).toInt())
+        }
+        tapAt(pagePoint(view, .27f, .3f)); compose.waitForIdle()
+        assertTrue(alphaAt(.27f, .3f) > 0); assertEquals(0, alphaAt(.67f, .3f)); assertEquals(0, alphaAt(.5f, .7f))
+        tapAt(pagePoint(view, .67f, .3f)); compose.waitForIdle()
+        assertEquals("New selection replaces the first area", 0, alphaAt(.27f, .3f)); assertTrue(alphaAt(.67f, .3f) > 0)
+        tap("Contiguous")
+        compose.waitUntil(5_000) { !app.inkloom.settings.AppSettingsStore(compose.activity).load().selectionContiguous }
+        tapAt(pagePoint(view, .27f, .3f)); compose.waitForIdle()
+        assertTrue("every area of the touched colour", alphaAt(.27f, .3f) > 0 && alphaAt(.67f, .3f) > 0 && alphaAt(.5f, .7f) > 0)
+    }
+
+    /** CSP's Close gap: a line drawing with a small break still selects only its inside. */
+    @Test fun magicWandCloseGapKeepsTheSelectionInsideABrokenOutline() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        // A square whose top edge stops short of the right corner.
+        stroke(pagePoint(view, .2f, .2f), pagePoint(view, .49f, .2f)); stroke(pagePoint(view, .5f, .2f + .008f), pagePoint(view, .5f, .45f))
+        stroke(pagePoint(view, .5f, .45f), pagePoint(view, .2f, .45f)); stroke(pagePoint(view, .2f, .45f), pagePoint(view, .2f, .2f))
+        compose.waitUntil(15_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 && !view.hasPendingPaintPublicationForMerge() }
+        tap("Magic wand")
+        fun alphaAt(x: Float, y: Float): Int {
+            val mask = view.selectionMaskSurfaceSnapshot() ?: return 0
+            return mask.alphaAt((mask.logicalWidth * x).toInt(), (mask.logicalHeight * y).toInt())
+        }
+        tapAt(pagePoint(view, .35f, .32f)); compose.waitForIdle()
+        assertTrue("without Close gap the fill leaks out", alphaAt(.35f, .32f) > 0 && alphaAt(.7f, .7f) > 0)
+        repeat(3) { compose.onNode(androidx.compose.ui.test.hasContentDescription("Gap", substring = true)).performClick(); compose.waitForIdle() }
+        compose.waitUntil(5_000) { app.inkloom.settings.AppSettingsStore(compose.activity).load().selectionCloseGapLevel == 3 }
+        tapAt(pagePoint(view, .35f, .32f)); compose.waitForIdle()
+        assertTrue("with Close gap only the inside", alphaAt(.35f, .32f) > 0 && alphaAt(.7f, .7f) == 0)
     }
 
     @Test fun strokeDialogCancelApplyColorUndoAndReopenKeepSelectionAndPixels() {
@@ -269,7 +318,7 @@ class SelectionWindowRegressionTest {
         val view = canvas()
         val shapes = listOf("Rectangle selection" to app.inkloom.settings.SelectionShape.RECTANGLE,
             "Ellipse selection" to app.inkloom.settings.SelectionShape.ELLIPSE,
-            "Freehand selection" to app.inkloom.settings.SelectionShape.FREEFORM)
+            "Lasso selection" to app.inkloom.settings.SelectionShape.FREEFORM)
         for (type in listOf(MotionEvent.TOOL_TYPE_FINGER, MotionEvent.TOOL_TYPE_STYLUS)) {
             repeat(3) {
                 shapes.forEach { (label, shape) ->
@@ -285,8 +334,8 @@ class SelectionWindowRegressionTest {
                         compose.onNodeWithContentDescription(other).assertIsNotSelected()
                     }
                 }
-                for ((label, mode) in listOf("Remove" to app.inkloom.settings.SelectionMode.SUBTRACT,
-                    "Add" to app.inkloom.settings.SelectionMode.ADD)) {
+                for ((label, mode) in listOf("Subtract from selection" to app.inkloom.settings.SelectionMode.SUBTRACT,
+                    "Add to selection" to app.inkloom.settings.SelectionMode.ADD)) {
                     val point = center(label)
                     val time = SystemClock.uptimeMillis()
                     event(MotionEvent.ACTION_DOWN, point, time, type)
@@ -303,18 +352,18 @@ class SelectionWindowRegressionTest {
         tap("New Note"); tap("Create"); tap("Selection"); tap("Rectangle selection")
         val view = canvas()
         stroke(pagePoint(view, .2f, .3f), pagePoint(view, .6f, .6f))
-        tap("Freehand selection"); tap("Remove")
+        tap("Lasso selection"); tap("Subtract from selection")
         listOf(.3f to .35f, .5f to .35f, .4f to .5f).forEach { (x, y) ->
             tapAt(pagePoint(view, x, y)); SystemClock.sleep(120)
         }
-        tap("Add")
+        tap("Add to selection")
         val mask = requireNotNull(view.selectionMaskSurfaceSnapshot())
         assertEquals("The previous Remove contour must cut a hole", 0,
             mask.alphaAt((mask.logicalWidth * .4f).toInt(), (mask.logicalHeight * .4f).toInt()))
         assertTrue("Existing selection outside the hole is preserved",
             mask.alphaAt((mask.logicalWidth * .25f).toInt(), (mask.logicalHeight * .4f).toInt()) > 0)
         assertEquals(app.inkloom.settings.SelectionMode.ADD, view.selectionMode)
-        compose.onNodeWithContentDescription("Add").assertIsSelected()
+        compose.onNodeWithContentDescription("Add to selection").assertIsSelected()
     }
 
     @Test fun stylusHoverThenLauncherXActuallyDeselects() = checkDeselect("Selection")
@@ -692,7 +741,7 @@ class SelectionWindowRegressionTest {
     @Test fun mixedFreehandSegmentsCloseOnlyOnOriginOrAdd() {
         tap("New Note"); tap("Create")
         val view = canvas()
-        tap("Selection"); tap("Freehand selection")
+        tap("Selection"); tap("Lasso selection")
         tapAt(pagePoint(view, .2f, .3f)); tapAt(pagePoint(view, .6f, .3f))
         stroke(pagePoint(view, .6f, .3f), pagePoint(view, .6f, .6f))
         compose.waitForIdle()
@@ -700,10 +749,10 @@ class SelectionWindowRegressionTest {
         tapAt(pagePoint(view, .2f, .6f)); tapAt(pagePoint(view, .2f, .3f))
         compose.waitForIdle()
         assertTrue(view.hasActiveSelection())
-        tap("Selection actions"); tap("Clear")
+        tap("Deselect")
         org.junit.Assert.assertFalse(view.hasActiveSelection())
         tapAt(pagePoint(view, .3f, .3f)); tapAt(pagePoint(view, .7f, .3f)); tapAt(pagePoint(view, .5f, .5f))
-        tap("Add")
+        tap("Add to selection")
         assertTrue(view.hasActiveSelection())
         tap("Exit selection tool")
         assertNotEquals(EditorTool.SELECT, view.tool)
@@ -718,22 +767,22 @@ class SelectionWindowRegressionTest {
         tap("Selection"); tap("Rectangle selection")
         stroke(pagePoint(view, .2f, .3f), pagePoint(view, .6f, .6f))
         val original = view.selectionMaskSurfaceSnapshot()!!.nonZeroBounds()
-        tap("Save & Load")
+        tap("Selection actions"); tap("Save & Load")
         val doneBeforeSave = center("Done")
         tap("Save current selection")
         center("Selection 1") // Wait for the new row, including its popup layout, to be visible.
         val doneAfterSave = center("Done")
         assertEquals("Saving must not move the footer under the user's finger", doneBeforeSave.y, doneAfterSave.y, 1f)
         tap("Done")
-        tap("Selection actions"); tap("Clear")
+        tap("Deselect")
         org.junit.Assert.assertFalse(view.hasActiveSelection())
         tapAt(toolbarCenter("Undo")); compose.waitForIdle()
         assertEquals(original, view.selectionMaskSurfaceSnapshot()!!.nonZeroBounds())
-        tap("Selection actions"); tap("Clear")
+        tap("Deselect")
         compose.activityRule.scenario.recreate(); compose.waitForIdle()
         view = canvas()
         if (view.tool != EditorTool.SELECT) tap("Selection")
-        tap("Save & Load"); tap("Selection 1")
+        tap("Selection actions"); tap("Save & Load"); tap("Selection 1")
         compose.waitForIdle()
         assertEquals(original, view.selectionMaskSurfaceSnapshot()!!.nonZeroBounds())
     }
@@ -839,7 +888,7 @@ class SelectionWindowRegressionTest {
         fun pixels() = view.activeRasterSnapshotForTest()!!.copyPremultipliedPixels(
             app.inkloom.engine.v5.surface.PixelRect(0, 0, source.logicalWidth, source.logicalHeight))
         val original = pixels()
-        tap("Copy & Paste")
+        tap("Copy to layer")
         compose.waitUntil(15_000) { !view.selectionLayerTransferPending && view.activeLayerId != sourceId }
         val targetId = view.activeLayerId
         org.junit.Assert.assertArrayEquals(original, pixels())
@@ -850,7 +899,7 @@ class SelectionWindowRegressionTest {
         assertEquals(targetId, view.activeLayerId)
         org.junit.Assert.assertArrayEquals(original, pixels())
         tapAt(toolbarCenter("Undo")); compose.waitForIdle()
-        tap("Selection actions"); tap("Cut & Paste")
+        tap("Cut to layer")
         compose.waitUntil(15_000) { !view.selectionLayerTransferPending && view.activeLayerId != sourceId }
         assertNotEquals(targetId, view.activeLayerId)
         org.junit.Assert.assertArrayEquals(original, pixels())

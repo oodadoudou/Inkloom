@@ -82,11 +82,9 @@ internal fun SelectionStudioPanel(
 ) {
     var optionsOpen by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
-    var launcherSettingsOpen by remember { mutableStateOf(false) }
-    var featherOpen by remember { mutableStateOf(false) }
     var colorRangeOpen by remember { mutableStateOf(false) }
     var strokeOpen by remember { mutableStateOf(false) }
-    val handwriting = LocalHandwritingToText.current
+    val handwriting = LocalEditorBridge.current
     var convertOpen by remember { mutableStateOf(false) }
     if (convertOpen && handwriting != null) HandwritingToTextDialog(handwriting, LocalUiLanguage.current) { convertOpen = false }
     if (strokeOpen) SelectionStrokeDialog(strokeColor, strokeOpacity, LocalUiLanguage.current,
@@ -95,22 +93,6 @@ internal fun SelectionStudioPanel(
     var colorRangeTolerance by rememberSaveable { mutableFloatStateOf(.18f) }
     var colorRangeAlpha by rememberSaveable { mutableStateOf(false) }
     var amount by rememberSaveable { mutableFloatStateOf(8f) }
-    if (featherOpen) {
-        val finish by rememberUpdatedState(onFinishFeather)
-        DisposableEffect(Unit) { onDispose { finish(false) } }
-        StudioDialog(
-            onDismissRequest = { onFinishFeather(false); featherOpen = false },
-            title = { Text(tr("Feather selection", "羽化选区")) },
-            text = { Column {
-                Text("${featherPixels.toInt()} px")
-                BrushParameterSlider(featherPixels.coerceIn(0f, 128f), onFeather, valueRange = 0f..128f,
-                    modifier = Modifier.semantics { contentDescription = "Selection feather radius" })
-                Text(tr("Preview soft edges on the canvas.", "在画布上预览柔化边缘。"))
-            } },
-            confirmButton = { TextButton(onClick = { onFinishFeather(true); featherOpen = false }) { Text(tr("Apply feather", "应用羽化")) } },
-            dismissButton = { TextButton(onClick = { onFinishFeather(false); featherOpen = false }) { Text(tr("Cancel feather", "取消羽化")) } },
-        )
-    }
     if (colorRangeOpen) StudioDialog(
         onDismissRequest = { colorRangeOpen = false },
         title = { Text(tr("Color range", "色域选择")) },
@@ -130,97 +112,49 @@ internal fun SelectionStudioPanel(
         confirmButton = { TextButton(onClick = { if (onColorRange(colorRangeTolerance, colorRangeAlpha)) colorRangeOpen = false }) { Text(tr("Select", "选择")) } },
         dismissButton = { TextButton(onClick = { colorRangeOpen = false }) { Text(tr("Cancel", "取消")) } },
     )
+    // Rarely changed preferences; the tool options themselves sit in the bar.
     if (optionsOpen) StudioDialog(
         onDismissRequest = { optionsOpen = false },
         title = { Text(tr("Selection settings", "选区设置")) },
         text = { Column(Modifier.dialogContentWidth(320.dp).heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
-                            if (shape == SelectionShape.BRUSH) {
-                                Text("${tr("Brush size", "画笔大小")}  ${brushSize.toInt()} px")
-                                BrushParameterSlider(brushSize, onBrushSize, valueRange = 4f..300f)
-                            }
-                            if (shape in setOf(SelectionShape.MAGIC_WAND, SelectionShape.SMART_BORDER)) {
-                                Text("${tr("Threshold", "阈值")}  ${(threshold * 100).toInt()}%")
-                                BrushParameterSlider(threshold, onThreshold, valueRange = 0f..1f)
-                            }
-                            run {
-                                Text(tr("Reference", "参照"))
-                                ReferenceTarget.entries.forEach { target ->
-                                    TextButton(onClick = { onReferenceTarget(target) }, colors = ButtonDefaults.textButtonColors(containerColor = if (referenceTarget == target) SageContainer else Color.Transparent, contentColor = if (referenceTarget == target) Ink else MutedInk)) {
-                                        Text(when (target) {
-                                            ReferenceTarget.ACTIVE_LAYER -> tr("Current layer", "当前图层")
-                                            ReferenceTarget.ALL_VISIBLE -> tr("All visible layers", "全部可见图层")
-                                            ReferenceTarget.REFERENCE_LAYERS -> tr("Reference layers", "参考图层")
-                                        })
-                                    }
-                                }
-                            }
-                            Text(tr("Select from", "选择范围"), fontSize = 12.sp)
-                            SelectionFilter.entries.forEach { option ->
-                                val label = when (option) {
-                                    SelectionFilter.ALL -> tr("All", "全部")
-                                    SelectionFilter.ACTIVE_LAYER -> tr("Current layer", "当前图层")
-                                    SelectionFilter.CURRENT_BRUSH -> tr("Current brush", "当前笔刷")
-                                    SelectionFilter.CURRENT_COLOR -> tr("Current color", "当前颜色")
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    StudioRadioButton(selected = filter == option, onClick = { onFilter(option) })
-                                    TextButton(onClick = { onFilter(option) }) { Text(label) }
-                                }
-                            }
-                            Text("${tr("Mask visibility", "蒙版可见度")}  ${(maskVisibility * 100).toInt()}%", fontSize = 12.sp)
-                            BrushParameterSlider(maskVisibility, onMaskVisibility, valueRange = 0f..1f,
-                                modifier = Modifier.semantics { contentDescription = "Selection mask visibility" })
-                            Text("${tr("Amount", "调整量")}  ${amount.toInt()} px", fontSize = 12.sp)
-                            BrushParameterSlider(amount, { amount = it }, valueRange = 1f..128f)
-                            Row {
-                                TextButton(onClick = { onExpand(amount) }, enabled = hasSelection) { Text(tr("Expand", "扩大")) }
-                                TextButton(onClick = { onShrink(amount) }, enabled = hasSelection) { Text(tr("Shrink", "缩小")) }
-                                TextButton(onClick = { onBorder(amount) }, enabled = hasSelection) { Text(tr("Border", "边界")) }
-                            }
-                            Text(tr("Interpolation", "插值"), fontSize = 12.sp)
-                            app.inkloom.engine.v5.tools.SelectionInterpolation.entries.forEach { method ->
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    StudioRadioButton(selected = interpolation == method, onClick = { onInterpolation(method) })
-                                    TextButton(onClick = { onInterpolation(method) }) { Text(when (method) {
-                                        app.inkloom.engine.v5.tools.SelectionInterpolation.NEAREST -> tr("Nearest neighbor", "最近邻")
-                                        app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR -> tr("Bilinear", "双线性")
-                                        app.inkloom.engine.v5.tools.SelectionInterpolation.BICUBIC -> tr("Bicubic", "双三次")
-                                    }) }
-                                }
-                            }
-                        } },
-        confirmButton = { TextButton(onClick = { optionsOpen = false }) { Text(tr("Done", "完成")) } },
-    )
-    if (launcherSettingsOpen) StudioDialog(
-        onDismissRequest = { launcherSettingsOpen = false },
-        title = { Text(tr("Selection shortcuts", "选区快捷操作")) },
-        text = { Column(Modifier.dialogContentWidth(320.dp).heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
-            Text(tr("Arrange shortcuts with the arrows. Essential commands remain in More.", "用箭头调整顺序；必要操作始终可从「更多」访问。"), fontSize = 11.sp)
-            launcherOrder.forEachIndexed { index, action ->
-                val label = when (action) {
-                    SelectionLauncherAction.ADD -> tr("Add", "添加")
-                    SelectionLauncherAction.SUBTRACT -> tr("Remove", "移除")
-                    SelectionLauncherAction.INVERT -> tr("Invert", "反选")
-                    SelectionLauncherAction.COPY -> tr("Copy & Paste", "复制并粘贴")
-                    SelectionLauncherAction.FEATHER -> tr("Feather", "羽化")
-                    SelectionLauncherAction.SAVED -> tr("Save & Load", "保存与载入")
-                    SelectionLauncherAction.QUICK_MASK -> tr("Quick mask", "快速蒙版")
-                    SelectionLauncherAction.COLOR_FILL -> tr("Color Fill", "颜色填充")
-                    SelectionLauncherAction.CLEAR -> tr("Clear", "清除")
-                    SelectionLauncherAction.FILL -> tr("Fill selection", "填充选区")
-                    SelectionLauncherAction.TRANSFORM -> tr("Transform", "变换")
+            Text("${tr("Mask visibility", "蒙版可见度")}  ${(maskVisibility * 100).toInt()}%", fontSize = 12.sp)
+            BrushParameterSlider(maskVisibility, onMaskVisibility, valueRange = 0f..1f,
+                modifier = Modifier.semantics { contentDescription = "Selection mask visibility" })
+            Text(tr("Select from", "选择范围"), fontSize = 12.sp)
+            SelectionFilter.entries.forEach { option ->
+                val label = when (option) {
+                    SelectionFilter.ALL -> tr("All", "全部")
+                    SelectionFilter.ACTIVE_LAYER -> tr("Current layer", "当前图层")
+                    SelectionFilter.CURRENT_BRUSH -> tr("Current brush", "当前笔刷")
+                    SelectionFilter.CURRENT_COLOR -> tr("Current color", "当前颜色")
                 }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(label, Modifier.weight(1f), maxLines = 1)
-                    TextButton(onClick = { onLauncherOrder(SelectionLauncherLayout.move(launcherOrder, action, -1)) }, enabled = index > 0) { Text("↑") }
-                    TextButton(onClick = { onLauncherOrder(SelectionLauncherLayout.move(launcherOrder, action, 1)) }, enabled = index < launcherOrder.lastIndex) { Text("↓") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StudioRadioButton(selected = filter == option, onClick = { onFilter(option) })
+                    TextButton(onClick = { onFilter(option) }) { Text(label) }
                 }
             }
-            TextButton(onClick = { onLauncherOrder(SelectionLauncherLayout.default) }) { Text(tr("Restore default order", "恢复默认顺序")) }
+            Text(tr("Interpolation", "插值"), fontSize = 12.sp)
+            app.inkloom.engine.v5.tools.SelectionInterpolation.entries.forEach { method ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StudioRadioButton(selected = interpolation == method, onClick = { onInterpolation(method) })
+                    TextButton(onClick = { onInterpolation(method) }) { Text(when (method) {
+                        app.inkloom.engine.v5.tools.SelectionInterpolation.NEAREST -> tr("Nearest neighbor", "最近邻")
+                        app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR -> tr("Bilinear", "双线性")
+                        app.inkloom.engine.v5.tools.SelectionInterpolation.BICUBIC -> tr("Bicubic", "双三次")
+                    }) }
+                }
+            }
         } },
-        confirmButton = { TextButton(onClick = { launcherSettingsOpen = false }) { Text(tr("Done", "完成")) } },
+        confirmButton = { TextButton(onClick = { optionsOpen = false }) { Text(tr("Done", "完成")) } },
     )
     val studioDescription = tr("Selection studio", "选区面板")
+    val bridge = LocalEditorBridge.current
+    var featherMenu by remember { mutableStateOf(false) }
+    // A feather preview still open when the bar goes away (tool change, transform) is cancelled.
+    val finishFeather by rememberUpdatedState(onFinishFeather)
+    val featherPreviewing by rememberUpdatedState(featherMenu)
+    DisposableEffect(Unit) { onDispose { if (featherPreviewing) finishFeather(false) } }
+    var modifyMenu by remember { mutableStateOf(false) }
     BoxWithConstraints(modifier) {
     val density=LocalDensity.current.density
     var measuredWidth by remember { mutableFloatStateOf(640f) }
@@ -233,11 +167,12 @@ internal fun SelectionStudioPanel(
     val desiredY=if(dragY>=0f) dragY else containerHeight-measuredHeight-4f
     val bounded=FloatingToolbarPlacement.clamp(desiredX,desiredY,containerWidth,containerHeight,false,measuredWidth,measuredHeight)
     Surface(Modifier.offset { IntOffset((bounded.xDp*density).roundToInt(),(bounded.yDp*density).roundToInt()) }
-        .width(minOf(640.dp, maxWidth)).onGloballyPositioned {
+        .widthIn(max = minOf(640.dp, maxWidth)).onGloballyPositioned {
             measuredWidth=it.size.width/density;measuredHeight=it.size.height/density
         }.semantics { contentDescription = studioDescription }, shape = RoundedCornerShape(14.dp), color = Paper, shadowElevation = 3.dp) {
-        Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
+            // How to select: the tools, then how a new selection combines with the current one.
+            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.DragIndicator,tr("Move selection studio", "移动选区面板"),
                     Modifier.size(30.dp).padding(4.dp).pointerInput(containerWidth,containerHeight,measuredWidth,measuredHeight) {
                         detectDragGestures(onDragStart={dragX=bounded.xDp;dragY=bounded.yDp},
@@ -248,86 +183,213 @@ internal fun SelectionStudioPanel(
                             dragX=next.xDp;dragY=next.yDp
                         }
                     },tint=MutedInk)
-                Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()).selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
-                listOf(SelectionShape.MAGIC_WAND, SelectionShape.FREEFORM, SelectionShape.RECTANGLE, SelectionShape.ELLIPSE).forEach { option ->
-                    val label = when (option) {
-                        SelectionShape.MAGIC_WAND -> tr("Automatic", "自动")
-                        SelectionShape.FREEFORM -> tr("Freehand", "手绘")
-                        SelectionShape.RECTANGLE -> tr("Rectangle", "矩形")
-                        else -> tr("Ellipse", "椭圆")
-                    }
-                    val selectionDescription = tr("$label selection", "${label}选区")
-                    Box(Modifier.widthIn(min = 72.dp).height(48.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (shape == option) SageContainer else Color.Transparent)
-                        .selectable(selected = shape == option, role = Role.RadioButton,
-                            interactionSource = remember { MutableInteractionSource() }, indication = null,
-                            onClick = { onShape(option) })
-                        .semantics { contentDescription = selectionDescription }.padding(horizontal = 12.dp),
-                        contentAlignment = Alignment.Center) {
-                        Text(label, fontSize = 13.sp, color = if (shape == option) Ink else MutedInk)
+                Row(Modifier.selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
+                    SelectionTools.forEach { option ->
+                        SelectionChoice(option.icon(), selectionToolDescription(option), selected = shape == option) { onShape(option) }
                     }
                 }
+                SelectionDivider()
+                Row(Modifier.selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
+                    SelectionMode.entries.forEach { option ->
+                        SelectionChoice(null, selectionModeName(option), selected = mode == option, glyph = { SelectionModeGlyph(option, it) }) { onMode(option) }
+                    }
                 }
-                SelectionLauncherButton(Icons.Outlined.Check, tr("Exit selection tool", "退出选区工具"), onDone)
-                SelectionLauncherButton(Icons.Outlined.Close, tr("Deselect and exit", "取消选区并退出"), onDeselect)
+                SelectionDivider()
                 Box {
                     SelectionLauncherButton(Icons.Outlined.MoreHoriz, tr("Selection actions", "选区操作")) { settingsOpen = true }
                     DropdownMenu(settingsOpen, { settingsOpen = false }) {
-                        if (!launcherVisible) {
-                            StudioMenuItem(text = { Text(tr("Add", "添加")) }, onClick = { settingsOpen = false; onMode(SelectionMode.ADD) })
-                            StudioMenuItem(text = { Text(tr("Remove", "移除")) }, onClick = { settingsOpen = false; onMode(SelectionMode.SUBTRACT) })
-                            StudioMenuItem(text = { Text(tr("Invert", "反选")) }, enabled = hasSelection, onClick = { settingsOpen = false; onInvert() })
-                            StudioMenuItem(text = { Text(tr("Copy & Paste", "复制并粘贴")) }, enabled = hasSelection, onClick = { settingsOpen = false; onCopy() })
-                            StudioMenuItem(text = { Text(tr("Feather", "羽化")) }, enabled = hasSelection, onClick = { settingsOpen = false; featherOpen = onBeginFeather() })
-                            StudioMenuItem(text = { Text(tr("Save & Load", "保存与载入")) }, onClick = { settingsOpen = false; onSaveLoad() })
-                            StudioMenuItem(text = { Text(tr("Color Fill", "颜色填充")) }, onClick = { settingsOpen = false; onColorFill() })
-                            StudioMenuItem(text = { Text(tr("Transform", "变换")) }, enabled = hasSelection, onClick = { settingsOpen = false; onTransform() })
+                        if (hasSelection) {
+                            StudioMenuItem(text = { Text(tr("Stroke selection…", "选区描边…")) }, onClick = { settingsOpen = false; strokeOpen = true })
+                            StudioMenuItem(text = { Text(tr("Clear outside selection", "删除选区外内容")) }, onClick = { settingsOpen = false; onDeleteOutside() })
+                            if (handwriting != null) StudioMenuItem(text = { Text(tr("Convert to text…", "转换为文字…")) }, onClick = { settingsOpen = false; convertOpen = true })
+                            StudioMenuItem(text = { Text(tr("Copy to clipboard", "复制到剪贴板")) }, onClick = { settingsOpen = false; onClipboardCopy() })
+                            HorizontalDivider()
                         }
-                        StudioMenuItem(text = { Text(tr("Clear", "清除")) }, onClick = { settingsOpen = false; onClear() })
-                        StudioMenuItem(text = { Text(tr("Cut & Paste", "剪切并粘贴")) }, enabled = hasSelection, onClick = { settingsOpen = false; onCut() })
-                        StudioMenuItem(text = { Text(tr("Delete selected pixels", "删除所选像素")) }, enabled = hasSelection, onClick = { settingsOpen = false; onDelete() })
-                        StudioMenuItem(text = { Text(tr("Clear outside selection", "删除选区外内容")) }, enabled = hasSelection, onClick = { settingsOpen = false; onDeleteOutside() })
                         StudioMenuItem(text = { Text(tr("Select all", "全部选择")) }, onClick = { settingsOpen = false; onSelectAll() })
-                        StudioMenuItem(text = { Text(tr("Copy to clipboard", "复制到剪贴板")) }, enabled = hasSelection, onClick = { settingsOpen = false; onClipboardCopy() })
+                        StudioMenuItem(text = { Text(tr("Color range…", "色域选择…")) }, onClick = { settingsOpen = false; colorRangeOpen = true })
                         StudioMenuItem(text = { Text(tr("Paste", "粘贴")) }, onClick = { settingsOpen = false; onPaste() })
                         StudioMenuItem(text = { Text(tr("Paste to shown position", "粘贴至显示位置")) }, onClick = { settingsOpen = false; onPasteAtView() })
-                        StudioMenuItem(text = { Text(tr("Fill selection", "填充选区")) }, enabled = hasSelection, onClick = { settingsOpen = false; onFill() })
-                        StudioMenuItem(text = { Text(tr("Stroke selection…", "选区描边…")) }, enabled = hasSelection, onClick = { settingsOpen = false; strokeOpen = true })
-                        if (handwriting != null) StudioMenuItem(text = { Text(tr("Convert to text…", "转换为文字…")) }, enabled = hasSelection, onClick = { settingsOpen = false; convertOpen = true })
-                        StudioMenuItem(text = { Text(tr("Quick mask", "快速蒙版")) }, trailingIcon = { if (quickMask) Icon(Icons.Outlined.Check, null) }, onClick = { settingsOpen = false; onQuickMask() })
+                        StudioMenuItem(text = { Text(tr("Save & Load", "保存与载入")) }, onClick = { settingsOpen = false; onSaveLoad() })
                         HorizontalDivider()
-                        StudioMenuItem(text = { Text(tr("New selection", "新建选区")) }, onClick = { settingsOpen = false; onMode(SelectionMode.REPLACE) })
-                        StudioMenuItem(text = { Text(tr("Intersect", "交集")) }, onClick = { settingsOpen = false; onMode(SelectionMode.INTERSECT) })
-                        StudioMenuItem(text = { Text(tr("Brush selection", "画笔选区")) }, onClick = { settingsOpen = false; onShape(SelectionShape.BRUSH) })
-                        StudioMenuItem(text = { Text(tr("Smart border selection", "智能边界选区")) }, onClick = { settingsOpen = false; onShape(SelectionShape.SMART_BORDER) })
-                        StudioMenuItem(text = { Text(tr("Color range…", "色域选择…")) }, onClick = { settingsOpen = false; colorRangeOpen = true })
+                        StudioMenuItem(text = { Text(tr("Quick mask", "快速蒙版")) }, trailingIcon = { if (quickMask) Icon(Icons.Outlined.Check, null) }, onClick = { settingsOpen = false; onQuickMask() })
+                        StudioMenuItem(text = { Text(tr("Fill new selections", "新选区自动填色")) }, trailingIcon = { if (colorFill) Icon(Icons.Outlined.Check, null) }, onClick = { settingsOpen = false; onColorFill() })
                         StudioMenuItem(text = { Text(tr("Selection settings", "选区设置")) }, onClick = { settingsOpen = false; optionsOpen = true })
-                        StudioMenuItem(text = { Text(if (launcherVisible) tr("Hide actions", "隐藏操作") else tr("Show actions", "显示操作")) }, onClick = { settingsOpen = false; onLauncherVisible(!launcherVisible) })
-                        StudioMenuItem(text = { Text(tr("Arrange selection shortcuts", "排列选区快捷操作")) }, onClick = { settingsOpen = false; launcherSettingsOpen = true })
                     }
                 }
+                SelectionLauncherButton(Icons.Outlined.Check, tr("Exit selection tool", "退出选区工具"), onDone)
+                SelectionLauncherButton(Icons.Outlined.Close, tr("Deselect and exit", "取消选区并退出"), onDeselect)
             }
-            if (launcherVisible) {
-                HorizontalDivider(Modifier.widthIn(max = 880.dp), color = OutlineSoft)
+            // The current tool's options, where they are used (Photoshop's options bar, CSP's tool property).
+            Row(Modifier.fillMaxWidth().heightIn(min = 36.dp).padding(start = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                when (shape) {
+                    SelectionShape.MAGIC_WAND, SelectionShape.SMART_BORDER -> {
+                        Text(if (shape == SelectionShape.MAGIC_WAND) tr("Tolerance", "容差") else tr("Detail", "细节"), fontSize = 11.sp, color = MutedInk)
+                        BrushParameterSlider(threshold, onThreshold, Modifier.width(140.dp).semantics { contentDescription = "Selection tolerance" }, valueRange = 0f..1f)
+                        Text("${(threshold * 100).roundToInt()}%", Modifier.widthIn(min = 34.dp), fontSize = 11.sp)
+                        if (shape == SelectionShape.MAGIC_WAND && bridge != null) {
+                            SelectionToggle(tr("Contiguous", "连续"), bridge.selectionContiguous) { bridge.setSelectionContiguous(it) }
+                            val gap = bridge.selectionCloseGapLevel
+                            SelectionToggle(tr("Gap", "闭合") + " · " + when (gap) { 0 -> tr("Off", "关"); 1 -> tr("S", "小"); 2 -> tr("M", "中"); else -> tr("L", "大") },
+                                gap > 0) { bridge.cycleSelectionCloseGap() }
+                        }
+                        Text(tr("Sample", "参照"), Modifier.padding(start = 6.dp, end = 2.dp), fontSize = 11.sp, color = MutedInk)
+                        ReferenceTarget.entries.forEach { target ->
+                            SelectionToggle(when (target) {
+                                ReferenceTarget.ACTIVE_LAYER -> tr("Layer", "当前图层")
+                                ReferenceTarget.ALL_VISIBLE -> tr("All", "全部")
+                                ReferenceTarget.REFERENCE_LAYERS -> tr("Reference", "参考图层")
+                            }, referenceTarget == target) { onReferenceTarget(target) }
+                        }
+                    }
+                    SelectionShape.BRUSH -> {
+                        Text(tr("Size", "大小"), fontSize = 11.sp, color = MutedInk)
+                        BrushParameterSlider(brushSize, onBrushSize, Modifier.width(180.dp).semantics { contentDescription = "Selection pen size" }, valueRange = 4f..300f)
+                        Text("${brushSize.roundToInt()} px", fontSize = 11.sp)
+                    }
+                    SelectionShape.FREEFORM -> Text(tr("Draw around an area, or tap points for straight edges.", "沿区域圈画，或点按多个点画直边。"), fontSize = 11.sp, color = MutedInk)
+                    SelectionShape.RECTANGLE, SelectionShape.ELLIPSE -> Text(tr("Drag across the area to select.", "拖动框选区域。"), fontSize = 11.sp, color = MutedInk)
+                }
+            }
+            // What to do with it: only while something is selected (CSP's selection launcher,
+            // Photoshop's contextual task bar).
+            if (hasSelection) {
+                HorizontalDivider(color = OutlineSoft)
                 Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                    launcherOrder.filterNot { it in setOf(SelectionLauncherAction.QUICK_MASK, SelectionLauncherAction.CLEAR, SelectionLauncherAction.FILL) }.forEach { action -> when (action) {
-                        SelectionLauncherAction.ADD -> SelectionStudioAction(Icons.Outlined.Add, tr("Add", "添加"), selected = mode == SelectionMode.ADD) { onMode(SelectionMode.ADD) }
-                        SelectionLauncherAction.SUBTRACT -> SelectionStudioAction(Icons.Outlined.Remove, tr("Remove", "移除"), selected = mode == SelectionMode.SUBTRACT) { onMode(SelectionMode.SUBTRACT) }
-                        SelectionLauncherAction.INVERT -> SelectionStudioAction(Icons.Outlined.Flip, tr("Invert", "反选"), enabled = hasSelection, onClick = onInvert)
-                        SelectionLauncherAction.COPY -> SelectionStudioAction(Icons.Outlined.ContentCopy, tr("Copy & Paste", "复制并粘贴"), enabled = hasSelection, onClick = onCopy)
-                        SelectionLauncherAction.FEATHER -> SelectionStudioAction(Icons.Outlined.BlurOn, tr("Feather", "羽化"), enabled = hasSelection) { featherOpen = onBeginFeather() }
-                        SelectionLauncherAction.SAVED -> SelectionStudioAction(Icons.Outlined.Bookmarks, tr("Save & Load", "保存与载入"), onClick = onSaveLoad)
-                        SelectionLauncherAction.QUICK_MASK -> SelectionStudioAction(Icons.Outlined.Layers, tr("Quick mask", "快速蒙版"), selected = quickMask, onClick = onQuickMask)
-                        SelectionLauncherAction.COLOR_FILL -> SelectionStudioAction(Icons.Outlined.FormatColorFill, tr("Color Fill", "颜色填充"), selected = colorFill, onClick = onColorFill)
-                        SelectionLauncherAction.CLEAR -> SelectionStudioAction(Icons.Outlined.Close, tr("Clear", "清除"), onClick = onClear)
-                        SelectionLauncherAction.FILL -> SelectionStudioAction(Icons.Outlined.FormatColorFill, tr("Fill selection", "填充选区"), enabled = hasSelection, onClick = onFill)
-                        SelectionLauncherAction.TRANSFORM -> SelectionStudioAction(Icons.Outlined.Transform, tr("Transform", "变换"), enabled = hasSelection, onClick = onTransform)
-                    } }
+                    SelectionStudioAction(Icons.Outlined.Deselect, tr("Deselect", "取消选择"), onClick = onClear)
+                    SelectionStudioAction(Icons.Outlined.Flip, tr("Invert", "反选"), onClick = onInvert)
+                    Box {
+                        SelectionStudioAction(Icons.Outlined.BlurOn, tr("Feather", "羽化")) { featherMenu = onBeginFeather() }
+                        DropdownMenu(featherMenu, { onFinishFeather(false); featherMenu = false }) {
+                            Column(Modifier.width(260.dp).padding(horizontal = 12.dp, vertical = 4.dp)) {
+                                Text("${tr("Feather", "羽化")} · ${featherPixels.roundToInt()} px", fontSize = 12.sp)
+                                BrushParameterSlider(featherPixels.coerceIn(0f, 128f), onFeather, valueRange = 0f..128f,
+                                    modifier = Modifier.semantics { contentDescription = "Selection feather radius" })
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                    TextButton(onClick = { onFinishFeather(false); featherMenu = false }) { Text(tr("Cancel feather", "取消羽化")) }
+                                    TextButton(onClick = { onFinishFeather(true); featherMenu = false }) { Text(tr("Apply feather", "应用羽化")) }
+                                }
+                            }
+                        }
+                    }
+                    Box {
+                        SelectionStudioAction(Icons.Outlined.OpenInFull, tr("Expand / shrink", "扩大／缩小")) { modifyMenu = true }
+                        DropdownMenu(modifyMenu, { modifyMenu = false }) {
+                            Column(Modifier.width(260.dp).padding(horizontal = 12.dp, vertical = 4.dp)) {
+                                Text("${tr("Amount", "调整量")} · ${amount.roundToInt()} px", fontSize = 12.sp)
+                                BrushParameterSlider(amount, { amount = it }, valueRange = 1f..128f,
+                                    modifier = Modifier.semantics { contentDescription = "Selection modify amount" })
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                    TextButton(onClick = { onShrink(amount) }) { Text(tr("Shrink", "缩小")) }
+                                    TextButton(onClick = { onExpand(amount) }) { Text(tr("Expand", "扩大")) }
+                                    TextButton(onClick = { onBorder(amount); modifyMenu = false }) { Text(tr("Border", "边界")) }
+                                }
+                            }
+                        }
+                    }
+                    SelectionStudioAction(Icons.Outlined.FormatColorFill, tr("Fill", "填充"), onClick = onFill)
+                    SelectionStudioAction(Icons.Outlined.Delete, tr("Delete", "删除"), onClick = onDelete)
+                    SelectionStudioAction(Icons.Outlined.ContentCopy, tr("Copy to layer", "复制到新图层"), onClick = onCopy)
+                    SelectionStudioAction(Icons.Outlined.ContentCut, tr("Cut to layer", "剪切到新图层"), onClick = onCut)
+                    SelectionStudioAction(Icons.Outlined.Transform, tr("Transform", "变换"), onClick = onTransform)
                 }
             }
         }
     }
+    }
+}
+
+/** The selection tools, in the order Clip Studio Paint and Photoshop show them. */
+private val SelectionTools = listOf(SelectionShape.MAGIC_WAND, SelectionShape.FREEFORM, SelectionShape.RECTANGLE,
+    SelectionShape.ELLIPSE, SelectionShape.BRUSH, SelectionShape.SMART_BORDER)
+
+private fun SelectionShape.icon(): ImageVector = when (this) {
+    SelectionShape.MAGIC_WAND -> Icons.Outlined.AutoFixNormal
+    SelectionShape.FREEFORM -> Icons.Outlined.Gesture
+    SelectionShape.RECTANGLE -> Icons.Outlined.CropSquare
+    SelectionShape.ELLIPSE -> Icons.Outlined.PanoramaFishEye
+    SelectionShape.BRUSH -> Icons.Outlined.Brush
+    SelectionShape.SMART_BORDER -> Icons.Outlined.HighlightAlt
+}
+
+@Composable
+internal fun selectionToolName(shape: SelectionShape): String = when (shape) {
+    SelectionShape.MAGIC_WAND -> tr("Magic wand", "魔棒")
+    SelectionShape.FREEFORM -> tr("Lasso", "套索")
+    SelectionShape.RECTANGLE -> tr("Rectangle", "矩形")
+    SelectionShape.ELLIPSE -> tr("Ellipse", "椭圆")
+    SelectionShape.BRUSH -> tr("Selection pen", "选区笔")
+    SelectionShape.SMART_BORDER -> tr("Smart border", "智能边界")
+}
+
+/** Named as a selection tool, so the bar's magic wand differs from the rail's. */
+@Composable
+private fun selectionToolDescription(shape: SelectionShape): String = when (shape) {
+    SelectionShape.MAGIC_WAND -> tr("Magic wand selection", "魔棒选区")
+    SelectionShape.FREEFORM -> tr("Lasso selection", "套索选区")
+    SelectionShape.RECTANGLE -> tr("Rectangle selection", "矩形选区")
+    SelectionShape.ELLIPSE -> tr("Ellipse selection", "椭圆选区")
+    SelectionShape.BRUSH -> tr("Selection pen", "选区笔")
+    SelectionShape.SMART_BORDER -> tr("Smart border selection", "智能边界选区")
+}
+
+@Composable
+private fun selectionModeName(mode: SelectionMode): String = when (mode) {
+    SelectionMode.REPLACE -> tr("New selection", "新建选区")
+    SelectionMode.ADD -> tr("Add to selection", "添加到选区")
+    SelectionMode.SUBTRACT -> tr("Subtract from selection", "从选区减去")
+    SelectionMode.INTERSECT -> tr("Intersect with selection", "与选区交叉")
+}
+
+@Composable
+private fun SelectionDivider() = VerticalDivider(Modifier.height(24.dp).padding(horizontal = 3.dp), color = OutlineSoft)
+
+/** An icon choice in a group: a tool or a combine mode. Named on hover and for accessibility. */
+@Composable
+private fun SelectionChoice(icon: ImageVector?, description: String, selected: Boolean,
+    glyph: (@Composable (Color) -> Unit)? = null, onClick: () -> Unit) {
+    HoverTooltip(description) {
+        Box(Modifier.size(40.dp).clip(RoundedCornerShape(6.dp))
+            .background(if (selected) SageContainer else Color.Transparent)
+            .selectable(selected = selected, role = Role.RadioButton,
+                interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+            .semantics { contentDescription = description },
+            contentAlignment = Alignment.Center) {
+            val tint = if (selected) Ink else MutedInk
+            if (glyph != null) glyph(tint) else if (icon != null) Icon(icon, null, Modifier.size(20.dp), tint = tint)
+        }
+    }
+}
+
+/** Photoshop's combine-mode pictures: two overlapping squares, the result filled. */
+@Composable
+private fun SelectionModeGlyph(mode: SelectionMode, tint: Color) {
+    androidx.compose.foundation.Canvas(Modifier.size(20.dp)) {
+        val unit = size.minDimension
+        val first = androidx.compose.ui.graphics.Path().apply { addRect(androidx.compose.ui.geometry.Rect(unit * .08f, unit * .08f, unit * .64f, unit * .64f)) }
+        val second = androidx.compose.ui.graphics.Path().apply { addRect(androidx.compose.ui.geometry.Rect(unit * .36f, unit * .36f, unit * .92f, unit * .92f)) }
+        val filled = when (mode) {
+            SelectionMode.REPLACE -> first
+            SelectionMode.ADD -> androidx.compose.ui.graphics.Path.combine(androidx.compose.ui.graphics.PathOperation.Union, first, second)
+            SelectionMode.SUBTRACT -> androidx.compose.ui.graphics.Path.combine(androidx.compose.ui.graphics.PathOperation.Difference, first, second)
+            SelectionMode.INTERSECT -> androidx.compose.ui.graphics.Path.combine(androidx.compose.ui.graphics.PathOperation.Intersect, first, second)
+        }
+        drawPath(filled, tint.copy(alpha = .55f))
+        val outline = Stroke(width = 1.4.dp.toPx())
+        drawPath(first, tint, style = outline)
+        if (mode != SelectionMode.REPLACE) drawPath(second, tint, style = outline)
+    }
+}
+
+/** A small on/off chip for a tool option. */
+@Composable
+private fun SelectionToggle(label: String, selected: Boolean, onChange: (Boolean) -> Unit) {
+    Box(Modifier.padding(horizontal = 2.dp).height(30.dp).clip(RoundedCornerShape(6.dp))
+        .background(if (selected) SageContainer else Color.Transparent)
+        .border(1.dp, if (selected) Ink.copy(alpha = .35f) else OutlineSoft, RoundedCornerShape(6.dp))
+        .selectable(selected = selected, role = Role.Checkbox, onClick = { onChange(!selected) })
+        .semantics { contentDescription = label }
+        .padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
+        Text(label, fontSize = 11.sp, color = if (selected) Ink else MutedInk, maxLines = 1)
     }
 }
 

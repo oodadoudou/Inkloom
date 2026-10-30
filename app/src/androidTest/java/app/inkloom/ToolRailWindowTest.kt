@@ -40,13 +40,29 @@ class ToolRailWindowTest {
     @Test fun verticalRailExposesEveryToolAndActivatesPaintBucket() {
         compose.onNodeWithText("New Note").performClick()
         compose.onNodeWithText("Create").performClick()
-        listOf("Brush", "Marker", "Eraser tool", "Select", "Eyedropper", "Paint bucket",
-            "Gradient", "Blend", "Liquify", "Correct line", "Shape", "Text", "Note",
+        listOf("Brush", "Marker", "Eraser tool", "Select", "Magic wand", "Eyedropper", "Paint bucket",
+            "Gradient", "Blend", "Clone stamp", "Liquify", "Correct line", "Shape", "Text", "Note",
             "Link", "Image", "Laser pointer").forEach { label ->
             compose.onNodeWithContentDescription(label).assertExists()
         }
         compose.onNodeWithContentDescription("Paint bucket").performClick()
         assertEquals(EditorTool.FILL, canvas().tool)
+    }
+
+    /** Like Clip Studio Paint and Photoshop, the magic wand and the clone stamp are tools of their own. */
+    @Test fun magicWandAndCloneStampAreRailTools() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        val store = app.inkloom.settings.AppSettingsStore(compose.activity)
+        compose.onNodeWithContentDescription("Magic wand").performClick()
+        compose.waitUntil(5_000) { canvas().tool == EditorTool.SELECT && store.load().selectionShape == app.inkloom.settings.SelectionShape.MAGIC_WAND }
+        compose.onNodeWithContentDescription("Magic wand selection").assertExists()
+        compose.onNodeWithContentDescription("Select").performClick()
+        compose.waitUntil(5_000) { store.load().selectionShape == app.inkloom.settings.SelectionShape.FREEFORM }
+        compose.onNodeWithContentDescription("Clone stamp").performClick()
+        compose.waitUntil(5_000) { canvas().tool == EditorTool.SMUDGE && store.load().persistentBrushPresetId == "system-blend-copy-stamp" }
+        compose.onNodeWithContentDescription("Blend").performClick()
+        compose.waitUntil(5_000) { canvas().tool == EditorTool.SMUDGE && store.load().persistentBrushPresetId != "system-blend-copy-stamp" }
     }
 
     @Test fun draggingRailToRightEdgeDocksAndCancelRestoresPlacement() {

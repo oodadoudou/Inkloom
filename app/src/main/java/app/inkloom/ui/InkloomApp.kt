@@ -615,10 +615,12 @@ fun InkloomApp(initialIntent: Intent?) {
     var bookPreview by remember { mutableStateOf<Pair<InkDocument, Int?>?>(null) }
     // Animation export: the folder and width chosen in the timeline, until the file is picked.
     var pendingAnimationExport by remember { mutableStateOf<Pair<String, Int>?>(null) }
-    val handwritingToText = remember(viewModel) {
-        HandwritingToTextHost(
+    val editorBridge = remember(viewModel) {
+        EditorBridge(
+            settings = { settings },
+            updateSettings = ::updateSettings,
             pageSize = { viewModel.currentPage()?.let { it.width to it.height } },
-            insert = { element ->
+            insertText = { element ->
                 val document = viewModel.currentDocument()
                 val page = viewModel.currentPage()
                 if (document != null && page != null) viewModel.addElement(document.id, page.id, element)
@@ -932,7 +934,7 @@ fun InkloomApp(initialIntent: Intent?) {
         AppDestination.EDITOR -> CompositionLocalProvider(LocalAnimationExport provides { folderId, width, name, format ->
             pendingAnimationExport = folderId to width
             (if (format == app.inkloom.document.AnimationExportFormat.GIF) gifExportPicker else videoExportPicker).launch("$name.${format.extension}")
-        }, LocalHandwritingToText provides handwritingToText) { EditorScreen(
+        }, LocalEditorBridge provides editorBridge) { EditorScreen(
             panelState = panelState,
             document = libraryState.documents.firstOrNull { it.id == libraryState.selectedDocumentId } ?: viewModel.currentDocument(),
             documents = libraryState.documents,
@@ -2127,7 +2129,7 @@ private fun EditorScreen(
                             Triple(EditorTool.GRADIENT, Icons.Outlined.Gradient, tr("Gradient", "渐变")),
                             Triple(EditorTool.SMUDGE, Icons.Outlined.BlurOn, tr("Blend", "混色")),
                             Triple(EditorTool.LIQUIFY, Icons.Outlined.Waves, tr("Liquify", "液化")),
-                            Triple(EditorTool.CORRECT_LINE, Icons.Outlined.AutoFixHigh, tr("Correct line", "线条修正")),
+                            Triple(EditorTool.CORRECT_LINE, Icons.Outlined.Timeline, tr("Correct line", "线条修正")),
                             Triple(EditorTool.RULER, Icons.Outlined.Straighten, tr("Ruler", "尺规")),
                             Triple(EditorTool.FRAME, Icons.Outlined.ViewQuilt, tr("Frame border", "分格")),
                             Triple(EditorTool.SHAPE, Icons.Outlined.Category, tr("Shape", "形状")),

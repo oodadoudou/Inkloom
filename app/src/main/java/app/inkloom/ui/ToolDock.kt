@@ -526,7 +526,7 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
         BrushPresetToolButton(EditorTool.PEN, Icons.Outlined.Brush, tr("Brush", "笔刷"), tool, libraryPresets.filterNot(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
         ToolButton(EditorTool.HIGHLIGHTER, Icons.Outlined.BorderColor, tr("Marker", "标记笔"), tool, onTool)
         BrushPresetToolButton(EditorTool.ERASER, InkloomIcons.Eraser, tr("Eraser", "橡皮"), tool, libraryPresets.filter(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
-        ToolButton(EditorTool.SELECT, Icons.Outlined.Gesture, tr("Select", "选择"), tool, onTool)
+        ToolPaletteButton(EditorTool.SELECT, tool, libraryPresets, selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
     }
     Box {
         CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = tr("More tools", "更多工具"), selected = rulerEnabled || gridSnapEnabled || alignmentGuidesEnabled || tool in setOf(EditorTool.EYEDROPPER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE, EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.LASER)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
@@ -538,7 +538,7 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
                 Triple(EditorTool.GRADIENT, Icons.Outlined.Gradient, tr("Gradient", "渐变")),
                 Triple(EditorTool.SMUDGE, Icons.Outlined.BlurOn, tr("Blend", "混色")),
                 Triple(EditorTool.LIQUIFY, Icons.Outlined.Waves, tr("Liquify", "液化")),
-                Triple(EditorTool.CORRECT_LINE, Icons.Outlined.AutoFixHigh, tr("Correct line", "线条修正")),
+                Triple(EditorTool.CORRECT_LINE, Icons.Outlined.Timeline, tr("Correct line", "线条修正")),
                 Triple(EditorTool.RULER, Icons.Outlined.Straighten, tr("Ruler", "尺规")),
                 Triple(EditorTool.FRAME, Icons.Outlined.ViewQuilt, tr("Frame border", "分格")),
                 Triple(EditorTool.SHAPE, Icons.Outlined.Category, tr("Figure", "图形")),
@@ -785,6 +785,32 @@ private fun ToolPaletteButton(value: EditorTool, selected: EditorTool, brushes: 
             onTool, onSystemPreset, onEraserPreset, onBrushPreset)
         return
     }
+    // Clip Studio Paint and Photoshop keep the magic wand and the clone stamp as tools of their own,
+    // beside the selection and blend tools they belong to.
+    if (value == EditorTool.SELECT) {
+        val bridge = LocalEditorBridge.current
+        val wand = bridge?.selectionShape == app.inkloom.settings.SelectionShape.MAGIC_WAND
+        RailToolButton(Icons.Outlined.Gesture, tr("Select", "选择"), selected == EditorTool.SELECT && !wand) {
+            onTool(EditorTool.SELECT)
+            if (wand) bridge?.setSelectionShape(app.inkloom.settings.SelectionShape.FREEFORM)
+        }
+        if (bridge != null) RailToolButton(Icons.Outlined.AutoFixNormal, tr("Magic wand", "魔棒"), selected == EditorTool.SELECT && wand) {
+            onTool(EditorTool.SELECT)
+            bridge.setSelectionShape(app.inkloom.settings.SelectionShape.MAGIC_WAND)
+        }
+        return
+    }
+    if (value == EditorTool.SMUDGE) {
+        val cloning = selected == EditorTool.SMUDGE && BrushRoleClassifier.isClone(brushes.firstOrNull { it.id == selectedBrushId })
+        RailToolButton(Icons.Outlined.BlurOn, tr("Blend", "混色"), selected == EditorTool.SMUDGE && !cloning) {
+            val blend = brushes.firstOrNull { BrushRoleClassifier.isBlend(it) && !BrushRoleClassifier.isClone(it) }
+            if (cloning && blend != null) onBrushPreset(blend) else onTool(EditorTool.SMUDGE)
+        }
+        brushes.firstOrNull(BrushRoleClassifier::isClone)?.let { clone ->
+            RailToolButton(Icons.Outlined.Approval, tr("Clone stamp", "仿制图章"), cloning) { onBrushPreset(clone) }
+        }
+        return
+    }
     val icon = when(value) {
         EditorTool.HIGHLIGHTER -> Icons.Outlined.BorderColor
         EditorTool.EYEDROPPER -> Icons.Outlined.Colorize
@@ -799,7 +825,7 @@ private fun ToolPaletteButton(value: EditorTool, selected: EditorTool, brushes: 
         EditorTool.GRADIENT -> Icons.Outlined.Gradient
         EditorTool.SMUDGE -> Icons.Outlined.BlurOn
         EditorTool.LIQUIFY -> Icons.Outlined.Waves
-        EditorTool.CORRECT_LINE -> Icons.Outlined.AutoFixHigh
+        EditorTool.CORRECT_LINE -> Icons.Outlined.Timeline
         EditorTool.RULER -> Icons.Outlined.Straighten
         EditorTool.FRAME -> Icons.Outlined.ViewQuilt
         EditorTool.PEN, EditorTool.ERASER -> error("handled above")
@@ -825,6 +851,14 @@ private fun ToolPaletteButton(value: EditorTool, selected: EditorTool, brushes: 
     }
     ToolButton(value, icon, label, selected, onTool)
 }
+
+@Composable
+private fun RailToolButton(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) =
+    HoverTooltip(label, longPressShows = false) {
+        Box(Modifier.size(32.dp).background(if (selected) SageContainer else Color.Transparent).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+            Icon(icon, label, Modifier.size(19.dp), tint = Ink)
+        }
+    }
 
 @Composable
 private fun CompactToolbarIconButton(onClick: () -> Unit, description: String, selected: Boolean = false, content: @Composable () -> Unit) =

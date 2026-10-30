@@ -98,20 +98,6 @@ internal object HandwritingImage {
     }
 }
 
-/**
- * What the selection menu needs to turn handwriting into a text object, provided by the app shell
- * so the editor's own parameter list stays unchanged.
- */
-internal class HandwritingToTextHost(
-    /** Page width and height in page units, for sizing the text object. */
-    val pageSize: () -> Pair<Float, Float>?,
-    val insert: (PageElement.Text) -> Unit,
-) {
-    var canvas: InkCanvasView? = null
-}
-
-internal val LocalHandwritingToText = staticCompositionLocalOf<HandwritingToTextHost?> { null }
-
 /** Recognized lines read top to bottom, then left to right on the same line. */
 internal object HandwritingText {
     fun join(blocks: List<RecognizedTextBlock>): String {
@@ -149,7 +135,7 @@ internal object HandwritingText {
  * or replacing it (the lassoed ink is erased in the same step).
  */
 @Composable
-internal fun HandwritingToTextDialog(host: HandwritingToTextHost, language: UiLanguage, onDismiss: () -> Unit) {
+internal fun HandwritingToTextDialog(host: EditorBridge, language: UiLanguage, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val ink = remember { host.canvas?.selectedInkForRecognition() }
     var text by remember { mutableStateOf("") }
@@ -176,7 +162,7 @@ internal fun HandwritingToTextDialog(host: HandwritingToTextHost, language: UiLa
     fun place(replace: Boolean) {
         val source = ink ?: return
         val (width, height) = host.pageSize() ?: return
-        host.insert(HandwritingText.element(text.trim(), source.bounds, width, height, source.layerId))
+        host.insertText(HandwritingText.element(text.trim(), source.bounds, width, height, source.layerId))
         if (replace) host.canvas?.deleteSelection()
         onDismiss()
     }
