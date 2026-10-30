@@ -52,7 +52,9 @@ private const val HANDWRITING_OCR_WIDTH = 1600
 private const val HANDWRITING_INDEX_DELAY_MS = 6_000L
 
 class InkloomViewModel(application: Application) : AndroidViewModel(application) {
-    private val store = FileDocumentStore(application.filesDir)
+    // Page edits (every pen-up) go to the journal at once and into the notebook's checkpoint in the
+    // background once the ink has settled for a moment.
+    private val store = FileDocumentStore(application.filesDir, checkpointDelayMillis = 3_000L)
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
     private val indexFile = File(application.filesDir, "library.json")
     private val backupService = LibraryBackupService(application.filesDir)
@@ -72,7 +74,9 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     private var assetGarbageCollectionJob: Job? = null
 
     override fun onCleared() {
-        store.awaitRealtimeWrites()
+        // Page edits are already durable in the journal; the next start checkpoints them, so
+        // leaving the editor never waits for a pending checkpoint.
+        store.close()
         selectionRuntime.clear()
         super.onCleared()
     }
@@ -229,7 +233,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
                 coroutineContext.ensureActive()
                 mutablePdfImportProgress.value = PdfImportProgress(pages.size, pages.size, committing = true, addingPages = true)
                 withContext(Dispatchers.IO + NonCancellable) {
-                    synchronized(store) {
+                    store.exclusive {
                         val latest = store.get(documentId)?.takeIf { it.trashedAt == null }
                             ?: error("The target notebook is unavailable")
                         store.save(AppendImportedPages.apply(latest, pages))
@@ -367,7 +371,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             pendingDocumentUpgrades += document.id
             viewModelScope.launch {
                 val result = withContext(Dispatchers.IO) {
-                    LegacyFillMigration(assets).migrate(document) { migrated -> synchronized(store) {
+                    LegacyFillMigration(assets).migrate(document) { migrated -> store.exclusive {
                         check(store.get(document.id) == document) { "The notebook changed during the upgrade; restart to retry" }
                         store.recover()
                         store.save(migrated)
@@ -887,7 +891,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         assetGarbageCollectionJob?.cancel()
         assetGarbageCollectionJob = viewModelScope.launch(Dispatchers.IO) {
             if (delayMillis > 0L) delay(delayMillis)
-            store.awaitRealtimeWrites()
+            runCatching { store.awaitRealtimeWrites() }
             // GC consumes a document snapshot. A newer realtime tile commit may replace and
             // release one of that snapshot's immutable manifests before tracing begins. Treat
             // that as a stale collection attempt and retry on the next scheduled pass; asset GC
@@ -1023,8 +1027,8 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             try {
                 val indexed = withContext(Dispatchers.IO) { store.get(documentId)?.let(assets::indexPdfText) }
                 if (indexed != null) withContext(Dispatchers.IO) {
-                    synchronized(store) {
-                        val latest = store.get(documentId) ?: return@synchronized
+                    store.exclusive {
+                        val latest = store.get(documentId) ?: return@exclusive
                         val indexedPages = indexed.pages.associateBy(InkPage::id)
                         val mergedPages = latest.pages.map { current ->
                             val indexedPage = indexedPages[current.id] ?: return@map current
@@ -1157,10 +1161,13 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun update(id: String, transform: (InkDocument) -> InkDocument) { store.get(id)?.let(transform)?.let(store::save); refreshSelection() }
-    private fun updatePage(documentId: String, pageId: String, transform: (InkPage) -> InkPage) = update(documentId) { document ->
-        document.copy(pages = document.pages.map { page ->
-            if (page.id == pageId) app.inkloom.document.LayerSoloStructure.reconcile(page, transform(page)) else page
-        }, updatedAt = System.currentTimeMillis())
+    /** One page changes: only that page is written (to the journal), never the whole notebook. */
+    private fun updatePage(documentId: String, pageId: String, transform: (InkPage) -> InkPage) {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
+        val updated = app.inkloom.document.LayerSoloStructure.reconcile(page, transform(page))
+        if (updated == page) return
+        store.replacePage(documentId, updated)
+        refreshSelection()
     }
     private fun refresh(recovered: Int = mutableState.value.recoveredOperations) {
         val documents=store.list()

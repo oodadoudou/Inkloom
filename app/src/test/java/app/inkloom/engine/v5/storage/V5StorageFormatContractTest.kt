@@ -21,9 +21,9 @@ class V5StorageFormatContractTest {
 
         val encoded = DocumentCheckpointCodec.encode(document)
 
-        assertTrue(encoded.contains("\"format\": \"inkloom-document-v5\""))
-        assertTrue(encoded.contains("\"schemaVersion\": 5"))
-        assertTrue(encoded.contains("\"engineVersion\": 5"))
+        assertTrue(encoded.contains("\"format\":\"inkloom-document-v5\""))
+        assertTrue(encoded.contains("\"schemaVersion\":5"))
+        assertTrue(encoded.contains("\"engineVersion\":5"))
         assertTrue(!encoded.contains("\"contentKind\""))
         assertEquals(document, DocumentCheckpointCodec.decode(encoded))
     }
@@ -59,7 +59,7 @@ class V5StorageFormatContractTest {
 
     @Test fun checkpointRejectsLegacyVectorStrokePayloads() {
         val encoded = DocumentCheckpointCodec.encode(InkDocument(title = "legacy vector"))
-        val legacy = encoded.replaceFirst("\"pages\": [\n            {", "\"pages\": [\n            {\n                \"strokes\": [],")
+        val legacy = encoded.replaceFirst("\"pages\":[{", "\"pages\":[{\"strokes\":[],")
 
         val error = assertThrows(IllegalArgumentException::class.java) {
             DocumentCheckpointCodec.decode(legacy)

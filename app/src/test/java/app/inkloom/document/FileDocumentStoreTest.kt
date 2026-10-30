@@ -1,5 +1,6 @@
 package app.inkloom.document
 
+import app.inkloom.engine.v5.storage.DocumentCheckpointCodec
 import app.inkloom.engine.v5.storage.RecoveryJournalEntry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -39,11 +40,205 @@ class FileDocumentStoreTest {
         store.save(document)
 
         val checkpoint = root.resolve("documents/${document.id}.json").readText()
-        assertTrue(checkpoint.contains("\"format\": \"inkloom-document-v5\""))
-        assertTrue(checkpoint.contains("\"schemaVersion\": 5"))
-        assertTrue(checkpoint.contains("\"engineVersion\": 5"))
+        assertTrue(checkpoint.contains("\"format\":\"inkloom-document-v5\""))
+        assertTrue(checkpoint.contains("\"schemaVersion\":5"))
+        assertTrue(checkpoint.contains("\"engineVersion\":5"))
         assertTrue(checkpoint.contains("\"checksum\""))
         assertEquals(document, FileDocumentStore(root).get(document.id))
+    }
+
+    @Test fun `a page edit is durable through the journal without rewriting the checkpoint`() {
+        val root = Files.createTempDirectory("inkloom-page-journal").toFile()
+        val store = FileDocumentStore(root)
+        val document = InkDocument(title = "Journal", pages = listOf(InkPage(title = "One"), InkPage(title = "Two")))
+        store.save(document)
+        val checkpointBefore = root.resolve("documents/${document.id}.json").readText()
+        val edited = document.pages[1].copy(title = "Two, edited")
+
+        store.replacePage(document.id, edited, updatedAt = 42L)
+
+        assertEquals("the checkpoint is not rewritten on a page edit", checkpointBefore, root.resolve("documents/${document.id}.json").readText())
+        assertEquals("Two, edited", store.get(document.id)!!.pages[1].title)
+        val reopened = FileDocumentStore(root).get(document.id)!!
+        assertEquals("a second reader (or a restart after a crash) replays the journal", "Two, edited", reopened.pages[1].title)
+        assertEquals(42L, reopened.updatedAt)
+        assertEquals(1, store.recover())
+        assertTrue(root.resolve("documents/${document.id}.json").readText().contains("Two, edited"))
+        assertEquals(0L, root.resolve("journal.jsonl").length())
+        root.deleteRecursively()
+    }
+
+    @Test fun `background checkpoint writes edited notebooks and empties the journal`() {
+        val root = Files.createTempDirectory("inkloom-background-checkpoint").toFile()
+        val store = FileDocumentStore(root, checkpointDelayMillis = 5L)
+        val untouched = InkDocument(title = "Untouched")
+        val document = InkDocument(title = "Edited")
+        store.save(untouched); store.save(document)
+        val untouchedModified = root.resolve("documents/${untouched.id}.json").lastModified()
+        store.replacePage(document.id, document.pages.single().copy(title = "Inked"))
+
+        store.awaitRealtimeWrites()
+
+        assertTrue(root.resolve("documents/${document.id}.json").readText().contains("Inked"))
+        assertEquals(0L, root.resolve("journal.jsonl").length())
+        assertEquals("only edited notebooks are written", untouchedModified, root.resolve("documents/${untouched.id}.json").lastModified())
+        assertEquals("Inked", FileDocumentStore(root).get(document.id)!!.pages.single().title)
+        root.deleteRecursively()
+    }
+
+    @Test fun `a whole-notebook save is never undone by older journal entries`() {
+        val root = Files.createTempDirectory("inkloom-journal-order").toFile()
+        val store = FileDocumentStore(root)
+        val document = InkDocument(title = "Order")
+        store.save(document)
+        store.replacePage(document.id, document.pages.single().copy(title = "Edited page"))
+        val renamed = store.get(document.id)!!.copy(title = "Renamed notebook", pages = store.get(document.id)!!.pages.map { it.copy(title = "Saved page") })
+
+        store.save(renamed)
+
+        val reopened = FileDocumentStore(root).get(document.id)!!
+        assertEquals("Renamed notebook", reopened.title)
+        assertEquals("Saved page", reopened.pages.single().title)
+        root.deleteRecursively()
+    }
+
+    @Test fun `a crash between a notebook save and trimming the journal keeps the saved pages`() {
+        val root = Files.createTempDirectory("inkloom-save-crash").toFile()
+        var journalFrozen = false
+        val store = FileDocumentStore(root) { temporary, target ->
+            !(journalFrozen && target.name == "journal.jsonl") && temporary.renameTo(target)
+        }
+        val document = InkDocument(title = "Crash", pages = listOf(InkPage(title = "Page")))
+        store.save(document)
+        store.replacePage(document.id, document.pages.single().copy(title = "Drawn"))
+        // The process dies after the checkpoint is replaced and before the journal is trimmed.
+        journalFrozen = true
+
+        store.save(store.get(document.id)!!.let { it.copy(pages = it.pages.map { page -> page.copy(title = "Saved") }) })
+
+        assertTrue("the older page is still in the journal", root.resolve("journal.jsonl").readText().contains("Drawn"))
+        assertEquals("Saved", FileDocumentStore(root).get(document.id)!!.pages.single().title)
+        root.deleteRecursively()
+    }
+
+    @Test fun `journal sequences keep growing after the journal is emptied`() {
+        val root = Files.createTempDirectory("inkloom-journal-sequence").toFile()
+        val store = FileDocumentStore(root)
+        val document = InkDocument(title = "Sequence", pages = listOf(InkPage(title = "Page")))
+        store.save(document)
+        store.replacePage(document.id, document.pages.single().copy(title = "First"))
+        assertEquals(1, store.recover())
+
+        store.replacePage(document.id, document.pages.single().copy(title = "Second"))
+
+        assertEquals("an edit after recovery is not taken for one the checkpoint holds",
+            "Second", FileDocumentStore(root).get(document.id)!!.pages.single().title)
+        root.deleteRecursively()
+    }
+
+    @Test fun `a page the checkpoint would refuse never reaches the journal`() {
+        val root = Files.createTempDirectory("inkloom-refused-page").toFile()
+        val store = FileDocumentStore(root)
+        val document = InkDocument(title = "Refused", pages = listOf(InkPage(title = "Page")))
+        store.save(document)
+        val legacyFill = PageElement.Fill(x = 0f, y = 0f, width = 10f, height = 10f, maskAssetPath = "/legacy/fill.png")
+
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            store.replacePage(document.id, document.pages.single().copy(elements = listOf(legacyFill)))
+        }
+
+        assertEquals(0L, root.resolve("journal.jsonl").length())
+        assertEquals(document, store.get(document.id))
+        assertEquals(0, store.recover())
+        root.deleteRecursively()
+    }
+
+    @Test fun `start-up recovery cuts a torn journal tail so later edits are replayed`() {
+        val root = Files.createTempDirectory("inkloom-torn-journal").toFile()
+        val document = InkDocument(title = "Torn", pages = listOf(InkPage(title = "Page")))
+        FileDocumentStore(root).apply {
+            save(document)
+            replacePage(document.id, document.pages.single().copy(title = "Kept"))
+        }
+        root.resolve("journal.jsonl").appendText("{\"format\":\"inkloom-journal-v5\",\"payload\":")
+
+        val restarted = FileDocumentStore(root)
+        assertEquals("Kept", restarted.get(document.id)!!.pages.single().title)
+        assertEquals(1, restarted.recover())
+        restarted.replacePage(document.id, document.pages.single().copy(title = "After restart"))
+
+        assertEquals("After restart", FileDocumentStore(root).get(document.id)!!.pages.single().title)
+        root.deleteRecursively()
+    }
+
+    @Test fun `a closed store still journals edits and the next store checkpoints them`() {
+        val root = Files.createTempDirectory("inkloom-closed-store").toFile()
+        val store = FileDocumentStore(root, checkpointDelayMillis = 60_000L)
+        val document = InkDocument(title = "Closed", pages = listOf(InkPage(title = "Page")))
+        store.save(document)
+        store.close()
+
+        store.replacePage(document.id, document.pages.single().copy(title = "After close"))
+        store.awaitRealtimeWrites()
+
+        val next = FileDocumentStore(root)
+        assertEquals("After close", next.get(document.id)!!.pages.single().title)
+        assertEquals(1, next.recover())
+        root.deleteRecursively()
+    }
+
+    @Test fun `exclusive runs a read-modify-write that saves`() {
+        val root = Files.createTempDirectory("inkloom-exclusive").toFile()
+        val store = FileDocumentStore(root, checkpointDelayMillis = 1L)
+        val document = InkDocument(title = "Exclusive", pages = listOf(InkPage(title = "Page")))
+        store.save(document)
+        store.replacePage(document.id, document.pages.single().copy(title = "Inked"))
+
+        store.exclusive { store.save(store.get(document.id)!!.copy(title = "Renamed")) }
+        store.awaitRealtimeWrites()
+
+        val reopened = FileDocumentStore(root).get(document.id)!!
+        assertEquals("Renamed", reopened.title)
+        assertEquals("Inked", reopened.pages.single().title)
+        store.close()
+        root.deleteRecursively()
+    }
+
+    @Test(timeout = 10_000) fun `a read-modify-write during a background checkpoint does not deadlock`() {
+        val root = Files.createTempDirectory("inkloom-lock-order").toFile()
+        val checkpointWriting = java.util.concurrent.CountDownLatch(1)
+        val store = FileDocumentStore(root, checkpointDelayMillis = 1L) { temporary, target ->
+            if (Thread.currentThread().name == "Inkloom-Checkpoint" && target.name != "journal.jsonl") {
+                checkpointWriting.countDown()
+                Thread.sleep(200)
+            }
+            temporary.renameTo(target)
+        }
+        val document = InkDocument(title = "Lock order", pages = listOf(InkPage(title = "Page")))
+        store.save(document)
+        store.replacePage(document.id, document.pages.single().copy(title = "Inked"))
+        checkpointWriting.await()
+
+        store.exclusive { store.save(store.get(document.id)!!.copy(title = "Renamed")) }
+        store.awaitRealtimeWrites()
+
+        val reopened = FileDocumentStore(root).get(document.id)!!
+        assertEquals("Renamed", reopened.title)
+        assertEquals("Inked", reopened.pages.single().title)
+        store.close()
+        root.deleteRecursively()
+    }
+
+    @Test fun `older pretty-printed checkpoints still read`() {
+        val root = Files.createTempDirectory("inkloom-pretty-checkpoint").toFile()
+        val document = InkDocument(title = "Pretty", pages = listOf(InkPage(title = "Page")))
+        val compact = DocumentCheckpointCodec.encode(document)
+        val pretty = Json { prettyPrint = true }.encodeToString(kotlinx.serialization.json.JsonElement.serializer(), Json.parseToJsonElement(compact))
+        root.resolve("documents").mkdirs()
+        root.resolve("documents/${document.id}.json").writeText(pretty)
+
+        assertEquals(document, FileDocumentStore(root).get(document.id))
+        root.deleteRecursively()
     }
 
     @Test fun `legacy bare document checkpoint is rejected without migration`() {
