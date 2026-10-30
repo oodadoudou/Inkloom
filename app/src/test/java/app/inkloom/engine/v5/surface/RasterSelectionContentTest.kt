@@ -95,6 +95,29 @@ class RasterSelectionContentTest {
         assertEquals(null, RasterSelectionContent.clear(pixels, MaskTileSurface(8192, 8192, 64).snapshot(), outside = true))
     }
 
+    @Test fun clearAllEmptiesEveryOccupiedTileOfASparsePageAsOneUndoableEdit() {
+        for (format in PixelTileFormat.entries) {
+            val pixels = PixelTileSurface(8192, 8192, 64, pixelFormat = format)
+            pixels.beginWrite("distant pixels").use { write ->
+                if (format == PixelTileFormat.PREMULTIPLIED_SRGB_8888) { write.setPixel(20, 20, -1); write.setPixel(8000, 8000, 0x80800000.toInt()) }
+                else { write.setLinearPixel(20, 20, LinearRgba(2f, .5f, .2f, 1f)); write.setLinearPixel(8000, 8000, LinearRgba(0f, 0f, 1f, .5f)) }
+                write.commit().close()
+            }
+            val before = pixels.snapshot()
+            val edit = requireNotNull(RasterSelectionContent.clearAll(pixels))
+            assertEquals(2, edit.record.changedTileCount)
+            assertEquals(0, pixels.tileCount)
+            assertTrue(edit.dirtyBounds.left <= 20 && edit.dirtyBounds.top <= 20 && edit.dirtyBounds.right > 8000 && edit.dirtyBounds.bottom > 8000)
+            pixels.apply(edit.record, PixelTileSurface.HistoryDirection.UNDO)
+            assertEquals(before.pixelAt(20, 20), pixels.pixelAt(20, 20))
+            assertEquals(before.pixelAt(8000, 8000), pixels.pixelAt(8000, 8000))
+            pixels.apply(edit.record, PixelTileSurface.HistoryDirection.REDO)
+            assertEquals(0, pixels.pixelAt(20, 20))
+            edit.record.close()
+        }
+        assertEquals(null, RasterSelectionContent.clearAll(PixelTileSurface(512, 512, 64)))
+    }
+
     @Test fun fillUnderpaintClosesAntialiasHaloAndIsErasableAndUndoable() {
         val pixels = PixelTileSurface(128, 64, tileSize = 64)
         pixels.beginWrite("antialiased line").use { write ->

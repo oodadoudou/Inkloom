@@ -241,6 +241,7 @@ internal fun LayerPanel(
     onDelete: (String) -> Unit,
     onGroupSelected: (String, Set<String>) -> Unit,
     onUngroup: (String) -> Unit,
+    onClear: (String) -> Unit = {},
     modifier: Modifier = Modifier.width(240.dp).fillMaxHeight().background(Paper).border(1.dp, OutlineSoft).padding(2.dp),
 ) {
 
@@ -292,6 +293,7 @@ internal fun LayerPanel(
             onToggleFolderCollapsed = onToggleFolderCollapsed,
             onDuplicate = onDuplicate,
             onMergeDown = onMergeDown,
+            onClear = onClear,
             onMerge = onMerge,
             onDelete = onDelete,
             onGroupSelected = onGroupSelected,
@@ -375,6 +377,7 @@ private fun PaintingLayerPanel(
     onDelete: (String) -> Unit,
     onGroupSelected: (String, Set<String>) -> Unit,
     onUngroup: (String) -> Unit,
+    onClear: (String) -> Unit,
     modifier: Modifier,
 ) {
     var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
@@ -764,6 +767,7 @@ private fun PaintingLayerPanel(
                                 StudioMenuItem(text = { Text(tr("Move up", "上移")) }, enabled = siblingDrop(layer, 1) != null, onClick = { menu = false; siblingDrop(layer, 1)?.let { onRelocate(layer.id, setOf(layer.id), it) } })
                                 StudioMenuItem(text = { Text(tr("Move down", "下移")) }, enabled = siblingDrop(layer, -1) != null, onClick = { menu = false; siblingDrop(layer, -1)?.let { onRelocate(layer.id, setOf(layer.id), it) } })
                                 if (layer.role != LayerRole.BACKGROUND) StudioMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(layer.id) })
+                                if (layer.isPaintSurfaceLayer()) StudioMenuItem(text = { Text(tr("Clear", "清除")) }, onClick = { menu = false; onClear(layer.id) })
                                 if (layer.isPaintSurfaceLayer()) StudioMenuItem(text = { Text(tr("Merge down", "向下合并")) }, onClick = { menu = false; onMergeDown(layer.id) })
                                 if (layer.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER, LayerRole.ADJUSTMENT)) StudioMenuItem(text = { Text(tr("Delete", "删除")) }, onClick = { menu = false; onDelete(layer.id) })
                             }

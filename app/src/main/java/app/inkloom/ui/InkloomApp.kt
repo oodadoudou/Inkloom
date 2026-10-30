@@ -3704,6 +3704,7 @@ private fun EditorScreen(
                 onDelete = { canvasView?.requestLayerTree(LayerTreeAction.DELETE, it) },
                 onGroupSelected = { primary, selected -> canvasView?.requestLayerTree(LayerTreeAction.GROUP_SELECTED, primary, selected) },
                 onUngroup = { canvasView?.requestLayerTree(LayerTreeAction.UNGROUP, it) },
+                onClear = { canvasView?.clearLayerContents(it) },
                 modifier = Modifier.fillMaxSize(),
             )
                     }

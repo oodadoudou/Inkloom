@@ -6195,9 +6195,11 @@ class InkCanvasView(context: Context) : View(context) {
      * Replaces the active vector layer's lines, re-rendering the pixels where lines changed, as one
      * undoable step. Returns false when the layer is not a vector layer or nothing changed.
      */
-    internal fun editVectorLayer(edit: (app.inkloom.document.VectorLayerContent, app.inkloom.document.VectorFrame) -> app.inkloom.document.VectorLayerContent): Boolean {
+    internal fun editVectorLayer(
+        layerId: String = activeLayerId,
+        edit: (app.inkloom.document.VectorLayerContent, app.inkloom.document.VectorFrame) -> app.inkloom.document.VectorLayerContent,
+    ): Boolean {
         if (selectionLayerTransferPending || hasActivePaintContact()) return false
-        val layerId = activeLayerId
         if (layerContentRejection(layerId, allowVector = true) != null) return false
         val before = vectorContent(layerId) ?: return false
         val surface = rasterTileSurfaceFor(layerId)?.takeIf { it.pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888 } ?: return false
@@ -8149,6 +8151,8 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun deleteSelection() {
+        // CSP's Edit > Clear and Photoshop's Delete: with nothing selected the whole layer is cleared.
+        if (!hasSelection() && selectionCanvasTransform == null) { clearLayerContents(); return }
         if (editingLayerMaskId == null && vectorContent() != null) { eraseVectorsBySelection(selected = true); return }
         if (rejectLayerContentEdit()) return
         finishSelectionTransform(apply = true)
@@ -8167,6 +8171,35 @@ class InkCanvasView(context: Context) : View(context) {
                 return
             }
         }
+    }
+
+    /**
+     * Clears the active layer in one undoable step: CSP Edit > Clear with nothing selected, Procreate
+     * Layer > Clear and three-finger scrub. Pixels, or a vector layer's lines, go; the mask, separate
+     * objects and the selection stay. Every refusal names its reason.
+     */
+    fun clearLayerContents(layerId: String = activeLayerId): Boolean {
+        val chinese = feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE
+        fun refuse(english: String, simplifiedChinese: String): Boolean {
+            onPaintCapabilityRejected(if (chinese) simplifiedChinese else english)
+            return false
+        }
+        if (hasActivePaintContact()) return refuse("Lift the pen before clearing the layer", "请先抬笔，再清除图层")
+        if (editingLayerMaskId == layerId) return refuse("Clear works on layer content. Edit the mask with the brush or eraser.", "清除只作用于图层内容；请用画笔或橡皮编辑蒙版")
+        val vector = vectorContent(layerId)
+        if (vector != null) {
+            if (layerContentRejection(layerId, allowVector = true)?.let(::reportLayerEditRejection) == true) return false
+            if (vector.strokes.isEmpty()) return refuse("This layer is already empty", "此图层已经是空的")
+            return editVectorLayer(layerId) { content, _ -> content.copy(strokes = emptyList()) }
+        }
+        if (selectionLayerTransferPending || layerContentRejection(layerId)?.let(::reportLayerEditRejection) == true) return false
+        if (layerId in alphaLockedLayers) return refuse("Unlock transparency first", "请先关闭锁定透明度")
+        v5StrokeController.awaitIdle()
+        val surface = rasterTileSurfaceFor(layerId) ?: return refuse("This layer has no pixels to clear", "此图层没有可清除的像素")
+        val edit = RasterSelectionContent.clearAll(surface) ?: return refuse("This layer is already empty", "此图层已经是空的")
+        recordRasterToolTransaction(layerId, surface, edit.record,
+            Rect(edit.dirtyBounds.left, edit.dirtyBounds.top, edit.dirtyBounds.right, edit.dirtyBounds.bottom))
+        return true
     }
 
     /** Clears unselected pixels without altering the document selection or adding inverse history. */

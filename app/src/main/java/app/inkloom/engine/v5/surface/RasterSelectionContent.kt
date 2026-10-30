@@ -225,6 +225,33 @@ object RasterSelectionContent {
         }
     }
 
+    /**
+     * Clears the whole layer (CSP Edit > Clear with nothing selected, Procreate Layer > Clear) as one
+     * edit, visiting only the tiles that hold pixels. Null when the layer is already empty.
+     */
+    fun clearAll(surface: PixelTileSurface): RasterSelectionEdit? {
+        val occupied = surface.snapshot().tileInfo.filter { it.nonTransparentPixelCount > 0 }.map { it.key }
+        if (occupied.isEmpty()) return null
+        val transaction = surface.beginWrite("clear layer")
+        try {
+            occupied.forEach { key ->
+                when (surface.pixelFormat) {
+                    PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> transaction.editTile(key) { values, _ -> values.fill(0) }
+                    PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 -> transaction.editTileF16(key) { values, _ -> values.fill(0L) }
+                }
+            }
+            val bounds = occupied.map { key ->
+                val left = key.column * surface.tileSize
+                val top = key.row * surface.tileSize
+                PixelRect(left, top, minOf(left + surface.tileSize, surface.logicalWidth), minOf(top + surface.tileSize, surface.logicalHeight))
+            }.reduce(PixelRect::union)
+            return RasterSelectionEdit(transaction.commit(), bounds)
+        } catch (failure: Throwable) {
+            transaction.close()
+            throw failure
+        }
+    }
+
     /** Cross-document paste keeps native F16 precision when possible and converts only on demand. */
     fun convert(clipboard: RasterSelectionClipboard, format: PixelTileFormat): RasterSelectionClipboard =
         if (clipboard.pixelFormat == format) clipboard else when (format) {

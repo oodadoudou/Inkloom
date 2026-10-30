@@ -96,6 +96,25 @@ class RasterLayerMergeWindowTest {
         org.junit.Assert.assertArrayEquals(merged, pixels(restored))
     }
 
+    /** Procreate's Layer > Clear: the layer stays, its pixels go, and one undo brings them back. */
+    @Test fun layerMenuClearEmptiesTheLayerAndUndoBringsItBack() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync { model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java] }
+        stroke(pagePoint(view, .25f, .4f), pagePoint(view, .7f, .4f))
+        compose.waitUntil(10_000) { pixels(view).any { it != 0 } }
+        val drawn = pixels(view)
+        val layerId = view.activeLayerId
+        tap("Layers")
+        tapLayerActions(requireNotNull(model.currentPage()).layers.first { it.id == layerId }.name)
+        compose.onNodeWithText("Clear").performScrollTo().performClick()
+        compose.waitUntil(10_000) { pixels(view).none { it != 0 } }
+        assertTrue("the layer itself stays", model.currentPage()?.layers?.any { it.id == layerId } == true)
+        tap("Undo")
+        compose.waitUntil(10_000) { drawn.contentEquals(pixels(view)) }
+    }
+
     @Test fun visibleCopyAddsOneLayerAndUndoRestoresTheOriginalTree() {
         tap("New Note"); tap("Create")
         val view = canvas()
