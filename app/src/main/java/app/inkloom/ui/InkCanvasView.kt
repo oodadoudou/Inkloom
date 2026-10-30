@@ -2521,8 +2521,11 @@ class InkCanvasView(context: Context) : View(context) {
         // Compose may decode the same durable preset on every AndroidView update. Semantic
         // equality is the stroke boundary: never cancel an active contact merely because the
         // immutable program was re-instantiated.
+        // Without a program (selection and other non-paint tools) there is no brush identity to
+        // compare; the remembered paint brush must not count as a change, or every recomposition
+        // during a selection drag or magic-wand tap would cancel it.
         if (compiledBrushProgramV5?.preset == program?.preset && compiledBrushProgramV5Required == required &&
-            brushExecutionIdentity?.sourceBrushId == (sourceBrush?.id ?: program?.identity?.id)
+            (program == null || brushExecutionIdentity?.sourceBrushId == (sourceBrush?.id ?: program.identity.id))
         ) return
         if (activeTool != null) cancelActiveGestureForNavigation()
         compiledBrushProgramV5 = program

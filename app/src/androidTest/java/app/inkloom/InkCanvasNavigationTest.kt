@@ -568,6 +568,20 @@ class InkCanvasNavigationTest {
         assertEquals(0, paintSurface(view).tileCount)
     }
 
+    /** Compose re-applies the brush configuration on every update; a selection drag must survive it. */
+    @Test fun reapplyingTheSameConfigurationDuringASelectionDragKeepsTheSelection() {
+        val view = canvas().apply { tool = EditorTool.SELECT; selectionShape = app.inkloom.settings.SelectionShape.RECTANGLE }
+        val pen = app.inkloom.model.SystemBrushCatalog.byId("system-g-pen")
+        fun reapply() = InstrumentationRegistry.getInstrumentation().runOnMainSync { view.setCompiledBrushProgramV5(null, required = false, sourceBrush = pen) }
+        reapply()
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
+        sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 200f, 200f)
+        reapply()
+        sendStylus(view, 40L, MotionEvent.ACTION_MOVE, 300f, 300f)
+        sendStylus(view, 60L, MotionEvent.ACTION_UP, 300f, 300f)
+        assertTrue("the rectangle selection must be committed", view.hasActiveSelection())
+    }
+
     @Test fun holdShortcutEmitsPressAndReleaseForTemporaryToolSwitching() {
         val view = canvas().apply {
             shortcutBindings = listOf(ShortcutBinding(ShortcutAction.TOGGLE_ERASER, ShortcutChord(KeyEvent.KEYCODE_E), ShortcutTrigger.HOLD))
