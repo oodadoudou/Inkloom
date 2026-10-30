@@ -85,8 +85,8 @@ internal fun SettingsDialog(
         title = { Text(tr("Settings", "设置")) },
         text = {
             Column(Modifier.dialogContentWidth(300.dp, 520.dp)) {
-                val tabs = listOf(tr("General", "通用"), tr("Gestures", "手势"), tr("Pressure", "压感"), tr("Shortcuts", "快捷键"), tr("Backup", "备份"))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                val tabs = listOf(tr("General", "通用"), tr("Gestures", "手势"), tr("Pressure", "压感"), tr("Shortcuts", "快捷键"), tr("Backup", "备份"), tr("About", "关于"))
+                LazyRow(Modifier.semantics { contentDescription = "Settings sections" }, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     items(tabs.size) { index ->
                         TextButton(onClick = { settingsTab = index }, modifier = Modifier.height(44.dp).background(
                             if (settingsTab == index) SageContainer else Color.Transparent, RoundedCornerShape(8.dp))) {
@@ -196,6 +196,7 @@ internal fun SettingsDialog(
                 item { OutlinedButton(onClick = { shortcutEditorOpen = true }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Keyboard, null); Spacer(Modifier.width(8.dp)); Text(tr("Customize shortcuts", "自定义快捷键")) } }
 
                 }
+                if (settingsTab == 5) aboutItems(settings.language)
                 if (settingsTab == 4) {
                 item { Text(tr("DATA & BACKUP", "数据与备份"), color = MutedInk, fontSize = 12.sp) }
                 item { Text(tr("A full backup includes notes, folders, imported brushes and sources, PDFs, images, input settings, panel layouts, Toolbox shortcuts, quick slots and the custom color palette. Content is restored with new IDs so existing work is never overwritten.", "完整备份包含笔记、文件夹、导入笔刷及源文件、PDF、图片、输入设置、面板布局、Toolbox 快捷键、快速槽与自定义色板。内容恢复时会生成新 ID，不覆盖现有作品。"), color = MutedInk, fontSize = 12.sp) }

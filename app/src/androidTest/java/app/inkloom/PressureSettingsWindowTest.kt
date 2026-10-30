@@ -42,6 +42,23 @@ class PressureSettingsWindowTest {
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
 
+    @Test fun procreateGesturesCanBeTurnedOffAndAboutListsNoticesAndPrivacy() {
+        tap("Settings")
+        tap("Gestures")
+        compose.onNodeWithContentDescription("Settings content").performScrollToNode(hasText("Three-finger scrub to clear layer"))
+        // The switch on the same row as the label.
+        val row = compose.onNode(hasText("Three-finger scrub to clear layer")).fetchSemanticsNode().boundsInRoot
+        val switches = compose.onAllNodes(isToggleable())
+        val index = switches.fetchSemanticsNodes().indexOfFirst { it.boundsInRoot.center.y in row.top..row.bottom }
+        switches[index].performClick()
+        switches[index].assertIsOff()
+        compose.waitUntil(5_000) { !app.inkloom.settings.AppSettingsStore(instrumentation.targetContext).load().threeFingerScrubClear }
+        compose.onNodeWithContentDescription("Settings sections").performScrollToNode(hasText("About"))
+        tap("About")
+        compose.onNodeWithContentDescription("Settings content").performScrollToNode(hasText("ONNX Runtime"))
+        compose.onNode(hasText("Inkloom has no internet access", substring = true)).assertExists()
+    }
+
     @Test fun curveDragCommitsOnceAndScratchpadUsesProductionPressure() {
         tap("Settings")
         tap("Pressure")
