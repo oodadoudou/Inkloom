@@ -1210,7 +1210,7 @@ private fun EditorScreen(
     onRecognizeImages: (String, String, String, (Result<Int>) -> Unit) -> Unit,
     documentRecognizing: Boolean,
     onRecognizeDocument: (String, String, (Result<Int>) -> Unit) -> Unit,
-    onConvertHandwriting: (String, String, String, Boolean) -> Unit,
+    onConvertHandwriting: (String, String, String) -> Unit,
     onOpenInternalLink: (String, String) -> Unit,
     onOpenNotebook: (String) -> Unit,
     onSettings: () -> Unit,
@@ -4183,26 +4183,17 @@ private fun EditorScreen(
             StudioDialog(
                 onDismissRequest = { handwritingConversionHit = null },
                 title = { Text(tr("Convert handwriting to text", "手写转文字")) },
-                text = { Text(tr("Keep the original ink, or replace those strokes with editable text?", "保留原始笔迹，还是用可编辑文字替换这些笔画？")) },
+                text = { Text(tr("Adds \"${hit.snippet}\" as a text object over the ink. To replace the ink itself, lasso it and choose Convert to text.",
+                    "将“${hit.snippet}”添加为文字对象，手写保留。如需替换手写，请圈选后选择“转换为文字”。")) },
                 confirmButton = {
                     Button(onClick = {
-                        hit.recognizedBlockId?.let { onConvertHandwriting(document.id, page.id, it, true) }
+                        hit.recognizedBlockId?.let { onConvertHandwriting(document.id, page.id, it) }
                         handwritingConversionHit = null
                         overlays.searchOpen = false
                         jumpToPage(page.id)
-                    }) { Text(tr("Replace ink", "替换笔迹")) }
+                    }) { Text(tr("Add as text", "添加为文字")) }
                 },
-                dismissButton = {
-                    Row {
-                        TextButton(onClick = { handwritingConversionHit = null }) { Text(tr("Cancel", "取消")) }
-                        TextButton(onClick = {
-                            hit.recognizedBlockId?.let { onConvertHandwriting(document.id, page.id, it, false) }
-                            handwritingConversionHit = null
-                            overlays.searchOpen = false
-                            jumpToPage(page.id)
-                        }) { Text(tr("Keep ink", "保留笔迹")) }
-                    }
-                },
+                dismissButton = { TextButton(onClick = { handwritingConversionHit = null }) { Text(tr("Cancel", "取消")) } },
             )
         }
         if (importError != null) StudioDialog(onDismissRequest = onDismissError, confirmButton = { TextButton(onClick = onDismissError) { Text(tr("OK", "确定")) } }, title = { Text(tr("Import issue", "导入问题")) }, text = { Text(importError) })

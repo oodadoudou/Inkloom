@@ -46,6 +46,11 @@ data class PdfImportProgress(
     val fileCount: Int = 1,
 )
 
+/** Width the ink is rendered at for the handwriting search index. */
+private const val HANDWRITING_OCR_WIDTH = 1600
+/** How long the ink on a page stays still before it is indexed for search. */
+private const val HANDWRITING_INDEX_DELAY_MS = 6_000L
+
 class InkloomViewModel(application: Application) : AndroidViewModel(application) {
     private val store = FileDocumentStore(application.filesDir)
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
@@ -751,16 +756,42 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         rotationQuarterTurns: Int = 0,
         layerElements: app.inkloom.document.LayerElementEdit? = null,
         vector: app.inkloom.document.VectorLayerContent? = null,
-    ) = updatePage(documentId, pageId) { page ->
-        page.copy(elements = layerElements?.apply(page.elements) ?: page.elements, layers = page.layers.map { layer ->
-            if (layer.id != layerId || !layer.isPaintSurfaceLayer()) layer
-            else layer.copy(
-                rasterTileSurface = reference,
-                rasterRotationQuarterTurns = rotationQuarterTurns.mod(4),
-                // Lines only update a layer that is still a vector layer.
-                vector = if (layer.vector != null && vector != null) vector else layer.vector,
-            )
-        })
+    ) {
+        updatePage(documentId, pageId) { page ->
+            page.copy(elements = layerElements?.apply(page.elements) ?: page.elements, layers = page.layers.map { layer ->
+                if (layer.id != layerId || !layer.isPaintSurfaceLayer()) layer
+                else layer.copy(
+                    rasterTileSurface = reference,
+                    rasterRotationQuarterTurns = rotationQuarterTurns.mod(4),
+                    // Lines only update a layer that is still a vector layer.
+                    vector = if (layer.vector != null && vector != null) vector else layer.vector,
+                )
+            })
+        }
+        scheduleHandwritingIndex(documentId, pageId)
+    }
+
+    private val handwritingIndexJobs = mutableMapOf<String, Job>()
+
+    /**
+     * Keeps handwriting searchable without a manual step, as GoodNotes and Notability do: once the
+     * ink on a page has been still for a few seconds, the page's ink is read again on the device.
+     */
+    private fun scheduleHandwritingIndex(documentId: String, pageId: String) {
+        handwritingIndexJobs.remove(pageId)?.cancel()
+        handwritingIndexJobs[pageId] = viewModelScope.launch {
+            delay(HANDWRITING_INDEX_DELAY_MS)
+            val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return@launch
+            val fingerprint = HandwritingIndex.fingerprint(page)
+            if (fingerprint == page.handwritingIndexFingerprint) return@launch
+            val language = if (java.util.Locale.getDefault().language == "zh") "zh-Hans" else "en-US"
+            val recognized = withContext(Dispatchers.IO) { runCatching { recognizeHandwriting(page, language) }.getOrNull() } ?: return@launch
+            updatePage(documentId, pageId) { current ->
+                if (HandwritingIndex.fingerprint(current) != fingerprint) current
+                else current.copy(handwritingIndexFingerprint = fingerprint, recognizedTextBlocks =
+                    current.recognizedTextBlocks.filterNot { it.source == RecognizedTextSource.HANDWRITING } + recognized)
+            }
+        }
     }
 
     /** A layer's rulers and their settings; null removes them. */
@@ -1058,7 +1089,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     snapshot.pages.associate { page ->
-                        page.id to recognizeImages(page, languageTag)
+                        page.id to (recognizeImages(page, languageTag) + recognizeHandwriting(page, languageTag))
                     }
                 }
             }
@@ -1069,11 +1100,15 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
                         val recognized = recognizedPages[page.id] ?: return@map page
                         val imageFingerprint = ImageOcrIndex.fingerprint(snapshotPage)
                         val imagesStillCurrent = ImageOcrIndex.fingerprint(page) == imageFingerprint
+                        val inkFingerprint = HandwritingIndex.fingerprint(snapshotPage)
+                        val inkStillCurrent = HandwritingIndex.fingerprint(page) == inkFingerprint
+                        fun current(source: RecognizedTextSource) =
+                            if (source == RecognizedTextSource.IMAGE_OCR) imagesStillCurrent else inkStillCurrent
                         page.copy(
-                            recognizedTextBlocks = page.recognizedTextBlocks.filterNot { block ->
-                                block.source == RecognizedTextSource.IMAGE_OCR && imagesStillCurrent
-                            } + (if (imagesStillCurrent) recognized else emptyList()),
+                            recognizedTextBlocks = page.recognizedTextBlocks.filterNot { block -> current(block.source) } +
+                                recognized.filter { block -> current(block.source) },
                             imageOcrFingerprint = if (imagesStillCurrent) imageFingerprint else page.imageOcrFingerprint,
+                            handwritingIndexFingerprint = if (inkStillCurrent) inkFingerprint else page.handwritingIndexFingerprint,
                         )
                     }, updatedAt = System.currentTimeMillis())
                 }
@@ -1083,7 +1118,8 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun convertRecognizedHandwritingToText(documentId: String, pageId: String, blockId: String, replaceInk: Boolean) {
+    /** Adds a recognised handwriting line as a text object; the ink stays (lasso > Convert to text replaces it). */
+    fun convertRecognizedHandwritingToText(documentId: String, pageId: String, blockId: String) {
         updatePage(documentId, pageId) { page ->
             val block = page.recognizedTextBlocks.firstOrNull {
                 it.id == blockId && it.source == RecognizedTextSource.HANDWRITING
@@ -1166,6 +1202,25 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
                 })
             }
         }
+    }
+
+    /**
+     * Indexes the page's handwriting for search: only the ink layers, on plain paper, so PDF text,
+     * images and text objects (indexed elsewhere) are not read twice.
+     */
+    private suspend fun recognizeHandwriting(page: InkPage, languageTag: String): List<RecognizedTextBlock> {
+        if (page.layers.none { it.isPaintSurfaceLayer() && it.visible && it.rasterTileSurface != null }) return emptyList()
+        val inkOnly = page.copy(background = PageBackground.Paper(), backgroundFrame = null, elements = emptyList())
+        val bitmap = assets.renderPageBitmap(inkOnly, HANDWRITING_OCR_WIDTH)
+        return try {
+            val crop = PageCropTransform.normalized(page.crop)
+            textRecognition.recognizeBitmap(bitmap, "handwriting", languageTag).map { block ->
+                val b = block.bounds
+                block.copy(source = RecognizedTextSource.HANDWRITING, bounds = PdfTextBounds(
+                    crop.left + b.left * (crop.right - crop.left), crop.top + b.top * (crop.bottom - crop.top),
+                    crop.left + b.right * (crop.right - crop.left), crop.top + b.bottom * (crop.bottom - crop.top)))
+            }
+        } finally { bitmap.recycle() }
     }
 
     private fun copyElement(element: PageElement): PageElement = when (element) {

@@ -114,6 +114,26 @@ class SelectionWindowRegressionTest {
         compose.waitUntil(15_000) { view.activeRasterSnapshotForTest()?.tileCount == 0 }
     }
 
+    /** GoodNotes-style search: handwriting is read on the device once the ink settles, with no manual step. */
+    @Test fun handwritingBecomesSearchableOnceTheInkSettles() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        lateinit var model: app.inkloom.ui.InkloomViewModel
+        instrumentation.runOnMainSync { model = androidx.lifecycle.ViewModelProvider(compose.activity)[app.inkloom.ui.InkloomViewModel::class.java] }
+        stroke(pagePoint(view, .20f, .20f), pagePoint(view, .20f, .26f))
+        stroke(pagePoint(view, .25f, .20f), pagePoint(view, .25f, .26f))
+        stroke(pagePoint(view, .20f, .23f), pagePoint(view, .25f, .23f))
+        stroke(pagePoint(view, .29f, .20f), pagePoint(view, .29f, .26f))
+        compose.waitUntil(30_000) {
+            model.currentPage()?.recognizedTextBlocks?.any { it.source == app.inkloom.document.RecognizedTextSource.HANDWRITING } == true
+        }
+        val page = model.currentPage()!!
+        assertEquals(app.inkloom.document.HandwritingIndex.fingerprint(page), page.handwritingIndexFingerprint)
+        val found = page.recognizedTextBlocks.filter { it.source == app.inkloom.document.RecognizedTextSource.HANDWRITING }
+        android.util.Log.i("HandwritingToText", "indexed ${found.map { it.text }}")
+        assertTrue(found.any { it.bounds.left < .3f && it.bounds.top < .3f })
+    }
+
     @Test fun strokeDialogCancelApplyColorUndoAndReopenKeepSelectionAndPixels() {
         tap("New Note"); tap("Create")
         val view = canvas()
