@@ -153,6 +153,7 @@ import app.inkloom.document.GradientGeometry
 import app.inkloom.document.GradientShaderFactory
 import app.inkloom.document.LassoGeometry
 import app.inkloom.document.SelectionMaskCompositor
+import app.inkloom.document.WandColorMatch
 import app.inkloom.document.LayerBlendMode
 import app.inkloom.document.LayerColorReplacement
 import app.inkloom.document.toColorFilter
@@ -1051,6 +1052,10 @@ class InkCanvasView(context: Context) : View(context) {
         set(value) { field = value.coerceIn(4f, 300f); invalidate() }
     var selectionThreshold: Float = .25f
         set(value) { field = value.coerceIn(0f, 1f) }
+    /** Magic wand: only the touched, connected area; off selects every pixel of that colour. */
+    var selectionContiguous: Boolean = true
+    /** Magic wand: bridge gaps in line art (0 off, 1-3 small to large), as CSP's Close gap. */
+    var selectionCloseGapLevel: Int = 0
     var selectionMode: SelectionMode = SelectionMode.REPLACE
     var selectionFilter: SelectionFilter = SelectionFilter.ALL
     var referenceTarget: ReferenceTarget = ReferenceTarget.ALL_VISIBLE
@@ -4579,19 +4584,23 @@ class InkCanvasView(context: Context) : View(context) {
         val before: MaskTileSurfaceSnapshot?, val radius: Float, val base: MaskTileSurfaceSnapshot?,
         val mode: SelectionMode, val initialThreshold: Float,
         var threshold: Float, var lastTolerance: Int = -1,
+        /** Non-contiguous magic wand: the sampled pixels, read once per gesture. */
+        var pixels: IntArray? = null,
     )
     private var automaticSelectionDraft: AutomaticSelectionDraft? = null
     var onSelectionThresholdChanged: (Float) -> Unit = {}
 
     private fun beginAutomaticSelection(x: Float, y: Float, screenX: Float) {
         finishAutomaticSelection(false)
-        val sampleWidth = width.coerceIn(1, 1024)
-        val sampleHeight = (height.coerceAtLeast(1) * (sampleWidth / width.coerceAtLeast(1).toFloat())).toInt().coerceIn(1, 1536)
+        // Sample at the selection mask's own resolution, so the result is not resampled twice.
+        val maskSize = SelectionMaskCompositor.maskSize(pageModelWidth, pageModelHeight)
+        val sampleWidth = maskSize?.width ?: width.coerceIn(1, 1024)
+        val sampleHeight = maskSize?.height ?: (height.coerceAtLeast(1) * (sampleWidth / width.coerceAtLeast(1).toFloat())).toInt().coerceIn(1, 1536)
         val source = renderDocumentPageBitmap(sampleWidth, sampleHeight)
+        // New, Add, Subtract and Intersect apply as chosen, as Photoshop's and CSP's magic wand do.
         automaticSelectionDraft = AutomaticSelectionDraft(source, x, y, screenX,
             documentSelectionState?.snapshot(), selectionFeatherPixels, selectionFeatherBase,
-            if (selectionMode == SelectionMode.REPLACE) SelectionMode.ADD else selectionMode,
-            selectionThreshold, selectionThreshold)
+            selectionMode, selectionThreshold, selectionThreshold)
         updateAutomaticSelection(screenX)
     }
 
@@ -4603,14 +4612,25 @@ class InkCanvasView(context: Context) : View(context) {
         if (tolerance == draft.lastTolerance) return
         draft.lastTolerance = tolerance
         val page = draft.page
-        val region = FloodFill.fill(page,
-            (draft.seedX * (page.width - 1)).toInt().coerceIn(0, page.width - 1),
-            (draft.seedY * (page.height - 1)).toInt().coerceIn(0, page.height - 1), tolerance)
-        val exactMask = if (region.isEmpty) null else SparseAlphaMask.fromFloodFill(
-            region.mask, region.left, region.top, page.width, page.height, pageModelWidth, pageModelHeight)
+        val seedX = (draft.seedX * (page.width - 1)).toInt().coerceIn(0, page.width - 1)
+        val seedY = (draft.seedY * (page.height - 1)).toInt().coerceIn(0, page.height - 1)
+        val exactMask = if (!smartBorder && !selectionContiguous) {
+            val pixels = draft.pixels ?: IntArray(page.width * page.height).also { page.getPixels(it, 0, page.width, 0, 0, page.width, page.height); draft.pixels = it }
+            val matched = WandColorMatch.select(pixels, pixels[seedY * page.width + seedX], tolerance)
+            if (matched.none { it != 0 }) null else {
+                val mask = Bitmap.createBitmap(matched, page.width, page.height, Bitmap.Config.ARGB_8888)
+                try { SparseAlphaMask.fromFloodFill(mask, 0, 0, page.width, page.height, pageModelWidth, pageModelHeight) } finally { mask.recycle() }
+            }
+        } else {
+            val gapPixels = (WandColorMatch.closeGapPixels(selectionCloseGapLevel) * page.width / pageModelWidth.coerceAtLeast(1f)).toInt()
+            val region = FloodFill.fill(page, seedX, seedY, tolerance, closeGapPixels = if (smartBorder) 0 else gapPixels)
+            try {
+                if (region.isEmpty) null else SparseAlphaMask.fromFloodFill(
+                    region.mask, region.left, region.top, page.width, page.height, pageModelWidth, pageModelHeight)
+            } finally { region.mask.recycle() }
+        }
         documentSelectionState?.replaceFrom(draft.before)
         composeSelectionAlpha(exactMask, draft.mode)
-        region.mask.recycle()
         invalidate()
     }
 

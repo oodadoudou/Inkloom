@@ -35,6 +35,11 @@ class AppSettingsBackupCodecTest {
         assertEquals(400L, old.touchHoldEyedropperDelayMillis)
     }
 
+    @Test fun `magic wand contiguous option round trips and old backups stay contiguous`() {
+        assertFalse(AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(AppSettings(selectionContiguous = false))).getOrThrow().settings.selectionContiguous)
+        assertTrue(AppSettingsBackupCodec.decode("""{"format":"inkloom-app-settings","version":1,"settings":{}}""".encodeToByteArray()).getOrThrow().settings.selectionContiguous)
+    }
+
     @Test fun `draft reference exclusion can be disabled and old backups keep exclusion`() {
         val restored = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(
             AppSettings(excludeDraftLayersFromReference = false))).getOrThrow().settings

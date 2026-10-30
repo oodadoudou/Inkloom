@@ -144,6 +144,10 @@ data class AppSettings(
     val selectionShape: SelectionShape = SelectionShape.FREEFORM,
     val selectionBrushSize: Float = 42f,
     val selectionThreshold: Float = .25f,
+    /** Magic wand: only the touched, connected area; off selects that colour everywhere. */
+    val selectionContiguous: Boolean = true,
+    /** Magic wand "Close gap" (CSP): 0 off, then small, medium and large gaps in the line art are bridged. */
+    val selectionCloseGapLevel: Int = 0,
     val selectionMaskVisibility: Float = .25f,
     val selectionInterpolation: app.inkloom.engine.v5.tools.SelectionInterpolation = app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR,
     val selectionMode: SelectionMode = SelectionMode.REPLACE,
@@ -342,6 +346,8 @@ class AppSettingsStore(context: Context) {
             selectionBrushSize = preferences.getFloat("selectionBrushSize", 42f).coerceIn(4f, 300f),
             selectionMaskVisibility = preferences.getFloat("selectionMaskVisibility", .25f).coerceIn(0f, 1f),
             selectionThreshold = preferences.getFloat("selectionThreshold", .25f).coerceIn(0f, 1f),
+            selectionContiguous = preferences.getBoolean("selectionContiguous", true),
+            selectionCloseGapLevel = preferences.getInt("selectionCloseGapLevel", 0).coerceIn(0, 3),
             selectionInterpolation = enumValue(preferences.getString("selectionInterpolation", null), app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR),
             selectionMode = enumValue(preferences.getString("selectionMode", null), SelectionMode.REPLACE),
             selectionFilter = enumValue(preferences.getString("selectionFilter", null), SelectionFilter.ALL),
@@ -511,6 +517,8 @@ class AppSettingsStore(context: Context) {
             .putFloat("selectionBrushSize", persisted.selectionBrushSize.coerceIn(4f, 300f))
             .putFloat("selectionMaskVisibility", persisted.selectionMaskVisibility.coerceIn(0f, 1f))
             .putFloat("selectionThreshold", persisted.selectionThreshold.coerceIn(0f, 1f))
+            .putBoolean("selectionContiguous", persisted.selectionContiguous)
+            .putInt("selectionCloseGapLevel", persisted.selectionCloseGapLevel.coerceIn(0, 3))
             .putString("selectionInterpolation", persisted.selectionInterpolation.name)
             .putString("selectionMode", persisted.selectionMode.name)
             .putString("selectionFilter", persisted.selectionFilter.name)

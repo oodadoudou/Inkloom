@@ -854,6 +854,8 @@ internal fun InkCanvasView.applyBrushConfiguration(
     selectionBrushSize = settings.selectionBrushSize
     selectionMaskVisibility = settings.selectionMaskVisibility
     selectionThreshold = settings.selectionThreshold
+    selectionContiguous = settings.selectionContiguous
+    selectionCloseGapLevel = settings.selectionCloseGapLevel
     selectionInterpolation = settings.selectionInterpolation
     liquifyMode = activeBrush?.toolBinding?.liquifyMode ?: LiquifyMode.PUSH
     liquifyStrength = ((activeBrush?.flow ?: .55f) * settings.liquifyStrengthScale).coerceIn(0f, 1f)
