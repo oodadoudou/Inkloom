@@ -1,0 +1,20 @@
+{
+  "version": "0.250.0",
+  "versionCode": 250,
+  "variant": "debug",
+  "commit": "bf96d6b708f7f148c20aa11e188c0e1fcf30a10e",
+  "sha256": "09c5265ef44bea2193bfc5fbfb352d4e6dd63d915ec2a41650889dca44cf2b11",
+  "bytes": 184424100,
+  "generatedUtc": "2026-10-30T23:14:16.702363+00:00",
+  "verification": {
+    "JVM": "PASS 1266 tests, 0 failures/errors, 8 skipped",
+    "Android15Full": "PASS 976/977 in the full run; the one failure (PixelLayerProjectionBenchmarkTest frame-time p95 19.4 ms under suite load) passed 3/3 on rerun",
+    "persistenceKill": "PASS three strokes, the last only in the journal, survived a force-stop and were checkpointed at the next start",
+    "lint": "PASS 0 errors, 114 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS clean install, versionCode 250, cold start ok (1167-1238 ms), crash buffer empty",
+    "DriveDesktop": "APK only, SHA-256 verified in the local sync folder; cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING"
+}
