@@ -167,27 +167,30 @@ internal fun SelectionStudioPanel(
             measuredWidth=it.size.width/density;measuredHeight=it.size.height/density
         }.semantics { contentDescription = studioDescription }, shape = RoundedCornerShape(14.dp), color = Paper, shadowElevation = 3.dp) {
         Column(Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
-            // How to select: the tools, then how a new selection combines with the current one.
-            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.DragIndicator,tr("Move selection studio", "移动选区面板"),
-                    Modifier.size(30.dp).padding(4.dp).pointerInput(containerWidth,containerHeight,measuredWidth,measuredHeight) {
-                        detectDragGestures(onDragStart={dragX=bounded.xDp;dragY=bounded.yDp},
-                            onDragEnd={onPosition(dragX,dragY)},onDragCancel={dragX=bounded.xDp;dragY=bounded.yDp}) { change,delta ->
-                            change.consume()
-                            val next=FloatingToolbarPlacement.clamp(dragX+delta.x/density,dragY+delta.y/density,
-                                containerWidth,containerHeight,false,measuredWidth,measuredHeight)
-                            dragX=next.xDp;dragY=next.yDp
+            // How to select: the tools, then how a new selection combines with the current one. In a
+            // narrow window these scroll; the menu and the exit buttons stay in view.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f, fill = false).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.DragIndicator,tr("Move selection studio", "移动选区面板"),
+                        Modifier.size(30.dp).padding(4.dp).pointerInput(containerWidth,containerHeight,measuredWidth,measuredHeight) {
+                            detectDragGestures(onDragStart={dragX=bounded.xDp;dragY=bounded.yDp},
+                                onDragEnd={onPosition(dragX,dragY)},onDragCancel={dragX=bounded.xDp;dragY=bounded.yDp}) { change,delta ->
+                                change.consume()
+                                val next=FloatingToolbarPlacement.clamp(dragX+delta.x/density,dragY+delta.y/density,
+                                    containerWidth,containerHeight,false,measuredWidth,measuredHeight)
+                                dragX=next.xDp;dragY=next.yDp
+                            }
+                        },tint=MutedInk)
+                    Row(Modifier.selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
+                        SelectionTools.forEach { option ->
+                            SelectionChoice(option.icon(), selectionToolDescription(option), selected = shape == option) { onShape(option) }
                         }
-                    },tint=MutedInk)
-                Row(Modifier.selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
-                    SelectionTools.forEach { option ->
-                        SelectionChoice(option.icon(), selectionToolDescription(option), selected = shape == option) { onShape(option) }
                     }
-                }
-                SelectionDivider()
-                Row(Modifier.selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
-                    SelectionMode.entries.forEach { option ->
-                        SelectionChoice(null, selectionModeName(option), selected = mode == option, glyph = { SelectionModeGlyph(option, it) }) { onMode(option) }
+                    SelectionDivider()
+                    Row(Modifier.selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
+                        SelectionMode.entries.forEach { option ->
+                            SelectionChoice(null, selectionModeName(option), selected = mode == option, glyph = { SelectionModeGlyph(option, it) }) { onMode(option) }
+                        }
                     }
                 }
                 SelectionDivider()

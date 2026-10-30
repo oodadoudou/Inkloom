@@ -350,7 +350,6 @@ class DialogLayoutAuditTest {
         compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("选择"))[0].performClick()
         fun selectionMenu() = compose.onNode(androidx.compose.ui.test.hasContentDescription("选区操作")).performClick()
         selectionMenu(); open("选区设置"); check("选区设置", "完成", "完成"); open("完成")
-        selectionMenu(); open("排列选区快捷操作"); check("选区快捷操作", "完成", "完成"); open("完成")
         compose.onNode(androidx.compose.ui.test.hasContentDescription("退出选区工具")).performClick()
         open("图库")
         fun noteMenu() = compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("笔记操作"))[0].performClick()

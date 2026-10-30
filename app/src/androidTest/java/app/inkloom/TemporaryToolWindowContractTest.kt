@@ -73,7 +73,7 @@ class TemporaryToolWindowContractTest {
         tap("Close brushes panel")
         val initialColor = canvas.inkColor
         tap("Selection")
-        tap("Freehand")
+        tap("Lasso selection")
         tap("Colors")
         tap("Saturation and brightness field")
         val chosenColor = canvas.inkColor
@@ -115,7 +115,7 @@ class TemporaryToolWindowContractTest {
         tap("Brush preset HB Pencil")
         tap("Close brushes panel")
         tap("Selection")
-        tap("Freehand")
+        tap("Lasso selection")
         instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_E)
         compose.waitForIdle()
         assertEquals(EditorTool.ERASER, canvas.tool)
