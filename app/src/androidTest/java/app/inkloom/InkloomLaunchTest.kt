@@ -581,6 +581,8 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Add page").performClick()
 
+        composeRule.onNodeWithText("From template…").performClick()
+
         composeRule.onNodeWithText("Choose template for new page").assertIsDisplayed()
         composeRule.onNodeWithText("Import image/PDF").assertIsDisplayed()
         clickTemplateAction("Favorite Grid · Dense template")
@@ -609,6 +611,8 @@ class InkloomLaunchTest {
         }
         composeRule.onNodeWithContentDescription("Page list").performScrollToIndex(7)
         composeRule.onNodeWithContentDescription("Add page").assertIsDisplayed().performClick()
+
+        composeRule.onNodeWithText("From template…").performClick()
         composeRule.onNodeWithText("Choose template for new page").assertIsDisplayed()
     }
 
@@ -632,7 +636,8 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Page 8. Long press to manage.")
             .assertIsDisplayed().assertIsSelected()
 
-        composeRule.onNodeWithContentDescription("Insert page before current").performClick()
+        composeRule.onNodeWithContentDescription("Add page").performClick()
+        composeRule.onNodeWithText("Insert page before current").performClick()
         composeRule.waitForIdle()
         val withBefore = store.get(original.id)!!
         assertEquals(9, withBefore.pages.size)
@@ -641,7 +646,8 @@ class InkloomLaunchTest {
         assertTrue(insertedBeforeId != currentId)
         assertEquals(original.pages.last().width, withBefore.pages[7].width)
 
-        composeRule.onNodeWithContentDescription("Insert page after current").performClick()
+        composeRule.onNodeWithContentDescription("Add page").performClick()
+        composeRule.onNodeWithText("Insert page after current").performClick()
         composeRule.waitForIdle()
         val withAfter = store.get(original.id)!!
         assertEquals(10, withAfter.pages.size)
@@ -653,6 +659,8 @@ class InkloomLaunchTest {
     @Test fun longPressPagesEntersMultiSelectManagement() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Add page").performClick()
+
+        composeRule.onNodeWithText("From template…").performClick()
         clickTemplateAction("Use Grid · Dense template")
         composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasContentDescription("Open layers for this page")).fetchSemanticsNodes().size == 2 }
 
@@ -671,6 +679,8 @@ class InkloomLaunchTest {
     @Test fun pageManagementBatchReplacesTemplatesAndPaperColor() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Add page").performClick()
+
+        composeRule.onNodeWithText("From template…").performClick()
         clickTemplateAction("Use Grid · Dense template")
         composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasContentDescription("Open layers for this page")).fetchSemanticsNodes().size == 2 }
 
@@ -701,6 +711,8 @@ class InkloomLaunchTest {
     @Test fun longPressDragOnPageThumbnailReordersPages() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Add page").performClick()
+
+        composeRule.onNodeWithText("From template…").performClick()
         clickTemplateAction("Use Grid · Dense template")
         composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasContentDescription("Open layers for this page")).fetchSemanticsNodes().size == 2 }
         composeRule.onNodeWithContentDescription("Page 1. Long press to manage.").performClick()
@@ -726,6 +738,8 @@ class InkloomLaunchTest {
     @Test fun pageDragHandleReordersWithoutOpeningThePageMenu() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Add page").performClick()
+
+        composeRule.onNodeWithText("From template…").performClick()
         clickTemplateAction("Use Grid · Dense template")
         composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasContentDescription("Drag to reorder page")).fetchSemanticsNodes().size == 2 }
         composeRule.onNodeWithContentDescription("Page 1. Long press to manage.").performClick()

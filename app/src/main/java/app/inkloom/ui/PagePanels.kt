@@ -55,7 +55,7 @@ import kotlinx.coroutines.withContext
 
 @Composable
 private fun PageInsertionIcon(after: Boolean, description: String) {
-    Box(Modifier.size(20.dp).semantics { contentDescription = description }) {
+    Box(Modifier.size(20.dp).then(if (description.isEmpty()) Modifier else Modifier.semantics { contentDescription = description })) {
         Icon(Icons.Outlined.NoteAdd, null, Modifier.size(16.dp).align(Alignment.Center))
         Canvas(Modifier.fillMaxSize()) {
             val y = if (after) size.height - 1.dp.toPx() else 1.dp.toPx()
@@ -165,14 +165,26 @@ internal fun PageRail(
                 Icon(Icons.Outlined.Label, tr("Edit current page tags", "编辑当前页标签"), Modifier.size(16.dp))
             }
         }
-        Column(Modifier.fillMaxWidth()) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                IconButton(onClick = { onInsertNextTo(document.id, selectedPageId, false) }, modifier = Modifier.size(28.dp)) { PageInsertionIcon(false, tr("Insert page before current", "在当前页前插入页面")) }
-                IconButton(onClick = { onInsertNextTo(document.id, selectedPageId, true) }, modifier = Modifier.size(28.dp)) { PageInsertionIcon(true, tr("Insert page after current", "在当前页后插入页面")) }
+        // One "Add page" button with its choices in a menu (GoodNotes' sidebar "+"), instead of four
+        // small icons side by side.
+        Box(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), contentAlignment = Alignment.CenterEnd) {
+            var addMenu by remember { mutableStateOf(false) }
+            val addPageDescription = tr("Add page", "添加页面")
+            Row(Modifier.height(32.dp).clip(RoundedCornerShape(8.dp)).clickable { addMenu = true }
+                .semantics { contentDescription = addPageDescription }.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Add, null, Modifier.size(18.dp), tint = Ink)
+                Spacer(Modifier.width(4.dp))
+                Text(addPageDescription, fontSize = 12.sp, color = Ink)
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                IconButton(onClick = onAppendFiles, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.FileOpen, tr("Add PDF or image pages", "追加 PDF／图片页面"), Modifier.size(18.dp)) }
-                IconButton(onClick = { addTemplateOpen = true }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, tr("Add page", "添加页面"), Modifier.size(20.dp)) }
+            DropdownMenu(addMenu, { addMenu = false }) {
+                StudioMenuItem(text = { Text(tr("Insert page after current", "在当前页后插入页面")) }, leadingIcon = { PageInsertionIcon(true, "") },
+                    onClick = { addMenu = false; onInsertNextTo(document.id, selectedPageId, true) })
+                StudioMenuItem(text = { Text(tr("Insert page before current", "在当前页前插入页面")) }, leadingIcon = { PageInsertionIcon(false, "") },
+                    onClick = { addMenu = false; onInsertNextTo(document.id, selectedPageId, false) })
+                StudioMenuItem(text = { Text(tr("From template…", "从模板添加…")) }, leadingIcon = { Icon(Icons.Outlined.Description, null) },
+                    onClick = { addMenu = false; addTemplateOpen = true })
+                StudioMenuItem(text = { Text(tr("Add PDF or image pages", "追加 PDF／图片页面")) }, leadingIcon = { Icon(Icons.Outlined.FileOpen, null) },
+                    onClick = { addMenu = false; onAppendFiles() })
             }
         }
         val pageListDescription = tr("Page list", "页面列表")
