@@ -1828,6 +1828,18 @@ private fun EditorScreen(
     }
     var openPanelsBeforeShortcut by remember { mutableStateOf(emptySet<EditorPanel>()) }
     var toolbarBeforeShortcut by remember { mutableStateOf(settings.showToolbar) }
+    /**
+     * Views › Show all / Hide all: every view opens in its saved place, or every view closes. A
+     * Tab hide in effect ends here, with the toolbar it hid, so the next Tab starts afresh.
+     */
+    fun setAllManagedPanelsVisible(open: Boolean) {
+        if (modes.panelsHiddenByShortcut) {
+            modes.panelsHiddenByShortcut = false
+            onSettingsChange(settings.copy(showToolbar = toolbarBeforeShortcut))
+        }
+        if (open) EditorPanel.entries.forEach { panelState.show(it, true) }
+        else EditorPanel.entries.filter { it in panelState.layout.open }.forEach { setManagedPanelVisible(it, false) }
+    }
     LaunchedEffect(selectedPage.layers) {
         activeLayerId = app.inkloom.document.LayerEditingTarget.retainSelection(selectedPage.layers, activeLayerId)
     }
@@ -2474,6 +2486,7 @@ private fun EditorScreen(
             if (overlays.viewManagerOpen) EditorViewManagerDialog(
                 openPanels = panelState.layout.open,
                 onToggle = ::setManagedPanelVisible,
+                onSetAll = ::setAllManagedPanelsVisible,
                 onDismiss = { overlays.viewManagerOpen = false },
             )
             if (overlays.savePanelLayoutOpen) StudioDialog(

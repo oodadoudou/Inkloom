@@ -24,8 +24,12 @@ import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -70,11 +74,15 @@ internal fun editorPanelIcon(panel: EditorPanel): ImageVector = when (panel) {
     EditorPanel.NEARBY -> Icons.Outlined.Colorize
 }
 
-/** A persistent window list: closing a panel never removes its slot from the saved layout. */
+/**
+ * A persistent window list: closing a panel never removes its slot from the saved layout.
+ * Show all / hide all act on every view at once (CSP Window › Hide all palettes, Krita's Show Dockers).
+ */
 @Composable
 internal fun EditorViewManagerDialog(
     openPanels: Set<EditorPanel>,
     onToggle: (EditorPanel, Boolean) -> Unit,
+    onSetAll: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val language = LocalUiLanguage.current
@@ -82,7 +90,15 @@ internal fun EditorViewManagerDialog(
     StudioDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier.widthIn(max = 400.dp),
-        title = { Text(tr("Views", "视图")) },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(tr("Views", "视图"), Modifier.weight(1f))
+                ViewsAllButton(Icons.Outlined.Visibility, tr("Show all views", "全部显示"),
+                    enabled = openPanels.size < EditorPanel.entries.size) { onSetAll(true) }
+                ViewsAllButton(Icons.Outlined.VisibilityOff, tr("Hide all views", "全部隐藏"),
+                    enabled = openPanels.isNotEmpty()) { onSetAll(false) }
+            }
+        },
         text = {
             // Tall enough on a tablet for every view at once; shorter windows scroll.
             Column(Modifier.heightIn(max = 600.dp).verticalScroll(rememberScrollState())) {
@@ -114,4 +130,13 @@ internal fun EditorViewManagerDialog(
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Done", "完成")) } },
     )
+}
+
+@Composable
+private fun ViewsAllButton(icon: ImageVector, description: String, enabled: Boolean, onClick: () -> Unit) {
+    HoverTooltip(description) {
+        IconButton(onClick, Modifier.size(36.dp).semantics { contentDescription = description }, enabled = enabled) {
+            Icon(icon, null, Modifier.size(19.dp), tint = if (enabled) LocalContentColor.current else MutedInk.copy(alpha = .4f))
+        }
+    }
 }

@@ -149,6 +149,27 @@ class NamedPanelLayoutWindowTest {
             restored.floating.flatMap { app.inkloom.settings.EditorPanelLayouts.members(it.node) })
     }
 
+    @Test fun viewsShowAllOpensEveryViewAndHideAllClosesThemAll() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        compose.onNodeWithContentDescription("Actions").performClick()
+        compose.onNodeWithContentDescription("Actions Views").performClick()
+        compose.onNodeWithText("Views…").performScrollTo().performClick()
+
+        compose.onNodeWithContentDescription("Show all views").performClick()
+        compose.waitForIdle()
+        org.junit.Assert.assertEquals(EditorPanel.entries.toSet(), EditorPanelState(compose.activity).layout.open)
+        compose.onNodeWithContentDescription("Show all views").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Hide Nearby view").assertExists()
+
+        compose.onNodeWithContentDescription("Hide all views").performClick()
+        compose.waitForIdle()
+        org.junit.Assert.assertEquals(emptySet<EditorPanel>(), EditorPanelState(compose.activity).layout.open)
+        compose.onNodeWithContentDescription("Hide all views").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Show Pages view").assertExists()
+        compose.onNodeWithText("Done").performClick()
+    }
+
     @Test fun windowManagerKeepsNotebookAndLayerSettingsInSyncEvenWhenLayoutIsLocked() {
         compose.onNodeWithText("New Note").performClick()
         compose.onNodeWithText("Create").performClick()
