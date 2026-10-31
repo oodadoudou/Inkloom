@@ -36,28 +36,19 @@ internal fun libraryEmptyReason(filter: LibraryFilter, inFolder: Boolean, search
 internal fun LibraryEmptyState(reason: LibraryEmptyReason, search: String, modifier: Modifier = Modifier) {
     val language = LocalUiLanguage.current
     fun tr(en: String, zh: String) = language.text(en, zh)
-    val (title, detail) = when (reason) {
-        LibraryEmptyReason.NO_NOTEBOOKS -> tr("No notebooks yet", "还没有笔记本") to
-            tr("Choose New Note to start writing, or Import to read and annotate a PDF or images.", "点击“新建笔记”开始书写，或点击“导入”阅读和批注 PDF／图片。")
-        LibraryEmptyReason.NO_MATCHES -> tr("No notebooks match “${search.trim()}”", "没有与“${search.trim()}”匹配的笔记本") to
-            tr("Try another word, or search all notebooks from Library.", "换个关键词，或回到图库搜索全部笔记本。")
-        LibraryEmptyReason.FOLDER -> tr("This folder is empty", "此文件夹是空的") to
-            tr("Long press a notebook and drag it here, or move it from its menu.", "长按笔记本拖到这里，或从笔记菜单移动。")
-        LibraryEmptyReason.RECENT -> tr("No recent notebooks", "没有最近打开的笔记本") to
-            tr("Notebooks you open appear here.", "打开过的笔记本会显示在这里。")
-        LibraryEmptyReason.FAVORITES -> tr("No favorites yet", "还没有收藏") to
-            tr("Choose Favorite in a notebook's menu to keep it here.", "在笔记菜单中选择“收藏”即可放在这里。")
-        LibraryEmptyReason.ARCHIVED -> tr("Nothing archived", "没有归档的笔记本") to
-            tr("Archived notebooks leave the Library but keep all their pages.", "归档的笔记本离开图库，但页面全部保留。")
-        LibraryEmptyReason.TRASH -> tr("Trash is empty", "废纸篓是空的") to
-            tr("Notebooks moved to Trash can be restored from here.", "移到废纸篓的笔记本可以在这里恢复。")
-        LibraryEmptyReason.PDF -> tr("No PDF notebooks", "没有 PDF 笔记本") to
-            tr("Choose Import to read and annotate a PDF.", "点击“导入”即可阅读和批注 PDF。")
+    val title = when (reason) {
+        LibraryEmptyReason.NO_NOTEBOOKS -> tr("No notebooks yet", "还没有笔记本")
+        LibraryEmptyReason.NO_MATCHES -> tr("No notebooks match “${search.trim()}”", "没有与“${search.trim()}”匹配的笔记本")
+        LibraryEmptyReason.FOLDER -> tr("This folder is empty", "此文件夹是空的")
+        LibraryEmptyReason.RECENT -> tr("No recent notebooks", "没有最近打开的笔记本")
+        LibraryEmptyReason.FAVORITES -> tr("No favorites yet", "还没有收藏")
+        LibraryEmptyReason.ARCHIVED -> tr("Nothing archived", "没有归档的笔记本")
+        LibraryEmptyReason.TRASH -> tr("Trash is empty", "废纸篓是空的")
+        LibraryEmptyReason.PDF -> tr("No PDF notebooks", "没有 PDF 笔记本")
     }
     Column(modifier.fillMaxWidth().padding(vertical = 48.dp, horizontal = 24.dp).semantics { contentDescription = title },
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Icon(Icons.Outlined.MenuBook, null, Modifier.size(40.dp), tint = MutedInk)
         Text(title, color = Ink, fontSize = 20.sp, textAlign = TextAlign.Center)
-        Text(detail, color = MutedInk, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 420.dp))
     }
 }

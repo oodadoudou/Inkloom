@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -218,28 +219,26 @@ internal fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.ink
                     }
                 }
             }
+            // The title is where you are (the rail item or the open folder), so no second heading repeats it.
+            val placeTitle = folderId?.let { id -> activeFolders.firstOrNull { it.id == id }?.name } ?: when (filter) {
+                LibraryFilter.ALL -> tr("Library", "资料库")
+                LibraryFilter.RECENT -> tr("Recents", "最近使用")
+                LibraryFilter.FAVORITES -> tr("Favorites", "收藏")
+                LibraryFilter.ARCHIVED -> tr("Archive", "归档")
+                LibraryFilter.TRASH -> tr("Trash", "废纸篓")
+                LibraryFilter.PDF -> "PDF"
+            }
             if (compact) {
-                Text(tr("Your notebooks", "你的笔记本"), fontSize = 22.sp, color = Ink)
+                Text(placeTitle, Modifier.semantics { heading() }, fontSize = 22.sp, color = Ink)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically, content = libraryActions)
             } else Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(tr("Your notebooks", "你的笔记本"), fontSize = 32.sp, maxLines=1, overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis, color = Ink)
-                    Text(tr("Continue a note or start with a fresh page.", "继续书写，或从空白页开始。"), color = MutedInk)
-                }
+                Text(placeTitle, Modifier.weight(1f).semantics { heading() }, fontSize = 32.sp, maxLines=1, overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis, color = Ink)
                 libraryActions()
             }
             Spacer(Modifier.height(26.dp))
-            StudioOutlinedTextField(value = search, onValueChange = { search = it }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Search notes", "搜索笔记")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(20.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(when (filter) {
-                    LibraryFilter.ALL -> tr("All Notes", "全部笔记")
-                    LibraryFilter.RECENT -> tr("Recents", "最近使用")
-                    LibraryFilter.FAVORITES -> tr("Favorites", "收藏")
-                    LibraryFilter.ARCHIVED -> tr("Archive", "归档")
-                    LibraryFilter.TRASH -> tr("Trash", "废纸篓")
-                    LibraryFilter.PDF -> "PDF"
-                }, fontSize = 22.sp, modifier = Modifier.weight(1f))
+                StudioOutlinedTextField(value = search, onValueChange = { search = it }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Search notes", "搜索笔记")) }, singleLine = true, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(12.dp))
                 listOf(
                     Triple(LibraryLayout.GRID, Icons.Outlined.GridView, tr("Grid layout", "网格布局")),
                     Triple(LibraryLayout.LIST, Icons.Outlined.ViewList, tr("List layout", "列表布局")),
@@ -397,7 +396,6 @@ internal fun LibraryScreen(onPrepareImagePaper: suspend (Uri, String) -> app.ink
                     }
                     if (imagePaperImporter.failed) Text(tr("Could not import this paper image", "无法导入纸张图片，请检查格式与尺寸"), color = MaterialTheme.colorScheme.error)
                 }
-                if (customNoteTemplatesSelected && pageTemplates.customTemplates.isEmpty()) Text(tr("Save a custom paper to see it here", "保存自定义纸张后会显示在这里"), color = MutedInk, fontSize = 12.sp)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(if (customNoteTemplatesSelected) pageTemplates.customTemplates else PageTemplateCatalog.builtIns, key = { it.id }) { template ->
                         val selected = template.id == newNoteTemplateId
@@ -515,7 +513,7 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
     LaunchedEffect(folders) { selectedFolderIds = selectedFolderIds.intersect(folders.mapTo(hashSetOf(), InkFolder::id)) }
     val language = LocalUiLanguage.current
     Column(modifier.fillMaxHeight().padding(16.dp)) {
-        BrandMark(tr("Library", "资料库"))
+        BrandMark()
         Spacer(Modifier.height(34.dp))
         RailItem(Icons.Outlined.Book, tr("Library", "资料库"), filter == LibraryFilter.ALL) { onFilter(LibraryFilter.ALL) }
         RailItem(Icons.Outlined.History, tr("Recents", "最近使用"), filter == LibraryFilter.RECENT) { onFilter(LibraryFilter.RECENT) }
@@ -591,7 +589,7 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
         onDismissRequest = { deleteFoldersOpen = false },
         title = { Text(tr("Delete selected folders?", "删除所选文件夹？")) },
         text = { Column {
-            Text(tr("Folders and their active notebooks move to Trash together. Restore a folder to recover its hierarchy and contents.","文件夹及其中的笔记本一起移入废纸篓；恢复文件夹会还原层级与内容。"))
+            Text(tr("Their notebooks move to Trash too.", "其中的笔记本也会移入废纸篓。"))
             if (folderActionError) Text(tr("Folders could not be deleted; nothing was changed.", "删除失败；未更改文件夹。"), color = MaterialTheme.colorScheme.error)
         } },
         confirmButton = { TextButton(modifier = Modifier.semantics { contentDescription = "Confirm delete selected folders" }, onClick = {
@@ -633,11 +631,11 @@ private fun RailItem(icon: ImageVector, label: String, selected: Boolean, modifi
 }
 
 @Composable
-private fun BrandMark(subtitle: String? = null) {
+private fun BrandMark() {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Surface(color = Sage, shape = RoundedCornerShape(6.dp), modifier = Modifier.size(40.dp)) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Check, null, tint = Color.White) } }
         Spacer(Modifier.width(12.dp))
-        Column { Text("Inkloom", color = MutedInk, fontSize = 25.sp); if (subtitle != null) Text(subtitle, color = MutedInk, fontSize = 11.sp) }
+        Text("Inkloom", color = MutedInk, fontSize = 25.sp)
     }
 }
 
@@ -696,7 +694,7 @@ private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (Ink
                     if (document.favorite) Icon(Icons.Default.Star, null, tint = Ink, modifier = Modifier.padding(start = 6.dp).size(16.dp))
                     if (pdf) Surface(Modifier.padding(start = 8.dp), shape = RoundedCornerShape(4.dp), color = Workspace) { Text("PDF", Modifier.padding(6.dp, 2.dp), fontSize = 10.sp) }
                 }
-                Spacer(Modifier.height(4.dp)); Text("${pageCount(document.pages.size)} · ${tr("saved locally", "已保存到本机")}", color = MutedInk, fontSize = 12.sp)
+                Spacer(Modifier.height(4.dp)); Text(pageCount(document.pages.size), color = MutedInk, fontSize = 12.sp)
                 if (document.tags.isNotEmpty()) Text(document.tags.take(3).joinToString("  ") { "#$it" }, color = MutedInk, fontSize = 11.sp, maxLines = 1)
             }
             Actions(Modifier, overlay = false)
@@ -710,7 +708,7 @@ private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (Ink
         // Every card reserves the same title height so neighbouring covers line up.
         Column(Modifier.padding(if (compact) 10.dp else 14.dp)) {
             Row { Text(document.title, fontSize = if (compact) 15.sp else 17.sp, maxLines = if (compact) 1 else 2, minLines = if (compact) 1 else 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f)); if (document.favorite) Icon(Icons.Default.Star, null, tint = Ink, modifier = Modifier.size(18.dp)) }
-            Spacer(Modifier.height(if (compact) 4.dp else 6.dp)); Text("${pageCount(document.pages.size)} · ${tr("saved locally", "已保存到本机")}", color = MutedInk, fontSize = 11.sp)
+            Spacer(Modifier.height(if (compact) 4.dp else 6.dp)); Text(pageCount(document.pages.size), color = MutedInk, fontSize = 11.sp)
             if (document.tags.isNotEmpty()) Text(document.tags.take(3).joinToString("  ") { "#$it" }, color = MutedInk, fontSize = 10.sp, maxLines = 1)
         }
     }

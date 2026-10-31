@@ -105,7 +105,7 @@ class DialogLayoutAuditTest {
     @Test fun editorNotebookDialogsKeepEveryControlReachableAtLargeFontInChinese() {
         // The library title is readable instead of being squeezed beside its actions.
         val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
-        compose.onNodeWithText("你的笔记本").assertIsDisplayed()
+        compose.onNode(androidx.compose.ui.test.isHeading() and androidx.compose.ui.test.hasText("资料库")).assertIsDisplayed()
             .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
         // Ellipsis is the truncation signal; CJK fallback glyphs at 2x can report vertical overflow.
         assertTrue("library title is not ellipsized", layouts.isNotEmpty() && !layouts.first().isLineEllipsized(layouts.first().lineCount - 1))
