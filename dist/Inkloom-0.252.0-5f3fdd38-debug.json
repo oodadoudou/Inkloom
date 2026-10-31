@@ -1,0 +1,20 @@
+{
+  "version": "0.252.0",
+  "versionCode": 252,
+  "variant": "debug",
+  "commit": "5f3fdd38113d6cf47a2522b1c99b45e86361906e",
+  "sha256": "1ce9827bbfa81027087ee5695b0ac9e2de545c4fdc39327b10cc78554ee51951",
+  "bytes": 184374952,
+  "generatedUtc": "2026-10-31T22:33:45.213665+00:00",
+  "verification": {
+    "JVM": "PASS 1266 tests, 0 failures/errors, 8 skipped",
+    "Android15Targeted": "PASS NamedPanelLayoutWindowTest 8/8 (new show-all/hide-all test) and 196/196 across the classes that drive Views or the Tab panel shortcut (Brush master settings, Color set, Color input, canvas navigation, launch, mixing bar, navigation context, navigator, sub view, tool workspace panels, dialog audit)",
+    "Android15Full": "Last full run on 0.251.0 (973/977 with the stale tests fixed)",
+    "lint": "PASS 0 errors, 113 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS clean install, versionCode 252, no crash or ANR; cold start 5.4-5.9 s under host load 18-25 (0.248.0 measured 4.5-9.1 s alongside)",
+    "DriveDesktop": "APK only, SHA-256 verified in the local sync folder; cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING"
+}
