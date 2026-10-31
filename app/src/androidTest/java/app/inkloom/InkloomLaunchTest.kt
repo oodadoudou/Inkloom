@@ -449,7 +449,7 @@ class InkloomLaunchTest {
         composeRule.onNode(hasText("Settings") and hasClickAction()).performClick()
         composeRule.onNodeWithText("Shortcuts").performClick()
         composeRule.onNodeWithText("Customize shortcuts").performClick()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(14)
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasSetTextAction())).performScrollToIndex(13)
         composeRule.onNodeWithText("BRUSH GROUP TARGETS").assertIsDisplayed()
         composeRule.onAllNodesWithText("Automatic")[0].performClick()
         composeRule.onNodeWithText("Toolbox/Pens").performClick()
@@ -461,7 +461,7 @@ class InkloomLaunchTest {
         composeRule.onNode(hasText("Settings") and hasClickAction()).performClick()
         composeRule.onNodeWithText("Shortcuts").performClick()
         composeRule.onNodeWithText("Customize shortcuts").performClick()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(14)
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasSetTextAction())).performScrollToIndex(13)
         composeRule.onNodeWithText("Configure 8 quick slots").performClick()
 
         composeRule.onNodeWithText("Toolbox quick slots").assertIsDisplayed()
@@ -478,7 +478,7 @@ class InkloomLaunchTest {
         composeRule.onNode(hasText("Settings") and hasClickAction()).performClick()
         composeRule.onNodeWithText("Shortcuts").performClick()
         composeRule.onNodeWithText("Customize shortcuts").performClick()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(5)
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasSetTextAction())).performScrollToIndex(4)
         composeRule.onNodeWithContentDescription("Rotary / touch ring quick slot value").performClick()
         composeRule.onNodeWithText("Brush size").performClick()
 

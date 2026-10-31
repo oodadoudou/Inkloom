@@ -55,7 +55,5 @@ internal fun InterfaceSizeSetting(setting: Float, language: UiLanguage, onChange
             steps = ((InterfaceScale.MAX - InterfaceScale.MIN) / InterfaceScale.STEP).toInt() - 1,
             onValueChangeFinished = { onChange(InterfaceScale.stored(draft)) },
             modifier = Modifier.semantics { contentDescription = "Interface size" })
-        Text(tr("Automatic sizes the interface for this screen's real size (${InterfaceScale.percent(measured)}% here).",
-            "自动会按此屏幕的实际尺寸调整界面（此处为 ${InterfaceScale.percent(measured)}%）。"), color = MutedInk, fontSize = 11.sp, lineHeight = 15.sp)
     }
 }

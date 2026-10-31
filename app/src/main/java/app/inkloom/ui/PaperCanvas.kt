@@ -1238,7 +1238,7 @@ internal fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, on
                 }
                 is PageElement.Sticky -> {
                     item { StudioOutlinedTextField(current.text, { draft = current.copy(text = it) }, label = { Text(tr("Note", "便签")) }, minLines = 4, modifier = Modifier.fillMaxWidth()) }
-                    item { SettingSwitch("Collapsed", "Show only the first line.", current.collapsed) { draft = current.copy(collapsed = it) } }
+                    item { SettingSwitch("Collapsed", current.collapsed) { draft = current.copy(collapsed = it) } }
                     item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(tr("Color", "颜色"), Modifier.weight(1f)); BrushColorPicker(current.colorArgb.toInt(), onColor = { draft = current.copy(colorArgb = it.toUInt().toLong()) }) } }
                 }
                 is PageElement.Shape -> {
@@ -1247,12 +1247,11 @@ internal fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, on
                         draft = current.copy(kind = kind, path = path)
                     }, label = { Text(localizedShapeKind(kind)) }) } } } }
                     item { BrushSettingSlider("Stroke width", current.strokeWidth, 1f..40f) { draft = current.copy(strokeWidth = it) } }
-                    item { SettingSwitch("Fill", "Adds a translucent shape fill.", current.fillArgb != null) { draft = current.copy(fillArgb = if (it) 0x33111111 else null) } }
+                    item { SettingSwitch("Fill", current.fillArgb != null) { draft = current.copy(fillArgb = if (it) 0x33111111 else null) } }
                     item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(tr("Stroke color", "描边颜色"), Modifier.weight(1f)); BrushColorPicker(current.colorArgb.toInt(), onColor = { draft = current.copy(colorArgb = it.toUInt().toLong()) }) } }
                 }
                 is PageElement.Image -> {
                     if (current.source != null) item { FileObjectControls(current) { draft = it } }
-                    item { Text(tr("Image source is retained unchanged. Crop and mask remain reversible and are included in editable backups.", "图片源文件保持不变。裁剪和蒙版均可撤销，并会包含在可编辑备份中。"), color = MutedInk, fontSize = 12.sp) }
                     item { Text(tr("Mask", "蒙版"), color = MutedInk, fontSize = 11.sp); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ImageMask.entries.forEach { mask -> StudioFilterChip(selected = current.mask == mask, onClick = { draft = current.copy(mask = mask) }, label = { Text(localizedImageMask(mask)) }) } } }
                     if (current.mask == ImageMask.ROUNDED) item { BrushSettingSlider("Corner radius", current.cornerRadius, 0f..200f) { draft = current.copy(cornerRadius = it) } }
                     item { Text(tr("Crop edges", "裁剪边缘"), color = MutedInk, fontSize = 11.sp) }
@@ -1265,7 +1264,7 @@ internal fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, on
                 is PageElement.Link -> {
                     item { StudioOutlinedTextField(current.title, { draft = current.copy(title = it) }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                     if (InternalLinkTarget.isInternal(current)) item {
-                        Text(tr("This object links to a notebook page. Create a new link to change its destination.", "此对象链接到笔记页面。如需更改目标，请新建链接。"), color = MutedInk, fontSize = 12.sp)
+                        Text(tr("Links to a notebook page", "链接到笔记页面"), color = MutedInk, fontSize = 12.sp)
                     } else item { StudioOutlinedTextField(current.url, { draft = current.copy(url = it) }, label = { Text(tr("Web, email, or phone address", "网页、邮箱或电话号码")) }, isError = LinkTarget.normalize(current.url) == null, supportingText = { Text(if (LinkTarget.normalize(current.url) == null) tr("Use a valid http, https, mailto, or tel address.", "请输入有效的 http、https、mailto 或 tel 地址。") else LinkTarget.displayDestination(current.url)) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                 }
                 is PageElement.Fill -> {

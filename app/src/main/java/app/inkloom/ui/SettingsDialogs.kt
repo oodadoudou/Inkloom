@@ -36,7 +36,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
@@ -120,39 +119,39 @@ internal fun SettingsDialog(
                     StudioFilterChip(selected = settings.language == UiLanguage.SIMPLIFIED_CHINESE, onClick = { onChange(settings.copy(language = UiLanguage.SIMPLIFIED_CHINESE)) }, label = { Text("简体中文") })
                 } }
                 item { Text(tr("INTERFACE", "界面"), color = MutedInk, fontSize = 12.sp) }
-                item { SettingSwitch(tr("Show floating toolbar", "显示浮动工具栏"), null, settings.showToolbar) { onChange(settings.copy(showToolbar = it)) } }
-                if (settings.toolbarDock == ToolbarDock.FREE) item { SettingSwitch(tr("Vertical toolbar", "垂直工具栏"), tr("Useful on a wide tablet canvas.", "适合宽屏平板画布。"), settings.verticalToolbar) { onChange(settings.copy(verticalToolbar = it)) } }
+                item { SettingSwitch(tr("Show floating toolbar", "显示浮动工具栏"), settings.showToolbar) { onChange(settings.copy(showToolbar = it)) } }
+                if (settings.toolbarDock == ToolbarDock.FREE) item { SettingSwitch(tr("Vertical toolbar", "垂直工具栏"), settings.verticalToolbar) { onChange(settings.copy(verticalToolbar = it)) } }
                 item { OutlinedButton(onClick = { onChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = 16f, toolbarOffsetYDp = 16f)) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.CenterFocusStrong, null); Spacer(Modifier.width(8.dp)); Text(tr("Reset toolbar position", "重置工具栏位置")) } }
 
                 }
                 if (settingsTab == 1) {
                 item { Text(tr("INPUT", "输入"), color = MutedInk, fontSize = 12.sp) }
-                item { SettingSwitch(tr("Draw with finger", "手指书写"), tr("Off by default. Fingers navigate and zoom.", "默认关闭；手指用于移动和缩放。"), settings.fingerDrawing) { onChange(settings.copy(fingerDrawing = it)) } }
-                item { SettingSwitch(tr("Draw and hold", "停笔规整"), tr("Hold the pen down to regularize a line or curve. Keep holding to adjust its endpoint.", "画完线条后停住笔尖，规整成直线或曲线；继续按住可调整端点。"), settings.drawAndHoldEnabled) { onChange(settings.copy(drawAndHoldEnabled = it)) } }
+                item { SettingSwitch(tr("Draw with finger", "手指书写"), settings.fingerDrawing) { onChange(settings.copy(fingerDrawing = it)) } }
+                item { SettingSwitch(tr("Draw and hold", "停笔规整"), settings.drawAndHoldEnabled) { onChange(settings.copy(drawAndHoldEnabled = it)) } }
                 if (settings.drawAndHoldEnabled) item {
                     Text(tr("Hold delay · ${settings.drawAndHoldDelayMillis} ms", "停笔时间 · ${settings.drawAndHoldDelayMillis} 毫秒"), fontSize = 12.sp)
                     BrushParameterSlider(settings.drawAndHoldDelayMillis.toFloat(), { onChange(settings.copy(drawAndHoldDelayMillis = it.toLong())) },
                         valueRange = 300f..1500f, steps = 23, modifier = Modifier.semantics { contentDescription = "Draw and hold delay" })
                 }
-                item { SettingSwitch(tr("Single-finger double tap to undo", "单指双击撤销"), tr("Enabled by default. Only blank-canvas taps trigger it; drawing, dragging and links are excluded.", "默认开启；仅空白画布短触生效，书写、拖动和链接均不会触发。"), settings.singleFingerDoubleTapUndo) { onChange(settings.copy(singleFingerDoubleTapUndo = it)) } }
-                item { SettingSwitch(tr("Swipe to turn pages", "滑动翻页"), tr("When the finger is not drawing, flick left or right with one finger at fit-to-page zoom to go to the next or previous page. Slow drags still move the canvas.", "手指不书写时，在适合页面缩放下单指左右快速滑动可翻到下一页或上一页；慢速拖动仍为移动画布。"), settings.swipeToTurnPages) { onChange(settings.copy(swipeToTurnPages = it)) } }
-                item { SettingSwitch(tr("Two-finger tap to undo", "双指轻点撤销"), null, settings.twoFingerDoubleTapUndo) { onChange(settings.copy(twoFingerDoubleTapUndo = it)) } }
-                item { SettingSwitch(tr("Three-finger tap to redo", "三指轻点重做"), null, settings.threeFingerTapRedo) { onChange(settings.copy(threeFingerTapRedo = it)) } }
-                item { SettingSwitch(tr("Two-finger canvas rotation", "双指旋转画布"), null, settings.twoFingerRotation) { onChange(settings.copy(twoFingerRotation = it)) } }
+                item { SettingSwitch(tr("Single-finger double tap to undo", "单指双击撤销"), settings.singleFingerDoubleTapUndo) { onChange(settings.copy(singleFingerDoubleTapUndo = it)) } }
+                item { SettingSwitch(tr("Swipe to turn pages", "滑动翻页"), settings.swipeToTurnPages) { onChange(settings.copy(swipeToTurnPages = it)) } }
+                item { SettingSwitch(tr("Two-finger tap to undo", "双指轻点撤销"), settings.twoFingerDoubleTapUndo) { onChange(settings.copy(twoFingerDoubleTapUndo = it)) } }
+                item { SettingSwitch(tr("Three-finger tap to redo", "三指轻点重做"), settings.threeFingerTapRedo) { onChange(settings.copy(threeFingerTapRedo = it)) } }
+                item { SettingSwitch(tr("Two-finger canvas rotation", "双指旋转画布"), settings.twoFingerRotation) { onChange(settings.copy(twoFingerRotation = it)) } }
                 item { Text(tr("GESTURES FROM PROCREATE", "Procreate 手势"), color = MutedInk, fontSize = 12.sp) }
-                item { SettingSwitch(tr("Touch and hold for eyedropper", "按住取色"), tr("Keep a finger still on the canvas to pick a colour; drag to look around, lift to keep it.", "手指在画布上按住不动即可取色；拖动查看，抬起确定。"), settings.touchHoldEyedropper) { onChange(settings.copy(touchHoldEyedropper = it)) } }
+                item { SettingSwitch(tr("Touch and hold for eyedropper", "按住取色"), settings.touchHoldEyedropper) { onChange(settings.copy(touchHoldEyedropper = it)) } }
                 if (settings.touchHoldEyedropper) item {
                     Text(tr("Hold delay · ${settings.touchHoldEyedropperDelayMillis} ms", "按住时间 · ${settings.touchHoldEyedropperDelayMillis} 毫秒"), fontSize = 12.sp)
                     BrushParameterSlider(settings.touchHoldEyedropperDelayMillis.toFloat(), { onChange(settings.copy(touchHoldEyedropperDelayMillis = it.toLong())) },
                         valueRange = 100f..1500f, steps = 27, modifier = Modifier.semantics { contentDescription = "Eyedropper hold delay" })
                 }
-                item { SettingSwitch(tr("Hold two or three fingers to keep undoing or redoing", "双指／三指按住连续撤销／重做"), null, settings.holdToRepeatUndo) { onChange(settings.copy(holdToRepeatUndo = it)) } }
-                item { SettingSwitch(tr("Quick pinch to fit", "快速捏合适合屏幕"), tr("A fast pinch in snaps the page to the screen.", "快速向内捏合，页面即适合屏幕。"), settings.quickPinchToFit) { onChange(settings.copy(quickPinchToFit = it)) } }
-                item { SettingSwitch(tr("Four-finger tap for full screen", "四指轻点全屏"), tr("Hides the panels and toolbar; tap again to bring them back.", "隐藏面板与工具栏；再次轻点恢复。"), settings.fourFingerTapFullScreen) { onChange(settings.copy(fourFingerTapFullScreen = it)) } }
-                item { SettingSwitch(tr("Three-finger scrub to clear layer", "三指来回滑动清除图层"), tr("Scrub three fingers side to side. Undo brings the layer back.", "三指左右来回滑动；可撤销恢复。"), settings.threeFingerScrubClear) { onChange(settings.copy(threeFingerScrubClear = it)) } }
-                item { SettingSwitch(tr("Show input diagnostics", "显示输入诊断"), tr("Displays stylus data plus Toolbox keys, scan codes, rotary axes, pointer buttons, source and device identity.", "显示手写笔数据，以及 Toolbox 的按键、扫描码、旋钮轴、侧键、来源和设备标识。"), settings.showInputDiagnostics) { onChange(settings.copy(showInputDiagnostics = it)) } }
+                item { SettingSwitch(tr("Hold two or three fingers to keep undoing or redoing", "双指／三指按住连续撤销／重做"), settings.holdToRepeatUndo) { onChange(settings.copy(holdToRepeatUndo = it)) } }
+                item { SettingSwitch(tr("Quick pinch to fit", "快速捏合适合屏幕"), settings.quickPinchToFit) { onChange(settings.copy(quickPinchToFit = it)) } }
+                item { SettingSwitch(tr("Four-finger tap for full screen", "四指轻点全屏"), settings.fourFingerTapFullScreen) { onChange(settings.copy(fourFingerTapFullScreen = it)) } }
+                item { SettingSwitch(tr("Three-finger scrub to clear layer", "三指来回滑动清除图层"), settings.threeFingerScrubClear) { onChange(settings.copy(threeFingerScrubClear = it)) } }
+                item { SettingSwitch(tr("Show input diagnostics", "显示输入诊断"), settings.showInputDiagnostics) { onChange(settings.copy(showInputDiagnostics = it)) } }
                 if (app.inkloom.BuildConfig.PAINTING_DIAGNOSTICS) {
-                    item { SettingSwitch(tr("Show V5 stroke diagnostics", "显示 V5 落笔诊断"), tr("Debug only: shows the active V5 transaction, stable generation, dirty tiles and frame counters.", "仅调试版：显示 V5 活动事务、稳定代数、脏瓦片与帧计数。"), settings.showStrokeTraceOverlay) { onChange(settings.copy(showStrokeTraceOverlay = it)) } }
+                    item { SettingSwitch(tr("Show V5 stroke diagnostics", "显示 V5 落笔诊断"), settings.showStrokeTraceOverlay) { onChange(settings.copy(showStrokeTraceOverlay = it)) } }
                 }
 
                 }
@@ -164,9 +163,6 @@ internal fun SettingsDialog(
                     BrushSettingSlider(tr("Expression (%)", "转折保留（%）"), settings.globalMotionExpression * 100f, 0f..100f) {
                         onChange(settings.copy(globalMotionExpression = it / 100f))
                     }
-                    Text(tr("Global brush stabilization", "全局画笔防抖"), fontWeight = FontWeight.SemiBold)
-                    Text(tr("Applies before each brush’s own stabilization. Set to 0 to use only the brush setting.",
-                        "先应用全局防抖，再应用每支笔的防抖。设为 0 时，只使用笔刷自身的设置。"), fontSize = 12.sp, color = MutedInk)
                     BrushSettingSlider(tr("Global stabilization (%)", "全局防抖强度（%）"), settings.globalStrokeStabilization * 100f, 0f..100f) {
                         onChange(settings.copy(globalStrokeStabilization = it / 100f))
                     }
@@ -188,18 +184,15 @@ internal fun SettingsDialog(
                 }
                 if (settingsTab == 3) {
                 item { Text(tr("PEN BUTTONS", "笔按键"), color = MutedInk, fontSize = 12.sp) }
-                item { Text(tr("Hold temporarily switches tools and restores the previous brush, size, opacity and color on release. Tap keeps the selected tool active. The pen-tail eraser always erases only while touching the screen.", "“按住”会临时切换工具，松开后恢复原笔刷、大小、不透明度和颜色；“单击”会保持切换后的工具。笔尾橡皮只在接触屏幕时擦除。"), color = MutedInk, fontSize = 11.sp) }
                 item { StylusActionRow(tr("Primary button", "主按键"), settings.stylusPrimaryButton, settings.stylusPrimaryTrigger, { onChange(settings.copy(stylusPrimaryButton = it)) }, { onChange(settings.copy(stylusPrimaryTrigger = it)) }) }
                 item { StylusActionRow(tr("Secondary button", "副按键"), settings.stylusSecondaryButton, settings.stylusSecondaryTrigger, { onChange(settings.copy(stylusSecondaryButton = it)) }, { onChange(settings.copy(stylusSecondaryTrigger = it)) }) }
                 item { Text(tr("TOOLBOX & KEYBOARD", "TOOLBOX 与键盘"), color = MutedInk, fontSize = 12.sp) }
-                item { Text(tr("CSP-compatible defaults are active. Customize them for Wacom ExpressKeys, a keyboard, or another Toolbox controller.", "已启用兼容 CSP 的默认键位。可为 Wacom ExpressKey、键盘或其他 Toolbox 控制器自定义。"), color = MutedInk, fontSize = 12.sp) }
                 item { OutlinedButton(onClick = { shortcutEditorOpen = true }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Keyboard, null); Spacer(Modifier.width(8.dp)); Text(tr("Customize shortcuts", "自定义快捷键")) } }
 
                 }
                 if (settingsTab == 5) aboutItems(settings.language)
                 if (settingsTab == 4) {
                 item { Text(tr("DATA & BACKUP", "数据与备份"), color = MutedInk, fontSize = 12.sp) }
-                item { Text(tr("A full backup includes notes, folders, imported brushes and sources, PDFs, images, input settings, panel layouts, Toolbox shortcuts, quick slots and the custom color palette. Content is restored with new IDs so existing work is never overwritten.", "完整备份包含笔记、文件夹、导入笔刷及源文件、PDF、图片、输入设置、面板布局、Toolbox 快捷键、快速槽与自定义色板。内容恢复时会生成新 ID，不覆盖现有作品。"), color = MutedInk, fontSize = 12.sp) }
                 item { Button(onClick = onExportBackup, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Backup, null); Spacer(Modifier.width(8.dp)); Text(tr("Export full library backup", "导出完整资料库备份")) } }
                 item { OutlinedButton(onClick = onRestoreBackup, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Restore, null); Spacer(Modifier.width(8.dp)); Text(tr("Restore library backup", "恢复资料库备份")) } }
                 }
@@ -268,7 +261,6 @@ private fun ShortcutEditorDialog(settings: AppSettings, brushes: List<ImportedBr
                         },
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    item { Text(tr("Tap Change, then press a Toolbox or keyboard combination. Rotary, touch-ring, wheel and pointer-button mappings are configured below.", "点击“更改”，然后按下 Toolbox 或键盘组合键。旋钮、触控环、滚轮与侧键映射可在下方配置。"), color = MutedInk, fontSize = 12.sp) }
                     item {
                         StudioOutlinedTextField(
                             value = search,
@@ -298,7 +290,7 @@ private fun ShortcutEditorDialog(settings: AppSettings, brushes: List<ImportedBr
                                 StudioFilterChip(selected = captureTrigger == ShortcutTrigger.PRESS, onClick = { captureTrigger = ShortcutTrigger.PRESS }, label = { Text(tr("Tap to switch", "单击切换")) })
                                 StudioFilterChip(selected = captureTrigger == ShortcutTrigger.HOLD, onClick = { captureTrigger = ShortcutTrigger.HOLD }, label = { Text(tr("Hold, release to return", "按住，松开返回")) })
                             }
-                            SettingSwitch(tr("Only this input device", "仅此输入设备"), tr("Keeps the global CSP key while adding a Toolbox-specific mapping.", "保留全局 CSP 键位，同时添加此 Toolbox 的专用映射。"), deviceSpecific) { deviceSpecific = it }
+                            SettingSwitch(tr("Only this input device", "仅此输入设备"), deviceSpecific) { deviceSpecific = it }
                         }
                     }
                     item { Text(tr("ROTARY & SCROLL", "旋钮与滚轮"), color = MutedInk, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp)) }
@@ -312,7 +304,6 @@ private fun ShortcutEditorDialog(settings: AppSettings, brushes: List<ImportedBr
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(tr("BRUSH GROUP TARGETS", "笔刷组目标"), color = MutedInk, fontSize = 11.sp)
-                            Text(tr("Choose the real groups used by CSP-style P and B shortcuts. Automatic keeps name-based detection.", "选择 CSP 风格 P、B 快捷键实际使用的笔刷组；“自动”会继续按名称识别。"), color = MutedInk, fontSize = 11.sp)
                             ShortcutBrushGroup.entries.forEach { group ->
                                 ShortcutBrushGroupTargetRow(
                                     group = group,
@@ -411,7 +402,7 @@ private fun ToolboxAxisBindingRow(axis: ToolboxAxis, settings: AppSettings, onCh
             onChange(settings.copy(shortcutAxisBindings = updated))
         }
         if (binding != null) {
-            SettingSwitch(tr("Reverse direction", "反转方向"), null, binding.reversed) {
+            SettingSwitch(tr("Reverse direction", "反转方向"), binding.reversed) {
                 onChange(settings.copy(shortcutAxisBindings = ToolboxMotionResolver.replaceAxis(settings.shortcutAxisBindings, binding.copy(reversed = it))))
             }
             BrushSettingSlider(tr("Axis sensitivity", "轴灵敏度"), binding.sensitivity, .25f..4f) {
@@ -506,13 +497,6 @@ private fun ToolboxQuickSlotEditorDialog(
         text = {
             LazyColumn(Modifier.dialogContentWidth(380.dp, 560.dp).heightIn(max = 560.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 item {
-                    Text(
-                        tr("Bind a Toolbox key to Quick slot 1–8 in the shortcut list, then choose what the slot restores here.", "先在快捷键列表中为快速槽 1–8 绑定 Toolbox 按键，再在此选择快速槽恢复的内容。"),
-                        color = MutedInk,
-                        fontSize = 12.sp,
-                    )
-                }
-                item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(ToolboxQuickSlots.COUNT) { index ->
                             StudioFilterChip(
@@ -546,7 +530,7 @@ private fun ToolboxQuickSlotEditorDialog(
                     }
                 }
                 when (slot.kind) {
-                    ToolboxQuickSlotKind.EMPTY -> item { Text(tr("This slot is empty. Its shortcut is ignored safely.", "此快速槽为空；对应快捷键会被安全忽略。"), color = MutedInk, fontSize = 12.sp) }
+                    ToolboxQuickSlotKind.EMPTY -> Unit
                     ToolboxQuickSlotKind.BRUSH -> item {
                         ToolboxQuickSlotDropdown(
                             label = tr("Brush", "笔刷"),
@@ -820,23 +804,14 @@ private fun PressureCurveEditor(values: List<Float>, onChange: (List<Float>) -> 
                 fontSize = 11.sp, color = MutedInk,
             ) else Text(tr("Output ↑", "输出 ↑"), fontSize = 10.sp, color = MutedInk)
         }
-        Text(tr("Tap to add a point. Drag in both directions; drag outside to remove. Test below after releasing.",
-            "点击加点，横向或纵向拖动调节；拖出图框删除。松手后可在下方试画。"), color = MutedInk, fontSize = 11.sp)
     }
 }
 
 @Composable
-internal fun SettingSwitch(title: String, subtitle: String?, checked: Boolean, onChecked: (Boolean) -> Unit) {
-    var showHelp by remember(title) { mutableStateOf(false) }
-    Column {
-        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(localizedBrushLabel(title), Modifier.weight(1f), fontSize = 13.sp)
-            if (subtitle != null) IconButton({ showHelp = !showHelp }, Modifier.size(40.dp)) {
-                Icon(Icons.Outlined.Info, tr("About $title", "关于$title"), Modifier.size(17.dp), tint = MutedInk)
-            }
-            Switch(checked = checked, onCheckedChange = onChecked, modifier = Modifier.height(40.dp))
-        }
-        if (showHelp && subtitle != null) Text(localizedBrushLabel(subtitle), Modifier.padding(bottom = 8.dp), color = MutedInk, fontSize = 12.sp)
+internal fun SettingSwitch(title: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(localizedBrushLabel(title), Modifier.weight(1f), fontSize = 13.sp)
+        Switch(checked = checked, onCheckedChange = onChecked, modifier = Modifier.height(40.dp))
     }
 }
 
@@ -862,8 +837,6 @@ private fun StylusActionRow(title: String, selected: StylusButtonAction, trigger
                 StudioFilterChip(selected = trigger == ShortcutTrigger.HOLD, onClick = { onTrigger(ShortcutTrigger.HOLD) }, label = { Text(tr("Hold temporarily", "按住临时切换")) })
                 StudioFilterChip(selected = trigger == ShortcutTrigger.PRESS, onClick = { onTrigger(ShortcutTrigger.PRESS) }, label = { Text(tr("Tap to switch", "单击切换")) })
             }
-        } else if (selected in setOf(StylusButtonAction.UNDO, StylusButtonAction.REDO)) {
-            Text(tr("Runs once when pressed", "按下时执行一次"), color = MutedInk, fontSize = 10.sp)
         }
     }
 }
