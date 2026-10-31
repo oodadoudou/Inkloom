@@ -95,8 +95,6 @@ internal fun SelectionStudioPanel(
         text = { Column(Modifier.dialogContentWidth(320.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(28.dp).background(Color(colorRangeTarget), RoundedCornerShape(5.dp)))
-                Spacer(Modifier.width(10.dp))
-                Text(tr("Uses the current foreground color", "使用当前前景色"), fontSize = 12.sp)
             }
             Text("${tr("Tolerance", "容差")} ${(colorRangeTolerance * 100).toInt()}%")
             BrushParameterSlider(colorRangeTolerance, { colorRangeTolerance = it }, valueRange = 0f..1f)
@@ -219,7 +217,9 @@ internal fun SelectionStudioPanel(
                 SelectionBarButton(Icons.Outlined.Close, tr("Deselect and exit", "取消选区并退出"), onDeselect)
             }
             // The current tool's options, where they are used (Photoshop's options bar, CSP's tool property).
-            Row(Modifier.fillMaxWidth().heightIn(min = 36.dp).padding(start = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Lasso, rectangle and ellipse have none, so the row is left out.
+            val hasOptions = shape == SelectionShape.MAGIC_WAND || shape == SelectionShape.SMART_BORDER || shape == SelectionShape.BRUSH
+            if (hasOptions) Row(Modifier.fillMaxWidth().heightIn(min = 36.dp).padding(start = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 when (shape) {
                     SelectionShape.MAGIC_WAND, SelectionShape.SMART_BORDER -> {
                         Text(if (shape == SelectionShape.MAGIC_WAND) tr("Tolerance", "容差") else tr("Detail", "细节"), fontSize = 11.sp, color = MutedInk)
@@ -245,8 +245,7 @@ internal fun SelectionStudioPanel(
                         BrushParameterSlider(brushSize, onBrushSize, Modifier.width(180.dp).semantics { contentDescription = "Selection pen size" }, valueRange = 4f..300f)
                         Text("${brushSize.roundToInt()} px", fontSize = 11.sp)
                     }
-                    SelectionShape.FREEFORM -> Text(tr("Draw around an area, or tap points for straight edges.", "沿区域圈画，或点按多个点画直边。"), fontSize = 11.sp, color = MutedInk)
-                    SelectionShape.RECTANGLE, SelectionShape.ELLIPSE -> Text(tr("Drag across the area to select.", "拖动框选区域。"), fontSize = 11.sp, color = MutedInk)
+                    else -> Unit
                 }
             }
             // What to do with it: only while something is selected (CSP's selection launcher,

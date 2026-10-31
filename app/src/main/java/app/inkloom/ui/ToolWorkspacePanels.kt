@@ -123,11 +123,6 @@ internal fun WorkspaceSubtoolsPanel(
                 items(app.inkloom.document.FrameToolMode.entries, key = { it.name }) { mode ->
                     WorkspaceSubtoolRow(frameToolModeLabel(mode, settings), mode == settings.frameToolMode) { onFrameToolMode(mode) }
                 }
-            } else {
-                item {
-                    Text(language.text("This tool has no subtool variants.", "此工具没有子工具变体。"),
-                        Modifier.padding(12.dp), color = MutedInk, fontSize = 12.sp)
-                }
             }
         }
     }
@@ -353,21 +348,13 @@ internal fun WorkspaceToolPropertiesPanel(
                 }
                 EditorTool.LASER -> WorkspacePropertySlider(language.text("Pointer size", "指示大小"), "${brushSize.toInt()} px",
                     brushSize.coerceIn(1f,500f),1f..500f,onBrushSize)
-                EditorTool.TEXT -> WorkspacePropertyHint(language.text("Tap the canvas to create editable text. Select text to edit typography and spacing.", "点击画布创建可编辑文字；选中文字后可调整排版和间距。"))
-                EditorTool.NOTE -> WorkspacePropertyHint(language.text("Tap the canvas to place a note. Its content remains editable.", "点击画布放置便笺，内容会保持可编辑。"))
-                EditorTool.LINK -> WorkspacePropertyHint(language.text("Tap the canvas to create an external or notebook link.", "点击画布创建外部链接或笔记内部链接。"))
-                EditorTool.IMAGE -> WorkspacePropertyHint(language.text("Tap the canvas to import an image as an editable object.", "点击画布导入图片并保持为可编辑对象。"))
+                EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE -> Unit
                 EditorTool.RULER -> RulerToolProperties(settings, onSettings, onRulerCommand)
                 EditorTool.FRAME -> FrameToolProperties(settings, onSettings, onFrameAction)
             }
         }
     }
     if (organizerOpen) ToolPaletteOrganizerDialog(settings, onSettings, { organizerOpen = false })
-}
-
-@Composable
-private fun WorkspacePropertyHint(text: String) {
-    Text(text, Modifier.padding(vertical=8.dp), color=MutedInk, fontSize=12.sp, lineHeight=16.sp)
 }
 
 @Composable
@@ -399,8 +386,6 @@ private fun ToolPaletteOrganizerDialog(settings: AppSettings, onSettings: (AppSe
         onDismissRequest=onDismiss,
         title={Text(language.text("Customize tool rail", "自定义工具栏"))},
         text={Column(Modifier.dialogContentWidth(300.dp, 420.dp).heightIn(max=560.dp)) {
-            Text(language.text("Long-press and drag tools across separators. Changes are saved with the workspace.", "长按拖动工具可跨越分隔线；设置会随工作区保存。"),fontSize=11.sp,color=MutedInk)
-            Spacer(Modifier.height(8.dp))
             LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)) {
                 itemsIndexed(entries,key={ index,entry -> when(entry) { is ToolPaletteEntry.Tool -> entry.tool.name; ToolPaletteEntry.Separator -> "separator-$index" } }) { index,entry ->
                     when(entry) {
@@ -480,13 +465,6 @@ private fun RulerToolProperties(settings: AppSettings, onSettings: (AppSettings)
     WorkspacePropertySwitch(language.text("Snap to rulers", "吸附到尺规"), settings.snapToRulers) { onSettings(settings.copy(snapToRulers = it)) }
     if (settings.rulerToolMode == app.inkloom.document.RulerToolMode.POLYGON) WorkspacePropertySlider(language.text("Sides", "边数"),
         "${settings.rulerPolygonSides}", settings.rulerPolygonSides.toFloat(), 3f..32f, { onSettings(settings.copy(rulerPolygonSides = it.roundToInt())) })
-    WorkspacePropertyHint(when (settings.rulerToolMode) {
-        app.inkloom.document.RulerToolMode.EDIT -> language.text("Drag a point to reshape a ruler on the current layer, or drag its line to move it.", "拖动控制点调整当前图层的尺规，拖动线条可移动尺规。")
-        app.inkloom.document.RulerToolMode.CURVE, app.inkloom.document.RulerToolMode.POLYLINE ->
-            language.text("Tap to add points. Tap the first point to close the ruler, or double-tap to finish.", "点击添加控制点；点击第一个点闭合尺规，双击结束。")
-        app.inkloom.document.RulerToolMode.GUIDE -> language.text("Drag across the page for a horizontal guide, or down it for a vertical one.", "横向拖动创建水平参考线，纵向拖动创建垂直参考线。")
-        else -> language.text("Drag on the canvas to place the ruler on the current layer.", "在画布上拖动，将尺规放到当前图层。")
-    })
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         if (settings.rulerToolMode == app.inkloom.document.RulerToolMode.CURVE || settings.rulerToolMode == app.inkloom.document.RulerToolMode.POLYLINE) {
             StudioButton(language.text("Finish", "完成"), { onCommand(RulerCommand.FINISH) })
@@ -501,8 +479,6 @@ private fun RulerToolProperties(settings: AppSettings, onSettings: (AppSettings)
 private fun CloneStampProperties(settings: AppSettings, onSettings: (AppSettings) -> Unit, onCommand: (CloneCommand) -> Unit) {
     val language = settings.language
     WorkspacePropertySwitch(language.text("Aligned", "对齐"), settings.cloneAligned) { onSettings(settings.copy(cloneAligned = it)) }
-    WorkspacePropertyHint(language.text("Tap Choose source, then tap the spot to copy from. Strokes paint what lies at the same offset from it.",
-        "点按「选择复制源」后点按要复制的位置，之后的笔画会绘制与其保持相同偏移处的内容。"))
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         StudioButton(language.text("Choose source", "选择复制源"), { onCommand(CloneCommand.PICK_SOURCE) })
         StudioButton(language.text("Clear source", "清除复制源"), { onCommand(CloneCommand.CLEAR_SOURCE) })
@@ -523,11 +499,6 @@ private fun FrameToolProperties(settings: AppSettings, onSettings: (AppSettings)
         app.inkloom.document.FrameDivision.FOLDERS_EMPTY -> language.text("New folders, empty", "分割文件夹（空白）")
         app.inkloom.document.FrameDivision.FOLDERS_DUPLICATE -> language.text("New folders, copying layers", "分割文件夹并复制图层")
     }, division == settings.frameDivision) { onSettings(settings.copy(frameDivision = division)) } }
-    WorkspacePropertyHint(when (settings.frameToolMode) {
-        app.inkloom.document.FrameToolMode.DIVIDE -> language.text("Drag across a frame to divide it.", "在分格上拖动以分割。")
-        app.inkloom.document.FrameToolMode.RECTANGLE -> language.text("Drag to add a rectangle frame to the folder.", "拖动为文件夹添加矩形分格。")
-        app.inkloom.document.FrameToolMode.SELECT -> language.text("Tap frames to select them.", "点按分格以选择。")
-    })
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         StudioButton(language.text("New folder…", "新建…"), { onAction(FrameAction.CREATE) })
         StudioButton(language.text("Divide equally…", "等分…"), { onAction(FrameAction.DIVIDE_EQUALLY) })

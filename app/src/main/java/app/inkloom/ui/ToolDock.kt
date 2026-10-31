@@ -636,11 +636,6 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
                     Text(tr("Eraser brush", "橡皮笔刷"), color = MutedInk, fontSize = 12.sp)
                     EraserPresetPicker(eraserPreset, onEraserPreset)
                 }
-                if (symmetryMode != SymmetryMode.NONE) {
-                    HorizontalDivider()
-                    Text(tr("Symmetry axis", "对称轴"), color = MutedInk, fontSize = 12.sp)
-                    Text(tr("Drag the center node to move the axis. Drag the outer node to rotate it.", "拖动中心节点移动对称轴，拖动外侧节点旋转。"), color = MutedInk, fontSize = 10.sp)
-                }
                 if (rulerEnabled) {
                     HorizontalDivider()
                     Text(tr("Ruler angle snap", "直尺角度吸附"), color = MutedInk, fontSize = 12.sp)
@@ -663,7 +658,6 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
                 if (alignmentGuidesEnabled) {
                     HorizontalDivider()
                     Text(tr("Alignment guides", "对齐参考线"), color = MutedInk, fontSize = 12.sp)
-                    Text(tr("Drag either blue line with one finger. Pen strokes and shape points snap when they start nearby.", "用单指拖动任一蓝色参考线；笔迹落点和形状端点靠近时会自动吸附。"), color = MutedInk, fontSize = 10.sp)
                     OutlinedButton(onClick = onResetAlignmentGuides, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(6.dp)); Text(tr("Center alignment guides", "参考线居中")) }
                 }
                 if (tool == EditorTool.FILL) {
@@ -686,7 +680,6 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
                             )
                         }
                     }
-                    Text(tr("Configure draft exclusion in Tool property. If no eligible reference layer is marked, the current layer is used.", "在工具属性中设置是否排除草稿；若没有可用参考图层，则使用当前图层。"), color = MutedInk, fontSize = 9.sp)
                 }
                 if (tool == EditorTool.CORRECT_LINE) {
                     Text(tr("Correct line", "线条修正"), color = MutedInk, fontSize = 12.sp)
@@ -727,18 +720,6 @@ private fun ToolDockItems(tool: EditorTool, toolPaletteLayout: String, onTool: (
                         onValueChange = onCorrectLineAmount,
                         valueRange = 0f..1f,
                         modifier = Modifier.semantics { contentDescription = correctionStrengthDescription },
-                    )
-                    Text(
-                        when (correctLineMode) {
-                            CorrectLineMode.SMOOTH -> tr("Drag across an existing line to reduce shake while preserving its endpoints.", "在已有线条上拖动，减少抖动并保留首尾端点。")
-                            CorrectLineMode.SIMPLIFY -> tr("Drag across a vector line to reduce redundant control points.", "在矢量线条上拖动，减少多余控制点。")
-                            CorrectLineMode.ADJUST_WIDTH -> tr("Drag across a line to change its entire width by the selected strength.", "在线条上拖动，按所选强度调整整条线宽。")
-                            CorrectLineMode.REDRAW_WIDTH -> tr("Drag horizontally over a vector line to redraw its pressure-based width.", "在矢量线条上横向拖动，重绘基于压力的局部线宽。")
-                            CorrectLineMode.CONNECT -> tr("Drag from one vector line endpoint to another to connect them.", "从一条矢量线端点拖到另一条端点以连接线条。")
-                            CorrectLineMode.CONTROL_POINTS -> tr("Drag the nearest vector control point to reshape the line.", "拖动最近的矢量控制点以调整线条形状。")
-                        } + tr(" Undo restores the original vector line.", " 撤销可恢复原始矢量线条。"),
-                        color = MutedInk,
-                        fontSize = 10.sp,
                     )
                 }
             }
