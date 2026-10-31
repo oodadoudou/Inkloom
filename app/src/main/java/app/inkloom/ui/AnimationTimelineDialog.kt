@@ -95,8 +95,6 @@ internal fun AnimationTimelineDialog(page: InkPage, folderId: String, assets: Do
                 StudioSliderRow(tr("Cels before", "之前的赛璐"), skin.before.toFloat(), 0f..most, { v -> onion { it?.copy(before = v.toInt()) } }, decimals = 0)
                 StudioSliderRow(tr("Cels after", "之后的赛璐"), skin.after.toFloat(), 0f..most, { v -> onion { it?.copy(after = v.toInt()) } }, decimals = 0)
                 StudioSliderRow(tr("Onion skin opacity", "洋葱皮不透明度"), skin.opacity * 100f, 5f..100f, { v -> onion { it?.copy(opacity = v / 100f) } }, unit = "%", decimals = 0)
-                StudioNote(tr("Earlier cels show blue and later cels green, on screen only; exports, fills and the eyedropper ignore them.",
-                    "之前的赛璐显示为蓝色、之后的为绿色，仅在屏幕上显示；导出、填充和吸管不受影响。"))
             }
             StudioSection(tr("Cels", "赛璐"))
             animation.cels.forEach { cel ->
@@ -114,8 +112,6 @@ internal fun AnimationTimelineDialog(page: InkPage, folderId: String, assets: Do
                     StudioButton("×", { onEdit { AnimationEdits.removeFromTimeline(it, folderId, cel.layerId) } })
                 }
             }
-            StudioNote(tr("Tap a cel to show and draw on it; the other cels are hidden. Durations are in frames.",
-                "点按赛璐以显示并在其上绘画，其他赛璐会隐藏。时长以帧为单位。"))
             // CSP File › Export animation › Animated GIF: the page with each cel in turn, looping.
             StudioSection(tr("Export", "导出"))
             var gifWidth by remember { mutableIntStateOf(720) }

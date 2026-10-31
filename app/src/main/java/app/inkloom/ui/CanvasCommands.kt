@@ -76,8 +76,7 @@ internal fun prepareFitCanvasToSelection(assets: DocumentAssetService, page: Ink
 internal fun ClearHistoryDialog(language: UiLanguage, steps: Int, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     fun tr(en: String, zh: String) = language.text(en, zh)
     StudioDialog(onDismissRequest = onDismiss, title = { Text(tr("Clear undo history", "清除历史记录")) },
-        text = { Text(tr("Remove all $steps undo and redo steps to free memory. Your artwork stays exactly as it is, but these steps cannot be undone afterwards.",
-            "移除全部 $steps 个撤销与重做步骤以释放内存。作品保持不变，但之后无法再撤销这些步骤。")) },
+        text = { Text(tr("Removes $steps steps. The artwork stays as it is.", "移除 $steps 个步骤，作品保持不变。")) },
         confirmButton = { TextButton(onConfirm) { Text(tr("Clear", "清除")) } },
         dismissButton = { TextButton(onDismiss) { Text(tr("Cancel", "取消")) } })
 }

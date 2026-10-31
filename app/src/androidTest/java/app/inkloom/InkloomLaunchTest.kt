@@ -508,7 +508,7 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Actions Notebook").performClick()
         composeRule.onNodeWithText("Search this notebook").performClick()
 
-        composeRule.onNodeWithText("Page, handwriting, image, or PDF text").assertIsDisplayed()
+        composeRule.onNode(androidx.compose.ui.test.hasSetTextAction() and androidx.compose.ui.test.hasAnyAncestor(androidx.compose.ui.test.isDialog())).assertIsDisplayed()
         composeRule.onNodeWithText("Recognize ink").assertDoesNotExist()
         composeRule.onNodeWithText("OCR current page").assertIsDisplayed()
         composeRule.onNodeWithText("Index the whole notebook").assertIsDisplayed()

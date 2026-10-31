@@ -85,7 +85,6 @@ internal fun NotebookCoverCropDialog(
                                 srcSize = IntSize(right - left, bottom - top),
                                 dstSize = IntSize(size.width.toInt(), size.height.toInt()))
                         }
-                        Text(language.text("Drag the image to position it", "拖动图片调整位置"), style = MaterialTheme.typography.bodySmall)
                         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                             Text(language.text("Zoom", "缩放"))
                             Slider(zoom, { zoom = it }, valueRange = 1f..4f, modifier = Modifier.weight(1f))

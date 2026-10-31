@@ -70,11 +70,8 @@ internal fun ObtainScreenColorFromApps(language: UiLanguage, onDismiss: () -> Un
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             StudioSegmented(listOf(tr("Hide Inkloom first", "先隐藏 Inkloom"), tr("Pick from the screen now", "立即从屏幕取色")),
                 if (hidden) 0 else 1, { hidden = it == 0 })
-            StudioNote(if (hidden) tr("Inkloom steps aside. Open what you want to pick from, then tap the Inkloom notification.",
-                "Inkloom 将暂时隐藏。打开要取色的画面后，点按 Inkloom 通知。")
-                else tr("For another app shown beside Inkloom in split screen.", "适用于分屏显示在 Inkloom 旁边的其他应用。"))
-            StudioNote(tr("Android asks for screen capture. One frame is kept in memory for picking and nothing is saved.",
-                "Android 会请求屏幕录制权限。仅在内存中保留一帧用于取色，不会保存。"))
+            // The one step the dialog cannot show: picking resumes from the notification.
+            if (hidden) StudioNote(tr("Open what you want to pick from, then tap the Inkloom notification.", "打开要取色的画面后，点按 Inkloom 通知。"))
         }
     }, confirmButton = { TextButton({
         val needsNotifications = Build.VERSION.SDK_INT >= 33 &&

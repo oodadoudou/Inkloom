@@ -82,7 +82,7 @@ internal fun AdjustmentParameters(value: LayerAdjustment, channel: Int, onChanne
                     update(value.copy(posterizeLevels = it.roundToInt().coerceIn(2, 20)))
                 }
             }
-            LayerAdjustmentKind.INVERT -> Text(language.text("Invert RGB, preserving transparency.", "反转 RGB，保留透明度。"))
+            LayerAdjustmentKind.INVERT -> Unit
             LayerAdjustmentKind.THRESHOLD -> {
                 parameter(language.text("Threshold", "阈值"), value.threshold, 0f..1f) { update(value.copy(threshold = it)) }
             }

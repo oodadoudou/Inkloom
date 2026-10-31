@@ -116,7 +116,7 @@ class DialogLayoutAuditTest {
         compose.onNode(androidx.compose.ui.test.hasContentDescription("激光笔")).performScrollTo().assertIsDisplayed()
         fun actions() = compose.onNode(androidx.compose.ui.test.hasContentDescription("操作")).performClick()
         actions(); check("操作", null, "完成")
-        open("搜索当前笔记"); check("搜索此笔记", null, "完成", focus = "页面、手写、图片或 PDF 文字")
+        open("搜索当前笔记"); check("搜索此笔记", null, "完成", focus = "搜索")
         compose.onNodeWithText("完成").performClick(); compose.waitForIdle()
         actions(); open("书签"); check("书签", null, "完成")
         compose.onNodeWithText("完成").performClick(); compose.waitForIdle()

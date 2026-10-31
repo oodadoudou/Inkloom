@@ -106,11 +106,8 @@ internal fun GeneratedLayerDialog(initial: LayerGenerator, editing: Boolean, lan
                         ToneDotShape.entries.indexOf(current.dot), { value = current.copy(dot = ToneDotShape.entries[it]) }, label = tr("Dot", "网点形状"))
                     StudioSliderRow(tr("Angle", "角度"), current.angleDegrees, -90f..90f, { value = current.copy(angleDegrees = it) }, unit = "°")
                     colorRow(tr("Color", "颜色"), current.colorArgb) { value = current.copy(colorArgb = it) }
-                    StudioNote(tr("Lines per inch are measured at the page's DPI, as for print.", "网线数按页面 DPI 计算，与印刷一致。"))
                 }
             }
-            StudioNote(tr("Brushes do not paint on this layer. Edit its settings or mask, or rasterize it to paint.",
-                "画笔不能直接在此图层上绘画；可编辑其设置或蒙版，或栅格化后绘画。"))
         }
     }, confirmButton = { TextButton({ onApply(value) }, enabled = !busy) { Text(if (editing) tr("Apply", "应用") else tr("Create", "创建")) } },
         dismissButton = { TextButton(onDismiss, enabled = !busy) { Text(tr("Cancel", "取消")) } })

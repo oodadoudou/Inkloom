@@ -118,7 +118,6 @@ internal fun ShadingAssistDialog(page: InkPage, layerId: String, assets: Documen
             StudioSliderRow(tr("Opacity", "不透明度"), settings.opacity * 100f, 0f..100f, { settings = settings.copy(opacity = it / 100f) }, unit = "%")
             StudioButton(tr("Shadow colour: drawing colour", "阴影颜色：描绘色"), { settings = settings.copy(shadowColorArgb = drawingColor or 0xFF000000.toInt()) })
             StudioCheckRow(tr("Line art from reference layers", "以参考图层为线稿"), useLineArt, { useLineArt = it }, enabled = hasReferences)
-            StudioNote(tr("Works best on flat colours; each colour area is shaded as one shape.", "适合平涂色块；每个色块按一个形状计算阴影。"))
         }
     }, confirmButton = { TextButton({
         runEdit { current -> AssistLayerEdits.shading(assets, current, layerId, settings, useLineArt, tr("Shading", "阴影")) }
@@ -175,18 +174,15 @@ internal fun ColorizeDialog(page: InkPage, lineArtId: String, assets: DocumentAs
             AssistPreview(result, null, multiply = false, lines = lineBitmap)
             StudioSegmented(listOf(tr("Colorize all", "全部上色"), tr("Use hint layer", "使用提示图层"), tr("Advanced", "高级设置")), mode, { mode = it })
             when (mode) {
-                0 -> StudioNote(tr("Every closed area gets a colour from a palette around the drawing colour; the background stays clear. This is not AI colouring.",
-                    "每个闭合区域按描绘色周围的配色上色，背景保持透明。这不是 AI 上色。"))
+                0 -> Unit
                 else -> {
                     StudioDropdownField(candidates.firstOrNull { it.id == hintId }?.name ?: tr("Choose the hint layer", "选择提示图层"), hintsOpen, { hintsOpen = it }, Modifier.fillMaxWidth()) {
                         candidates.forEach { layer -> StudioMenuItem(text = { Text(layer.name) }, onClick = { hintId = layer.id; hintsOpen = false }) }
                     }
-                    StudioNote(tr("Paint a dab of each colour inside the areas on the hint layer. It is hidden afterwards.", "在提示图层的各区域内点上颜色。上色后提示图层会隐藏。"))
                 }
             }
             if (mode == 2) {
                 StudioSection(tr("Colour priority", "颜色优先级"))
-                StudioNote(tr("Tap a colour to move it first; earlier colours win where areas hold several.", "点按颜色将其移到最前；区域内有多种颜色时，靠前的优先。"))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     order.forEach { c -> Box(Modifier.size(26.dp).background(Color(c)).border(1.dp, MaterialTheme.colorScheme.outline)
                         .clickable { order = listOf(c) + order.filterNot { it == c } }) }

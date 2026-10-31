@@ -210,7 +210,6 @@ class RasterFilterWindowTest {
         val ink = fingerprint(view)
         open("Noise"); val noisy = applied(ink)
         open("Sharpen")
-        compose.onNodeWithText("Fixed strength; use Unsharp mask for adjustable sharpening.").assertExists()
         compose.onNodeWithText("Cancel").performClick()
         compose.waitUntil(15_000) { fingerprint(view) == noisy && !view.selectionLayerTransferPending }
         open("Sharpen"); val sharpened = applied(noisy)
@@ -265,14 +264,13 @@ class RasterFilterWindowTest {
         compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
         compose.waitUntil(15_000) { fingerprint(view) == ink }
         open("Perlin noise")
-        compose.onNodeWithText("Replaces the selected pixels with grey noise.").assertExists()
+        compose.onNodeWithText("New noise").assertExists()
         val noise = applied(ink, twirled)
         val snapshot = requireNotNull(view.activeRasterSnapshotForTest())
         assertTrue("noise covers empty paper", snapshot.pixelAt(2, 2) ushr 24 == 255)
         compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
         compose.waitUntil(15_000) { fingerprint(view) == ink }
         open("Blur")
-        compose.onNodeWithText("Fixed strength, as in Clip Studio Paint.").assertExists()
         applied(ink, twirled, noise)
     }
 

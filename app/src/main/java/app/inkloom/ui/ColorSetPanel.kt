@@ -277,7 +277,7 @@ internal fun ColorSetPanel(color: Int, language: UiLanguage, availableHeight: Dp
     if (importSource != null) StudioDialog(
         onDismissRequest = { importSource = null },
         title = { Text(tr("Import into color set", "导入到色板")) },
-        text = { Text(set?.name ?: tr("A new color set will be created", "将创建新色板")) },
+        text = { Text(set?.name ?: tr("New color set", "新色板")) },
         confirmButton = {
             TextButton(onClick = {
                 val source = importSource

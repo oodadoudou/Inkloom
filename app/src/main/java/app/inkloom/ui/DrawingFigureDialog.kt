@@ -96,7 +96,6 @@ internal fun DrawingFigureDialog(initial: DrawingFigure, editing: Boolean, pageA
                     }
                 }
             }
-            StudioNote(tr("Tap a joint to choose it; drag to turn the camera.", "点按关节以选择；拖动旋转镜头。"))
             StudioDropdownField(tr("Pose", "姿势"), posesOpen, { posesOpen = it }, Modifier.fillMaxWidth()) {
                 FigurePose.entries.forEach { pose ->
                     StudioMenuItem(text = { Text(poseName(pose, language)) }, onClick = { figure = figure.copy(turns = pose.turns); posesOpen = false })

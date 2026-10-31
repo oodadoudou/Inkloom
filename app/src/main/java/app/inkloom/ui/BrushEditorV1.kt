@@ -164,8 +164,7 @@ fun BrushEditorV1Dialog(
                                     item {
                                         Text(activePanel.first.localizedLabel(language), style = MaterialTheme.typography.titleMedium)
                                         if (activePanel.first == BrushOptionGroup.STROKE) {
-                                            Text(tr("Global stabilization: ${(settings.globalStrokeStabilization * 100).toInt()}%. The brush setting is applied after it.",
-                                                "全局防抖：${(settings.globalStrokeStabilization * 100).toInt()}%。此笔刷设置在全局防抖之后生效。"),
+                                            Text(tr("Global stabilization ${(settings.globalStrokeStabilization * 100).toInt()}%", "全局防抖 ${(settings.globalStrokeStabilization * 100).toInt()}%"),
                                                 fontSize = 12.sp, color = MutedInk)
                                         }
                                     }

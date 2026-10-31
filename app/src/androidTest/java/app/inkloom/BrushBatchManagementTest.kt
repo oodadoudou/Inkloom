@@ -135,7 +135,7 @@ class BrushBatchManagementTest {
         composeRule.onNodeWithContentDescription("Brush preset Batch A").performClick()
         composeRule.onNodeWithContentDescription("Current brush version history").performClick()
         composeRule.onNodeWithText("Version history").assertIsDisplayed()
-        composeRule.onNodeWithText("No previous versions yet. Edit and save this brush to create one.").assertIsDisplayed()
+        composeRule.onNodeWithText("No previous versions").assertIsDisplayed()
     }
 
     @Test fun choosingBrushPersistsRecentSelectionWithoutRewritingEntirePresetLibrary() {

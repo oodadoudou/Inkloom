@@ -69,7 +69,8 @@ internal fun CustomPageTemplateDialog(
                         label = { Text(tr("Height (px)", "高度（px）")) }, singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = h == null || h !in 32..20_000)
                 }
-                Text(tr("32–20,000 px per side", "每边 32–20,000 px"), style = MaterialTheme.typography.bodySmall)
+                if (w == null || w !in 32..20_000 || h == null || h !in 32..20_000)
+                    Text(tr("32–20,000 px per side", "每边 32–20,000 px"), style = MaterialTheme.typography.bodySmall)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PaperPattern.entries.forEach { pattern -> item {
                         StudioFilterChip(selected = paper.pattern == pattern, onClick = {

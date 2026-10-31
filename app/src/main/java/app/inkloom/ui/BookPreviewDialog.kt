@@ -185,8 +185,6 @@ internal fun BookPreviewDialog(document: InkDocument, initialPage: Int?, assets:
                         drawIntoCanvas { BookPreviewRenderer.draw(it.nativeCanvas, size.width, size.height, scene, images::face, PAGE_EDGE, images.coverArgb, images.spine) }
                     }
                 }
-                StudioNote(tr("Tap the outer side of a page or use the arrows to turn it. Drag to turn the book, pinch to zoom, double-tap to close or open it.",
-                    "点按页面外侧或使用箭头翻页。拖动旋转书本，双指缩放，双击合上或打开。"))
             }
         }
     }

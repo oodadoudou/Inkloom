@@ -83,7 +83,7 @@ internal class NavigatorTarget(val page: InkPage, val viewport: ViewportState, v
 internal fun NavigatorPanel(target: NavigatorTarget?, assets: DocumentAssetService, language: UiLanguage,
                             onViewport: (ViewportState) -> Unit, onFit: () -> Unit, onActualSize: () -> Unit, onToggleMirror: () -> Unit) {
     fun tr(en: String, zh: String) = language.text(en, zh)
-    if (target == null) { StudioNote(tr("Open a page to navigate it.", "打开页面后即可导航。"), Modifier.padding(8.dp)); return }
+    if (target == null) return
     var thumbnail by remember(target.page.id) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(target.page) {
         // Pages change with every committed stroke; wait for a pause before re-rendering.

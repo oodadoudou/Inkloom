@@ -252,7 +252,6 @@ private fun HarmonyPalette(draft: ColorPickerDraft, language: UiLanguage, onPick
                 )
             }
         }
-        Text(tr("Harmony keeps the current saturation and brightness.", "和谐色保留当前饱和度和明度。"), Modifier.padding(6.dp), color = MutedInk, fontSize = 10.sp)
     }
 }
 
@@ -269,7 +268,7 @@ private fun IntermediateColorPalette(draft: ColorPickerDraft, language: UiLangua
     fun tr(en: String, zh: String) = language.text(en, zh)
     Column {
         Row(Modifier.fillMaxWidth().height(34.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(tr("Tap a corner to replace it with the current color", "点击角点，用当前颜色替换"), Modifier.weight(1f).padding(horizontal = 4.dp), color = MutedInk, fontSize = 9.sp)
+            Spacer(Modifier.weight(1f))
             StudioIcon(Icons.Outlined.Refresh, tr("Reset intermediate colors", "重置中间色")) { corners = defaults() }
         }
         Row(Modifier.fillMaxWidth().height(32.dp)) {

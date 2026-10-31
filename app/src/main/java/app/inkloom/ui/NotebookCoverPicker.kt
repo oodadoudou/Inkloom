@@ -83,11 +83,10 @@ internal fun NotebookCoverPicker(
                 }
             }
         }
-        if (mine && covers.isEmpty() && !importing) Text(tr("Import an image to save a reusable cover", "导入图片，保存为可复用封面"), fontSize = 12.sp, color = MutedInk)
     }
     deleting?.let { cover ->
         StudioDialog(onDismissRequest = { deleting = null }, title = { Text(tr("Delete cover", "删除封面")) },
-            text = { Text(tr("Remove ${cover.name} from My covers? Existing notebooks keep their cover.", "从我的封面中移除 ${cover.name}？已使用它的笔记会保留原封面。")) },
+            text = { Text(tr("Notebooks using ${cover.name} keep it.", "已使用 ${cover.name} 的笔记会保留它。")) },
             confirmButton = { TextButton({ onDelete(cover.id); deleting = null }) { Text(tr("Delete", "删除")) } },
             dismissButton = { TextButton({ deleting = null }) { Text(tr("Cancel", "取消")) } })
     }

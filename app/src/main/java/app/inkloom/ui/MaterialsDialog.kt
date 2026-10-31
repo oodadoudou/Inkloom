@@ -62,8 +62,6 @@ internal fun MaterialsDialog(materials: List<Material>, language: UiLanguage, bu
             }
             message?.let { StudioNote(it) }
             StudioSection(tr("Library", "素材库"))
-            if (materials.isEmpty()) StudioNote(tr("Register a layer as an image or a page as a template to reuse it in any notebook.",
-                "将图层登记为图像素材，或将页面登记为模板素材，即可在任何笔记中重复使用。"))
             LazyColumn(Modifier.heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(materials.sortedByDescending { it.createdAt }, key = { it.id }) { material ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically,

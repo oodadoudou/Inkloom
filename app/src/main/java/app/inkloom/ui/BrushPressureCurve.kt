@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import app.inkloom.ui.theme.Paper
 import app.inkloom.ui.theme.Ink
@@ -19,7 +18,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import app.inkloom.brushpresetv5.BrushPresetV5
 import app.inkloom.brushpresetv5.EditorCurves
 import app.inkloom.document.BrushCurvePoint
@@ -99,6 +97,4 @@ internal fun BrushPressureCurve(id: String, preset: BrushPresetV5, language: UiL
             drawCircle(Ink, 5.dp.toPx(), at)
         }
     }
-    Text(language.text("Tap to add a point. Drag points to adjust the response.", "点击添加控制点，拖动控制点调整响应。"),
-        color = Color.Gray, fontSize = 11.sp)
 }

@@ -819,8 +819,6 @@ private fun PaintingLayerPanel(
         onDismissRequest = { colorLayer = null },
         title = { Text(tr("Layer color replacement", "图层着色")) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(tr("Black and white tones map to these colors. Source pixels stay editable.",
-                "黑白明度映射到下面两色，原始像素保持可编辑。"), fontSize = 12.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(tr("Dark / primary", "暗部／主色"), Modifier.weight(1f))
                 BrushColorPicker(colorDark, { colorDark = it or 0xff000000.toInt() }, square = true)

@@ -47,8 +47,7 @@ internal fun CanvasOrientationDialog(language: UiLanguage, canFlip: Boolean, bus
                     enabled = !busy && (!flip || canFlip),
                     onClick = { onChoose(change) })
             }
-            if (!canFlip) Text(tr("Pages with an imported PDF or image background can be rotated but not flipped.",
-                "带有导入 PDF 或图片背景的页面可以旋转，但不能翻转。"))
+            if (!canFlip) Text(tr("PDF and image pages can't be flipped.", "PDF 和图片页面不能翻转。"))
         } },
         confirmButton = {}, dismissButton = { TextButton(onDismiss, enabled = !busy) { Text(tr("Cancel", "取消")) } })
 }

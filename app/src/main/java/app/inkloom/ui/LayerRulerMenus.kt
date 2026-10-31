@@ -94,7 +94,6 @@ internal fun LayerRulerDialog(action: LayerRulerAction, layer: InkLayer, view: I
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     StudioSliderRow(tr("Line width", "线宽"), width, 1f..200f, { width = it }, unit = "px")
                     StudioSegmented(listOf(tr("None", "无"), tr("On", "开")), if (antiAlias) 1 else 0, { antiAlias = it == 1 }, label = tr("Anti-aliasing", "抗锯齿"))
-                    StudioNote(tr("Draws every ruler that applies to “${layer.name}” in the drawing colour.", "以描绘色描绘适用于“${layer.name}”的全部尺规。"))
                 }
             }, confirmButton = { TextButton({
                 if (!view.drawAlongRulers(width, antiAlias)) Toast.makeText(context, tr("Nothing was drawn", "没有描绘任何内容"), Toast.LENGTH_SHORT).show()
@@ -130,7 +129,6 @@ internal fun LayerRulerDialog(action: LayerRulerAction, layer: InkLayer, view: I
                     }
                     StudioSection(tr("Display", "显示"))
                     StudioCheckRow(tr("Grid", "网格"), perspective.grid, { on -> update { it.copy(grid = on) } })
-                    StudioNote(tr("Move vanishing points with the ruler tool's Edit rulers.", "使用尺规工具的“编辑尺规”移动消失点。"))
                     StudioButton(tr("Delete perspective ruler", "删除透视尺规"), { update { null }; onDismiss() })
                 }
             }, confirmButton = { TextButton(onDismiss) { Text(tr("Done", "完成")) } })

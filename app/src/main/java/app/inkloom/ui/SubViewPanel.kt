@@ -113,8 +113,6 @@ internal fun SubViewPanel(language: UiLanguage, onPickColor: (Int) -> Unit) {
                 Modifier.size(32.dp), enabled = image != null) { Icon(Icons.Outlined.Delete, tr("Remove image", "移除图片")) }
         }
         if (image == null) {
-            StudioNote(tr("Import pictures to keep beside the canvas for reference and colour picking. They stay out of your notebooks.",
-                "导入图片放在画布旁作为参考并取色，图片不会加入笔记。"), Modifier.padding(6.dp))
             StudioButton(tr("Import images…", "导入图片…"), { importer.launch(arrayOf("image/*")) })
         } else ReferenceViewer(image, store, language, onPickColor, Modifier.weight(1f))
         message?.let { StudioNote(it) }

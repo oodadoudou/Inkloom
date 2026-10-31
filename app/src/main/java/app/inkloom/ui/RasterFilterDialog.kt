@@ -65,28 +65,23 @@ internal fun RasterFilterDialog(drawingColor:Int,presets:List<RasterFilterPreset
                 }
                 StudioSliderRow(tr("Strength","强度"),state.matchStrength*100f,0f..100f,{state=state.copy(matchStrength=it/100f)},unit="%")
                 StudioCheckRow(tr("Keep luminance","保持明度"),state.keepLuminance,{state=state.copy(keepLuminance=it)})
-                StudioNote(tr("Moves this layer's colours towards the reference layer's overall colour and contrast.","使此图层的整体色彩与对比度向参考图层靠拢。"))
             } else if (state.kind >= RasterFilterPreset.FIRST_EFFECT_KIND) RasterFilterEffectControls(state,{state=it},::tr,pageDpi) { colorPickerOpen=true }
             else if (state.kind >= RasterFilterPreset.FIRST_TONAL_KIND) {
                 val kind=RasterFilterPreset.TONAL_KINDS[state.kind-RasterFilterPreset.FIRST_TONAL_KIND]
                 AdjustmentParameters((state.adjustment ?: app.inkloom.document.LayerAdjustment()).copy(kind=kind),channel,{channel=it},{state=state.copy(adjustment=it)},language)
-                StudioNote(tr("Changes the layer's pixels. Use an adjustment layer to keep the correction editable.","直接修改图层像素；若要保留可编辑性，请使用调整图层。"),Modifier.padding(top=4.dp))
             } else if (state.kind >= 16) RasterFilterExtraControls(state,{state=it},::tr)
             HorizontalDivider(Modifier.padding(vertical=6.dp),color=MaterialTheme.colorScheme.outline)
             StudioCheckRow(tr("Process visible copy","处理可见画面副本"),composite,{composite=it},enabled=!copyBusy)
-            if(!composite) StudioNote(tr("Applies to the current layer. Process visible copy flattens what you see into a new layer instead.","作用于当前图层；勾选“处理可见画面副本”则把可见画面合并为新图层再处理。"))
             if(composite){
                 compositePreview?.takeUnless{it.isRecycled}?.let{Image(it.asImageBitmap(),tr("Composite preview","合成预览"),Modifier.fillMaxWidth().heightIn(max=160.dp))}
                 if(copyBusy)LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text(tr("Preview is scaled. Apply creates a pixel layer at authored resolution; source layers stay editable.","预览按比例缩小；应用后按原尺寸创建像素图层，原图层保留。"),
-                    style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Row(Modifier.padding(top=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){
                 StudioTextField(name,{name=it.take(48)},tr("Preset name","预设名称"),Modifier.weight(1f))
                 StudioButton(tr("Save","保存"),{val p=app.inkloom.settings.RasterFilterAlgorithms.stamped(state.copy(id=java.util.UUID.randomUUID().toString(),name=name.trim()));onPresets((presets+p).takeLast(100));state=p},enabled=name.isNotBlank())
             }
             presets.firstOrNull{it.id==state.id && it.kind==state.kind}?.takeIf(app.inkloom.settings.RasterFilterAlgorithms::outdated)?.let {
-                StudioNote(tr("This preset was saved with an earlier version of this filter; the result may differ slightly.","此预设由旧版本的滤镜算法保存，结果可能略有不同。"),Modifier.padding(top=4.dp))
+                StudioNote(tr("Saved with an older version of this filter.","此预设由旧版滤镜保存。"),Modifier.padding(top=4.dp))
             }
             presets.firstOrNull{it.id==state.id}?.let{saved->Row(Modifier.padding(top=6.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)){
                 StudioButton(if(saved.favorite) tr("★ Favorite","★ 已收藏") else tr("☆ Favorite","☆ 收藏"),{onPresets(presets.map{if(it.id==saved.id)it.copy(favorite=!it.favorite)else it})})
@@ -105,8 +100,6 @@ private fun RasterFilterBasicControls(state:RasterFilterPreset,onState:(RasterFi
     if (state.kind == 12) StudioButton(tr("Drawing color…","绘画色…"),onPickColor) {
         Box(Modifier.size(14.dp).background(Color(state.colorArgb or 0xFF000000.toInt())))
     }
-    if (state.kind == 14 || state.kind == 15) Text(tr("Fixed strength; use Unsharp mask for adjustable sharpening.","固定强度；需要调节时请使用 USM 锐化。"),style=note,color=muted)
-    if (state.kind == 13) Text(tr("White becomes transparent; darker values become black ink. Source opacity is retained.","白色转为透明；深色转为黑色笔迹，原有透明度继续参与。"),style=note,color=muted)
     if(state.kind==1)StudioSliderRow(tr("Amount","锐化量"),state.amount,0f..4f,{onState(state.copy(amount=it))},decimals=2)
     if(state.kind==4)StudioSegmented(listOf(tr("Thicken","加粗"),tr("Thin","变细")),if(state.grow)0 else 1,{onState(state.copy(grow=it==0))},label=tr("Direction","方向"))
     if(state.kind==5)StudioSliderRow(tr("Wavelength","波长"),state.wavelength,16f..512f,{onState(state.copy(wavelength=it))},unit="px")

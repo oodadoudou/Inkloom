@@ -25,8 +25,6 @@ internal fun BrushFolderImportProgressDialog(progress: String, language: UiLangu
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
                 Text(progress)
-                Text(language.text("Completed files are saved. Stop takes effect after the current file.",
-                    "已完成的文件会保存。停止将在当前文件处理完后生效。"))
             }
         },
         confirmButton = { TextButton(onClick = onStop) { Text(language.text("Stop import", "停止导入")) } },
@@ -40,8 +38,7 @@ internal fun DamagedBackupRecoveryDialog(issues: List<String>, language: UiLangu
         title = { Text(language.text("Backup is damaged", "备份已损坏")) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(language.text("No content was restored. You can recover intact notebooks and brushes while skipping damaged items.",
-                    "尚未恢复任何内容。可以跳过损坏项目，只救回完好的笔记和笔刷。"))
+                Text(language.text("Nothing was restored.", "尚未恢复任何内容。"))
                 issues.take(4).forEach { Text(it, color = MutedInk, fontSize = 12.sp) }
             }
         },

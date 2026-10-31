@@ -145,7 +145,6 @@ internal fun BrushMoveToGroupDialog(brush: ImportedBrush, groups: List<String>, 
                     value = groupName,
                     onValueChange = { groupName = it.take(BrushGroupOperations.MAX_PATH_LENGTH) },
                     label = { Text(tr("Group", "分组")) },
-                    supportingText = { Text(tr("Enter a new name or choose an existing group", "输入新名称或选择已有分组")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -181,7 +180,6 @@ internal fun BrushBatchGroupDialog(
                     value = groupName,
                     onValueChange = { groupName = it.take(BrushGroupOperations.MAX_PATH_LENGTH) },
                     label = { Text(tr("Destination group", "目标分组")) },
-                    supportingText = { Text(tr("Enter a new name or choose an existing group", "输入新名称或选择已有分组")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -636,7 +634,7 @@ private fun ProcreateBrushLibrary(
                 StudioOutlinedTextField(
                     value = brushSearch,
                     onValueChange = { brushSearch = it },
-                    placeholder = { Text(tr("Brush name, set, or format", "搜索笔刷名称、分组或格式"), fontSize = 11.sp) },
+                    placeholder = { Text(tr("Search brushes", "搜索笔刷"), fontSize = 11.sp) },
                     leadingIcon = { Icon(Icons.Outlined.Search, null, Modifier.size(17.dp)) },
                     trailingIcon = { if (brushSearch.isNotEmpty()) IconButton(onClick = { brushSearch = "" }) { Icon(Icons.Outlined.Close, null, Modifier.size(16.dp)) } },
                     singleLine = true,
@@ -790,7 +788,7 @@ private fun ProcreateBrushLibrary(
                 if (selectedCategory == recentCategory && displayed.isEmpty()) Box(
                     Modifier.weight(1f).fillMaxHeight().padding(20.dp), contentAlignment = Alignment.Center,
                 ) {
-                    Text(tr("Your recently used brushes appear here. Swipe a brush left to pin it.", "使用过的笔刷会显示在这里。向左滑动笔刷即可置顶。"),
+                    Text(tr("No recent brushes", "没有最近使用的笔刷"),
                         color = MutedInk, fontSize = 12.sp)
                 } else if (gridLayout) LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
@@ -876,7 +874,7 @@ private fun ProcreateBrushLibrary(
     if (confirmBatchDelete) StudioDialog(
         onDismissRequest = { confirmBatchDelete = false },
         title = { Text(tr("Delete selected brushes?", "删除所选笔刷？")) },
-        text = { Text(tr("System brushes stay in their built-in sets. Selected imported brushes will be removed; existing strokes remain unchanged.", "系统笔刷会保留在默认分组中；所选导入笔刷将被删除，已有笔画不受影响。")) },
+        text = { Text(tr("System brushes are kept.", "系统笔刷会保留。")) },
         confirmButton = { Button(onClick = {
             onReplaceBrushes(brushes.filterNot { it.id in selectedBrushIds })
             confirmBatchDelete = false
@@ -888,7 +886,6 @@ private fun ProcreateBrushLibrary(
         StudioDialog(
             onDismissRequest = { menuBrush = null },
             title = { Text(brush.name) },
-            text = { Text(tr("Edit, move, export or remove this brush.", "编辑、移动、导出或移除此笔刷。")) },
             confirmButton = { TextButton(onClick = { menuBrush = null; if (brush.format != BrushFormat.SYSTEM) editBrush = brush }) { Text(tr("Edit", "编辑")) } },
             dismissButton = {
                 Row {
@@ -930,7 +927,7 @@ private fun ProcreateBrushLibrary(
         StudioDialog(
             onDismissRequest = { deleteGroup = null },
             title = { Text(tr("Delete brush group?", "删除笔刷分组？")) },
-            text = { Text(tr("This removes the group and its $count brushes. Existing strokes are unchanged.", "这会移除该分组及其中的 $count 支笔刷。已有笔画不会改变。")) },
+            text = { Text(tr("Its $count brushes are removed too.", "其中的 $count 支笔刷也会移除。")) },
             confirmButton = { Button(onClick = {
                 val updated = BrushGroupOperations.deleteGroup(brushes, group)
                 onReplaceBrushes(updated)
@@ -1066,8 +1063,8 @@ internal fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit
                         label = { Text(tr("New group path", "新建分组路径")) },
                         supportingText = {
                             Text(
-                                if (normalizedParent.isBlank()) tr("Use / to create nested groups", "使用 / 创建嵌套分组")
-                                else tr("Creates inside ${BrushGroupOperations.displayName(normalizedParent)}; use / for an absolute path", "将在 ${BrushGroupOperations.displayName(normalizedParent)} 内创建；使用 / 可输入完整路径"),
+                                if (normalizedParent.isBlank()) tr("Use / for nested groups", "用 / 嵌套分组")
+                                else tr("Inside ${BrushGroupOperations.displayName(normalizedParent)}", "位于 ${BrushGroupOperations.displayName(normalizedParent)}"),
                             )
                         },
                         singleLine = true,
@@ -1081,7 +1078,7 @@ internal fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit
                 }
                 Spacer(Modifier.height(8.dp))
                 if (groups.isEmpty()) {
-                    Text(tr("No groups yet. Create an empty group above or move a brush into a new path.", "还没有分组。可在上方创建空组，或将笔刷移动到新路径。"), color = MutedInk)
+                    Text(tr("No groups yet", "还没有分组"), color = MutedInk)
                 } else {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
                         groups.forEach { group -> item(group) { StudioFilterChip(selected = selected == group, onClick = { selected = group }, label = { Text(group, maxLines = 1) }) } }
@@ -1099,7 +1096,7 @@ internal fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Text(tr("Renaming to an existing group merges both groups.", "重命名为已有分组会合并两个分组。"), color = MutedInk, fontSize = 11.sp)
+                    if (replacement.trim() != selected && replacement.trim() in groups) Text(tr("Merges with the existing group.", "将与已有分组合并。"), color = MutedInk, fontSize = 11.sp)
                     TextButton(onClick = { onRename(selected, "") }) { Text(tr("Remove group and keep brushes", "移除分组并保留笔刷")) }
                 }
             }
@@ -1124,15 +1121,6 @@ internal fun BrushImportFailuresDialog(
         title = { Text(language.text("Brush import issues", "笔刷导入问题")) },
         text = {
             Column(Modifier.dialogContentWidth(360.dp, 520.dp)) {
-                Text(
-                    language.text(
-                        "Failed sources stay here with their exact reason. Retry after updating Inkloom or restoring file access.",
-                        "失败来源会保留在这里并显示具体原因。更新 Inkloom 或恢复文件权限后可重新尝试。",
-                    ),
-                    color = MutedInk,
-                    fontSize = 11.sp,
-                )
-                Spacer(Modifier.height(10.dp))
                 if (failures.isEmpty()) Text(language.text("No unresolved imports.", "没有未解决的导入问题。"), color = MutedInk)
                 else LazyColumn(Modifier.heightIn(max = 430.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     items(failures, key = BrushImportFailure::id) { failure ->
@@ -1182,10 +1170,9 @@ internal fun BrushVersionHistoryDialog(
         text = {
             Column(Modifier.dialogContentWidth(340.dp, 480.dp)) {
                 Text(brush.name, fontSize = 13.sp)
-                Text(tr("Inkloom saves the previous preset before every brush edit.", "Inkloom 会在每次编辑笔刷前保存旧预设。"), color = MutedInk, fontSize = 11.sp)
                 Spacer(Modifier.height(10.dp))
                 if (versions.isEmpty()) {
-                    Text(tr("No previous versions yet. Edit and save this brush to create one.", "还没有历史版本。编辑并保存此笔刷即可创建。"), color = MutedInk)
+                    Text(tr("No previous versions", "没有历史版本"), color = MutedInk)
                 } else {
                     LazyColumn(Modifier.heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(versions, key = { it.versionId }) { version ->

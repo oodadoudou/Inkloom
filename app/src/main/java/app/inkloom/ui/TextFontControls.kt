@@ -93,7 +93,7 @@ internal fun TextFontField(reference: String?, language: UiLanguage, onReference
                 importer.launch(arrayOf("font/*", "application/x-font-ttf", "application/x-font-otf", "application/vnd.ms-opentype", "application/octet-stream"))
             })
         }
-        if (missing) StudioNote(tr("This font is not on this device, so the text uses the default font.", "此设备上没有该字体，文字以默认字体显示。"))
+        if (missing) StudioNote(tr("Font not on this device; showing the default.", "此设备没有该字体，以默认字体显示。"))
         message?.let { StudioNote(it) }
     }
 }

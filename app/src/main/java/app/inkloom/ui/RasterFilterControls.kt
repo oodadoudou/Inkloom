@@ -54,8 +54,6 @@ internal fun RasterFilterKindMenuItems(tr: (String, String) -> String, onKind: (
 /** Settings for the fixed blurs, Perlin noise and the Distort family (kinds 16 and later), as CSP property rows. */
 @Composable
 internal fun RasterFilterExtraControls(state: RasterFilterPreset, onState: (RasterFilterPreset) -> Unit, tr: (String, String) -> String) {
-    val note = MaterialTheme.typography.bodySmall
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
     @Composable fun center() {
         StudioSliderRow(tr("Center X", "中心 X"), state.centerX * 100f, 0f..100f, { onState(state.copy(centerX = it / 100f)) }, unit = "%")
         StudioSliderRow(tr("Center Y", "中心 Y"), state.centerY * 100f, 0f..100f, { onState(state.copy(centerY = it / 100f)) }, unit = "%")
@@ -73,14 +71,13 @@ internal fun RasterFilterExtraControls(state: RasterFilterPreset, onState: (Rast
     @Composable fun waves() = StudioSliderRow(tr("Number of waves", "波数"), state.count.toFloat(), 1f..20f, { onState(state.copy(count = it.roundToInt())) })
     Column {
         when (state.kind) {
-            16, 17, 18 -> Text(tr("Fixed strength, as in Clip Studio Paint.", "固定强度，与 Clip Studio Paint 相同。"), style = note, color = muted)
+            16, 17, 18 -> Unit
             19 -> {
                 StudioSliderRow(tr("Scale", "缩放"), state.noiseScale, 2f..500f, { onState(state.copy(noiseScale = it)) }, unit = "px")
                 StudioSliderRow(tr("Amplitude", "振幅"), state.noiseAmplitude * 100f, 0f..100f, { onState(state.copy(noiseAmplitude = it / 100f)) }, unit = "%")
                 StudioSliderRow(tr("Attenuation", "衰减"), state.attenuation * 100f, 0f..100f, { onState(state.copy(attenuation = it / 100f)) }, unit = "%")
                 StudioSliderRow(tr("Octaves", "八度"), state.octaves.toFloat(), 1f..8f, { onState(state.copy(octaves = it.roundToInt())) })
                 StudioButton(tr("New noise", "重新生成噪点"), { onState(state.copy(seed = state.seed + 1)) })
-                Text(tr("Replaces the selected pixels with grey noise.", "以灰度噪声替换所选像素。"), Modifier.padding(top = 4.dp), style = note, color = muted)
             }
             20 -> { distortion(); area(); center() }
             21 -> {
@@ -119,7 +116,6 @@ internal fun RasterFilterExtraControls(state: RasterFilterPreset, onState: (Rast
             }
             28 -> {
                 distortion(tr("Distortion", "畸变"), 0f..100f); area(); center()
-                Text(tr("Outside the lens becomes transparent.", "镜头以外的区域变为透明。"), Modifier.padding(top = 4.dp), style = note, color = muted)
             }
         }
     }
@@ -129,13 +125,10 @@ internal fun RasterFilterExtraControls(state: RasterFilterPreset, onState: (Rast
 @Composable
 internal fun RasterFilterEffectControls(state: RasterFilterPreset, onState: (RasterFilterPreset) -> Unit, tr: (String, String) -> String,
     pageDpi: Float = 300f, onPickColor: () -> Unit = {}) {
-    val note = MaterialTheme.typography.bodySmall
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
     @Composable fun percent(label: String, value: Float, onValue: (Float) -> Unit) = StudioSliderRow(label, value, 0f..100f, onValue)
     Column {
         when (state.kind - RasterFilterPreset.FIRST_EFFECT_KIND) {
-            0 -> Text(tr("Smooths the 8 × 8 block pattern and ringing that JPEG saving adds, keeping drawn edges.",
-                "平滑 JPEG 保存产生的 8 × 8 块状纹与振铃，保留绘制边缘。"), style = note, color = muted)
+            0 -> Unit
             1 -> {
                 StudioSliderRow(tr("Cell size", "单元大小"), state.cellSize, 2f..200f, { onState(state.copy(cellSize = it)) }, unit = "px")
                 percent(tr("Randomness", "随机性"), state.randomness) { onState(state.copy(randomness = it)) }
@@ -146,7 +139,6 @@ internal fun RasterFilterEffectControls(state: RasterFilterPreset, onState: (Ras
                 StudioSliderRow(tr("Strength", "强度"), state.normalStrength, 1f..100f, { onState(state.copy(normalStrength = it)) })
                 StudioSegmented(listOf(tr("Y up (OpenGL)", "Y 向上（OpenGL）"), tr("Y down (DirectX)", "Y 向下（DirectX）")), state.mode.coerceAtMost(1),
                     { onState(state.copy(mode = it)) }, label = tr("Y orientation", "Y 方向"))
-                Text(tr("Brightness is read as height and the whole layer becomes a normal map texture.", "以亮度作为高度，整个图层转换为法线贴图。"), style = note, color = muted)
             }
             3 -> {
                 StudioSegmented(listOf(tr("Color and lines", "颜色和线条"), tr("Color only", "仅颜色"), tr("Lines only", "仅线条")), state.artProcess,
@@ -199,13 +191,11 @@ internal fun RasterFilterEffectControls(state: RasterFilterPreset, onState: (Ras
                         { onState(state.copy(tonePitch = (pageDpi / it).coerceIn(2f, 200f))) }, unit = "lpi")
                     StudioSliderRow(tr("Screen angle", "网屏角度"), state.angle, -90f..90f, { onState(state.copy(angle = it)) }, unit = "°")
                 }
-                Text(tr("Converts this layer's pixels; use Undo to go back.", "转换此图层的像素，可撤销恢复。"), style = note, color = muted)
             }
             8 -> {
                 StudioSliderRow(tr("Strength", "强度"), state.glowStrength, 0f..400f, { onState(state.copy(glowStrength = it)) }, unit = "%")
                 percent(tr("Effect area", "效果范围"), state.glowArea) { onState(state.copy(glowArea = it)) }
                 StudioSliderRow(tr("Effect blur range", "效果模糊范围"), state.glowBlur, 1f..100f, { onState(state.copy(glowBlur = it)) }, unit = "px")
-                Text(tr("Bright areas such as highlights and light sources spread soft light.", "高光、光源等明亮部分散发柔和的光。"), style = note, color = muted)
             }
             9 -> {
                 percent(tr("Shadow intensity", "阴影强度"), state.inflateShadow) { onState(state.copy(inflateShadow = it)) }

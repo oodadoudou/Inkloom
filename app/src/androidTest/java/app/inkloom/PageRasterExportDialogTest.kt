@@ -33,7 +33,6 @@ class PageRasterExportDialogTest {
         // Switching to the layered package after checking the box must not carry the option over.
         compose.onNodeWithText("PSD").performClick(); compose.onNodeWithText("Layered PNG").performClick()
         compose.onNodeWithText("Include draft layers").assertDoesNotExist()
-        compose.onNodeWithText("Layered PNG keeps draft layers and their draft flags.").assertExists()
         compose.onNodeWithText("Export").performClick()
         assertEquals(RasterFileFormat.LAYERED_PNG, exported?.format); assertFalse(exported!!.includeDraftLayers)
     }

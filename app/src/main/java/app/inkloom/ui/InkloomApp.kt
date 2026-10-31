@@ -3858,7 +3858,7 @@ private fun EditorScreen(
                         StudioFilterChip(selected = overlays.insertInternalLink, onClick = { chooseLinkKind(true) }, label = { Text(tr("Notebook page", "笔记页面")) })
                     }
                     if (!overlays.insertInternalLink) {
-                        StudioOutlinedTextField(insertLinkUrl, { insertLinkUrl = it }, label = { Text(tr("Web, email, or phone address", "网页、邮箱或电话号码")) }, placeholder = { Text("https://example.com") }, isError = insertLinkUrl.isNotBlank() && normalizedLink == null, supportingText = { Text(if (insertLinkUrl.isNotBlank() && normalizedLink == null) tr("Use a valid http, https, mailto, or tel address.", "请输入有效的 http、https、mailto 或 tel 地址。") else tr("Addresses without a scheme open with HTTPS.", "未填写协议的地址将通过 HTTPS 打开。")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        StudioOutlinedTextField(insertLinkUrl, { insertLinkUrl = it }, label = { Text(tr("Web, email, or phone address", "网页、邮箱或电话号码")) }, placeholder = { Text("https://example.com") }, isError = insertLinkUrl.isNotBlank() && normalizedLink == null, supportingText = if (insertLinkUrl.isNotBlank() && normalizedLink == null) { { Text(tr("Use a valid http, https, mailto, or tel address.", "请输入有效的 http、https、mailto 或 tel 地址。")) } } else null, singleLine = true, modifier = Modifier.fillMaxWidth())
                     } else {
                         Text(tr("Notebook", "笔记本"), color = MutedInk, fontSize = 11.sp)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -3983,14 +3983,13 @@ private fun EditorScreen(
             onDismissRequest = { overlays.shapeInsertOpen = false },
             title = { Text(tr("Draw shape", "绘制形状")) },
             // Shape choices wrap instead of hiding in a sideways strip; the body scrolls at large fonts.
-            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) { Text(tr("Choose a shape, then drag on the page with the pen. Lines and arrows snap to nearby 45° angles; Freeform follows the pen and closes the polygon automatically.", "选择形状后用笔在页面上拖动。直线和箭头会吸附到邻近的 45° 角；自由形状会跟随笔迹并自动闭合。"), color = MutedInk, fontSize = 12.sp); FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ShapeKind.entries.forEach { kind -> StudioFilterChip(selected = insertShape == kind, onClick = { insertShape = kind }, label = { Text(localizedShapeKind(kind)) }) } } } },
+            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) { FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ShapeKind.entries.forEach { kind -> StudioFilterChip(selected = insertShape == kind, onClick = { insertShape = kind }, label = { Text(localizedShapeKind(kind)) }) } } } },
             confirmButton = { Button(onClick = { overlays.shapeInsertOpen = false; tool = EditorTool.SHAPE; canvasView?.tool = EditorTool.SHAPE }) { Text(tr("Draw", "绘制")) } },
             dismissButton = { TextButton(onClick = { overlays.shapeInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
         )
         if (overlays.imageInsertOpen) StudioDialog(
             onDismissRequest = { overlays.imageInsertOpen = false },
             title = { Text(tr("Add page image", "添加页面图片")) },
-            text = { Text(tr("Import an existing image or capture a paper page with the device camera. Image text can then be indexed from Search this note.", "导入现有图片，或用设备相机拍摄纸质页面。随后可在“搜索此笔记”中识别图片文字。")) },
             confirmButton = { Button(onClick = { overlays.imageInsertOpen = false; onScanImage() }) { Icon(Icons.Outlined.DocumentScanner, null); Spacer(Modifier.width(6.dp)); Text(tr("Scan page", "扫描页面")) } },
             dismissButton = { Row { TextButton(onClick = { overlays.imageInsertOpen = false }) { Text(tr("Cancel", "取消")) }; TextButton(onClick = { overlays.imageInsertOpen = false; onInsertImage() }) { Text(tr("Import image", "导入图片")) } } },
         )
@@ -4100,7 +4099,7 @@ private fun EditorScreen(
                 onDismissRequest = { overlays.searchOpen = false },
                 title = { Text(tr("Search this note", "搜索此笔记")) },
                 text = { Column(Modifier.dialogContentWidth(340.dp, 560.dp)) {
-                    StudioOutlinedTextField(documentQuery, { documentQuery = it; searchFocus = null }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Page, handwriting, image, or PDF text", "页面、手写、图片或 PDF 文字")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    StudioOutlinedTextField(documentQuery, { documentQuery = it; searchFocus = null }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Search", "搜索")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         StudioFilterChip(selected = recognitionLanguageTag == "en-US", onClick = { recognitionLanguageTag = "en-US" }, label = { Text("English") })
                         StudioFilterChip(selected = recognitionLanguageTag == "zh-Hans", onClick = { recognitionLanguageTag = "zh-Hans" }, label = { Text("简体中文") })
@@ -4148,7 +4147,7 @@ private fun EditorScreen(
                         }
                     }
                     Spacer(Modifier.height(10.dp))
-                    if (documentQuery.isNotBlank() && results.isEmpty()) Text(tr("No matching page titles, tags, object text, recognized handwriting, image text, or indexed PDF text.", "没有匹配的页面标题、标签、对象文字、已识别手写、图片文字或已索引 PDF 文字。"), color = MutedInk)
+                    if (documentQuery.isNotBlank() && results.isEmpty()) Text(tr("No matches", "没有匹配结果"), color = MutedInk)
                     else LazyColumn(Modifier.heightIn(max = 340.dp)) { items(results, key = { (page, hit) -> "${page.id}:${hit.occurrenceIndex}" }) { (page, hit) ->
                         ListItem(
                             headlineContent = { Text(page.title) },
@@ -4168,8 +4167,7 @@ private fun EditorScreen(
             StudioDialog(
                 onDismissRequest = { handwritingConversionHit = null },
                 title = { Text(tr("Convert handwriting to text", "手写转文字")) },
-                text = { Text(tr("Adds \"${hit.snippet}\" as a text object over the ink. To replace the ink itself, lasso it and choose Convert to text.",
-                    "将“${hit.snippet}”添加为文字对象，手写保留。如需替换手写，请圈选后选择“转换为文字”。")) },
+                text = { Text(tr("Adds “${hit.snippet}” as text over the ink.", "将“${hit.snippet}”作为文字添加在手写上方。")) },
                 confirmButton = {
                     Button(onClick = {
                         hit.recognizedBlockId?.let { onConvertHandwriting(document.id, page.id, it) }
