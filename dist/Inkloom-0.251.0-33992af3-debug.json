@@ -1,0 +1,19 @@
+{
+  "version": "0.251.0",
+  "versionCode": 251,
+  "variant": "debug",
+  "commit": "33992af39ff68976466fdfc500dad92ad35206e0",
+  "sha256": "b39f358edc840e5cb0ac064aeec22848e75ba152b91649afa3d5ac7780ca029b",
+  "bytes": 184358568,
+  "generatedUtc": "2026-10-31T21:08:01.610651+00:00",
+  "verification": {
+    "JVM": "PASS 1266 tests, 0 failures/errors, 8 skipped",
+    "Android15Full": "973/977 in the full run; the 3 shortcut-editor tests (located the list by removed text) fixed and the affected classes rerun 88/88; the frame-time benchmark that missed under load passed 2/2 on rerun",
+    "lint": "PASS 0 errors, 113 warnings",
+    "diffCheck": "PASS",
+    "signature": "PASS APK Signature Scheme v2",
+    "ordinaryDebugSmoke": "PASS clean install, versionCode 251, cold start ok (1.55-2.5 s with host load 16; 0.250.0 measured 1.59-2.14 s alongside), crash buffer empty",
+    "DriveDesktop": "APK only, SHA-256 verified in the local sync folder; cloud redownload unverified"
+  },
+  "deviceStatus": "DEVICE_PENDING"
+}
