@@ -16,8 +16,8 @@ android {
         applicationId = "app.inkloom"
         minSdk = 29
         targetSdk = 35
-        versionCode = 252
-        versionName = "0.252.0"
+        versionCode = 253
+        versionName = "0.253.0"
         testInstrumentationRunner = "app.inkloom.InkloomTestRunner"
         buildConfigField("boolean", "PAINTING_DIAGNOSTICS", "false")
         // The tablet and the Apple-silicon emulator are both arm64; other ABIs would only add size.
