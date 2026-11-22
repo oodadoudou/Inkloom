@@ -7,7 +7,9 @@ import app.inkloom.engine.v5.raster.PaintResult
 import app.inkloom.engine.v5.raster.PublishedPaintDelta
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import java.util.concurrent.ExecutionException
-import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.FutureTask
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -22,12 +24,15 @@ class RealtimeStrokeDispatcher(
     private val onDamageReady: (PixelTileSurface, PaintResult) -> Unit,
     private val controller: RealtimeStrokeController = RealtimeStrokeController(),
 ) : AutoCloseable {
-    private val worker = Executors.newSingleThreadExecutor { runnable ->
+    // One worker keeps commands in order. Views made for brush previews and import probes never
+    // close their dispatcher, so an idle worker ends after a minute instead of living as long as
+    // the process; the next stroke starts a new one.
+    private val worker = ThreadPoolExecutor(1, 1, WORKER_KEEP_ALIVE_SECONDS, TimeUnit.SECONDS, LinkedBlockingQueue()) { runnable ->
         Thread(runnable, "Inkloom-V5-Stroke").apply {
             priority = Thread.NORM_PRIORITY + 1
             isDaemon = true
         }
-    }
+    }.apply { allowCoreThreadTimeOut(true) }
     private sealed interface Command {
         data class Start(
             val layerId: String,
@@ -349,5 +354,6 @@ class RealtimeStrokeDispatcher(
         const val MAX_WORKER_MOVE_BATCH = 256
         const val SOFT_PENDING_MOVE_SAMPLES = 64
         const val MAX_PENDING_MOVE_SAMPLES = 256
+        const val WORKER_KEEP_ALIVE_SECONDS = 60L
     }
 }
