@@ -28,9 +28,9 @@ internal fun LazyListScope.aboutItems(language: UiLanguage) {
     item { Text(language.text("PRIVACY", "隐私"), color = MutedInk, fontSize = 12.sp) }
     item {
         Text(language.text(
-            "Inkloom has no internet access. Notebooks, brushes and settings stay on this device; " +
-                "text recognition and super resolution run on the device. Nothing leaves it unless you export, share or back up a file.",
-            "Inkloom 没有联网权限。笔记、笔刷与设置都保存在本机；文字识别与超分辨率也在本机运行。除非你导出、分享或备份文件，任何内容都不会离开设备。"),
+            "Notebooks, brushes and settings stay on this device; text recognition and super resolution run on the device. " +
+                "Inkloom goes online only to check GitHub for a new release. Nothing leaves the device unless you export, share or back up a file.",
+            "笔记、笔刷与设置都保存在本机；文字识别与超分辨率也在本机运行。Inkloom 只在检查 GitHub 新版本时联网。除非你导出、分享或备份文件，任何内容都不会离开设备。"),
             fontSize = 13.sp)
     }
     item { Text(language.text("OPEN-SOURCE NOTICES", "开源许可"), color = MutedInk, fontSize = 12.sp) }

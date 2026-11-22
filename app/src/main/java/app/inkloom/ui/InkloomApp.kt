@@ -855,6 +855,7 @@ fun InkloomApp(initialIntent: Intent?) {
 
     CompositionLocalProvider(LocalUiLanguage provides settings.language, LocalColorStudioState provides colorStudioState) {
     // Shown over the Library as well as the editor: most imports start from the Library.
+    UpdatePrompt(settings.language)
     importError?.let { message ->
         StudioDialog(onDismissRequest = { importError = null }, confirmButton = { TextButton(onClick = { importError = null }) { Text(tr("OK", "确定")) } },
             title = { Text(tr("Import issue", "导入问题")) }, text = { Text(message) })

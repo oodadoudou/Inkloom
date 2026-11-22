@@ -5,9 +5,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Offline-first: ML Kit's datatransport and ONNX Runtime ask for network access only to upload
-         usage statistics. OCR and super resolution run entirely on the device. -->
-    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <!-- Network is used only to check GitHub for a newer release and download its APK.
+         OCR and super resolution run entirely on the device. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
     <application
         android:allowBackup="true"
