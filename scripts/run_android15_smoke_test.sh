@@ -31,8 +31,8 @@ cd "$INKLOOM_PROJECT_DIR"
 ./gradlew connectedDebugAndroidTest
 ./scripts/install_debug_apk.sh
 
-"$INKLOOM_ADB" shell am force-stop app.inkloom
-INKLOOM_START_RESULT="$("$INKLOOM_ADB" shell am start -W -n app.inkloom/.MainActivity)"
+"$INKLOOM_ADB" shell am force-stop app.inkloom.debug
+INKLOOM_START_RESULT="$("$INKLOOM_ADB" shell am start -W -n app.inkloom.debug/app.inkloom.MainActivity)"
 printf '%s\n' "$INKLOOM_START_RESULT"
 
 if ! printf '%s\n' "$INKLOOM_START_RESULT" | grep -Fq "Status: ok"; then
@@ -40,13 +40,13 @@ if ! printf '%s\n' "$INKLOOM_START_RESULT" | grep -Fq "Status: ok"; then
   exit 1
 fi
 
-INKLOOM_PID="$("$INKLOOM_ADB" shell pidof app.inkloom | tr -d '\r')"
+INKLOOM_PID="$("$INKLOOM_ADB" shell pidof app.inkloom.debug | tr -d '\r')"
 if [[ -z "$INKLOOM_PID" ]]; then
   echo "Inkloom is not running after launch." >&2
   exit 1
 fi
 
 # Capture first: grep -m1 closing the pipe early would fail the script under pipefail.
-INKLOOM_PACKAGE_DUMP="$("$INKLOOM_ADB" shell dumpsys package app.inkloom | tr -d '\r')"
+INKLOOM_PACKAGE_DUMP="$("$INKLOOM_ADB" shell dumpsys package app.inkloom.debug | tr -d '\r')"
 INKLOOM_VERSION="$(grep -m1 'versionName=' <<<"$INKLOOM_PACKAGE_DUMP" | xargs)"
 echo "Android 15 smoke test passed: PID $INKLOOM_PID, $INKLOOM_VERSION"

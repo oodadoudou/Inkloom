@@ -118,8 +118,8 @@ class AppUpdater(context: Context) {
     }
 
     companion object {
-        /** Instrumented tests turn this off so no dialog covers the screens they drive. */
-        @Volatile var checksEnabled = true
+        /** Only releases update themselves; debug builds are the separate app.inkloom.debug. */
+        val checksEnabled = !BuildConfig.DEBUG
         private const val TAG = "InkloomUpdate"
         private const val LATEST_RELEASE_URL = "https://api.github.com/repos/oodadoudou/Inkloom/releases/latest"
         private const val SKIPPED_KEY = "skippedVersion"

@@ -176,7 +176,7 @@ class NotebookCreationWindowTest {
             // Use the provider's stable list row while image thumbnails are still loading.
             nativeNode { (it.contentDescription?.toString() == "List view" && clickNative(it)) || it.contentDescription?.toString() == "Grid view" }
             nativeNode { it.text?.toString() == "$name.png" && clickNative(it) }
-            nativeNode { (it.text?.toString()?.equals("Open", ignoreCase = true) == true && clickNative(it)) || it.packageName?.toString() == "app.inkloom" }
+            nativeNode { (it.text?.toString()?.equals("Open", ignoreCase = true) == true && clickNative(it)) || it.packageName?.toString() == InstrumentationRegistry.getInstrumentation().targetContext.packageName }
             compose.waitUntil(10_000) { hasText("Crop cover") }
             assertTrue("Crop preview must not save before confirmation", templates.load().customCovers.isEmpty())
             notebookTap("Use cover")
@@ -325,7 +325,7 @@ class NotebookCreationWindowTest {
             instrumentation.sendStringSync(name); instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_ENTER)
             nativeNode { (it.contentDescription?.toString() == "List view" && clickNative(it)) || it.contentDescription?.toString() == "Grid view" }
             nativeNode { it.text?.toString() == "$name.png" && clickNative(it) }
-            nativeNode { (it.text?.toString()?.equals("Open", ignoreCase = true) == true && clickNative(it)) || it.packageName?.toString() == "app.inkloom" }
+            nativeNode { (it.text?.toString()?.equals("Open", ignoreCase = true) == true && clickNative(it)) || it.packageName?.toString() == InstrumentationRegistry.getInstrumentation().targetContext.packageName }
             compose.waitUntil(10_000) { hasText("Image paper") }
         }
         try {

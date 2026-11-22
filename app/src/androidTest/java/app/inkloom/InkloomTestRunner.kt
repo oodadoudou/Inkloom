@@ -3,7 +3,6 @@ package app.inkloom
 import android.app.Application
 import android.os.Bundle
 import androidx.test.runner.AndroidJUnitRunner
-import app.inkloom.update.AppUpdater
 
 /** Gives scenarios that do not reset the Library the same starting notebooks as the reset helper. */
 class InkloomTestRunner : AndroidJUnitRunner() {
@@ -20,7 +19,6 @@ class InkloomTestRunner : AndroidJUnitRunner() {
 
     override fun callApplicationOnCreate(app: Application) {
         seedTestNotebooks(app)
-        AppUpdater.checksEnabled = false
         super.callApplicationOnCreate(app)
     }
 }

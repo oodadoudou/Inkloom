@@ -12,4 +12,4 @@ fi
 
 "$ADB" wait-for-device
 "$ADB" install -r "$APK"
-"$ADB" shell am start -n app.inkloom/.MainActivity
+"$ADB" shell am start -n app.inkloom.debug/app.inkloom.MainActivity

@@ -24,7 +24,7 @@ To build it yourself, you need JDK 17 and the Android SDK (API 35) with NDK 27.2
 ```bash
 git clone https://github.com/oodadoudou/Inkloom.git
 cd Inkloom
-./gradlew installDebug          # installs on the connected tablet or emulator
+./gradlew installDebug          # installs "Inkloom Debug" beside the released app
 ```
 
 For a release APK, run `./gradlew assembleRelease`. It is signed with the key in `keystore.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`), or with the debug key if that file is missing.
@@ -55,7 +55,7 @@ You can turn each gesture on or off in **Settings > Gestures**. Pen buttons and 
 
 ```bash
 ./gradlew testDebugUnitTest lintDebug     # unit tests and lint
-./gradlew connectedDebugAndroidTest       # instrumented tests (emulator only: they erase the app's notebooks)
+./gradlew connectedDebugAndroidTest       # instrumented tests, run against the separate "Inkloom Debug" app
 ./scripts/setup_android15_emulator.sh     # one-time: a local Android 15 tablet emulator
 ./scripts/start_android15_emulator.sh
 ```
