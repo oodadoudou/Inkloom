@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0",
+  "versionCode": 10000,
+  "variant": "release",
+  "commit": "a38b7794853da2af615a571c9662eedd2874665a",
+  "sha256": "3235a9d3dc5a8c29bdce346bd11798275989c666e9a1f9021c1dc9550702b026",
+  "bytes": 59582435,
+  "generatedUtc": "2026-11-22T15:16:48.976317+00:00",
+  "githubRelease": "https://github.com/oodadoudou/Inkloom/releases/tag/v1.0.0",
+  "verification": {
+    "JVM": "PASS all unit tests",
+    "Android15Full": "976/979 against the separate app.inkloom.debug; the 3 timeouts (BrushWindowReturnTest, LayerGroupMaskWindowTest, SelectionWindowRegressionTest) PASS 43/43 on rerun",
+    "lint": "PASS 0 errors",
+    "releaseSmoke": "PASS R8 release build: cold start under 0.3 s, stylus strokes persist across force-stop, no crash or ANR",
+    "updaterEndToEnd": "PASS installed 0.253.0 offered v1.0.0 from GitHub, downloaded, matched the SHA-256 digest, updated in place to versionCode 10000; no prompt afterwards",
+    "signature": "PASS same certificate as earlier installs (SHA-256 98892442...e240)",
+    "DriveDesktop": "Final Drive copy, SHA-256 verified; later versions ship only as GitHub releases"
+  },
+  "deviceStatus": "DEVICE_PENDING"
+}
