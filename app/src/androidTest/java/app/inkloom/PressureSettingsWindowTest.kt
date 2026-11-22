@@ -56,7 +56,7 @@ class PressureSettingsWindowTest {
         compose.onNodeWithContentDescription("Settings sections").performScrollToNode(hasText("About"))
         tap("About")
         compose.onNodeWithContentDescription("Settings content").performScrollToNode(hasText("ONNX Runtime"))
-        compose.onNode(hasText("Inkloom has no internet access", substring = true)).assertExists()
+        compose.onNode(hasText("Inkloom goes online only to check GitHub for a new release", substring = true)).assertExists()
     }
 
     @Test fun curveDragCommitsOnceAndScratchpadUsesProductionPressure() {

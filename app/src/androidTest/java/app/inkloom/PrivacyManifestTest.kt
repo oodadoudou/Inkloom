@@ -20,7 +20,6 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -39,10 +38,12 @@ class PrivacyManifestTest {
         app.inkloom.ml.SuperResolution(context).close()
     }
 
-    @Test fun appHasNoNetworkAccess() {
+    /** Network access exists only for the GitHub release check; libraries may not add more. */
+    @Test fun networkAccessIsLimitedToTheUpdateCheck() {
         val requested = packageInfo(PackageManager.GET_PERMISSIONS).requestedPermissions.orEmpty().toList()
-        assertTrue(requested.toString(), requested.none { it == Manifest.permission.INTERNET || it == Manifest.permission.ACCESS_NETWORK_STATE })
-        assertEquals(PackageManager.PERMISSION_DENIED, context.checkSelfPermission(Manifest.permission.INTERNET))
+        assertTrue(requested.toString(), Manifest.permission.INTERNET in requested)
+        assertTrue(requested.toString(), Manifest.permission.ACCESS_NETWORK_STATE !in requested)
+        assertTrue(requested.toString(), requested.none { it.contains("WIFI") || it.contains("ACCOUNTS") || it.contains("AD_ID") })
     }
 
     @Test fun mlKitUsageLogsAreDroppedInsteadOfQueuedForUpload() {
