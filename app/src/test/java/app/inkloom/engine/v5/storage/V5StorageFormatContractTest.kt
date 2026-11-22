@@ -35,6 +35,29 @@ class V5StorageFormatContractTest {
         assertTrue(!InkLayer(name = "Legacy default").drawingAssist)
     }
 
+    /** A notebook written before a field was removed or renamed still opens: its stored bytes match. */
+    @Test fun checkpointWithAFieldThisVersionDoesNotKnowStillVerifies() {
+        val document = InkDocument(title = "Older field")
+        val encoded = DocumentCheckpointCodec.encode(document)
+        val start = encoded.indexOf("\"document\":") + "\"document\":".length
+        val end = encoded.lastIndexOf(",\"checksum\":\"")
+        val payload = "{\"retiredField\":7," + encoded.substring(start + 1, end)
+        val crc = java.util.zip.CRC32().apply { update(payload.encodeToByteArray()) }.value.toString(16).padStart(8, '0')
+        val written = encoded.substring(0, start) + payload + ",\"checksum\":\"$crc\"}"
+        val file = java.io.File.createTempFile("checkpoint", ".json").apply { writeText(written) }
+
+        assertEquals(document, DocumentCheckpointCodec.decode(written))
+        assertEquals(document, DocumentCheckpointCodec.read(file).document)
+        file.delete()
+    }
+
+    @Test fun checkpointWhoseBytesWereChangedIsStillRejected() {
+        val encoded = DocumentCheckpointCodec.encode(InkDocument(title = "Original"))
+        val tampered = encoded.replace("\"Original\"", "\"Changed!\"")
+
+        assertThrows(IllegalArgumentException::class.java) { DocumentCheckpointCodec.decode(tampered) }
+    }
+
     @Test fun barePreV5DocumentIsRejectedRatherThanMigrated() {
         val legacy = Json.encodeToString(InkDocument(title = "legacy"))
 

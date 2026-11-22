@@ -35,11 +35,9 @@ internal class PixelTileArchiveStore(root: File) {
         encoded.blobs.forEach { (hash, bytes) ->
             require(hash == sha256(bytes)) { "Codec returned a mismatched tile hash" }
             val target = File(blobDirectory, "$hash.tile")
-            if (target.exists()) {
-                require(target.length() == bytes.size.toLong() && sha256(target.readBytes()) == hash) {
-                    "Existing tile blob failed integrity verification"
-                }
-            } else {
+            // A damaged blob is replaced by these verified bytes, so one bad file cannot block
+            // every later save that holds the same tile.
+            if (!target.exists() || target.length() != bytes.size.toLong() || sha256(target.readBytes()) != hash) {
                 atomicWrite(target, bytes)
                 writtenBlobCount++
             }
@@ -55,11 +53,7 @@ internal class PixelTileArchiveStore(root: File) {
         val manifestBytes = encoded.manifest.encodeToByteArray()
         val manifestHash = sha256(manifestBytes)
         val manifestFile = File(manifestDirectory, "$manifestHash.surface.json")
-        if (manifestFile.exists()) {
-            require(manifestFile.readBytes().contentEquals(manifestBytes)) {
-                "Existing tile manifest failed integrity verification"
-            }
-        } else {
+        if (!manifestFile.exists() || !manifestFile.readBytes().contentEquals(manifestBytes)) {
             atomicWrite(manifestFile, manifestBytes)
         }
         lastSaveMetrics = SaveMetrics(
@@ -163,7 +157,7 @@ internal class PixelTileArchiveStore(root: File) {
                     StandardCopyOption.ATOMIC_MOVE,
                 )
             } catch (_: AtomicMoveNotSupportedException) {
-                Files.move(temporary.toPath(), target.toPath())
+                Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
             }
         } finally {
             temporary.delete()

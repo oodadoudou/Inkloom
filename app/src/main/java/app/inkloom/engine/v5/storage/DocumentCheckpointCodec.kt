@@ -35,6 +35,8 @@ internal object DocumentCheckpointCodec {
     private const val SCHEMA_VERSION = 5
     private const val ENGINE_VERSION = 5
     /** Fields only legacy engines wrote; a checkpoint without any of them skips the structural scan. */
+    private val DOCUMENT_KEY = "\"document\":".encodeToByteArray()
+    private val CHECKSUM_KEY = ",\"checksum\":\"".encodeToByteArray()
     private val LEGACY_MARKERS = listOf("\"strokes\"", "\"contentKind\"", "\"rasterAssetPath\"", "\"regions\"")
 
     private val json = Json {
@@ -81,7 +83,7 @@ internal object DocumentCheckpointCodec {
     fun read(file: File): Stored {
         if (mayContainLegacyFields(file)) return decodeStored(file.readText())
         val checkpoint = file.inputStream().buffered(1 shl 16).use { json.decodeFromStream(Checkpoint.serializer(), it) }
-        return Stored(verified(checkpoint), checkpoint.journalSequence)
+        return Stored(verified(checkpoint) { file.readBytes() }, checkpoint.journalSequence)
     }
 
     fun decode(content: String): InkDocument = decodeStored(content).document
@@ -89,10 +91,16 @@ internal object DocumentCheckpointCodec {
     private fun decodeStored(content: String): Stored {
         if (LEGACY_MARKERS.any(content::contains)) rejectLegacyStrokePayload(content)
         val checkpoint = json.decodeFromString<Checkpoint>(content)
-        return Stored(verified(checkpoint), checkpoint.journalSequence)
+        return Stored(verified(checkpoint) { content.encodeToByteArray() }, checkpoint.journalSequence)
     }
 
-    private fun verified(checkpoint: Checkpoint): InkDocument {
+    /**
+     * The checksum was computed over the document bytes as written. Re-encoding gives the same
+     * bytes, and is checked first because it needs no second read; when the model has changed
+     * since the file was written (a field added, removed or given a new default), only the stored
+     * bytes still match, so those are checked instead.
+     */
+    private fun verified(checkpoint: Checkpoint, storedBytes: () -> ByteArray): InkDocument {
         require(checkpoint.format == FORMAT) { "Unsupported document format ${checkpoint.format}" }
         require(checkpoint.schemaVersion == SCHEMA_VERSION) {
             "Unsupported document schema ${checkpoint.schemaVersion}"
@@ -104,8 +112,25 @@ internal object DocumentCheckpointCodec {
         // Re-encode into the checksum only; no copy of the document text is kept.
         val crc = CRC32()
         canonicalJson.encodeToStream(InkDocument.serializer(), checkpoint.document, CheckedOutputStream(DiscardingStream, crc))
-        require(checkpoint.checksum == crc.hex()) { "Document checkpoint failed integrity verification" }
+        require(checkpoint.checksum == crc.hex() || checkpoint.checksum == storedPayloadCrc(storedBytes())) {
+            "Document checkpoint failed integrity verification"
+        }
         return checkpoint.document
+    }
+
+    /** CRC of the bytes between the envelope's `"document":` and its closing `,"checksum":"`. */
+    private fun storedPayloadCrc(bytes: ByteArray): String? {
+        val start = indexOf(bytes, bytes.size, DOCUMENT_KEY).takeIf { it >= 0 }?.plus(DOCUMENT_KEY.size) ?: return null
+        val end = lastIndexOf(bytes, CHECKSUM_KEY).takeIf { it > start } ?: return null
+        return CRC32().run { update(bytes, start, end - start); hex() }
+    }
+
+    private fun lastIndexOf(haystack: ByteArray, needle: ByteArray): Int {
+        outer@ for (start in haystack.size - needle.size downTo 0) {
+            for (index in needle.indices) if (haystack[start + index] != needle[index]) continue@outer
+            return start
+        }
+        return -1
     }
 
     /** Scans the file in chunks for the legacy field names (overlapping so none is split). */

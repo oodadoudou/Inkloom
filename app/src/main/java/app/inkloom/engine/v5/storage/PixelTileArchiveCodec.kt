@@ -27,6 +27,8 @@ internal object PixelTileArchiveCodec {
     private const val SCHEMA_VERSION = 5
     private const val RGBA8_CODEC = "zlib-int32-le"
     private const val F16_CODEC = "zlib-rgba-half4-le"
+    private val SHA256_PATTERN = Regex("[0-9a-f]{64}")
+    private val CRC32_PATTERN = Regex("[0-9a-f]{8}")
     private const val MAX_LOGICAL_DIMENSION = 65_536
     private const val MAX_RESIDENT_TILE_COUNT = 16_384
     private const val MAX_PERSISTED_GENERATION = Long.MAX_VALUE / 2L
@@ -255,8 +257,8 @@ internal object PixelTileArchiveCodec {
                 "Unexpected tile byte capacity"
             }
             require(entry.compressedBytes > 0) { "Invalid compressed tile size" }
-            require(entry.blobSha256.matches(Regex("[0-9a-f]{64}"))) { "Invalid tile blob hash" }
-            require(entry.rawCrc32.matches(Regex("[0-9a-f]{8}"))) { "Invalid tile CRC" }
+            require(entry.blobSha256.matches(SHA256_PATTERN)) { "Invalid tile blob hash" }
+            require(entry.rawCrc32.matches(CRC32_PATTERN)) { "Invalid tile CRC" }
         }
         return manifest
     }

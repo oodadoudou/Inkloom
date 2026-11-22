@@ -112,15 +112,20 @@ class PixelTileArchiveStoreTest {
         assertThrows(IllegalArgumentException::class.java) { store.garbageCollect(listOf(outside)) }
     }
 
-    @Test fun corruptExistingContentAddressedBlobIsNeverSilentlyReused() {
+    /** A damaged blob is never reused: the next save of the same tile writes verified bytes over it. */
+    @Test fun corruptExistingContentAddressedBlobIsReplacedNotReused() {
         val root = temporary.newFolder("store")
         val store = PixelTileArchiveStore(root)
         val source = fixture("surface", 0xff102030.toInt())
         store.save(source.snapshot())
         val blob = File(root, "blobs").listFiles().orEmpty().single()
+        val original = blob.readBytes()
         blob.writeBytes(byteArrayOf(1, 2, 3))
 
-        assertThrows(IllegalArgumentException::class.java) { store.save(source.snapshot()) }
+        val manifest = store.save(source.snapshot())
+
+        org.junit.Assert.assertArrayEquals(original, blob.readBytes())
+        assertEquals(0xff102030.toInt(), store.load(manifest).pixelAt(3, 4))
     }
 
     @Test fun identicalPixelsAcrossDifferentSurfacesShareABlobButKeepDistinctManifests() {
