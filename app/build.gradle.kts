@@ -16,8 +16,9 @@ android {
         applicationId = "app.inkloom"
         minSdk = 29
         targetSdk = 35
-        versionCode = 253
-        versionName = "0.253.0"
+        // Releases follow semantic versions; versionCode = major * 10000 + minor * 100 + patch.
+        versionCode = 10000
+        versionName = "1.0.0"
         manifestPlaceholders["appLabel"] = "Inkloom"
         testInstrumentationRunner = "app.inkloom.InkloomTestRunner"
         buildConfigField("boolean", "PAINTING_DIAGNOSTICS", "false")
