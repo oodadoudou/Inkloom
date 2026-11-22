@@ -18,7 +18,7 @@ enum class BrushFamily(val label: String) {
     PENCIL("Pencil"),
     AIRBRUSH("Airbrush"),
     DECORATION("Decoration"),
-    /** Reserved for a future wet-paint engine; no preset is built on it yet. */
+    /** Pigment-mixing paint (Procreate wet mix, CSP color mixing). */
     WET_PAINT("Wet Paint"),
 }
 
@@ -30,7 +30,7 @@ enum class BrushFamily(val label: String) {
  * - [PROCEDURAL_STAMP]: stamps a procedurally-drawn tip along the path (procedural pencil).
  * - [ASSET_STAMP]: stamps an imported tip asset along the path (asset-tip pencil, decoration).
  * - [AIRBRUSH]: particle emission (airbrush).
- * - [WET_PAINT]: pigment mixing (reserved).
+ * - [WET_PAINT]: pigment mixing (wet paint).
  */
 @Serializable
 enum class RenderBackend {

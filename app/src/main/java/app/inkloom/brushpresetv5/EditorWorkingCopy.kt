@@ -29,7 +29,6 @@ class EditorWorkingCopy private constructor(
     val current: BrushPresetV5,
 ) {
     val identity: PresetIdentity get() = current.identity
-    val isEditingFactory: Boolean get() = source.isFactory
 
     /** Replaces the edited value wholesale (used when an option mutates a nested block). */
     fun update(transform: (BrushPresetV5) -> BrushPresetV5): EditorWorkingCopy =

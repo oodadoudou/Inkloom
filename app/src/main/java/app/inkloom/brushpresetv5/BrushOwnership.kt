@@ -40,7 +40,7 @@ data class OwnedBrushPreset(
  *
  * Render identity and seed semantics: `renderBrushId` and `renderSeed` are part of the preset and
  * survive Duplicate / Save As unchanged, so a copy with identical settings rasterizes
- * byte-identically to its source. Only an explicit [randomizeRenderSeed] replaces the seed.
+ * byte-identically to its source.
  */
 object PresetOwnershipOperations {
 
@@ -85,13 +85,6 @@ object PresetOwnershipOperations {
             renderSeed = owned.preset.renderSeed,
         )
         return OwnedBrushPreset(updated, owned.ownership)
-    }
-
-    /** Replaces the deterministic seed (explicit "randomize texture variation"). The render brush
-     * id is untouched; only the stochastic behavior changes. */
-    fun randomizeRenderSeed(owned: OwnedBrushPreset, newSeed: Int): OwnedBrushPreset {
-        require(!owned.isFactory) { "Factory presets are immutable; duplicate first." }
-        return OwnedBrushPreset(owned.preset.copy(renderSeed = newSeed), owned.ownership)
     }
 
     /** Restores a user copy's settings from its factory while retaining the user's identity. */

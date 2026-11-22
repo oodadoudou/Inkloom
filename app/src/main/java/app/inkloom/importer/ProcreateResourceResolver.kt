@@ -21,9 +21,7 @@ data class ProcreateResolvedResource(
     val file: File?,
     val state: ProcreateResourceState,
     val sourceReference: String?,
-) {
-    val reportLine: String get() = "${state.name}:${sourceReference ?: "<anonymous>"}"
-}
+)
 
 /**
  * Resolves Procreate Source Library dependencies without network access. Exact user-supplied

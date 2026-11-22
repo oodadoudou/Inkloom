@@ -15,7 +15,7 @@ internal object NativeRasterOps {
         destination: Any, destinationAlpha: ByteArray, tileLeft: Int, tileTop: Int, stride: Int, width: Int, height: Int,
         inverse: FloatArray, interpolation: Int, highPrecision: Boolean): Boolean
 
-    /** Applies a constant separable filter to one bounded alpha ROI. -1 selects the JVM oracle. */
+    /** Resamples one bounded alpha ROI through an inverse affine transform. -1 selects the JVM oracle. */
     fun affineSelectionAlpha(input: ByteArray, sourceLeft: Int, sourceTop: Int, sourceWidth: Int, sourceHeight: Int,
                              output: ByteArray, left: Int, top: Int, width: Int, height: Int, inverse: FloatArray, interpolation: Int): Int =
         if (nativeLibraryLoaded) nativeAffineSelectionAlpha(input, sourceLeft, sourceTop, sourceWidth, sourceHeight,
@@ -274,43 +274,12 @@ internal object NativeRasterOps {
     fun hashPremultipliedPixels(pixels: IntArray): Long? =
         if (nativeLibraryLoaded) nativeHashPremultipliedPixels(pixels) else null
 
-    fun compositePigment(
-        base: Bitmap,
-        fresh: Bitmap,
-        left: Int,
-        top: Int,
-        width: Int,
-        height: Int,
-        freshRatio: Float,
-        sourceStrength: Float,
-        localPigment: Boolean,
-        perceptual: Boolean,
-        brightnessCorrection: Float,
-    ): Boolean = nativeCompositePigment(
-        base,
-        fresh,
-        left,
-        top,
-        width,
-        height,
-        freshRatio,
-        sourceStrength,
-        localPigment,
-        perceptual,
-        brightnessCorrection,
-    )
-
-    fun blur(source: Bitmap, destination: Bitmap, width: Int, height: Int, radius: Float): Boolean =
-        nativeBlur(source, destination, width, height, radius)
-
     fun alphaBounds(source: Bitmap): Rect? = nativeAlphaBounds(source).toRectOrNull()
 
     fun isAlphaEmpty(source: Bitmap): Boolean = nativeIsAlphaEmpty(source)
 
     fun nonEmptyAlphaTiles(source: Bitmap, tileSize: Int): IntArray =
         nativeNonEmptyAlphaTiles(source, tileSize)
-
-    fun invertAlpha(source: Bitmap, destination: Bitmap): Boolean = nativeInvertAlpha(source, destination)
 
     fun boundaryAlpha(source: Bitmap, destination: Bitmap): Boolean = nativeBoundaryAlpha(source, destination)
 
@@ -362,32 +331,9 @@ internal object NativeRasterOps {
         antiAlias,
     ).toRectOrNull()
 
-    private external fun nativeCompositePigment(
-        base: Bitmap,
-        fresh: Bitmap,
-        left: Int,
-        top: Int,
-        width: Int,
-        height: Int,
-        freshRatio: Float,
-        sourceStrength: Float,
-        localPigment: Boolean,
-        perceptual: Boolean,
-        brightnessCorrection: Float,
-    ): Boolean
-
-    private external fun nativeBlur(
-        source: Bitmap,
-        destination: Bitmap,
-        width: Int,
-        height: Int,
-        radius: Float,
-    ): Boolean
-
     private external fun nativeAlphaBounds(source: Bitmap): IntArray
     private external fun nativeIsAlphaEmpty(source: Bitmap): Boolean
     private external fun nativeNonEmptyAlphaTiles(source: Bitmap, tileSize: Int): IntArray
-    private external fun nativeInvertAlpha(source: Bitmap, destination: Bitmap): Boolean
     private external fun nativeBoundaryAlpha(source: Bitmap, destination: Bitmap): Boolean
     private external fun nativeMorphAlpha(source: Bitmap, destination: Bitmap, radius: Int, dilate: Boolean): Boolean
     private external fun nativeApplySelectionAlpha(

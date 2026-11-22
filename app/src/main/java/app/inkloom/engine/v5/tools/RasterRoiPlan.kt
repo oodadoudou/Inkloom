@@ -39,9 +39,6 @@ internal class RasterRoiPlan private constructor(
     val writeUnits: List<RasterRoiWorkUnit>,
     val readTileKeys: Set<PixelTileKey>,
 ) {
-    val materializedReadPixelCount: Long
-        get() = requestedReadBounds?.let { it.width.toLong() * it.height } ?: 0L
-
     companion object {
         const val MAX_MATERIALIZED_READ_PIXELS = 16L * 1024L * 1024L
         private const val PARALLEL_MIN_PIXELS = 4L * 128L * 128L

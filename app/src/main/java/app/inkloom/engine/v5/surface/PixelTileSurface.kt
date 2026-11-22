@@ -71,7 +71,6 @@ class PixelTileTransactionRecord internal constructor(
 ) : AutoCloseable {
     private var retainedDeltas: List<PixelTileDelta> = deltas
     val changedTileCount: Int = deltas.size
-    val changedPixelCapacity: Long = deltas.sumOf { it.pixelCapacity.toLong() }
     val retainedByteSize: Long = deltas.sumOf { delta ->
         delta.pixelCapacity.toLong() * delta.bytesPerPixel *
             ((if (delta.before == null) 0 else 1) + (if (delta.after == null) 0 else 1))

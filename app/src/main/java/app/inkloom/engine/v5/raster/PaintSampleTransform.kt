@@ -37,9 +37,7 @@ data class PaintSampleTransform(
     companion object {
         val Identity = PaintSampleTransform(1f, 0f, 0f, 1f, 0f, 0f)
 
-        fun horizontalAxis(height: Float) = PaintSampleTransform(1f, 0f, 0f, -1f, 0f, height)
         fun verticalAxis(width: Float) = PaintSampleTransform(-1f, 0f, 0f, 1f, width, 0f)
-        fun bothAxes(width: Float, height: Float) = PaintSampleTransform(-1f, 0f, 0f, -1f, width, height)
 
         fun reflection(angleRadians: Float, centerX: Float, centerY: Float): PaintSampleTransform {
             val cosine = cos(angleRadians * 2f)

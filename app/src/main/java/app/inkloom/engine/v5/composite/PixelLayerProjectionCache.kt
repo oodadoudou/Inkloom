@@ -615,8 +615,6 @@ class PixelLayerProjectionCache(
         fun contributes(key: PixelTileKey): Boolean = opacity > 0f &&
             (input.pixels.generationAt(key) != null || input.activeDelta?.generationAt(key) != null)
 
-        val requiresCoverage: Boolean get() = zeroCoverage || input.mask != null || clippingBase != null
-
         fun isNativeBatchCompatible(): Boolean = input.activeDelta == null &&
             input.colorReplacement == null &&
             input.blendMode.ordinal <= PixelBlendMode.EXCLUSION.ordinal
