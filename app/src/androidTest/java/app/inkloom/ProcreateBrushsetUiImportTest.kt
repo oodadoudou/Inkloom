@@ -137,12 +137,7 @@ class ProcreateBrushsetUiImportTest {
             composeRule.onNodeWithContentDescription("Brush category $targetGroup").performClick()
         }
         composeRule.onNodeWithContentDescription("Add brush or group").performClick()
-        val importLabel = if (composeRule.onAllNodesWithText("Import brushes").fetchSemanticsNodes().isNotEmpty()) {
-            "Import brushes"
-        } else {
-            "Import from files"
-        }
-        composeRule.onNodeWithText(importLabel).performClick()
+        composeRule.onNodeWithText("Import from files").performClick()
 
         // DocumentsUI remembers the last directory per caller. Navigate through its real UI
         // so a previous manual import cannot silently change this fixture's starting location.

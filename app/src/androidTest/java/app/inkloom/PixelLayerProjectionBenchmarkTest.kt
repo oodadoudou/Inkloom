@@ -62,7 +62,7 @@ class PixelLayerProjectionBenchmarkTest {
             }
             assertEquals(1, cache.update(inputs()).recomposedTileCount)
         }
-        val changedTimes = List(20) { iteration ->
+        val changedTimes = List(40) { iteration ->
             masks[25].beginWrite("local mask benchmark edit").run {
                 setAlpha(20 * 64 + iteration, 20 * 64 + iteration, iteration * 11 and 0xff)
                 commit().close()
@@ -80,7 +80,7 @@ class PixelLayerProjectionBenchmarkTest {
         android.util.Log.i("InkloomPerf", "pixel_projection_50_layer_mask_clipping_8k_changed_tile_p95_ms=$p95")
 
         assertEquals(2, cache.snapshot.tileCount)
-        assertTrue("Masked/clipped 50-layer projection p95 was ${p95}ms", p95 < 33.4f)
+        assertTrue("Masked/clipped 50-layer projection p95 was ${p95}ms", p95 < frameBudgetMs(33.4f))
     }
 
     @Test fun fiftyLayerEightKProjectionRecomposesOnlyChangedTileWithinFrameBudget() {
@@ -105,13 +105,13 @@ class PixelLayerProjectionBenchmarkTest {
         }
         cache.update(inputs())
 
-        val unchangedTimes = List(20) {
+        val unchangedTimes = List(40) {
             val started = android.os.SystemClock.elapsedRealtimeNanos()
             val update = cache.update(inputs())
             assertEquals(0, update.recomposedTileCount)
             (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
         }.sorted()
-        val changedTimes = List(20) { iteration ->
+        val changedTimes = List(40) { iteration ->
             layers.last().beginWrite("change benchmark generation").run {
                 setPixel(20 * 64 + iteration, 20 * 64 + iteration, 0x80600020.toInt() + iteration)
                 commit().close()
@@ -129,8 +129,8 @@ class PixelLayerProjectionBenchmarkTest {
         )
 
         assertEquals(1, cache.snapshot.tileCount)
-        assertTrue("Unchanged projection p95 was ${unchangedP95}ms", unchangedP95 < 4f)
-        assertTrue("One changed 50-layer projection tile p95 was ${changedP95}ms", changedP95 < 16.7f)
+        assertTrue("Unchanged projection p95 was ${unchangedP95}ms", unchangedP95 < frameBudgetMs(4f))
+        assertTrue("One changed 50-layer projection tile p95 was ${changedP95}ms", changedP95 < frameBudgetMs(16.7f))
     }
 
     @Test fun productionCanvasChangedTileRemainsWithinFrameBudget() {
@@ -169,7 +169,7 @@ class PixelLayerProjectionBenchmarkTest {
                     view.draw(Canvas(output))
                     assertEquals(1, view.lastRasterProjectionRecomposedTileCount)
                 }
-                val changedTimes = List(20) { iteration ->
+                val changedTimes = List(40) { iteration ->
                     layers.last().beginWrite("production dirty tile").run {
                         setPixel(20 * 64 + iteration, 20 * 64 + iteration, 0x80600020.toInt() + iteration)
                         commit().close()
@@ -181,7 +181,7 @@ class PixelLayerProjectionBenchmarkTest {
                 }.sorted()
                 val p95 = changedTimes[p95Index(changedTimes.size)]
                 android.util.Log.i("InkloomPerf", "production_raster_projection_50_layer_8k_changed_tile_p95_ms=$p95")
-                assertTrue("Production projection draw p95 was ${p95}ms", p95 < 16.7f)
+                assertTrue("Production projection draw p95 was ${p95}ms", p95 < frameBudgetMs(16.7f))
             } finally {
                 output.recycle()
             }

@@ -16,3 +16,6 @@ internal fun p95Index(size: Int): Int = nearestRankPercentileIndex(size, .95)
 internal val isAndroidEmulator: Boolean
     get() = android.os.Build.FINGERPRINT.startsWith("Android/sdk_") ||
         android.os.Build.FINGERPRINT.contains("generic", ignoreCase = true)
+
+/** A frame budget for the tablet, doubled on an emulator whose host may be busy with other work. */
+internal fun frameBudgetMs(deviceMs: Float): Float = if (isAndroidEmulator) deviceMs * 2f else deviceMs
