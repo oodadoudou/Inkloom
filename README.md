@@ -8,6 +8,7 @@
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.1-7F52FF?style=flat-square&logo=kotlin&logoColor=white">
   <img alt="Offline" src="https://img.shields.io/badge/works-offline-555555?style=flat-square">
 </p>
+<p align="center"><b>English</b> · <a href="README.zh-CN.md">简体中文</a></p>
 
 ![Notes in Inkloom](.github/assets/notes.png)
 
