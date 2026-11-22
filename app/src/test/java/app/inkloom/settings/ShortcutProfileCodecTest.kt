@@ -57,6 +57,12 @@ class ShortcutProfileCodecTest {
         assertEquals(ShortcutAction.BRUSH_GROUP, decoded.bindings.single().action)
     }
 
+    @Test fun `a binding for an action that no longer exists is dropped instead of rejecting the profile`() {
+        val profile = """{"format":"inkloom-shortcuts","version":1,"bindings":[{"action":"RETIRED_ACTION","keyCode":31,"ctrl":false,"alt":false,"shift":false,"scanCode":0,"matchMode":"KEY_CODE","trigger":"PRESS"},{"action":"BRUSH_GROUP","keyCode":30,"ctrl":false,"alt":false,"shift":false,"scanCode":0,"matchMode":"KEY_CODE","trigger":"PRESS"}]}"""
+
+        assertEquals(listOf(ShortcutAction.BRUSH_GROUP), ShortcutProfileCodec.decode(profile.toByteArray()).getOrThrow().map { it.action })
+    }
+
     @Test fun `malformed oversized and unknown version profiles are rejected`() {
         assertTrue(ShortcutProfileCodec.decode("not json".toByteArray()).isFailure)
         assertTrue(ShortcutProfileCodec.decode(ByteArray(ShortcutProfileCodec.MAX_FILE_BYTES + 1)).isFailure)

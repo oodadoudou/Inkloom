@@ -111,6 +111,8 @@ object AppSettingsBackupCodec {
         put("frameToolMode", frameToolMode.name); put("frameDivision", frameDivision.name)
         put("frameHorizontalGutter", frameHorizontalGutter); put("frameVerticalGutter", frameVerticalGutter)
         put("rasterFilterPresets",json.parseToJsonElement(RasterFilterPresetsCodec.encode(rasterFilterPresets)))
+        put("libraryLayout", libraryLayout.name); put("drawAndHoldEnabled", drawAndHoldEnabled); put("drawAndHoldDelayMillis", drawAndHoldDelayMillis.toFloat())
+        put("selectionMaskVisibility", selectionMaskVisibility); put("selectionInterpolation", selectionInterpolation.name)
     }
 
     private fun JsonObject.toSettings(): AppSettings {
@@ -130,21 +132,9 @@ object AppSettingsBackupCodec {
             interfaceScale = InterfaceScale.stored(float("interfaceScale", defaults.interfaceScale)),
             language = enum("language", defaults.language), fingerDrawing = boolean("fingerDrawing", defaults.fingerDrawing),
 
-             showToolbar = boolean("showToolbar", defaults.showToolbar),
-
-
-
-
-
-
-
-
-
+            showToolbar = boolean("showToolbar", defaults.showToolbar),
             brushGridLayout = boolean("brushGridLayout", defaults.brushGridLayout),
             brushCategoryWidthDp = float("brushCategoryWidthDp",defaults.brushCategoryWidthDp).coerceIn(56f,360f),
-
-
-
             layerPanelDualList = boolean("layerPanelDualList", defaults.layerPanelDualList), layerPanelSplitFraction = float("layerPanelSplitFraction", defaults.layerPanelSplitFraction).coerceIn(.2f, .8f),
             layerRowDensity = enum("layerRowDensity", defaults.layerRowDensity), layerShowThumbnails = boolean("layerShowThumbnails", defaults.layerShowThumbnails), layerShowDetails = boolean("layerShowDetails", defaults.layerShowDetails),
             vectorEraseWholeLine = boolean("vectorEraseWholeLine", defaults.vectorEraseWholeLine),
@@ -193,7 +183,11 @@ object AppSettingsBackupCodec {
             frameVerticalGutter = float("frameVerticalGutter", defaults.frameVerticalGutter).coerceIn(0f, 500f),
             correctLineMode = enum("correctLineMode", defaults.correctLineMode), correctLineAmount = float("correctLineAmount", defaults.correctLineAmount).coerceIn(0f, 1f),
             rasterFilterPresets = RasterFilterPresetsCodec.decode(get("rasterFilterPresets")?.toString()),
-
+            libraryLayout = enum("libraryLayout", defaults.libraryLayout),
+            drawAndHoldEnabled = boolean("drawAndHoldEnabled", defaults.drawAndHoldEnabled),
+            drawAndHoldDelayMillis = float("drawAndHoldDelayMillis", defaults.drawAndHoldDelayMillis.toFloat()).toLong().coerceIn(300L, 1500L),
+            selectionMaskVisibility = float("selectionMaskVisibility", defaults.selectionMaskVisibility).coerceIn(0f, 1f),
+            selectionInterpolation = enum("selectionInterpolation", defaults.selectionInterpolation),
         )
     }
 

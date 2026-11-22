@@ -103,8 +103,10 @@ object ShortcutProfileCodec {
         require(version in 1..VERSION) { "Unsupported shortcut profile version." }
         val values = root.getValue("bindings").jsonArray
         require(values.size in 1..MAX_BINDINGS) { "Shortcut profile has an invalid binding count." }
-        val bindings = values.map { value ->
+        // A binding for an action this version no longer has is dropped; the rest of the profile still imports.
+        val bindings = values.mapNotNull { value ->
             val item = value.jsonObject
+            val action = knownAction(item.requiredText("action")) ?: return@mapNotNull null
             val descriptor = item.optionalText("deviceDescriptor")
             val name = item.optionalText("deviceName")
             require(descriptor == null || descriptor.length <= MAX_DEVICE_TEXT_LENGTH) { "Device descriptor is too long." }
@@ -113,7 +115,7 @@ object ShortcutProfileCodec {
             val scanCode = item.requiredInt("scanCode")
             require(keyCode in 0..65_535 && scanCode in 0..65_535) { "Shortcut key code is outside the supported range." }
             ShortcutBinding(
-                action = enumValueOf(item.requiredText("action")),
+                action = action,
                 chord = ShortcutChord(
                     keyCode = keyCode,
                     ctrl = item.requiredBoolean("ctrl"),
@@ -152,8 +154,9 @@ object ShortcutProfileCodec {
                 deviceName = name,
             ).normalized()
         }?.distinct().orEmpty() else emptyList()
-        val buttonBindings = if (version >= 4) root["buttonBindings"]?.jsonArray?.also { require(it.size <= MAX_MOTION_BINDINGS) }?.map { value ->
+        val buttonBindings = if (version >= 4) root["buttonBindings"]?.jsonArray?.also { require(it.size <= MAX_MOTION_BINDINGS) }?.mapNotNull { value ->
             val item = value.jsonObject
+            val action = knownAction(item.requiredText("action")) ?: return@mapNotNull null
             val descriptor = item.optionalText("deviceDescriptor")
             val name = item.optionalText("deviceName")
             require(descriptor == null || descriptor.length <= MAX_DEVICE_TEXT_LENGTH) { "Device descriptor is too long." }
@@ -162,7 +165,7 @@ object ShortcutProfileCodec {
             require(button > 0 && button.countOneBits() == 1) { "Pointer button must contain one supported bit." }
             ButtonShortcutBinding(
                 button = button,
-                action = enumValueOf(item.requiredText("action")),
+                action = action,
                 trigger = enumValueOf(item.requiredText("trigger")),
                 deviceDescriptor = descriptor,
                 deviceName = name,
@@ -170,6 +173,8 @@ object ShortcutProfileCodec {
         }?.distinct().orEmpty() else emptyList()
         ShortcutProfile(bindings, targets, quickSlots, axisBindings, buttonBindings)
     }
+
+    private fun knownAction(name: String): ShortcutAction? = ShortcutAction.entries.firstOrNull { it.name == name }
 
     fun decode(input: InputStream): Result<List<ShortcutBinding>> = runCatching {
         decodeProfile(input).getOrThrow().bindings

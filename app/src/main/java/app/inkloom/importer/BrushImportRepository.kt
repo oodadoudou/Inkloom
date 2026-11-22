@@ -43,23 +43,29 @@ class BrushImportRepository(context: Context) {
         val digest = MessageDigest.getInstance("SHA-256")
         val safeName = metadata.first.replace(Regex("[^A-Za-z0-9._-]"), "_")
         val temporary = File(sourceDirectory, ".${System.nanoTime()}-$safeName.tmp")
-        resolver.openInputStream(uri)?.use { input ->
-            temporary.outputStream().use { output ->
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                var total = 0L
-                while (true) {
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    total += count
-                    require(total <= BrushFileProbe.MAX_IMPORT_BYTES) { "Brush file exceeds the 256 MB safety limit" }
-                    digest.update(buffer, 0, count)
-                    output.write(buffer, 0, count)
+        // An oversized, unreadable or unrenamable source must not leave a hidden temp file behind.
+        val (hash, target) = try {
+            resolver.openInputStream(uri)?.use { input ->
+                temporary.outputStream().use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    var total = 0L
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        require(total <= BrushFileProbe.MAX_IMPORT_BYTES) { "Brush file exceeds the 256 MB safety limit" }
+                        digest.update(buffer, 0, count)
+                        output.write(buffer, 0, count)
+                    }
                 }
-            }
-        } ?: error("The selected file could not be copied")
-        val hash = digest.digest().joinToString("") { "%02x".format(it) }
-        val target = File(sourceDirectory, "$hash-$safeName")
-        if (target.exists()) temporary.delete() else check(temporary.renameTo(target)) { "Could not retain the original brush source" }
+            } ?: error("The selected file could not be copied")
+            val hash = digest.digest().joinToString("") { "%02x".format(it) }
+            val target = File(sourceDirectory, "$hash-$safeName")
+            if (!target.exists()) check(temporary.renameTo(target)) { "Could not retain the original brush source" }
+            hash to target
+        } finally {
+            temporary.delete()
+        }
         val retained = probed.copy(sourcePath = target.absolutePath, sha256 = hash, report = probed.report + "Original source retained with SHA-256 integrity hash")
         when (retained.format) {
             app.inkloom.model.BrushFormat.SUT -> listOf(sutParser.enrich(target, hash, retained))

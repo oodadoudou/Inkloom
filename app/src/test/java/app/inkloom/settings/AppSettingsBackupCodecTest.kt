@@ -13,6 +13,17 @@ import app.inkloom.document.GradientEdgeMode
 import app.inkloom.document.GradientKind
 
 class AppSettingsBackupCodecTest {
+    @Test fun `library layout, draw and hold and selection display settings survive a backup`() {
+        val settings = AppSettings(libraryLayout = LibraryLayout.LIST, drawAndHoldEnabled = false, drawAndHoldDelayMillis = 900L,
+            selectionMaskVisibility = .6f, selectionInterpolation = app.inkloom.engine.v5.tools.SelectionInterpolation.BICUBIC)
+        val restored = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(settings)).getOrThrow().settings
+        assertEquals(LibraryLayout.LIST, restored.libraryLayout)
+        assertFalse(restored.drawAndHoldEnabled)
+        assertEquals(900L, restored.drawAndHoldDelayMillis)
+        assertEquals(.6f, restored.selectionMaskVisibility, .0001f)
+        assertEquals(app.inkloom.engine.v5.tools.SelectionInterpolation.BICUBIC, restored.selectionInterpolation)
+    }
+
     @Test fun `gray theme round trips and old backups use the lighter default`() {
         for (gray in UiGrayTheme.entries) {
             val restored = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(AppSettings(uiGrayTheme = gray))).getOrThrow()

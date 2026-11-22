@@ -8,10 +8,12 @@ internal class IccColorPipeline(private val settings: PageColorManagement, previ
     cmykProfile: ByteArray? = null) : AutoCloseable {
     private val assign = settings.assignedProfile?.let { IccTransform(source=profile(it), sourceBuiltin=0, destinationBuiltin=1,
         intent=settings.intent.code) }
-    private val output = IccTransform(destination=if(preview) null else cmykProfile ?: settings.outputProfile?.let(::profile),
+    // A bad output or proof profile must not leak the already-built native assign transform.
+    private val output = try { IccTransform(destination=if(preview) null else cmykProfile ?: settings.outputProfile?.let(::profile),
         destinationBuiltin=if(preview || cmykProfile!=null) 1 else if(settings.outputSpace==RgbOutputSpace.DISPLAY_P3) 2 else 0,
         proof=if(preview && settings.softProof) settings.proofProfile?.let(::profile) else null,
         intent=settings.intent.code, cmyk=cmykProfile!=null, gamutCheck=preview && settings.softProof && settings.gamutWarning)
+    } catch (failure: Throwable) { assign?.close(); throw failure }
     private var scratch = FloatArray(0)
     fun convert(linearStraight: FloatArray, rgb: FloatArray? = null, cmyk: ByteArray? = null) {
         var input=linearStraight
