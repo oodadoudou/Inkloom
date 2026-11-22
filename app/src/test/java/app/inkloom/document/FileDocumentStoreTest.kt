@@ -11,6 +11,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class FileDocumentStoreTest {
+    private val prettyJson = Json { prettyPrint = true }
+
     @Test fun `failed atomic replacement leaves the previous checkpoint and in memory document intact`() {
         val root = Files.createTempDirectory("inkloom-failed-checkpoint").toFile()
         var refuseReplacement = false
@@ -229,11 +231,26 @@ class FileDocumentStoreTest {
         root.deleteRecursively()
     }
 
+    @Test fun `updatePage applies the change to the current page and journals it`() {
+        val root = Files.createTempDirectory("inkloom-update-page").toFile()
+        val store = FileDocumentStore(root)
+        val document = InkDocument(title = "Update", pages = listOf(InkPage(title = "Page")))
+        store.save(document)
+        val pageId = document.pages.single().id
+
+        assertTrue(store.updatePage(document.id, pageId) { it.copy(title = "Edited") })
+        org.junit.Assert.assertFalse(store.updatePage(document.id, pageId) { it })
+        org.junit.Assert.assertFalse(store.updatePage(document.id, "missing") { it.copy(title = "x") })
+
+        assertEquals("Edited", FileDocumentStore(root).get(document.id)!!.pages.single().title)
+        root.deleteRecursively()
+    }
+
     @Test fun `older pretty-printed checkpoints still read`() {
         val root = Files.createTempDirectory("inkloom-pretty-checkpoint").toFile()
         val document = InkDocument(title = "Pretty", pages = listOf(InkPage(title = "Page")))
         val compact = DocumentCheckpointCodec.encode(document)
-        val pretty = Json { prettyPrint = true }.encodeToString(kotlinx.serialization.json.JsonElement.serializer(), Json.parseToJsonElement(compact))
+        val pretty = prettyJson.encodeToString(kotlinx.serialization.json.JsonElement.serializer(), Json.parseToJsonElement(compact))
         root.resolve("documents").mkdirs()
         root.resolve("documents/${document.id}.json").writeText(pretty)
 

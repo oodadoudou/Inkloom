@@ -35,6 +35,18 @@ class LayerTreeEditTest {
         assertEquals(page, edit.apply(deleted, true))
     }
 
+    @Test fun `delete with a multi-selection removes every selected layer in one undoable step`() {
+        val second = InkLayer(id = "second", name = "Second")
+        val withSecond = page.copy(layers = page.layers + second)
+        val edit = LayerTreeEdit.create(withSecond, LayerTreeAction.DELETE, ink.id, setOf(ink.id, second.id))
+        val deleted = edit.apply(withSecond, false)!!
+        assertTrue(deleted.layers.none { it.id == ink.id || it.id == second.id })
+        assertTrue(deleted.layers.any { it.id == nested.id })
+        assertTrue(deleted.elements.isEmpty())
+        assertEquals(nested.id, edit.afterSelection)
+        assertEquals(withSecond, edit.apply(deleted, true))
+    }
+
     @Test fun `ungroup promotes immediate children and does not silently delete them`() {
         val edit = LayerTreeEdit.create(page, LayerTreeAction.UNGROUP, folder.id)
         val ungrouped = edit.apply(page, false)!!

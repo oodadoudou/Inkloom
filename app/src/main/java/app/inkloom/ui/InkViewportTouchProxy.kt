@@ -140,7 +140,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         if (updatePageActivation(event)) return true
         if (updateImageHold(event)) return true
         val stylusIndex = event.stylusPointerIndex(activeStylusPointerId)
-        if (stylusIndex >= 0 && event.actionMasked in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN)) {
+        if (stylusIndex >= 0 && event.actionMasked in CONTACT_DOWN_ACTIONS) {
             activeStylusPointerId = event.getPointerId(stylusIndex)
         }
         if (event.actionMasked == MotionEvent.ACTION_DOWN && event.isStylusEvent()) {
@@ -268,7 +268,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
 
     override fun onResolvePointerIcon(event: MotionEvent, pointerIndex: Int): PointerIcon? {
         val index = pointerIndex.coerceIn(0, event.pointerCount - 1)
-        return if (event.getToolType(index) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)) {
+        return if (event.getToolType(index) in STYLUS_TOOL_TYPES) {
             PointerIcon.getSystemIcon(context, PointerIcon.TYPE_NULL)
         } else {
             super.onResolvePointerIcon(event, pointerIndex)
@@ -281,7 +281,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         dispatch: (InkCanvasView, MotionEvent) -> Boolean,
     ): Boolean {
         val canvas = target?.takeIf { it.isAttachedToWindow && it.width > 0 && it.height > 0 } ?: return false
-        val terminal = event.actionMasked in setOf(MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL)
+        val terminal = (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL)
         if (retainDrawingFrame && event.actionMasked == MotionEvent.ACTION_DOWN) activeDrawingFrame = null
         if (retainDrawingFrame && event.pointerCount > 1) activeDrawingFrame = null
         val usesPageCoordinates = canvas.proxyContactUsesPageCoordinates(event)
@@ -346,7 +346,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
     private fun updateContactCursor(event: MotionEvent) {
         if (!event.isStylusEvent()) return
         if (event.actionMasked == MotionEvent.ACTION_CANCEL) return clearHoverCursor()
-        if (event.actionMasked !in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP)) return
+        if (event.actionMasked !in CONTACT_CURSOR_ACTIONS) return
         val canvas = target ?: return clearHoverCursor()
         val snapshot = canvas.hoverCursorSnapshot()
         hoverToolCode = snapshot.getOrElse(8) { 0f }.toInt()
@@ -358,7 +358,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
             pointerIndex = pointerIndex,
             snapshot = snapshot,
             scale = canvas.viewportScale.coerceAtLeast(app.inkloom.document.ViewportTransform.MINIMUM_SCALE),
-            resetDirection = event.actionMasked in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN) || !hoverVisible,
+            resetDirection = event.actionMasked in CONTACT_DOWN_ACTIONS || !hoverVisible,
         )
         hoverVisible = true
         cursorSurface.renderFrontBufferedLayer()
@@ -438,14 +438,19 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
     private fun MotionEvent.stylusPointerIndex(preferredPointerId: Int = MotionEvent.INVALID_POINTER_ID): Int {
         if (preferredPointerId != MotionEvent.INVALID_POINTER_ID) {
             val preferred = findPointerIndex(preferredPointerId)
-            if (preferred >= 0 && getToolType(preferred) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)) return preferred
+            if (preferred >= 0 && getToolType(preferred) in STYLUS_TOOL_TYPES) return preferred
         }
         val action = actionIndex.coerceIn(0, pointerCount - 1)
-        if (getToolType(action) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)) return action
-        return (0 until pointerCount).firstOrNull { getToolType(it) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER) } ?: -1
+        if (getToolType(action) in STYLUS_TOOL_TYPES) return action
+        return (0 until pointerCount).firstOrNull { getToolType(it) in STYLUS_TOOL_TYPES } ?: -1
     }
 
     private companion object {
+        // Read on every pen event; built once.
+        val STYLUS_TOOL_TYPES = setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)
+        val CONTACT_DOWN_ACTIONS = setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN)
+        val CONTACT_CURSOR_ACTIONS = setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_MOVE,
+            MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP)
         const val SMALL_CURSOR_MARK_THRESHOLD_PX = 8f
         const val EYEDROPPER_RING_RADIUS_DP = 52f
         const val EYEDROPPER_RING_THICKNESS_DP = 16f

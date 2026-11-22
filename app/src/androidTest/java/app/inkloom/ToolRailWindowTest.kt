@@ -49,6 +49,26 @@ class ToolRailWindowTest {
         assertEquals(EditorTool.FILL, canvas().tool)
     }
 
+    /** The rail's brush, tapped when it is the current tool, opens the same grouped library as the top bar. */
+    @Test fun railBrushOpensTheGroupedBrushLibrary() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        compose.waitUntil(5_000) { runCatching { canvas() }.isSuccess }
+        if (canvas().tool != EditorTool.PEN) compose.onNodeWithContentDescription("Brush").performClick()
+        compose.waitUntil(5_000) { canvas().tool == EditorTool.PEN }
+        fun libraryOpen() = app.inkloom.settings.EditorPanel.BRUSHES in app.inkloom.ui.EditorPanelState(compose.activity).layout.open
+        if (libraryOpen()) {
+            compose.onNodeWithContentDescription("Brush").performClick()
+            compose.waitUntil(5_000) { !libraryOpen() }
+        }
+
+        compose.onNodeWithContentDescription("Brush").performClick()
+
+        compose.waitUntil(5_000) { libraryOpen() }
+        compose.onNodeWithContentDescription("Brush category Pen").assertExists()
+        compose.onAllNodesWithText("Brush library").assertCountEquals(0)
+    }
+
     /** Like Clip Studio Paint and Photoshop, the magic wand and the clone stamp are tools of their own. */
     @Test fun magicWandAndCloneStampAreRailTools() {
         compose.onNodeWithText("New Note").performClick()

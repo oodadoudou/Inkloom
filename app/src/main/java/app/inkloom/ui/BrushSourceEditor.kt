@@ -54,10 +54,13 @@ internal fun BrushSourceEditor(preset:BrushPresetV5,role:BrushSourceRole,workspa
                 require(resolution==BrushExecutionCapabilityResolution.Supported) { "${tr("Unsupported combination", "不支持此组合")}: $resolution" }
                 draft=candidate
             } catch(e:Exception) { failure=e.message ?: tr("Could not edit source", "无法编辑来源") }
-            finally { busy=false }
+            // "Add shape image" points past the last image; a failed add points back at a real one.
+            finally { busy=false; index=index.coerceAtMost((paths().size-1).coerceAtLeast(0)) }
         }
     }
-    val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if(uri!=null)edit { workspace.import(uri) } }
+    val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if(uri!=null) edit { workspace.import(uri) } else index=index.coerceAtMost((paths().size-1).coerceAtLeast(0))
+    }
     StudioDialog(onDismissRequest={if(!busy)onDismiss()},title={Text(tr("Source editor","来源编辑"))},
         text={Column(Modifier.dialogContentWidth(440.dp).heightIn(max=600.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)) {
             val group=when(role) {

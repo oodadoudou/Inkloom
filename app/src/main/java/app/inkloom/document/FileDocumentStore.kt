@@ -98,6 +98,30 @@ class FileDocumentStore internal constructor(
         append(RecoveryJournalEntry.PageReplaced(documentId, page.id, page, updatedAt))
     }
 
+    /**
+     * Replaces one page with [transform] of its current state, in one step with respect to other
+     * writers. Takes only the state lock, so a pen-up never waits for a checkpoint being written.
+     * Returns whether the page changed.
+     */
+    fun updatePage(documentId: String, pageId: String, transform: (InkPage) -> InkPage): Boolean {
+        val changed = synchronized(this) {
+            refreshExternalChanges()
+            val page = documents[documentId]?.pages?.firstOrNull { it.id == pageId } ?: return false
+            val updated = transform(page)
+            if (updated == page) return false
+            val entry = RecoveryJournalEntry.PageReplaced(documentId, pageId, updated, System.currentTimeMillis())
+            DocumentCheckpointCodec.requireNativeV5Page(updated)
+            persistJournalEntry(entry)
+            applied(entry)?.let { document ->
+                documents[document.id] = document
+                dirty += document.id
+            }
+            true
+        }
+        if (changed) scheduleCheckpoint()
+        return changed
+    }
+
     fun deletePermanently(id: String): Boolean = synchronized(fileLock) {
         synchronized(this) {
             // deleteIfExists distinguishes an already absent checkpoint from denied access.

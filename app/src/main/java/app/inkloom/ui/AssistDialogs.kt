@@ -116,7 +116,7 @@ internal fun ShadingAssistDialog(page: InkPage, layerId: String, assets: Documen
             StudioSliderRow(tr("Amount", "阴影量"), settings.amount * 100f, 0f..100f, { settings = settings.copy(amount = it / 100f) }, unit = "%")
             if (!settings.cel) StudioSliderRow(tr("Softness", "柔和度"), settings.softness * 100f, 0f..100f, { settings = settings.copy(softness = it / 100f) }, unit = "%")
             StudioSliderRow(tr("Opacity", "不透明度"), settings.opacity * 100f, 0f..100f, { settings = settings.copy(opacity = it / 100f) }, unit = "%")
-            StudioButton(tr("Shadow colour: drawing colour", "阴影颜色：描绘色"), { settings = settings.copy(shadowColorArgb = drawingColor or 0xFF000000.toInt()) })
+            StudioButton(tr("Shadow color: drawing color", "阴影颜色：描绘色"), { settings = settings.copy(shadowColorArgb = drawingColor or 0xFF000000.toInt()) })
             StudioCheckRow(tr("Line art from reference layers", "以参考图层为线稿"), useLineArt, { useLineArt = it }, enabled = hasReferences)
         }
     }, confirmButton = { TextButton({
@@ -134,7 +134,7 @@ private fun shadingPresetName(preset: ShadingPreset, language: UiLanguage) = whe
     ShadingPreset.FAINT_BACKLIGHT -> language.text("Faint backlight", "微弱逆光")
     ShadingPreset.BACKLIGHT -> language.text("Backlight", "逆光")
     ShadingPreset.STAGE_LIGHT -> language.text("Stage light", "舞台灯光")
-    ShadingPreset.COLOR_LIGHT -> language.text("Colour light", "彩色光")
+    ShadingPreset.COLOR_LIGHT -> language.text("Color light", "彩色光")
     ShadingPreset.HIGH_CONTRAST -> language.text("High contrast", "高对比度")
 }
 
@@ -182,17 +182,17 @@ internal fun ColorizeDialog(page: InkPage, lineArtId: String, assets: DocumentAs
                 }
             }
             if (mode == 2) {
-                StudioSection(tr("Colour priority", "颜色优先级"))
+                StudioSection(tr("Color priority", "颜色优先级"))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     order.forEach { c -> Box(Modifier.size(26.dp).background(Color(c)).border(1.dp, MaterialTheme.colorScheme.outline)
                         .clickable { order = listOf(c) + order.filterNot { it == c } }) }
                 }
-                StudioCheckRow(tr("Analyse colours (largest area wins)", "分析颜色（面积最大优先）"), settings.analyzeColors, { settings = settings.copy(analyzeColors = it) })
-                StudioCheckRow(tr("Colour areas without hints", "为无提示区域上色"), settings.fillUnhinted, { settings = settings.copy(fillUnhinted = it) })
+                StudioCheckRow(tr("Analyze colors (largest area wins)", "分析颜色（面积最大优先）"), settings.analyzeColors, { settings = settings.copy(analyzeColors = it) })
+                StudioCheckRow(tr("Color areas without hints", "为无提示区域上色"), settings.fillUnhinted, { settings = settings.copy(fillUnhinted = it) })
             }
             StudioSection(tr("Lines", "线稿"))
             StudioSliderRow(tr("Close gaps", "封闭间隙"), settings.gapClosing.toFloat(), 0f..20f, { settings = settings.copy(gapClosing = it.toInt()) }, unit = "px", decimals = 0)
-            StudioCheckRow(tr("Colour under the lines", "在线条下方上色"), settings.fillUnderLines, { settings = settings.copy(fillUnderLines = it) })
+            StudioCheckRow(tr("Color under the lines", "在线条下方上色"), settings.fillUnderLines, { settings = settings.copy(fillUnderLines = it) })
             StudioSliderRow(tr("Blur", "模糊"), settings.blur.toFloat(), 0f..30f, { settings = settings.copy(blur = it.toInt()) }, unit = "px", decimals = 0)
         }
     }, confirmButton = { TextButton({

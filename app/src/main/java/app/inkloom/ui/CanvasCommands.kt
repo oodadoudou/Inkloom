@@ -47,7 +47,14 @@ internal fun applyPreparedPageEdit(scope: CoroutineScope, view: InkCanvasView, p
             onApplied()
         } catch (failure: Throwable) {
             android.util.Log.e("InkloomCanvas", "Page edit failed", failure)
-            Toast.makeText(view.context, failure.message ?: "The page edit failed", Toast.LENGTH_LONG).show()
+            // Leaving the screen cancels the edit quietly; a timeout or a real failure is reported.
+            if (failure is kotlinx.coroutines.CancellationException && failure !is kotlinx.coroutines.TimeoutCancellationException) throw failure
+            val chinese = view.feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE
+            val message = when {
+                failure is kotlinx.coroutines.TimeoutCancellationException -> if (chinese) "画布仍在处理，请稍后再试。" else "The canvas is still busy; try again."
+                else -> failure.message ?: if (chinese) "页面编辑失败。" else "The page edit failed."
+            }
+            Toast.makeText(view.context, message, Toast.LENGTH_LONG).show()
         } finally {
             if (!published) prepared?.close()
             if (owned) view.selectionLayerTransferPending = false

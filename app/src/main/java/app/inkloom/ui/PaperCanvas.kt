@@ -87,7 +87,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 @Composable
-internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<String>) -> Unit, onLayerPickPreview: (String?) -> Unit, onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerFilter: (String, String, RasterLayerFilterEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?, app.inkloom.document.VectorLayerContent?) -> Unit, onSetLayerRulers: (String, String, String, app.inkloom.document.LayerRulers?) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, onBeginQuickShapeEdit: () -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onBackKey: () -> Boolean, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, borrowPaintTipForEraser: Boolean, borrowPaintTipForSmudge: Boolean, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, transformLayerIds: Set<String>, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onPageSwipe: (Boolean) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onSymmetryGuideChange: (SymmetryGuideState) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
+internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<String>) -> Unit, onLayerPickPreview: (String?) -> Unit, onApplyLayerInsertion: (String, String, app.inkloom.document.LayerInsertionEdit, Boolean) -> Boolean, onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean, onApplyRasterLayerFilter: (String, String, RasterLayerFilterEdit, Boolean, InkPage?) -> Boolean, onApplySelectionLayerTransfer: (String, String, String, RasterTileSurfaceRef?, String, InkLayer?) -> Unit, onSelectionTransferLayerChosen: (String) -> Unit, modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int, app.inkloom.document.LayerElementEdit?, app.inkloom.document.VectorLayerContent?) -> Unit, onSetLayerRulers: (String, String, String, app.inkloom.document.LayerRulers?) -> Unit, onElement: (String, String, PageElement) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, onBeginQuickShapeEdit: () -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onBackKey: () -> Boolean, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, borrowPaintTipForEraser: Boolean, borrowPaintTipForSmudge: Boolean, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, colorPreview: DrawingColorPreview, shapeKind: ShapeKind, activeLayerId: String, transformLayerIds: Set<String>, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onPageSwipe: (Boolean) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onSymmetryGuideChange: (SymmetryGuideState) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val editorBridge = LocalEditorBridge.current
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val rasterRenderWidth = remember(renderedPage.width, renderedPage.height) {
@@ -132,6 +132,7 @@ internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<St
         }
     }
     val gradientSaveFailure = tr("The gradient mask could not be saved", "渐变蒙版保存失败")
+    val rasterSaveFailure = tr("The stroke could not be saved", "笔画保存失败")
     val commitGradient: (String, Float, Float, Float, Float, GradientDefinition, app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot?) -> Unit = commit@{ capturedLayerId, sx, sy, ex, ey, definition, selectionMask ->
         if (gradientCommitScope.coroutineContext[Job]?.isActive != true) {
             return@commit
@@ -254,12 +255,9 @@ internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<St
                                 onSelectionTransferLayerChosen(if (layer == null) sourceId else target.id)
                             }
                         }
-                        // Reserve original source checkpoints while history can restore them.
+                        // Reserve original source checkpoints while history can restore them (disk work, off Main).
                         previous.first?.let { old ->
-                            assets.loadRasterTileSurface(old).let { original ->
-                                val pin = assets.saveRasterTileSurface(original, old)
-                                reserved += pin
-                            }
+                            reserved += withContext(Dispatchers.IO) { assets.saveRasterTileSurface(assets.loadRasterTileSurface(old), old) }
                         }
                         withContext(Dispatchers.Main.immediate) {
                         check(view.isBoundToSelectionPage(documentId, capturedPage.id))
@@ -401,6 +399,11 @@ internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<St
                         assets.releaseRasterTileReservation(savedReference)
                         newReference = null
                     }
+                } catch (failure: Exception) {
+                    // A full disk or unreadable layer file must not take the app down on a pen-up;
+                    // the stroke stays on screen, unsaved, and the user is told.
+                    android.util.Log.e("InkloomRaster", "Saving layer $layerId failed", failure)
+                    Toast.makeText(context, rasterSaveFailure, Toast.LENGTH_LONG).show()
                 } finally {
                     assets.releaseRasterTileReservation(newReference)
                     patch?.close()
@@ -495,8 +498,6 @@ internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<St
         val density = LocalDensity.current
         val canvasWidthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
         val canvasHeightPx = with(density) { maxHeight.toPx() }.coerceAtLeast(1f)
-        val paperMaxWidth = maxWidth
-        val paperMaxHeight = maxHeight
         AndroidView(
             factory = { context -> CanvasHost(context).also { host ->
                 val view = host.canvasView

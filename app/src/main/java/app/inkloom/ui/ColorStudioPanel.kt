@@ -91,7 +91,7 @@ internal fun ColorStudioPanel(
             key(tab) {
                 Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                     when (tab) {
-                        0 -> CspColorPanel(color, onColorPreview, ::pick, onResizeWidth = onResizeWidth, showHeader = false, initialDraft = draft, onDraftChange = { draft = it }, maximumHeight = visibleContentHeight, colorPair = colorPair, onSwapColors = onSwapColors, language = language, onOpenQuickPicker = { pickerStart = it })
+                        0 -> CspColorPanel(color, onColorPreview, ::pick, onResizeWidth = onResizeWidth, initialDraft = draft, onDraftChange = { draft = it }, maximumHeight = visibleContentHeight, colorPair = colorPair, onSwapColors = onSwapColors, language = language, onOpenQuickPicker = { pickerStart = it })
                         1 -> ColorSetPanel(color, language, visibleContentHeight, ::pick, onOpenQuickPicker = { pickerStart = it })
                         2 -> {
                             val mixingView = remember(context, state) { ColorMixingView(context, state.mixing) }

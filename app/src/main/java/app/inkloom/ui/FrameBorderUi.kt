@@ -144,7 +144,7 @@ internal fun FrameBorderHost(view: InkCanvasView, page: InkPage, activeLayerId: 
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         StudioCheckRow(tr("Draw border", "描绘框线"), drawBorder, { drawBorder = it })
                         StudioSliderRow(tr("Line width", "线宽"), lineWidth, .5f..60f, { lineWidth = it }, unit = "px")
-                        StudioCheckRow(tr("Use the drawing colour", "使用描绘色"), recolour, { recolour = it })
+                        StudioCheckRow(tr("Use the drawing color", "使用描绘色"), recolour, { recolour = it })
                         StudioCheckRow(tr("Snap to frames (use as ruler)", "吸附分格（用作尺规）"), useAsRuler, { useAsRuler = it })
                     }
                 }, confirmButton = { TextButton({

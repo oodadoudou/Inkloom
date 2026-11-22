@@ -73,7 +73,6 @@ internal fun StandardColorPickerDialog(
                     color = draft,
                     onColorPreview = ::update,
                     onColorCommit = ::update,
-                    showHeader = false,
                     maximumHeight = 250.dp,
                     language = language,
                 )

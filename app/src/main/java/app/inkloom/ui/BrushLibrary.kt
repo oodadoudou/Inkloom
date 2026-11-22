@@ -683,6 +683,10 @@ private fun ProcreateBrushLibrary(
                         val hasChildren = importedCategories.any { BrushGroupOperations.parent(it)?.equals(category, true) == true }
                         val visibleCategoryLabel = categoryLabel(category)
                         val categoryDescription = if (customGroup) tr("Brush group $visibleCategoryLabel", "笔刷分组 $visibleCategoryLabel") else tr("Brush category $visibleCategoryLabel", "笔刷类别 $visibleCategoryLabel")
+                        // Read at drag end, after brushes may have been edited or imported since the gesture began.
+                        val currentBrushes by rememberUpdatedState(brushes)
+                        val currentRegisteredGroups by rememberUpdatedState(registeredGroups)
+                        val currentCategories by rememberUpdatedState(importedCategories)
                         val groupDragModifier = if (!customGroup) Modifier else Modifier.pointerInput(category, groupDropBounds) {
                             detectDragGesturesAfterLongPress(
                                 onDragStart = { local ->
@@ -698,14 +702,14 @@ private fun ProcreateBrushLibrary(
                                         groupDropBounds.entries.firstOrNull { (path, bounds) -> path != category && bounds.contains(point) }?.key
                                     }
                                     val parent = BrushGroupOperations.parent(category)
-                                    val siblings = importedCategories.filter { path ->
+                                    val siblings = currentCategories.filter { path ->
                                         BrushGroupOperations.parent(path)?.equals(parent, true) ?: (parent == null)
                                     }
                                     val from = siblings.indexOfFirst { it.equals(category, true) }
                                     val to = siblings.indexOfFirst { it.equals(target, true) }
                                     if (from >= 0 && to >= 0 && from != to) {
-                                        onReplaceBrushes(BrushGroupOperations.moveGroup(brushes, category, to - from))
-                                        onReplaceGroups(BrushGroupOperations.moveRegisteredGroup(registeredGroups, category, to - from))
+                                        onReplaceBrushes(BrushGroupOperations.moveGroup(currentBrushes, category, to - from))
+                                        onReplaceGroups(BrushGroupOperations.moveRegisteredGroup(currentRegisteredGroups, category, to - from))
                                     }
                                     draggingGroup = null
                                     groupDragPosition = null

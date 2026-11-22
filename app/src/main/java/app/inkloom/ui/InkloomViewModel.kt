@@ -156,12 +156,6 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         select(document.id)
         return document
     }
-    fun importPdf(uri: Uri, title: String) = assets.importPdf(uri, title, indexText = false).also { document ->
-        store.save(document)
-        refresh()
-        select(document.id)
-        indexPdfText(document.id)
-    }
     fun importPdfAsync(uri: Uri, title: String, onComplete: (Result<InkDocument>) -> Unit) {
         if (pdfImportJob?.isActive == true) {
             onComplete(Result.failure(IllegalStateException("A PDF import is already running")))
@@ -273,7 +267,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             runCatching { withContext(Dispatchers.IO) {
                 materialStore.add(app.inkloom.document.MaterialImages.register(assets, getApplication<Application>().cacheDir, page, layerId, name))
-            } }.onSuccess { mutableMaterials.value = it; onDone(null) }.onFailure { onDone(it.message) }
+            } }.onSuccess { mutableMaterials.value = it; onDone(null) }.onFailure { onDone(it.message ?: "Could not register the layer") }
         }
     }
 
@@ -386,6 +380,8 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun dismissLegacyFillMigrationError() {
+        // Forget it for the notebook too, or reopening the notebook shows it again.
+        mutableState.value.selectedDocumentId?.let(documentUpgradeErrors::remove)
         mutableState.value = mutableState.value.copy(legacyFillMigrationError = null)
     }
     fun selectPage(pageId: String) {
@@ -494,7 +490,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             paperColorArgb,
         )
         val page = PageTemplateOperations.newPage(template, "Page ${document.pages.size + 1}")
-        mutableState.value = mutableState.value.copy(selectedPageId = page.id)
+        showNewPage(documentId, page.id)
         document.copy(pages = document.pages + page, updatedAt = System.currentTimeMillis())
     }
 
@@ -508,7 +504,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             backgroundRotationQuarterTurns = source.backgroundRotationQuarterTurns,
             crop = source.crop,
         )
-        mutableState.value = mutableState.value.copy(selectedPageId = page.id)
+        showNewPage(documentId, page.id)
         document.copy(pages = document.pages + page, updatedAt = System.currentTimeMillis())
     }
 
@@ -518,7 +514,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         val source = document.pages[sourceIndex]
         val page = PageTemplateOperations.newBlankPageBeside(source, "Page ${document.pages.size + 1}")
         val insertionIndex = sourceIndex + if (after) 1 else 0
-        mutableState.value = mutableState.value.copy(selectedPageId = page.id)
+        showNewPage(documentId, page.id)
         document.copy(
             pages = document.pages.toMutableList().apply { add(insertionIndex, page) },
             updatedAt = System.currentTimeMillis(),
@@ -526,7 +522,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun duplicatePage(documentId: String, pageId: String) = update(documentId) { document ->
-        val source = document.pages.first { it.id == pageId }
+        val source = document.pages.firstOrNull { it.id == pageId } ?: return@update document
         val copiedPageId = java.util.UUID.randomUUID().toString()
         val copy = PdfGotoLinkNavigation.remapDestinations(
             listOf(source.copy(id = copiedPageId, title = "${source.title} copy", elements = source.elements.map(::copyElement))),
@@ -534,8 +530,14 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         ).single()
         val index = document.pages.indexOf(source) + 1
         val pages = document.pages.toMutableList().apply { add(index, copy) }
-        mutableState.value = mutableState.value.copy(selectedPageId = copy.id)
+        showNewPage(documentId, copy.id)
         document.copy(pages = pages, updatedAt = System.currentTimeMillis())
+    }
+
+    /** A page just added is shown if its notebook is open, and is where that notebook reopens otherwise. */
+    private fun showNewPage(documentId: String, pageId: String) {
+        if (mutableState.value.selectedDocumentId == documentId) mutableState.value = mutableState.value.copy(selectedPageId = pageId)
+        else notebookResumeStore.remember(documentId, pageId)
     }
 
     fun deletePage(documentId: String, pageId: String) {
@@ -789,11 +791,14 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             if (fingerprint == page.handwritingIndexFingerprint) return@launch
             val language = if (java.util.Locale.getDefault().language == "zh") "zh-Hans" else "en-US"
             val recognized = withContext(Dispatchers.IO) { runCatching { recognizeHandwriting(page, language) }.getOrNull() } ?: return@launch
-            updatePage(documentId, pageId) { current ->
-                if (HandwritingIndex.fingerprint(current) != fingerprint) current
-                else current.copy(handwritingIndexFingerprint = fingerprint, recognizedTextBlocks =
-                    current.recognizedTextBlocks.filterNot { it.source == RecognizedTextSource.HANDWRITING } + recognized)
-            }
+            // Runs seconds after the last stroke; a failed save is logged rather than crashing then.
+            runCatching {
+                updatePage(documentId, pageId) { current ->
+                    if (HandwritingIndex.fingerprint(current) != fingerprint) current
+                    else current.copy(handwritingIndexFingerprint = fingerprint, recognizedTextBlocks =
+                        current.recognizedTextBlocks.filterNot { it.source == RecognizedTextSource.HANDWRITING } + recognized)
+                }
+            }.onFailure { android.util.Log.e("Inkloom", "Handwriting index failed for page $pageId", it) }
         }
     }
 
@@ -828,13 +833,6 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         page.copy(layers = page.layers.map { if (it.id == folderId && it.role == LayerRole.FOLDER) it.copy(collapsed = !it.collapsed) else it })
     }
 
-    fun duplicateLayer(documentId: String, pageId: String, layerId: String): String? {
-        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return null
-        val result = LayerOperations.duplicate(page, layerId) ?: return null
-        updatePage(documentId, pageId) { result.page }
-        return result.activeLayerId
-    }
-
     fun applyRasterLayerMerge(documentId: String, pageId: String, edit: RasterLayerMergeEdit, undo: Boolean, expected: InkPage?): Boolean {
         val current = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return false
         if (expected != null && current != expected) return false
@@ -859,18 +857,6 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         val changed = edit.apply(current, undo) ?: return false
         updatePage(documentId, pageId) { changed }
         return true
-    }
-
-    fun deleteLayer(documentId: String, pageId: String, layerId: String) = updateLayerStructure(documentId, pageId) { page ->
-        val layer = page.layers.firstOrNull { it.id == layerId } ?: return@updateLayerStructure page
-        when (layer.role) {
-            LayerRole.FOLDER -> LayerHierarchy.removeFolder(page, layerId)
-            LayerRole.CUSTOM, LayerRole.ADJUSTMENT -> page.copy(
-                layers = page.layers.filterNot { it.id == layerId },
-                elements = page.elements.map { element -> if (element.layerId == layerId) element.withLayer(LayerIds.OBJECTS) else element },
-            )
-            else -> page
-        }
     }
 
     fun addElement(documentId: String, pageId: String, element: PageElement) {
@@ -1042,6 +1028,10 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
                         if (mergedPages != latest.pages) store.save(latest.copy(pages = mergedPages))
                     }
                 }
+            } catch (failure: Exception) {
+                // Indexing is a background extra; a failed save must not crash the editor.
+                if (failure is kotlinx.coroutines.CancellationException) throw failure
+                android.util.Log.e("Inkloom", "PDF text index failed for $documentId", failure)
             } finally {
                 refreshSelection()
                 mutableState.value = mutableState.value.copy(pdfIndexingDocumentIds = mutableState.value.pdfIndexingDocumentIds - documentId)
@@ -1144,29 +1134,25 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun updateLayerStructure(documentId: String, pageId: String, transform: (InkPage) -> InkPage): app.inkloom.document.LayerGroupRejection? {
-        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId }
-            ?: return app.inkloom.document.LayerGroupRejection.INVALID_TARGET
-        val candidate = transform(page)
-        app.inkloom.document.LayerGroupPolicy.rejection(candidate.layers)?.let { return it }
-        if (candidate == page) return null
-        var rejection: app.inkloom.document.LayerGroupRejection? = null
-        updatePage(documentId, pageId) { current ->
-            val changed = transform(current)
-            rejection = app.inkloom.document.LayerGroupPolicy.rejection(changed.layers)
-            if (rejection == null) changed else current
+    /**
+     * Read-modify-write under the store's lock, so a background writer (PDF index, page import,
+     * fill upgrade) cannot land between the read and the save and be overwritten.
+     */
+    private fun update(id: String, transform: (InkDocument) -> InkDocument) {
+        val changed = store.exclusive {
+            val document = store.get(id) ?: return@exclusive false
+            val updated = transform(document)
+            if (updated != document) store.save(updated)
+            updated != document
         }
-        return rejection
+        if (changed) refreshSelection()
     }
-
-    private fun update(id: String, transform: (InkDocument) -> InkDocument) { store.get(id)?.let(transform)?.let(store::save); refreshSelection() }
     /** One page changes: only that page is written (to the journal), never the whole notebook. */
     private fun updatePage(documentId: String, pageId: String, transform: (InkPage) -> InkPage) {
-        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
-        val updated = app.inkloom.document.LayerSoloStructure.reconcile(page, transform(page))
-        if (updated == page) return
-        store.replacePage(documentId, updated)
-        refreshSelection()
+        val changed = store.updatePage(documentId, pageId) { page ->
+            app.inkloom.document.LayerSoloStructure.reconcile(page, transform(page))
+        }
+        if (changed) refreshSelection()
     }
     private fun refresh(recovered: Int = mutableState.value.recoveredOperations) {
         val documents=store.list()
@@ -1262,8 +1248,15 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         if (!indexFile.isFile) return emptyList()
         val stamp = indexFile.lastModified() to indexFile.length()
         cachedFolders?.let { (cachedStamp, folders) -> if (cachedStamp == stamp) return folders }
-        return runCatching { json.decodeFromString<List<InkFolder>>(indexFile.readText()) }.getOrDefault(emptyList())
-            .also { cachedFolders = stamp to it }
+        return runCatching { json.decodeFromString<List<InkFolder>>(indexFile.readText()) }
+            .onSuccess { cachedFolders = stamp to it }
+            .getOrElse { failure ->
+                // The next folder edit rewrites the index, so keep the unreadable one beside it.
+                android.util.Log.e("Inkloom", "Folder index unreadable", failure)
+                val kept = File(indexFile.parentFile, "library.json.unreadable")
+                if (!kept.exists()) runCatching { indexFile.copyTo(kept) }
+                emptyList()
+            }
     }
     private fun saveFolders(folders: List<InkFolder>) {
         val temporary = File(indexFile.parentFile, ".library.json.tmp")

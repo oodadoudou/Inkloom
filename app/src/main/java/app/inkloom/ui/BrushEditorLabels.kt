@@ -1,6 +1,8 @@
 package app.inkloom.ui
 
 import app.inkloom.brushpresetv5.BrushFamily
+import app.inkloom.brushpresetv5.DabTransferMode
+import app.inkloom.brushpresetv5.DualCompositeMode
 import app.inkloom.brushpresetv5.BrushOptionDescriptor
 import app.inkloom.brushpresetv5.BrushOptionGroup
 import app.inkloom.brushpresetv5.PressureCurveShape
@@ -97,3 +99,28 @@ internal fun PressureCurveShape.localizedLabel(language: UiLanguage): String = l
     PressureCurveShape.HARD -> "硬朗"
     PressureCurveShape.CUSTOM -> "自定义"
 })
+
+internal fun DabTransferMode.localizedLabel(language: UiLanguage): String = when (this) {
+    DabTransferMode.LIGHT_GLAZE -> language.text("Light glaze", "轻薄罩染")
+    DabTransferMode.UNIFORM_GLAZE -> language.text("Uniform glaze", "均匀罩染")
+    DabTransferMode.INTENSE_GLAZE -> language.text("Intense glaze", "强烈罩染")
+    DabTransferMode.HEAVY_GLAZE -> language.text("Heavy glaze", "厚重罩染")
+    DabTransferMode.UNIFORM_BLENDING -> language.text("Uniform blending", "均匀混合")
+    DabTransferMode.INTENSE_BLENDING -> language.text("Intense blending", "强烈混合")
+}
+
+internal fun DualCompositeMode.localizedLabel(language: UiLanguage): String = when (this) {
+    DualCompositeMode.NORMAL -> language.text("Normal", "正常")
+    DualCompositeMode.MULTIPLY -> language.text("Multiply", "正片叠底")
+    DualCompositeMode.ADD_GLOW -> language.text("Add (glow)", "添加发光")
+    DualCompositeMode.SUBTRACT -> language.text("Subtract", "减去")
+    DualCompositeMode.DARKEN -> language.text("Darken", "变暗")
+    DualCompositeMode.LIGHTEN -> language.text("Lighten", "变亮")
+    DualCompositeMode.SCREEN -> language.text("Screen", "滤色")
+    DualCompositeMode.OVERLAY -> language.text("Overlay", "叠加")
+    DualCompositeMode.COLOR_DODGE -> language.text("Color dodge", "颜色减淡")
+    DualCompositeMode.COLOR_BURN -> language.text("Color burn", "颜色加深")
+    DualCompositeMode.LINEAR_BURN -> language.text("Linear burn", "线性加深")
+    DualCompositeMode.HARD_MIX -> language.text("Hard mix", "实色混合")
+    DualCompositeMode.HEIGHT_LINEAR -> language.text("Linear height", "线性高度")
+}

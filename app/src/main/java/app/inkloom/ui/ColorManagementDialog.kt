@@ -48,7 +48,7 @@ internal fun ColorManagementDialog(page:InkPage,language:UiLanguage,busy:Boolean
                     Text(path?.substringAfterLast('/')?:tr("None","无"),Modifier.weight(1f),style=MaterialTheme.typography.bodySmall,
                         color=if(path!=null) MaterialTheme.colorScheme.onSurface else studioMuted(),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     StudioButton(tr("Choose…","选择…"),{slot=i;picker.launch(arrayOf("application/vnd.iccprofile","application/octet-stream","*/*"))},enabled=!busy && !importing)
-                    if(path!=null) StudioButton(tr("Reset","重置"),{state=when(i){0->state.copy(assignedProfile=null);1->state.copy(outputProfile=null);2->state.copy(proofProfile=null,softProof=false);else->state.copy(cmykProfile=null)}})
+                    if(path!=null) StudioButton(tr("Reset","重置"),{state=when(i){0->state.copy(assignedProfile=null);1->state.copy(outputProfile=null);2->state.copy(proofProfile=null,softProof=false,gamutWarning=false);else->state.copy(cmykProfile=null)}})
                 }
             }
             StudioSection(tr("Output","输出"))
@@ -56,7 +56,7 @@ internal fun ColorManagementDialog(page:InkPage,language:UiLanguage,busy:Boolean
             StudioDropdownField(intentName(state.intent),intentMenu,{intentMenu=it},label=tr("Rendering intent","渲染意图")) {
                 ColorRenderingIntent.entries.forEach { intent -> StudioMenuItem(text={Text(intentName(intent))},onClick={state=state.copy(intent=intent);intentMenu=false}) }
             }
-            StudioCheckRow(tr("Soft proof preview","软打样预览"),state.softProof,{state=state.copy(softProof=it)},enabled=state.proofProfile!=null)
+            StudioCheckRow(tr("Soft proof preview","软打样预览"),state.softProof,{state=state.copy(softProof=it,gamutWarning=state.gamutWarning&&it)},enabled=state.proofProfile!=null)
             StudioCheckRow(tr("Gamut warning","色域警告"),state.gamutWarning,{state=state.copy(gamutWarning=it)},enabled=state.proofProfile!=null && state.softProof)
             error?.let{Text(it,style=MaterialTheme.typography.bodySmall)}
         }

@@ -91,6 +91,7 @@ internal fun NavigatorPanel(target: NavigatorTarget?, assets: DocumentAssetServi
         thumbnail = withContext(Dispatchers.IO) { runCatching { assets.renderPageBitmap(target.page, 360) }.getOrNull() } ?: thumbnail
     }
     val current by rememberUpdatedState(target)
+    val moveViewport by rememberUpdatedState(onViewport)
     val frame = Color(0xFFE5483B)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Box(Modifier.fillMaxWidth().height(150.dp).clipToBounds().background(Color(0xFF2A2A2A))
@@ -99,14 +100,14 @@ internal fun NavigatorPanel(target: NavigatorTarget?, assets: DocumentAssetServi
                 fun moveTo(point: Offset) {
                     val t = current
                     val (scale, offset) = navigatorFit(size.width.toFloat(), size.height.toFloat(), t.viewWidth, t.viewHeight)
-                    onViewport(ViewportTransform.centerOn(t.viewport, (point.x - offset.x) / scale, (point.y - offset.y) / scale, t.viewWidth, t.viewHeight, t.geometry))
+                    moveViewport(ViewportTransform.centerOn(t.viewport, (point.x - offset.x) / scale, (point.y - offset.y) / scale, t.viewWidth, t.viewHeight, t.geometry))
                 }
                 detectTapGestures { moveTo(it) }
             }.pointerInput(Unit) {
                 detectDragGestures { change, _ ->
                     val t = current
                     val (scale, offset) = navigatorFit(size.width.toFloat(), size.height.toFloat(), t.viewWidth, t.viewHeight)
-                    onViewport(ViewportTransform.centerOn(t.viewport, (change.position.x - offset.x) / scale, (change.position.y - offset.y) / scale, t.viewWidth, t.viewHeight, t.geometry))
+                    moveViewport(ViewportTransform.centerOn(t.viewport, (change.position.x - offset.x) / scale, (change.position.y - offset.y) / scale, t.viewWidth, t.viewHeight, t.geometry))
                 }
             }) {
                 val (scale, offset) = navigatorFit(size.width, size.height, target.viewWidth, target.viewHeight)

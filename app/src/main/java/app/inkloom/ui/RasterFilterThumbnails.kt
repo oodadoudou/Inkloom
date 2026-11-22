@@ -43,9 +43,9 @@ internal object RasterFilterThumbnails {
             }
         }.snapshot()
     }
-    private val cache = object : LruCache<RasterFilterPreset, Bitmap>(48) {
-        override fun entryRemoved(evicted: Boolean, key: RasterFilterPreset, oldValue: Bitmap, newValue: Bitmap?) { if (evicted) oldValue.recycle() }
-    }
+    // Evicted thumbnails may still be on screen (the preset menu shows every preset), so they are
+    // left to the garbage collector rather than recycled.
+    private val cache = LruCache<RasterFilterPreset, Bitmap>(48)
 
     /** Settings that change the picture; names and favourites do not. */
     private fun key(preset: RasterFilterPreset) = preset.normalized().copy(id = "", name = "", favorite = false)

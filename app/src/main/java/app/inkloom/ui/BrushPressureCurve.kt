@@ -62,7 +62,8 @@ internal fun BrushPressureCurve(id: String, preset: BrushPresetV5, language: UiL
                     val x = when (index) {
                         0 -> 0f
                         working.lastIndex -> 1f
-                        else -> (to.x / size.width).coerceIn(working[index - 1].x, working[index + 1].x)
+                        // Imported curves can hold unsorted points; never pass coerceIn an inverted range.
+                        else -> (to.x / size.width).coerceIn(minOf(working[index - 1].x, working[index + 1].x), maxOf(working[index - 1].x, working[index + 1].x))
                     }
                     working = working.toMutableList().also {
                         it[index] = BrushCurvePoint(x, (1f - to.y / size.height).coerceIn(0f, 1f))

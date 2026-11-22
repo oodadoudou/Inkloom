@@ -112,8 +112,8 @@ internal fun GradientToolControls(settings: AppSettings, brushColor: Int, second
     val selectedBuiltIn = builtIns.firstOrNull { it.id == selectedPresetId }
     val gradientLanguage = LocalUiLanguage.current
     fun builtInName(id: String) = when (id.removePrefix(app.inkloom.settings.BuiltInGradients.ID_PREFIX)) {
-        "main-to-secondary" -> gradientLanguage.text("Drawing colour to background colour", "描绘色到背景色")
-        "main-to-transparent" -> gradientLanguage.text("Drawing colour to transparent", "描绘色到透明色")
+        "main-to-secondary" -> gradientLanguage.text("Drawing color to background color", "描绘色到背景色")
+        "main-to-transparent" -> gradientLanguage.text("Drawing color to transparent", "描绘色到透明色")
         "sky" -> gradientLanguage.text("Sky", "天空")
         "sunset" -> gradientLanguage.text("Sunset", "晚霞")
         "night-sky" -> gradientLanguage.text("Night sky", "夜空")
@@ -171,7 +171,7 @@ internal fun GradientToolControls(settings: AppSettings, brushColor: Int, second
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         TextButton(onClick = { selectedPreset?.let { preset -> editLibrary { settings.gradientPresets.replace(preset.id, currentDefinition()) } } }, enabled = selectedPreset != null) { Text(tr("Update", "更新"), fontSize = 11.sp) }
-        TextButton(onClick = { enteredName = selectedPreset?.name.orEmpty(); nameAction = "rename" }, enabled = selectedPreset != null) { Text(tr("Rename", "改名"), fontSize = 11.sp) }
+        TextButton(onClick = { enteredName = selectedPreset?.name.orEmpty(); nameAction = "rename" }, enabled = selectedPreset != null) { Text(tr("Rename", "重命名"), fontSize = 11.sp) }
         TextButton(onClick = { enteredName = selectedPreset?.name?.let { "$it copy" }.orEmpty(); nameAction = "duplicate" }, enabled = selectedPreset != null) { Text(tr("Copy", "复制"), fontSize = 11.sp) }
         TextButton(onClick = { selectedPreset?.let { preset -> editLibrary { settings.gradientPresets.remove(preset.id) }; selectedPresetId = null } }, enabled = selectedPreset != null) { Text(tr("Delete", "删除"), fontSize = 11.sp) }
         TextButton(onClick = onImport) { Text(tr("Import", "导入"), fontSize = 11.sp) }
@@ -879,6 +879,9 @@ private fun ToolButton(value: EditorTool, icon: ImageVector, label: String, sele
         }
     }
 
+/** Opens the grouped Brushes panel; the editor provides it so the rail and the top bar open the same list. */
+internal val LocalOpenBrushLibrary = androidx.compose.runtime.staticCompositionLocalOf<() -> Unit> { {} }
+
 @Composable
 private fun BrushPresetToolButton(
     value: EditorTool,
@@ -894,13 +897,15 @@ private fun BrushPresetToolButton(
     onPreset: (ImportedBrush) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
+    val openBrushLibrary = LocalOpenBrushLibrary.current
     Box {
         Box(
             Modifier
                 .size(32.dp)
                 .background(if (value == selected) SageContainer else Color.Transparent)
                 .clickable {
-                    if (value == selected) open = true else onTool(value)
+                    // The brush opens the grouped library; the eraser keeps its preset menu.
+                    if (value != selected) onTool(value) else if (value == EditorTool.PEN) openBrushLibrary() else open = true
                 },
             contentAlignment = Alignment.Center,
         ) {
@@ -916,32 +921,20 @@ private fun BrushPresetToolButton(
             modifier = Modifier.widthIn(min = 172.dp, max = 224.dp).background(Paper),
         ) {
             Text(
-                if (value == EditorTool.ERASER) tr("Eraser sub tools", "橡皮子工具") else tr("Brush sub tools", "笔刷子工具"),
+                tr("Eraser sub tools", "橡皮子工具"),
                 Modifier.fillMaxWidth().height(25.dp).background(Paper).padding(horizontal = 7.dp).wrapContentHeight(Alignment.CenterVertically),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
             )
-            if (value == EditorTool.PEN) {
+            EraserPreset.entries.forEach { preset ->
                 Row(
-                    Modifier.fillMaxWidth().height(38.dp).background(if (selectedBrushId == null && selected == value) SageContainer else Color.Transparent)
-                        .clickable { open = false; onSystemPreset(EditorTool.PEN) }.padding(horizontal = 8.dp),
+                    Modifier.fillMaxWidth().height(36.dp).background(if (selectedBrushId == null && eraserPreset == preset && selected == value) SageContainer else Color.Transparent)
+                        .clickable { open = false; onSystemPreset(EditorTool.ERASER); onEraserPreset(preset) }.padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Outlined.Edit, null, Modifier.size(18.dp))
+                    Icon(Icons.Outlined.AutoFixOff, null, Modifier.size(17.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(tr("System pen", "系统钢笔"), fontSize = 11.sp)
-                }
-            } else {
-                EraserPreset.entries.forEach { preset ->
-                    Row(
-                        Modifier.fillMaxWidth().height(36.dp).background(if (selectedBrushId == null && eraserPreset == preset && selected == value) SageContainer else Color.Transparent)
-                            .clickable { open = false; onSystemPreset(EditorTool.ERASER); onEraserPreset(preset) }.padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Outlined.AutoFixOff, null, Modifier.size(17.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(preset.displayName(), fontSize = 11.sp)
-                    }
+                    Text(preset.displayName(), fontSize = 11.sp)
                 }
             }
             if (presets.isNotEmpty()) {

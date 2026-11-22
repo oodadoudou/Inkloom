@@ -818,7 +818,11 @@ fun InkloomApp(initialIntent: Intent?) {
     }
     var deletionFailed by remember { mutableStateOf(false) }
 
+    // The activity keeps its intent across recreation (rotation, interface size); import it once.
+    var initialIntentHandled by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(initialIntent) {
+        if (initialIntentHandled) return@LaunchedEffect
+        initialIntentHandled = true
         val uris = buildList<Uri> {
             initialIntent?.data?.let(::add)
             initialIntent?.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let(::add)
@@ -827,25 +831,34 @@ fun InkloomApp(initialIntent: Intent?) {
             uris.forEach { uri ->
                 val type = context.contentResolver.getType(uri).orEmpty()
                 val name = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null } ?: uri.lastPathSegment.orEmpty()
-                when {
-                    name.endsWith(".inkloom.zip", true) || name.endsWith(".inkloom", true) -> viewModel.importBundle(uri)
-                    type == "application/pdf" || name.endsWith(".pdf", true) -> viewModel.importPdfAsync(uri, name) { result ->
-                        result.onSuccess { destination = AppDestination.EDITOR }
-                            .onFailure { if (it !is kotlinx.coroutines.CancellationException) importError = it.message }
+                // A damaged shared file reports an import issue instead of crashing the app.
+                runCatching {
+                    when {
+                        name.endsWith(".inkloom.zip", true) || name.endsWith(".inkloom", true) -> { viewModel.importBundle(uri); destination = AppDestination.EDITOR }
+                        type == "application/pdf" || name.endsWith(".pdf", true) -> viewModel.importPdfAsync(uri, name) { result ->
+                            result.onSuccess { destination = AppDestination.EDITOR }
+                                .onFailure { if (it !is kotlinx.coroutines.CancellationException) importError = it.message }
+                        }
+                        type.startsWith("image/") -> { viewModel.importImage(uri, name); destination = AppDestination.EDITOR }
+                        else -> repository.importAll(uri).getOrThrow().let { brushes ->
+                            importedBrushes = BrushGroupOperations.mergeImports(importedBrushes, brushes)
+                            brushStore.save(importedBrushes)
+                            brushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, importedBrushes)
+                            brushGroupStore.save(brushGroups)
+                            panelState.show(EditorPanel.BRUSHES, true)
+                        }
                     }
-                    type.startsWith("image/") -> viewModel.importImage(uri, name)
-                    else -> repository.importAll(uri).getOrNull()?.let { brushes -> importedBrushes = BrushGroupOperations.mergeImports(importedBrushes, brushes) }
-                }
+                }.onFailure { importError = it.message ?: settings.language.text("This file could not be imported.", "无法导入此文件。") }
             }
-            brushStore.save(importedBrushes)
-            brushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, importedBrushes)
-            brushGroupStore.save(brushGroups)
-            panelState.show(EditorPanel.BRUSHES, true)
-            destination = AppDestination.EDITOR
         }
     }
 
     CompositionLocalProvider(LocalUiLanguage provides settings.language, LocalColorStudioState provides colorStudioState) {
+    // Shown over the Library as well as the editor: most imports start from the Library.
+    importError?.let { message ->
+        StudioDialog(onDismissRequest = { importError = null }, confirmButton = { TextButton(onClick = { importError = null }) { Text(tr("OK", "确定")) } },
+            title = { Text(tr("Import issue", "导入问题")) }, text = { Text(message) })
+    }
     damagedBackupUri?.let { uri ->
         DamagedBackupRecoveryDialog(damagedBackupIssues, settings.language,
             onDismiss = { damagedBackupUri = null },
@@ -928,7 +941,6 @@ fun InkloomApp(initialIntent: Intent?) {
             selectedPageId = libraryState.selectedPageId,
             brushes = importedBrushes,
             brushGroups = brushGroups,
-            importError = importError,
             onBack = { destination = AppDestination.LIBRARY },
             onImportBrushes = { group ->
                 pendingBrushImportGroup = group?.let(BrushGroupOperations::normalize)?.takeIf(String::isNotBlank)
@@ -959,7 +971,6 @@ fun InkloomApp(initialIntent: Intent?) {
             onReplaceBrushGroups = { updated -> brushGroups = updated; brushGroupStore.save(updated) },
             onDeleteBrush = { brushId -> importedBrushes = importedBrushes.filterNot { it.id == brushId }; brushStore.save(importedBrushes) },
             onReorderBrush = { brushId, delta -> importedBrushes = BrushGroupOperations.move(importedBrushes, brushId, delta); brushStore.save(importedBrushes) },
-            onDismissError = { importError = null },
             onSelectPage = viewModel::selectPage,
             pageTemplates = pageTemplates,
             onAppendCurrentPage = { pageId -> libraryState.selectedDocumentId?.let { viewModel.appendPageUsingTemplate(it, pageId) } },
@@ -1003,18 +1014,9 @@ fun InkloomApp(initialIntent: Intent?) {
             onToggleLayerDrawingAssist = viewModel::toggleLayerDrawingAssist,
             onUpdateLayerDrawingGuide = viewModel::updateLayerDrawingGuide,
             onToggleLayerFolderCollapsed = viewModel::toggleLayerFolderCollapsed,
-            onDuplicateLayer = viewModel::duplicateLayer,
             onApplyRasterLayerMerge = viewModel::applyRasterLayerMerge,
             onApplyRasterLayerFilter = viewModel::applyRasterLayerFilter,
             onApplyLayerTreeEdit = viewModel::applyLayerTreeEdit,
-            onDeleteLayer = { documentId, pageId, layerId ->
-                viewModel.deleteLayer(documentId, pageId, layerId)?.let { rejection ->
-                    val message = if (rejection == app.inkloom.document.LayerGroupRejection.THROUGH_CLIPPING)
-                        settings.language.text("Through folders cannot be a clipping base. Remove clipping first.", "穿透组不能作为剪贴底层，请先取消剪贴。")
-                    else settings.language.text("The layer target is no longer available.", "目标图层已不可用。")
-                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-                }
-            },
             onElement = viewModel::addElement,
             onRemoveElement = viewModel::removeElement,
             onDuplicateElement = viewModel::duplicateElement,
@@ -1113,7 +1115,6 @@ private fun EditorScreen(
     selectedPageId: String?,
     brushes: List<ImportedBrush>,
     brushGroups: List<String>,
-    importError: String?,
     onBack: () -> Unit,
     onImportBrushes: (String?) -> Unit,
     onImportBrushFolder: () -> Unit,
@@ -1127,7 +1128,6 @@ private fun EditorScreen(
     onReplaceBrushGroups: (List<String>) -> Unit,
     onDeleteBrush: (String) -> Unit,
     onReorderBrush: (String, Int) -> Unit,
-    onDismissError: () -> Unit,
     onSelectPage: (String) -> Unit,
     pageTemplates: PageTemplateLibrary,
     onAppendCurrentPage: (String) -> Unit,
@@ -1171,11 +1171,9 @@ private fun EditorScreen(
     onToggleLayerDrawingAssist: (String, String, String, LayerDrawingGuide) -> Unit,
     onUpdateLayerDrawingGuide: (String, String, String, LayerDrawingGuide) -> Unit,
     onToggleLayerFolderCollapsed: (String, String, String) -> Unit,
-    onDuplicateLayer: (String, String, String) -> String?,
     onApplyRasterLayerMerge: (String, String, RasterLayerMergeEdit, Boolean, InkPage?) -> Boolean,
     onApplyRasterLayerFilter: (String, String, RasterLayerFilterEdit, Boolean, InkPage?) -> Boolean,
     onApplyLayerTreeEdit: (String, String, LayerTreeEdit, Boolean, InkPage?) -> Boolean,
-    onDeleteLayer: (String, String, String) -> Unit,
     onElement: (String, String, PageElement) -> Unit,
     onRemoveElement: (String, String, String) -> Unit,
     onDuplicateElement: (String, String, String) -> Unit,
@@ -1205,7 +1203,12 @@ private fun EditorScreen(
     onSettings: () -> Unit,
     onSettingsChange: (AppSettings) -> Unit,
 ) {
-    if (document == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }; return }
+    if (document == null) {
+        // The notebook is gone (deleted, or not restored after the process was stopped): back to the Library.
+        LaunchedEffect(Unit) { onBack() }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
     val context = LocalContext.current
     val editorHostView = LocalView.current
     val gradientImportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -2634,8 +2637,6 @@ private fun EditorScreen(
                     onSetLayerRasterTileSurface = onSetLayerRasterTileSurface,
                     onSetLayerRulers = onSetLayerRulers,
                     onElement = onElement,
-                    onRemoveElement = onRemoveElement,
-                    onDuplicateElement = onDuplicateElement,
                     selectedElementId = selectedElementId,
                     onSelectElement = { selectedElementId = it },
                     onBeginQuickShapeEdit = {
@@ -2748,23 +2749,24 @@ private fun EditorScreen(
                         val index = document.pages.indexOfFirst { it.id == selectedPage.id }
                         document.pages.getOrNull(if (next) index + 1 else index - 1)?.takeIf { index >= 0 }?.let { selectPageWithViewport(it.id) }
                     },
-                    documents = documents,
-                    onOpenInternalLink = openInternalLink,
-                    onInputDiagnostic = { kind, pressure, tilt, buttons -> inputDiagnostic = "$kind  pressure ${"%.3f".format(pressure)}  tilt ${"%.2f".format(Math.toDegrees(tilt.toDouble()))}°  buttons $buttons" },
+                    // Formatting runs per pen event, so only while the diagnostics are shown.
+                    onInputDiagnostic = { kind, pressure, tilt, buttons -> if (settings.showInputDiagnostics) inputDiagnostic = "$kind  pressure ${"%.3f".format(pressure)}  tilt ${"%.2f".format(Math.toDegrees(tilt.toDouble()))}°  buttons $buttons" },
                     onColorSampled = { sampled ->
                         if (modes.editSecondaryColor) changeBackgroundColor(sampled) else changeBrushColor(sampled)
                     },
                     onBrushSizeAdjusted = { raw ->
                         changeCurrentBrushSize(raw)
                     },
-                    onKeyInputDiagnostic = { diagnostic ->
+                    onKeyInputDiagnostic = onKey@{ diagnostic ->
+                        if (!settings.showInputDiagnostics) return@onKey
                         val keyName = KeyEvent.keyCodeToString(diagnostic.keyCode).removePrefix("KEYCODE_")
                         val device = diagnostic.deviceName ?: unknownInputDeviceText
                         val descriptor = diagnostic.deviceDescriptor ?: "—"
                         val action = diagnostic.matchedAction?.name?.lowercase()?.replace('_', ' ') ?: unmappedShortcutText
                         inputDiagnostic = "$device · $keyName · scan ${diagnostic.scanCode} · meta 0x${diagnostic.metaState.toString(16)} · source 0x${diagnostic.source.toString(16)} · id ${diagnostic.deviceId} · $descriptor · $action · ${diagnostic.phase.name.lowercase()}"
                     },
-                    onMotionInputDiagnostic = { diagnostic ->
+                    onMotionInputDiagnostic = onMotion@{ diagnostic ->
+                        if (!settings.showInputDiagnostics) return@onMotion
                         val device = diagnostic.deviceName ?: unknownInputDeviceText
                         val descriptor = diagnostic.deviceDescriptor ?: "—"
                         val action = diagnostic.matchedAction?.name?.lowercase()?.replace('_', ' ') ?: unmappedShortcutText
@@ -3286,7 +3288,7 @@ private fun EditorScreen(
                     }
                     Box(preview.zIndex(4f).background(Ink))
                 }
-                if (settings.showToolbar) ToolDock(tool = tool, toolPaletteLayout = settings.toolPaletteLayout, onTool = choose@ { chosen ->
+                if (settings.showToolbar) CompositionLocalProvider(LocalOpenBrushLibrary provides ::toggleBrushPanel) { ToolDock(tool = tool, toolPaletteLayout = settings.toolPaletteLayout, onTool = choose@ { chosen ->
                     if (chosen == EditorTool.SELECT && tool == EditorTool.SELECT) {
                         finishSelectionTool(deselect = true)
                         return@choose
@@ -3390,7 +3392,7 @@ private fun EditorScreen(
                     val height = it.size.height / editorDensity.density
                     if (kotlin.math.abs(measuredToolbarWidth - width) > .5f) measuredToolbarWidth = width
                     if (kotlin.math.abs(measuredToolbarHeight - height) > .5f) measuredToolbarHeight = height
-                })
+                }) }
                 if (savedSelectionsOpen) SavedSelectionsPanel(
                     selectedPage.savedSelections, assets, settings.language, selectionActive,
                     onSave = {
@@ -3636,7 +3638,7 @@ private fun EditorScreen(
                 activeLayerId = activeLayerId,
                 brushColor = brushColor,
                 secondaryBrushColor = backgroundColor,
-                onClose = { panelState.show(EditorPanel.LAYERS, false); panelState.show(EditorPanel.LAYERS, false) },
+                onClose = { panelState.show(EditorPanel.LAYERS, false) },
                 onColor = ::changeBrushColor,
                 onSelect = ::selectLayerTarget,
                 onSelectContents = ::selectLayerContents,
@@ -3710,6 +3712,7 @@ private fun EditorScreen(
                 onMergeDown = { layerId -> canvasView?.requestLayerMerge(layerId) },
                 onMerge = { request -> canvasView?.requestLayerMerge(request) },
                 onDelete = { canvasView?.requestLayerTree(LayerTreeAction.DELETE, it) },
+                onDeleteSelected = { target, ids -> canvasView?.requestLayerTree(LayerTreeAction.DELETE, target, ids) },
                 onGroupSelected = { primary, selected -> canvasView?.requestLayerTree(LayerTreeAction.GROUP_SELECTED, primary, selected) },
                 onUngroup = { canvasView?.requestLayerTree(LayerTreeAction.UNGROUP, it) },
                 onClear = { canvasView?.clearLayerContents(it) },
@@ -4192,7 +4195,6 @@ private fun EditorScreen(
                 dismissButton = { TextButton(onClick = { handwritingConversionHit = null }) { Text(tr("Cancel", "取消")) } },
             )
         }
-        if (importError != null) StudioDialog(onDismissRequest = onDismissError, confirmButton = { TextButton(onClick = onDismissError) { Text(tr("OK", "确定")) } }, title = { Text(tr("Import issue", "导入问题")) }, text = { Text(importError) })
     }
     editorDialogs()
 }

@@ -225,14 +225,13 @@ private fun BrushOptionRow(
     val label = option.localizedLabel(language)
     if (option.id in setOf("dualComposite", "stampTransfer")) {
         var expanded by remember { mutableStateOf(false) }
-        val names=if(option.id=="stampTransfer") listOf("轻薄罩染","均匀罩染","强烈罩染","厚重罩染","均匀混合","强烈混合") else listOf("正常","正片叠底","添加发光","减去","变暗","变亮","滤色","叠加","颜色减淡","颜色加深","线性加深","实色混合","线性高度")
-        val english=if(option.id=="stampTransfer") DabTransferMode.entries.map { it.name } else DualCompositeMode.entries.map { it.name }
+        val labels=if(option.id=="stampTransfer") DabTransferMode.entries.map { it.localizedLabel(language) } else DualCompositeMode.entries.map { it.localizedLabel(language) }
         Text(label, fontSize=13.sp)
         Box {
-            TextButton(onClick={expanded=true}) { Text(language.text(english[current.toInt()],names[current.toInt()])) }
+            TextButton(onClick={expanded=true}) { Text(labels[current.toInt().coerceIn(labels.indices)]) }
             DropdownMenu(expanded,{expanded=false}) {
-                english.forEachIndexed { ordinal, name ->
-                    StudioMenuItem(text={Text(language.text(name,names[ordinal]))},onClick={onValue(option.apply(value,ordinal.toFloat()));expanded=false})
+                labels.forEachIndexed { ordinal, name ->
+                    StudioMenuItem(text={Text(name)},onClick={onValue(option.apply(value,ordinal.toFloat()));expanded=false})
                 }
             }
         }

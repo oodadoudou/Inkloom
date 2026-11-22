@@ -540,6 +540,8 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
                 Row(Modifier.padding(start = (depth * 12).coerceAtMost(48).dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) {
                         var bounds by remember(folder.id) { mutableStateOf<Rect?>(null) }
+                        // A folder row that leaves the rail (collapsed or deleted) must stop accepting drops.
+                        DisposableEffect(folder.id) { onDispose { onFolderBounds(folder.id, Rect.Zero) } }
                         val hovered = draggingDocument && dragPosition?.let { bounds?.contains(it) } == true
                         val selected = folder.id in selectedFolderIds
                         RailItem(
@@ -713,7 +715,7 @@ private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (Ink
         }
     }
     if (renameOpen) StudioDialog(onDismissRequest = { renameOpen = false }, title = { Text(tr("Rename note", "重命名笔记")) }, text = { StudioOutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onRename(document.id, title); renameOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { renameOpen = false }) { Text(tr("Cancel", "取消")) } })
-    if (tagsOpen) StudioDialog(onDismissRequest = { tagsOpen = false }, title = { Text(tr("Note tags", "笔记标签")) }, text = { StudioOutlinedTextField(value = tags, onValueChange = { tags = it }, supportingText = { Text(tr("Separate tags with commas", "使用逗号分隔标签")) }) }, confirmButton = { TextButton(onClick = { onTags(document.id, tags.split(',')); tagsOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { tagsOpen = false }) { Text(tr("Cancel", "取消")) } })
+    if (tagsOpen) StudioDialog(onDismissRequest = { tagsOpen = false }, title = { Text(tr("Note tags", "笔记标签")) }, text = { StudioOutlinedTextField(value = tags, onValueChange = { tags = it }, supportingText = { Text(tr("Separate tags with commas", "使用逗号分隔标签")) }) }, confirmButton = { TextButton(onClick = { onTags(document.id, tags.split(',', '，')); tagsOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { tagsOpen = false }) { Text(tr("Cancel", "取消")) } })
 }
 
 @Composable

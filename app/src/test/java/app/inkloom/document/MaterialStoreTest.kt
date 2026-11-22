@@ -18,6 +18,7 @@ class MaterialStoreTest {
         assertEquals("Pine", MaterialStore(root).list().first { it.id == image.id }.name)
         store.delete(template.id)
         assertEquals(listOf(image.id), MaterialStore(root).list().map { it.id })
+        root.deleteRecursively()
     }
 
     @Test fun garbageCollectionSeesEveryMaterialAsset() {

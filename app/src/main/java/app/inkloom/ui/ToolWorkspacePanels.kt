@@ -396,9 +396,10 @@ private fun ToolPaletteOrganizerDialog(settings: AppSettings, onSettings: (AppSe
                                     var current=latestIndex
                                     var travel=0f
                                     var pending=latestEntries
-                                    detectDragGesturesAfterLongPress(onDragEnd={
+                                    // The coroutine outlives one gesture: start each drag from the current order.
+                                    detectDragGesturesAfterLongPress(onDragStart={ current=latestIndex; pending=latestEntries; travel=0f }, onDragEnd={
                                         onSettings(settings.copy(toolPaletteLayout=ToolPaletteLayout.encode(pending)))
-                                    },onDragCancel={}) { change,amount ->
+                                    },onDragCancel={ entries=ToolPaletteLayout.decode(settings.toolPaletteLayout) }) { change,amount ->
                                         change.consume();travel+=amount.y
                                         while(kotlin.math.abs(travel)>=30f) {
                                             val direction=if(travel>0) 1 else -1

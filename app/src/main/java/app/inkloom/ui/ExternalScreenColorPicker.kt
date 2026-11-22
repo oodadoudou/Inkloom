@@ -110,7 +110,7 @@ internal fun FrozenScreenColorPicker(frame: Bitmap, language: UiLanguage, onPick
             Row(Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(top = 12.dp)
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(6.dp)).padding(start = 14.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(language.text("Tap the colour to pick", "点按要选取的颜色"), style = MaterialTheme.typography.bodyMedium)
+                Text(language.text("Tap the color to pick", "点按要选取的颜色"), style = MaterialTheme.typography.bodyMedium)
                 TextButton(onCancel) { Text(language.text("Cancel", "取消")) }
             }
         }

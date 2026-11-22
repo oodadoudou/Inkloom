@@ -347,14 +347,18 @@ class DocumentAssetService(private val context: Context) {
         is PageBackground.Paper -> null
         is PageBackground.Image -> ImagePaperRenderer.render(background, targetWidth)
         is PageBackground.Pdf -> {
+            // PdfRenderer owns the descriptor once built; a bad file, page index or size must leak neither.
             val descriptor = ParcelFileDescriptor.open(File(background.assetPath), ParcelFileDescriptor.MODE_READ_ONLY)
-            val renderer = PdfRenderer(descriptor)
-            val page = renderer.openPage(background.pageIndex)
-            val height = (page.height * targetWidth.toFloat() / page.width).toInt().coerceAtLeast(1)
-            val bitmap = Bitmap.createBitmap(targetWidth, height, Bitmap.Config.ARGB_8888)
-            bitmap.eraseColor(Color.WHITE)
-            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            page.close(); renderer.close(); descriptor.close(); bitmap
+            val pdf = try { PdfRenderer(descriptor) } catch (failure: Exception) { descriptor.close(); throw failure }
+            pdf.use { renderer ->
+                renderer.openPage(background.pageIndex).use { page ->
+                    val height = (page.height * targetWidth.toFloat() / page.width).toInt().coerceAtLeast(1)
+                    Bitmap.createBitmap(targetWidth, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+                        bitmap.eraseColor(Color.WHITE)
+                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    }
+                }
+            }
         }
         }
         return cropBackground(rotateQuarterTurns(sourceBitmap, rotationQuarterTurns), crop, targetWidth)
@@ -1720,36 +1724,7 @@ class DocumentAssetService(private val context: Context) {
         return scaled
     }
 
-    private fun midpoint(start: StrokePoint, end: StrokePoint) = StrokePoint(
-        x = (start.x + end.x) / 2f, y = (start.y + end.y) / 2f,
-        pressure = (start.pressure + end.pressure) / 2f,
-        timeMs = (start.timeMs + end.timeMs) / 2L,
-        tilt = (start.tilt + end.tilt) / 2f,
-        orientation = (start.orientation + end.orientation) / 2f,
-        velocity = (start.velocity + end.velocity) / 2f,
-        pathDistance = (start.pathDistance + end.pathDistance) / 2f,
-        pigmentArgb = when {
-            start.pigmentArgb == null -> end.pigmentArgb
-            end.pigmentArgb == null -> start.pigmentArgb
-            else -> blendArgb(start.pigmentArgb, end.pigmentArgb, .5f)
-        },
-    )
-
-    private fun blendArgb(from: Long, to: Long, amount: Float): Long {
-        fun channel(shift: Int): Long {
-            val first = from shr shift and 0xFF
-            val second = to shr shift and 0xFF
-            return (first + (second - first) * amount.coerceIn(0f, 1f)).toLong().coerceIn(0, 255)
-        }
-        return (channel(24) shl 24) or (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
-    }
-
     private companion object {
-        const val DUAL_SCATTER_SEED = 0x27C4915DL
-        const val DUAL_ROTATION_SEED = 0x61B8D2A3L
-        const val DUAL_SEQUENCE_SEED = 0x35A71C9E
-        const val DUAL_GRAIN_SEED = 0x4D2A61C7
-        const val MAX_DYNAMIC_GRAIN_VARIANTS_PER_STROKE = 64
         const val PDF_TEXT_INDEX_VERSION = 1
         const val PDF_LINK_INDEX_VERSION = 1
         const val MAX_PDF_TEXT_CHARACTERS_PER_PAGE = 1_000_000

@@ -129,9 +129,9 @@ internal fun LayerMaskMenuItems(
 @Composable
 private fun LayerMaskThumbnailView(mask: LayerMask, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val snapshot = remember(mask.surface) {
-        mask.surface?.let { reference ->
-            runCatching { DocumentAssetService(context).loadMaskTileSurface(reference).snapshot() }.getOrNull()
+    val snapshot by produceState<app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot?>(null, mask.surface) {
+        value = mask.surface?.let { reference ->
+            withContext(Dispatchers.IO) { runCatching { DocumentAssetService(context).loadMaskTileSurface(reference).snapshot() }.getOrNull() }
         }
     }
     val expressed = remember(snapshot, mask.showGradients, mask.expressionThreshold) {
@@ -239,6 +239,7 @@ internal fun LayerPanel(
     onMergeDown: (String) -> Unit,
     onMerge: (RasterLayerMergeRequest) -> Unit,
     onDelete: (String) -> Unit,
+    onDeleteSelected: (String, Set<String>) -> Unit,
     onGroupSelected: (String, Set<String>) -> Unit,
     onUngroup: (String) -> Unit,
     onClear: (String) -> Unit = {},
@@ -296,6 +297,7 @@ internal fun LayerPanel(
             onClear = onClear,
             onMerge = onMerge,
             onDelete = onDelete,
+            onDeleteSelected = onDeleteSelected,
             onGroupSelected = onGroupSelected,
             onUngroup = onUngroup,
             modifier = modifier,
@@ -375,6 +377,7 @@ private fun PaintingLayerPanel(
     onMergeDown: (String) -> Unit,
     onMerge: (RasterLayerMergeRequest) -> Unit,
     onDelete: (String) -> Unit,
+    onDeleteSelected: (String, Set<String>) -> Unit,
     onGroupSelected: (String, Set<String>) -> Unit,
     onUngroup: (String) -> Unit,
     onClear: (String) -> Unit,
@@ -524,7 +527,7 @@ private fun PaintingLayerPanel(
                         onMerge(RasterLayerMergeRequest(RasterLayerMergeOperation.MERGE_SELECTED, activeLayerId, selectedLayerIds + activeLayerId))
                         onSecondarySelection(emptySet())
                     }, Modifier.size(32.dp)) { Icon(Icons.Outlined.MergeType, tr("Merge selected layers", "合并所选图层"), Modifier.size(17.dp)) }
-                    IconButton({ selectedLayerIds.mapNotNull { id -> page.layers.firstOrNull { it.id == id } }.filter { it.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER, LayerRole.ADJUSTMENT) }.forEach { onDelete(it.id) }; onSecondarySelection(emptySet()) }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Delete, tr("Delete selected custom layers", "删除所选自定义图层"), Modifier.size(17.dp)) }
+                    IconButton({ selectedLayerIds.mapNotNull { id -> page.layers.firstOrNull { it.id == id } }.filter { it.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER, LayerRole.ADJUSTMENT) }.map { it.id }.toSet().takeIf { it.isNotEmpty() }?.let { ids -> onDeleteSelected(ids.first(), ids) }; onSecondarySelection(emptySet()) }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Delete, tr("Delete selected custom layers", "删除所选自定义图层"), Modifier.size(17.dp)) }
                     IconButton({ onSecondarySelection(emptySet()) }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Close, tr("Exit layer selection", "退出图层多选"), Modifier.size(17.dp)) }
                 }
             }
@@ -718,7 +721,7 @@ private fun PaintingLayerPanel(
                                     app.inkloom.engine.v5.surface.MaskComposeMode.REPLACE to tr("Create selection", "创建选区"),
                                     app.inkloom.engine.v5.surface.MaskComposeMode.ADD to tr("Add to selection", "添加到选区"),
                                     app.inkloom.engine.v5.surface.MaskComposeMode.SUBTRACT to tr("Subtract from selection", "从选区减去"),
-                                    app.inkloom.engine.v5.surface.MaskComposeMode.INTERSECT to tr("Intersect selection", "与选区相交"),
+                                    app.inkloom.engine.v5.surface.MaskComposeMode.INTERSECT to tr("Intersect selection", "与选区交集"),
                                 ).forEach { (mode, label) ->
                                     StudioMenuItem(text = { Text(label) },
                                         enabled = mode == app.inkloom.engine.v5.surface.MaskComposeMode.REPLACE || hasSelection,

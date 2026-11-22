@@ -60,7 +60,7 @@ internal fun VectorLinesDialog(view: InkCanvasView, language: UiLanguage, drawin
             StudioNote(tr("${chosen.size} of ${content?.strokes?.size ?: 0} lines", "已选 ${chosen.size} / ${content?.strokes?.size ?: 0} 条线"))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 StudioButton(tr("Delete", "删除"), { change { null } }, enabled = chosen.isNotEmpty())
-                StudioButton(tr("Use drawing colour", "使用描绘色"), { change { it.copy(colorArgb = drawingColor) } }, enabled = chosen.isNotEmpty())
+                StudioButton(tr("Use drawing color", "使用描绘色"), { change { it.copy(colorArgb = drawingColor) } }, enabled = chosen.isNotEmpty())
                 StudioButton(tr("Copy as SVG", "复制为 SVG"), {
                     val svg = VectorGeometry.svg(content?.strokes.orEmpty().filter { it.id in chosen }, pageWidth, pageHeight)
                     context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("SVG", svg))

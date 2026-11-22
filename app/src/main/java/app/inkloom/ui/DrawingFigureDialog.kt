@@ -122,7 +122,7 @@ internal fun DrawingFigureDialog(initial: DrawingFigure, editing: Boolean, pageA
             StudioSection(tr("Drawing", "绘制"))
             StudioSegmented(listOf(tr("Shaded", "明暗"), tr("Outline", "轮廓线"), tr("Silhouette", "剪影")), figure.style.ordinal, { figure = figure.copy(style = FigureStyle.entries[it]) })
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                StudioButton(tr("Use drawing colour", "使用描绘色"), {
+                StudioButton(tr("Use drawing color", "使用描绘色"), {
                     figure = if (figure.style == FigureStyle.OUTLINE) figure.copy(lineArgb = drawingColor or 0xFF000000.toInt()) else figure.copy(colorArgb = drawingColor or 0xFF000000.toInt())
                 })
             }

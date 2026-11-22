@@ -104,14 +104,16 @@ data class LayerTreeEdit(
                     nextSelection = mapping.getValue(targetId)
                 }
                 LayerTreeAction.DELETE -> {
-                    if (target.role !in setOf(LayerRole.CUSTOM, LayerRole.FOLDER, LayerRole.ADJUSTMENT)) reject(LayerTreeRejection.BACKGROUND)
-                    val subtree = descendants(targetId)
+                    // Every selected layer goes in one step, as Clip Studio Paint and Photoshop delete a multi-selection.
+                    val roots = original.filter { it.id == targetId || it.id in selectedIds }
+                    if (roots.any { it.role !in setOf(LayerRole.CUSTOM, LayerRole.FOLDER, LayerRole.ADJUSTMENT) }) reject(LayerTreeRejection.BACKGROUND)
+                    val subtree = roots.flatMapTo(hashSetOf()) { descendants(it.id) }
                     if (original.filter { it.id in subtree }.any { it.role !in setOf(LayerRole.CUSTOM, LayerRole.FOLDER, LayerRole.ADJUSTMENT) })
                         reject(LayerTreeRejection.PROTECTED_CHILD)
                     if (original.filter { it.id in subtree }.any { LayerHierarchy.effectiveLocked(original, it) }) reject(LayerTreeRejection.LOCKED)
                     afterLayers = original.filterNot { it.id in subtree }
                     afterElements = page.elements.filterNot { it.layerId in subtree }
-                    nextSelection = target.parentId ?: LayerIds.INK
+                    nextSelection = target.parentId?.takeIf { it !in subtree } ?: LayerIds.INK
                 }
             }
             if (LayerGroupPolicy.rejection(afterLayers) != null) reject(LayerTreeRejection.CLIPPING)

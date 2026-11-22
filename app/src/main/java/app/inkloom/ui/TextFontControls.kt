@@ -1,5 +1,6 @@
 package app.inkloom.ui
 
+import app.inkloom.document.readBoundedBytes
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -49,7 +50,7 @@ internal fun TextFontField(reference: String?, language: UiLanguage, onReference
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val bytes = context.contentResolver.openInputStream(uri)!!.use { input ->
-                        input.readBytes().also { require(it.size <= FontLibrary.MAX_BYTES) { "This font is too large" } }
+                        input.readBoundedBytes(FontLibrary.MAX_BYTES, "This font is too large")
                     }
                     library.add(uri.lastPathSegment.orEmpty().substringAfterLast('/').substringBeforeLast('.'), bytes).also { font ->
                         // Android must be able to draw with it, not only read its tables.
@@ -66,7 +67,7 @@ internal fun TextFontField(reference: String?, language: UiLanguage, onReference
             }.onFailure { message = tr("This font could not be added: ${it.message}", "无法添加此字体：${it.message}") }
         }
     }
-    val imported = library.find(reference)
+    val imported = remember(reference, fonts) { library.find(reference) }
     val missing = reference != null && reference.startsWith(TextFonts.IMPORTED) && imported == null
     val current = when {
         reference == null -> systemFontName(null, language)

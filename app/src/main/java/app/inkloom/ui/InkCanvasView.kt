@@ -540,8 +540,6 @@ class InkCanvasView(context: Context) : View(context) {
         color = Color.argb(28, 24, 119, 242)
     }
     private val liveSelectionOriginPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private var lastX = 0f
-    private var lastY = 0f
     private var navigationX = 0f
     private var navigationY = 0f
     private var navigationDownX = 0f
@@ -681,7 +679,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var activeSpecialRulerConstraint: SpecialRulerConstraint? = null
     private val continuousPlotRunnable = object : Runnable {
         override fun run() {
-            if (!continuousPlotActive || !continuousPlotEnabled() || activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) return
+            if (!continuousPlotActive || !continuousPlotEnabled() || activeTool !in INK_TOOLS) return
             val surface = rasterTileSurfaceFor(activeLayerId)
             if (surface != null && v5StrokeController.isActive) {
                 val now = SystemClock.uptimeMillis() * 1_000_000L
@@ -1220,26 +1218,7 @@ class InkCanvasView(context: Context) : View(context) {
             // Android continues to deliver stylus input. Do not discard that valid stroke stream.
             stopContinuousPlot()
             laserTrail.clear()
-            rulerGestureStart?.let { rulerGuide = it }
-            rulerGestureMode = null
-            rulerGestureStart = null
-            symmetryGuideGestureStart?.let { symmetryGuide = it }
-            symmetryGuideGesture = null
-            symmetryGuideGestureStart = null
-            canvasGuideGestureStart?.let { canvasGuideState = it }
-            canvasGuideGestureMode = null
-            canvasGuideGestureStart = null
-            activeCanvasSnapConstraint = null
-            perspectiveGuideGestureStart?.let { perspectiveGuideState = it }
-            perspectiveGuideGesturePoint = null
-            perspectiveGuideGestureStart = null
-            activePerspectiveSnapConstraint = null
-            specialRulerGestureStart?.let { specialRulerState = it }
-            specialRulerGestureHandle = null
-            specialRulerGestureStart = null
-            activeSpecialRulerConstraint = null
-            activeShapeRulerSnap = null
-            rulerSnapDecided = false
+            abandonGuideGestures()
             ctrlModifierHeld = false
             altModifierHeld = false
             singleFingerDoubleTapUndoGesture.cancel()
@@ -1590,8 +1569,8 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun beginLayerMaskGesture(event: MotionEvent, pointerIndex: Int, x: Float, y: Float): Boolean {
         val layerId = editingLayerMaskId ?: return false
-        if (activeTool in setOf(EditorTool.EYEDROPPER, EditorTool.LASER)) return false
-        if (activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) {
+        if ((activeTool == EditorTool.EYEDROPPER || activeTool == EditorTool.LASER)) return false
+        if (activeTool !in PAINT_TOOLS) {
             onPaintCapabilityRejected(if (feedbackLanguage == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE)
                 "蒙版编辑请使用画笔或橡皮；点击图层缩略图可返回内容编辑" else "Use a brush or eraser on the mask. Select the layer thumbnail to edit its contents.")
             activeTool = null
@@ -1681,6 +1660,12 @@ class InkCanvasView(context: Context) : View(context) {
             v5MainHandler.post { drainMaskCompletions() }
         }
         if (accepted) pendingMaskPublications++
+        else {
+            // Nothing will publish this contact, so release what DOWN reserved for it.
+            gesture.cancelled = true
+            gesture.projection.cancel()
+            maskBrushContacts.remove(gesture.coverage.surfaceId)
+        }
         layerMaskGesture = null
     }
 
@@ -1791,7 +1776,7 @@ class InkCanvasView(context: Context) : View(context) {
         val stylus = toolType == MotionEvent.TOOL_TYPE_STYLUS || toolType == MotionEvent.TOOL_TYPE_ERASER
         if (stylus) dispatchOrDeferStylusButtonTransitions(updateStylusButtonState(event.buttonState))
         val cursorTool = if (toolType == MotionEvent.TOOL_TYPE_ERASER) EditorTool.ERASER else resolveTool(event, toolType)
-        val drawableTool = ToolCursorGlyph.code(cursorTool) != 0 || cursorTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)
+        val drawableTool = ToolCursorGlyph.code(cursorTool) != 0 || cursorTool in BRUSH_CURSOR_TOOLS
         hoverToolCode = ToolCursorGlyph.code(cursorTool)
         when (event.actionMasked) {
             MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
@@ -1822,7 +1807,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     override fun onResolvePointerIcon(event: MotionEvent, pointerIndex: Int): PointerIcon? {
         val index = pointerIndex.coerceIn(0, event.pointerCount - 1)
-        return if (event.getToolType(index) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)) {
+        return if (event.getToolType(index) in STYLUS_TOOL_TYPES) {
             PointerIcon.getSystemIcon(context, PointerIcon.TYPE_NULL)
         } else {
             super.onResolvePointerIcon(event, pointerIndex)
@@ -2466,8 +2451,6 @@ class InkCanvasView(context: Context) : View(context) {
         val pixelFormat: PixelTileFormat,
     )
 
-    private fun finishActiveStrokePreview() = Unit
-
     private fun releaseActiveStrokePreview() {
         resetDrawAndHold()
         v5StrokeController.cancel()
@@ -2534,9 +2517,17 @@ class InkCanvasView(context: Context) : View(context) {
         notifyHoverCursorStyleChanged()
     }
 
+    /** The one tip request for a program: warm-up, strokes and the hover cursor share a cache entry. */
+    private fun programTipRequest(program: CompiledBrushProgramV5, path: String) = BrushTipMaskRequest(
+        path,
+        program.tip.hardness.coerceIn(0f, 1f),
+        alphaThresholdEnabled = program.tip.tipTexture?.alphaThreshold != null,
+        alphaThreshold = program.tip.tipTexture?.alphaThreshold ?: 0f,
+    )
+
     private fun prepareCompiledBrushAssets(program: CompiledBrushProgramV5) {
         program.tip.tipTexture?.assetPaths.orEmpty().forEach { path ->
-            v5BrushTipMasks.resolve(BrushTipMaskRequest(path, program.tip.hardness.coerceIn(0f, 1f)))
+            v5BrushTipMasks.resolve(programTipRequest(program, path))
         }
         program.textureGrain?.let { grain ->
             v5BrushTipMasks.resolveGrain(
@@ -2575,7 +2566,7 @@ class InkCanvasView(context: Context) : View(context) {
             layerPickContact = false
             return false
         }
-        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE, EditorTool.RULER, EditorTool.FRAME)) return false
+        if (tool !in CANVAS_CONTACT_TOOLS) return false
         val pointerIndex = event.stylusPointerIndex(activeStylusPointerId).takeIf { it >= 0 }
             ?: event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val eventToolType = event.getToolType(pointerIndex)
@@ -2607,7 +2598,7 @@ class InkCanvasView(context: Context) : View(context) {
             viewportGestureActive = false
             externalViewportGestureContact = false
             pageContactRejected = false
-            if (isStylus && tool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)) {
+            if (isStylus && tool in BRUSH_CURSOR_TOOLS) {
                 requestUnbufferedDispatch(event)
             }
         }
@@ -2618,7 +2609,7 @@ class InkCanvasView(context: Context) : View(context) {
         val pressedButtonActions = buttonTransitions.filter { it.phase == ShortcutPhase.PRESS }.map(StylusButtonTransition::action)
         val pressedCommands = pressedButtonActions.filter(StylusButtonAction::isCommand).distinct()
         val stylusButtonAction = if (isStylus) resolveStylusButtonAction(event.buttonState) else StylusButtonAction.NONE
-        val pressedContactSwitch = pressedButtonActions.any { it in setOf(StylusButtonAction.ERASER, StylusButtonAction.LASSO, StylusButtonAction.EYEDROPPER) }
+        val pressedContactSwitch = pressedButtonActions.any { it in CONTACT_SWITCH_ACTIONS }
         if ((pressedCommands.isNotEmpty() || pressedContactSwitch) && activeTool != null) {
             cancelActiveGestureForNavigation()
             if (pressedContactSwitch) stylusCommandConsumesContact = true
@@ -2696,21 +2687,7 @@ class InkCanvasView(context: Context) : View(context) {
             if (!viewportGestureActive) cancelActiveGestureForNavigation()
             viewportGestureActive = true
             // Canvas navigation always outranks one-finger ruler/guide manipulation.
-            rulerGestureStart?.let { rulerGuide = it }
-            rulerGestureMode = null
-            rulerGestureStart = null
-            symmetryGuideGestureStart?.let { symmetryGuide = it }
-            symmetryGuideGesture = null
-            symmetryGuideGestureStart = null
-            canvasGuideGestureStart?.let { canvasGuideState = it }
-            canvasGuideGestureMode = null
-            canvasGuideGestureStart = null
-            perspectiveGuideGestureStart?.let { perspectiveGuideState = it }
-            perspectiveGuideGesturePoint = null
-            perspectiveGuideGestureStart = null
-            specialRulerGestureStart?.let { specialRulerState = it }
-            specialRulerGestureHandle = null
-            specialRulerGestureStart = null
+            abandonGuideGestures()
         }
         if (!viewportGestureActive && handleGradientGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         if (!viewportGestureActive && handleSymmetryGuideGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
@@ -2936,7 +2913,7 @@ class InkCanvasView(context: Context) : View(context) {
                 parent?.requestDisallowInterceptTouchEvent(true)
                 activeTool = resolveTool(event, eventToolType)
                 activeInputWasStylus = isStylus
-                if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) {
+                if (activeTool in PAINT_TOOLS) {
                     currentStrokeId = java.util.UUID.randomUUID().toString()
                 }
                 // Freeze CSP's screen-size conversion at contact start. A viewport update cannot
@@ -2945,14 +2922,14 @@ class InkCanvasView(context: Context) : View(context) {
                 gestureEraserSize = documentEraserSize()
                 val motionCtrlPressed = event.metaState and KeyEvent.META_CTRL_ON != 0
                 val motionAltPressed = event.metaState and KeyEvent.META_ALT_ON != 0
-                if ((motionCtrlPressed || ctrlModifierHeld) && (motionAltPressed || altModifierHeld) && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) {
+                if ((motionCtrlPressed || ctrlModifierHeld) && (motionAltPressed || altModifierHeld) && activeTool in PAINT_TOOLS) {
                     beginBrushSizeDrag(inputPoint.first, inputPoint.second, if (activeTool == EditorTool.ERASER) eraserWidth else baseWidth)
                     return true
                 }
                 if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER,
                         EditorTool.SHAPE, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE,
                         EditorTool.LIQUIFY, EditorTool.CORRECT_LINE) &&
-                    rejectLayerContentEdit(allowVector = activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER))) {
+                    rejectLayerContentEdit(allowVector = activeTool in PAINT_TOOLS)) {
                     activeTool = null
                     parent?.requestDisallowInterceptTouchEvent(false)
                     return true
@@ -3003,7 +2980,6 @@ class InkCanvasView(context: Context) : View(context) {
                         lassoLastContactWasStylus = isStylus
                     } else clearLassoInput()
                     appendSelectionPoint(normalizedX, normalizedY)
-                    lastX = normalizedX; lastY = normalizedY
                     invalidate(); return true
                 }
                 if (activeTool == EditorTool.SHAPE) {
@@ -3156,47 +3132,42 @@ class InkCanvasView(context: Context) : View(context) {
                 if (shapeHandleContact) {
                     shapeHandleContact = false
                     handleShapeEditor(MotionEvent.ACTION_UP, inputPoint.first, inputPoint.second, canceled = contactCanceled)
-                    activeTool = null
+                    endContact()
                     return true
                 }
                 if (activeTool == EditorTool.FRAME) {
                     if (contactCanceled) frameTool.cancel()
                     else frameTool.up(inputPoint.first, inputPoint.second, width.toFloat(), height.toFloat(), rulerScale())
-                    activeTool = null
+                    endContact()
                     return true
                 }
                 if (activeTool == EditorTool.RULER) {
                     if (contactCanceled) rulerTool.cancel()
                     else rulerTool.up(inputPoint.first, inputPoint.second, width.toFloat(), height.toFloat(), rulerScale(), event.eventTime)
-                    activeTool = null
+                    endContact()
                     return true
                 }
                 if (layerMaskGesture != null) {
-                    if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
-                        cancelLayerMaskGesture()
-                    } else {
-                        finishLayerMaskGesture(event, pointerIndex, normalizedX, normalizedY)
-                    }
-                    activeTool = null
+                    if (contactCanceled) cancelLayerMaskGesture()
+                    else finishLayerMaskGesture(event, pointerIndex, normalizedX, normalizedY)
                     flushDeferredStylusButtonReleases()
-                    parent?.requestDisallowInterceptTouchEvent(false)
+                    endContact()
                     return true
                 }
                 stopContinuousPlot()
                 if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
-                if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
+                if (contactCanceled) {
                     resetDrawAndHold()
                     v5StrokeController.cancel()
                     v5RejectedContact = false
                     StrokeTrace.abandon(currentStrokeId)
-                    finishActiveStrokePreview()
                     pendingMaterialBarrierSequence = null
                     if (activeTool == EditorTool.LASER) laserTrail.cancelActive()
                     if (activeTool == EditorTool.FILL) cancelFillGesture()
                     if (activeTool == EditorTool.GRADIENT) { gradientStart = null; gradientEnd = null }
                     if (activeTool == EditorTool.SMUDGE) cancelSmudgeGesture()
                     if (activeTool == EditorTool.LIQUIFY) cancelLiquifyGesture()
-                    if (activeTool in setOf(EditorTool.SMUDGE, EditorTool.LIQUIFY)) {
+                    if ((activeTool == EditorTool.SMUDGE || activeTool == EditorTool.LIQUIFY)) {
                         v5PaintFinishedWithDamageInvalidation = true
                     }
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
@@ -3277,15 +3248,7 @@ class InkCanvasView(context: Context) : View(context) {
                     laserTrail.append(normalizedX, normalizedY, event.eventTime)
                     laserTrail.end()
                 }
-                parent?.requestDisallowInterceptTouchEvent(false)
-                activeCanvasSnapConstraint = null
-                activePerspectiveSnapConstraint = null
-                activeSpecialRulerConstraint = null
-                activeShapeRulerSnap = null
-                rulerSnapDecided = false
-                if (deferredEraserReleaseStrokeId == null) flushDeferredStylusButtonReleases()
-                activeTool = null
-                activeInputWasStylus = false
+                endContact()
             }
         }
         if (isStylus && event.actionMasked == MotionEvent.ACTION_CANCEL) {
@@ -3465,7 +3428,7 @@ class InkCanvasView(context: Context) : View(context) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP -> {
                 val cursorTool = if (event.getToolType(pointerIndex) == MotionEvent.TOOL_TYPE_ERASER) EditorTool.ERASER else resolveTool(event, event.getToolType(pointerIndex))
                 hoverToolCode = ToolCursorGlyph.code(cursorTool)
-                if (hoverToolCode == 0 && cursorTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)) return
+                if (hoverToolCode == 0 && cursorTool !in BRUSH_CURSOR_TOOLS) return
                 val point = canvasPoint(event, pointerIndex)
                 updateHoverCursorPacket(
                     x = point.first,
@@ -3474,7 +3437,7 @@ class InkCanvasView(context: Context) : View(context) {
                     tilt = event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex),
                     orientationRadians = event.getOrientation(pointerIndex),
                     usesEraser = cursorTool == EditorTool.ERASER,
-                    resetDirection = event.actionMasked in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN) || !hoverCursorVisible,
+                    resetDirection = (event.actionMasked == MotionEvent.ACTION_DOWN || event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) || !hoverCursorVisible,
                 )
                 invalidateInternalHoverCursor()
             }
@@ -3510,7 +3473,7 @@ class InkCanvasView(context: Context) : View(context) {
             val authoredDiameter = if (cursorProgram.output == BrushOutputV5.ERASE) documentEraserSize() else documentBrushSize()
             val diameter = authoredDiameter.coerceIn(.01f, 800f) * scale * pressure * tilt
             val mask = cursorProgram.tip.tipTexture?.assetPaths?.firstOrNull()?.let { path ->
-                v5BrushTipMasks.resolve(BrushTipMaskRequest(path, cursorProgram.tip.hardness.coerceIn(0f, 1f)))
+                v5BrushTipMasks.resolve(programTipRequest(cursorProgram, path))
             }
             val stamped = mask != null || cursorProgram.backend == RenderBackendV5.ASSET_STAMP
             val footprint = if (stamped) {
@@ -3637,11 +3600,11 @@ class InkCanvasView(context: Context) : View(context) {
     private fun MotionEvent.stylusPointerIndex(preferredPointerId: Int = MotionEvent.INVALID_POINTER_ID): Int {
         if (preferredPointerId != MotionEvent.INVALID_POINTER_ID) {
             val preferred = findPointerIndex(preferredPointerId)
-            if (preferred >= 0 && getToolType(preferred) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)) return preferred
+            if (preferred >= 0 && getToolType(preferred) in STYLUS_TOOL_TYPES) return preferred
         }
         val action = actionIndex.coerceIn(0, pointerCount - 1)
-        if (getToolType(action) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)) return action
-        return (0 until pointerCount).firstOrNull { getToolType(it) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER) } ?: -1
+        if (getToolType(action) in STYLUS_TOOL_TYPES) return action
+        return (0 until pointerCount).firstOrNull { getToolType(it) in STYLUS_TOOL_TYPES } ?: -1
     }
 
     private fun canvasPoint(event: MotionEvent, pointerIndex: Int = event.actionIndex.coerceIn(0, event.pointerCount - 1)): Pair<Float, Float> {
@@ -3650,6 +3613,53 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun historicalCanvasPoint(event: MotionEvent, pointerIndex: Int, position: Int): Pair<Float, Float> {
         return event.getHistoricalX(pointerIndex, position) to event.getHistoricalY(pointerIndex, position)
+    }
+
+    /**
+     * Puts every guide, ruler or gradient handle being dragged back where it was, and forgets the
+     * current stroke's snap choices. Focus loss, a second finger and a cancelled gesture all end
+     * a drag the same way.
+     */
+    private fun abandonGuideGestures() {
+        rulerGestureStart?.let { rulerGuide = it }
+        rulerGestureMode = null
+        rulerGestureStart = null
+        symmetryGuideGestureStart?.let { symmetryGuide = it }
+        symmetryGuideGesture = null
+        symmetryGuideGestureStart = null
+        canvasGuideGestureStart?.let { canvasGuideState = it }
+        canvasGuideGestureMode = null
+        canvasGuideGestureStart = null
+        perspectiveGuideGestureStart?.let { perspectiveGuideState = it }
+        perspectiveGuideGesturePoint = null
+        perspectiveGuideGestureStart = null
+        specialRulerGestureStart?.let { specialRulerState = it }
+        specialRulerGestureHandle = null
+        specialRulerGestureStart = null
+        if (gradientGestureHandle >= 0) {
+            gradientGestureStart?.let { editableGradient = it }
+            gradientGestureHandle = -1
+            gradientGestureStart = null
+        }
+        forgetStrokeSnaps()
+    }
+
+    /** A stroke decides its ruler or guide snap once; the next contact decides afresh. */
+    private fun forgetStrokeSnaps() {
+        activeCanvasSnapConstraint = null
+        activePerspectiveSnapConstraint = null
+        activeSpecialRulerConstraint = null
+        activeShapeRulerSnap = null
+        rulerSnapDecided = false
+    }
+
+    /** The shared end of every contact (UP or CANCEL), whichever tool handled it. */
+    private fun endContact() {
+        parent?.requestDisallowInterceptTouchEvent(false)
+        forgetStrokeSnaps()
+        if (deferredEraserReleaseStrokeId == null) flushDeferredStylusButtonReleases()
+        activeTool = null
+        activeInputWasStylus = false
     }
 
     private fun cancelActiveGestureForNavigation() {
@@ -3670,39 +3680,14 @@ class InkCanvasView(context: Context) : View(context) {
         v5StrokeController.cancel()
         activeV5Execution = null
         v5RejectedContact = false
-        finishActiveStrokePreview()
         pendingMaterialBarrierSequence = null
         laserTrail.cancelActive()
         finishAutomaticSelection(false)
         cancelFillGesture()
         cancelSmudgeGesture()
         cancelLiquifyGesture()
-        rulerGestureStart?.let { rulerGuide = it }
-        rulerGestureMode = null
-        rulerGestureStart = null
-        symmetryGuideGestureStart?.let { symmetryGuide = it }
-        symmetryGuideGesture = null
-        symmetryGuideGestureStart = null
-        canvasGuideGestureStart?.let { canvasGuideState = it }
-        canvasGuideGestureMode = null
-        canvasGuideGestureStart = null
-        activeCanvasSnapConstraint = null
+        abandonGuideGestures()
         v5GestureStartNormalized = null
-        perspectiveGuideGestureStart?.let { perspectiveGuideState = it }
-        perspectiveGuideGesturePoint = null
-        perspectiveGuideGestureStart = null
-        activePerspectiveSnapConstraint = null
-        specialRulerGestureStart?.let { specialRulerState = it }
-        specialRulerGestureHandle = null
-        specialRulerGestureStart = null
-        activeSpecialRulerConstraint = null
-        activeShapeRulerSnap = null
-        rulerSnapDecided = false
-        if (gradientGestureHandle >= 0) {
-            gradientGestureStart?.let { editableGradient = it }
-            gradientGestureHandle = -1
-            gradientGestureStart = null
-        }
         shapeStart = null
         shapeEnd = null
         gradientStart = null
@@ -4269,7 +4254,7 @@ class InkCanvasView(context: Context) : View(context) {
             }
             activeAxis?.let { (axis, value) -> onMotionInputDiagnostic(event.toMotionDiagnostic(axis.axisCode, value, 0, null)) }
         }
-        if (!isStylus && event.actionMasked in setOf(MotionEvent.ACTION_BUTTON_PRESS, MotionEvent.ACTION_BUTTON_RELEASE)) {
+        if (!isStylus && (event.actionMasked == MotionEvent.ACTION_BUTTON_PRESS || event.actionMasked == MotionEvent.ACTION_BUTTON_RELEASE)) {
             val phase = if (event.actionMasked == MotionEvent.ACTION_BUTTON_PRESS) ShortcutPhase.PRESS else ShortcutPhase.RELEASE
             val deviceDescriptor = event.device?.descriptor
             val actionButton = when {
@@ -4761,7 +4746,7 @@ class InkCanvasView(context: Context) : View(context) {
     internal fun proxyContactUsesPageCoordinates(event: MotionEvent): Boolean {
         if (forceNavigation || viewportGestureActive) return false
         val stylusIndex = (0 until event.pointerCount).firstOrNull { index ->
-            event.getToolType(index) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)
+            event.getToolType(index) in STYLUS_TOOL_TYPES
         }
         if (stylusIndex != null) {
             return resolveStylusButtonAction(event.buttonState) != StylusButtonAction.HAND
@@ -5016,13 +5001,14 @@ class InkCanvasView(context: Context) : View(context) {
         selectionMaskForRasterTools()?.let { selection ->
             RasterSelectionMask(selection, bitmapWidth, bitmapHeight).apply(drawnMask, Rect(left, top, right, bottom))
         }
-        if (NativeRasterOps.alphaBounds(drawnMask) == null) {
+        val drawnBounds = NativeRasterOps.alphaBounds(drawnMask)
+        if (drawnBounds == null) {
             drawnMask.recycle()
             fillGesturePoints.clear()
             invalidate()
             return
         }
-        NativeRasterOps.alphaBounds(drawnMask)?.let { bounds ->
+        drawnBounds.let { bounds ->
             val cropped = Bitmap.createBitmap(drawnMask, bounds.left, bounds.top, bounds.width(), bounds.height())
             try {
                 publishBoundedFillMask(
@@ -5659,11 +5645,18 @@ class InkCanvasView(context: Context) : View(context) {
         val originalSelection = rasterSelectionTransformOriginalMask
         val transformedSelection = rasterSelectionTransformPreviewMask
         val maskPreviews = layerMaskTransformPreviews.toMap()
+        val maskOriginals = layerMaskTransformOriginals.toMap()
+        // Undo and redo replay this transform with the offsets it was finished with, not with
+        // whatever a later transform has put in the shared map.
+        val offsets = selectionLayerOffsets.toMap()
         layerMaskTransformOriginals.clear()
         layerMaskTransformPreviews.clear()
         val mixed = mixedSelectionDrafts.toMap()
         mixedSelectionDrafts.clear()
         rasterSelectionTransformOriginalMask = null
+        rasterSelectionTransformPreviewMask = null
+        rasterSelectionTransformWidth = 0
+        rasterSelectionTransformHeight = 0
         val results = sessions.mapValues { (_, session) -> session.commit() ?: run { session.close(); null } }
         val activeResult = results[activeLayerId]
         rebuildSelectionDerivedState()
@@ -5674,7 +5667,7 @@ class InkCanvasView(context: Context) : View(context) {
         val vectorEdits = vectorSources.mapNotNull { (layerId, source) ->
             val result = results[layerId] ?: return@mapNotNull null
             val surface = rasterTileSurfaceFor(layerId) ?: return@mapNotNull null
-            val offset = selectionLayerOffsets[layerId] ?: (0f to 0f)
+            val offset = offsets[layerId] ?: (0f to 0f)
             val transform = affine?.copy(translateX = affine.translateX + offset.first, translateY = affine.translateY + offset.second) ?: finalTransform
             val (before, selected) = source
             val frame = vectorFrame(surface)
@@ -5697,7 +5690,7 @@ class InkCanvasView(context: Context) : View(context) {
                 return
             }
             val draft = mixed[layerId]
-            val offset = selectionLayerOffsets[layerId] ?: (0f to 0f)
+            val offset = offsets[layerId] ?: (0f to 0f)
             val layerAffine = affine?.copy(translateX = affine.translateX + offset.first, translateY = affine.translateY + offset.second)
             val replacement = if (draft != null && useAfter) draft.transformed(layerAffine ?: finalTransform, surface.logicalWidth,
                 surface.logicalHeight, pageModelWidth, pageModelHeight) else draft?.source?.elements
@@ -5707,7 +5700,11 @@ class InkCanvasView(context: Context) : View(context) {
         }
         results.keys.forEach { layerId -> mixedElementOverrides.remove(layerId); publish(layerId, true) }
         val maskHistories = maskPreviews.mapNotNull { (layerId, snapshot) ->
-            onLayerMaskStrokeCommitted?.invoke(layerId, snapshot)
+            // A mask that could not be saved goes back to how it was, as a mask stroke does.
+            onLayerMaskStrokeCommitted?.invoke(layerId, snapshot) ?: run {
+                maskOriginals[layerId]?.let { original -> layerMaskSurfaces = layerMaskSurfaces + (layerId to original) }
+                null
+            }
         }
         invalidateLayerComposition(); invalidate()
         // Rulers linked to their layer move with it when the whole layer is transformed.
@@ -5743,7 +5740,6 @@ class InkCanvasView(context: Context) : View(context) {
                 vectorEdits.values.forEach { it.fixup?.close() }
                 mixed.values.forEach(MixedSelectionDraft::close)
                 maskHistories.forEach { it.dispose() }
-                selectionLayerOffsets.clear()
             },
         )
         return true
@@ -5871,7 +5867,7 @@ class InkCanvasView(context: Context) : View(context) {
         private set
     private val regularizeHeldStroke = Runnable {
         if (drawAndHoldEnabled && v5StrokeController.isActive &&
-            activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
+            activeTool in INK_TOOLS) {
             app.inkloom.engine.v5.runtime.StrokeRegularizer.fit(holdSamples)?.let { fitted ->
                 if (replaceHeldStroke(fitted.samples)) {
                     regularizedStroke = fitted.samples
@@ -6358,7 +6354,7 @@ class InkCanvasView(context: Context) : View(context) {
         maskCoverageSurface: PixelTileSurface? = null,
     ): V5PaintConfiguration? {
         val active = requestedTool ?: return null
-        if (active !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) return null
+        if (active !in PAINT_TOOLS) return null
         val surface = maskCoverageSurface ?: rasterTileSurfaceFor(activeLayerId) ?: return null
         val maskCoverage = maskCoverageSurface != null
         val inkColor = if (maskCoverage) Color.WHITE else this.inkColor
@@ -6444,12 +6440,7 @@ class InkCanvasView(context: Context) : View(context) {
             if (program.backend in setOf(RenderBackendV5.ASSET_STAMP, RenderBackendV5.PROCEDURAL_STAMP) || program.dual != null) {
                     val masks = if (tipAssets.isNotEmpty()) tipAssets.map { tipAsset ->
                         v5BrushTipMasks.resolve(
-                            BrushTipMaskRequest(
-                                tipAsset,
-                                program.tip.hardness.coerceIn(0f, 1f),
-                                alphaThresholdEnabled = program.tip.tipTexture?.alphaThreshold != null,
-                                alphaThreshold = program.tip.tipTexture?.alphaThreshold ?: 0f,
-                            ),
+                            programTipRequest(program, tipAsset),
                     ) ?: return null
                 } else listOf(
                     when (program.tip.tipTexture?.proceduralKind ?: ProceduralTipKind.ROUND) {
@@ -6686,12 +6677,7 @@ class InkCanvasView(context: Context) : View(context) {
                     val authored = program.wetMix ?: return null
                     val wetTips = tipAssets.map { tipAsset ->
                         v5BrushTipMasks.resolve(
-                            BrushTipMaskRequest(
-                                tipAsset,
-                                program.tip.hardness.coerceIn(0f, 1f),
-                                alphaThresholdEnabled = program.tip.tipTexture?.alphaThreshold != null,
-                                alphaThreshold = program.tip.tipTexture?.alphaThreshold ?: 0f,
-                            ),
+                            programTipRequest(program, tipAsset),
                         ) ?: return null
                     }
                     val (wetGrain, wetGrainOffset) = resolveTextureGrain(program.textureGrain, program.renderSeed)
@@ -6746,38 +6732,8 @@ class InkCanvasView(context: Context) : View(context) {
                         executionIdentity,
                     )
                 }
-                RenderBackendV5.ASSET_STAMP -> {
-                    val stamp = StampBrushDefinition(
-                        kind = if (erase) PaintOpKind.ERASER else PaintOpKind.DECORATION,
-                        diameterPixels = diameterPixels,
-                        colorArgb = if (erase) Color.TRANSPARENT else inkColor,
-                        opacity = inkOpacity.coerceIn(0f, 1f),
-                        flow = program.deposition.flow.coerceIn(0f, 1f),
-                        spacingRatio = program.spacingPolicy?.value?.coerceIn(.01f, 2f) ?: .12f,
-                        tips = listOf(BrushTipMask.solidCircle(96, program.tip.hardness.coerceIn(0f, 1f))),
-                        sizePressure = sizeResponse,
-                        sizeTilt = sizeTiltResponse,
-                        opacityPressure = opacityResponse,
-                        flowPressure = flowResponse,
-                        roundness = program.tip.aspect.coerceIn(.01f, 1f),
-                        rotationRadians = Math.toRadians(program.tip.rotationDegrees.toDouble()).toFloat(),
-                        followStrokeDirection = stampProgram?.followStrokeDirection == true,
-                        followStylusOrientation = stampProgram?.followStylusOrientation == true,
-                        renderSeed = program.renderSeed,
-                        particlesPerPlot = stampProgram?.particlesPerPlot ?: 1,
-                        randomRotationRadians = Math.toRadians((stampProgram?.randomRotationDegrees ?: 0f).toDouble()).toFloat(),
-                        repeatStationarySamples = stampProgram?.continuousPlot == true,
-                        blend = paintBlend,
-                    )
-                    return V5PaintConfiguration(
-                        StampPaintOp(surface, stamp, selection, sampleTransforms = sampleTransforms),
-                        diameterPixels * .5f + 2f,
-                        "preset-v5:procedural-stamp:${program.identity.id}",
-                        program.strokeShaping.smoothing.coerceIn(0f, 1f),
-                        executionIdentity,
-                    )
-                }
-                RenderBackendV5.CONTINUOUS_RIBBON, RenderBackendV5.PROCEDURAL_STAMP -> {
+                RenderBackendV5.ASSET_STAMP, RenderBackendV5.PROCEDURAL_STAMP -> error("Stamp brushes are configured above")
+                RenderBackendV5.CONTINUOUS_RIBBON -> {
                     val pencilGrain = if (program.identity.family == BrushFamilyV5.PENCIL) {
                         (program.grainSampler?.strength ?: program.tip.hardness).coerceIn(0f, 1f) * .4f
                     } else 0f
@@ -6850,7 +6806,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun beginV5PaintGesture(event: MotionEvent, pointerIndex: Int, normalizedX: Float, normalizedY: Float): Boolean {
-        if (activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) return false
+        if (activeTool !in PAINT_TOOLS) return false
         v5RejectedContact = false
         val surface = rasterTileSurfaceFor(activeLayerId)
         val semanticCapability = compiledBrushProgramV5?.let(BrushExecutionCapabilityResolver::resolve)
@@ -6894,7 +6850,7 @@ class InkCanvasView(context: Context) : View(context) {
         rulerSnapDecided = false
         activeShapeRulerSnap = null
         shapeEditor = null
-        gestureBackdrop = if (drawAndHoldEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) surface.snapshot() else null
+        gestureBackdrop = if (drawAndHoldEnabled && activeTool in INK_TOOLS) surface.snapshot() else null
         val initialSample = v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null)
         val started = v5StrokeController.begin(
             layerId = activeLayerId,
@@ -6914,7 +6870,7 @@ class InkCanvasView(context: Context) : View(context) {
             return true
         }
         resetDrawAndHold()
-        if (drawAndHoldEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
+        if (drawAndHoldEnabled && activeTool in INK_TOOLS) {
             heldPaintConfiguration = configuration
             trackDrawAndHold(listOf(initialSample), surface)
         }
@@ -6933,7 +6889,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         v5InputOverloadReported = false
         v5DryGestureCount++
-        if (continuousPlotEnabled() && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
+        if (continuousPlotEnabled() && activeTool in INK_TOOLS) {
             updateContinuousPlotInput(
                 normalizedX,
                 normalizedY,
@@ -7208,7 +7164,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun v5ConstrainedNormalizedPoint(x: Float, y: Float): Pair<Float, Float> {
         val start = v5GestureStartNormalized
-        if (!rulerSnapDecided && start != null && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) {
+        if (!rulerSnapDecided && start != null && activeTool in PAINT_TOOLS) {
             // As in CSP, a stroke follows the ruler nearest to where the pen went down.
             rulerSnapDecided = true
             activeShapeRulerSnap = if (!snapToRulers || width <= 0 || height <= 0) null else app.inkloom.document.RulerGeometry.nearest(
@@ -7220,7 +7176,7 @@ class InkCanvasView(context: Context) : View(context) {
             val (px, py) = snap.project(x * width, y * height)
             return (px / width.coerceAtLeast(1)).coerceIn(0f, 1f) to (py / height.coerceAtLeast(1)).coerceIn(0f, 1f)
         }
-        if (!(rulerEnabled && rulerAssisted) && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) &&
+        if (!(rulerEnabled && rulerAssisted) && activeTool in INK_TOOLS &&
             activePerspectiveSnapConstraint == null && start != null
         ) {
             activePerspectiveSnapConstraint = PerspectiveGuides.constraintAt(
@@ -7235,7 +7191,7 @@ class InkCanvasView(context: Context) : View(context) {
             )
         }
         if (!(rulerEnabled && rulerAssisted) && effectivePerspectiveGuide().mode == PerspectiveGuideMode.NONE &&
-            activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) &&
+            activeTool in INK_TOOLS &&
             activeSpecialRulerConstraint == null && start != null
         ) {
             activeSpecialRulerConstraint = SpecialRulers.constraintAt(
@@ -7249,7 +7205,7 @@ class InkCanvasView(context: Context) : View(context) {
                 GUIDE_CAPTURE_MOVEMENT_DP * resources.displayMetrics.density,
             )
         }
-        val result = if (rulerEnabled && rulerAssisted && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
+        val result = if (rulerEnabled && rulerAssisted && activeTool in INK_TOOLS) {
             RulerGuide.project(rulerGuide, x, y, width.toFloat(), height.toFloat())
         } else {
             activePerspectiveSnapConstraint?.apply(x, y)
@@ -8371,12 +8327,9 @@ class InkCanvasView(context: Context) : View(context) {
         private const val SMALL_CURSOR_MARK_THRESHOLD_PX = 8f
         const val FILL_MAX_SAMPLE_DIMENSION = 1_600f
         const val FILL_PREVIEW_THROTTLE_MS = 32L
-        const val MAX_ERASER_SAMPLES_PER_EVENT = 128
         const val CONTINUOUS_PLOT_INTERVAL_MS = 32L
         const val QUICKSHAPE_HOLD_MS = 120L
         const val SELECTION_ANTS_FRAME_MS = 80L
-        const val DUAL_SCATTER_SEED = 0x27C4915DL
-        const val DUAL_ROTATION_SEED = 0x61B8D2A3L
         const val VIEW_ROTATION_DEGREES_PER_PIXEL = .25f
         /** Page swipes only at (or just above) fit-to-page zoom; zoomed in, one finger pans. */
         const val PAGE_SWIPE_MAX_SCALE = 1.02f
@@ -8388,31 +8341,17 @@ class InkCanvasView(context: Context) : View(context) {
         const val GUIDE_CAPTURE_MOVEMENT_DP = 3f
         const val PERSPECTIVE_TOUCH_RADIUS_DP = 28f
         const val SPECIAL_RULER_ROTATION_HANDLE_DP = 72f
+        // Tool sets read on every input event; built once instead of per event.
+        val PAINT_TOOLS = setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)
+        val INK_TOOLS = setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)
+        val BRUSH_CURSOR_TOOLS = setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)
+        val CANVAS_CONTACT_TOOLS = setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER,
+            EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE,
+            EditorTool.LIQUIFY, EditorTool.CORRECT_LINE, EditorTool.RULER, EditorTool.FRAME)
+        val STYLUS_TOOL_TYPES = setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)
+        val CONTACT_SWITCH_ACTIONS = setOf(StylusButtonAction.ERASER, StylusButtonAction.LASSO, StylusButtonAction.EYEDROPPER)
         const val STYLUS_BUTTON_MASK = MotionEvent.BUTTON_STYLUS_PRIMARY or MotionEvent.BUTTON_STYLUS_SECONDARY
         const val POINTER_BUTTON_MASK = MotionEvent.BUTTON_PRIMARY or MotionEvent.BUTTON_SECONDARY or MotionEvent.BUTTON_TERTIARY or MotionEvent.BUTTON_BACK or MotionEvent.BUTTON_FORWARD
-    }
-
-    private fun midpoint(start: StrokePoint, end: StrokePoint) = StrokePoint(
-        x = (start.x + end.x) / 2f, y = (start.y + end.y) / 2f,
-        pressure = (start.pressure + end.pressure) / 2f,
-        timeMs = (start.timeMs + end.timeMs) / 2L,
-        tilt = (start.tilt + end.tilt) / 2f,
-        orientation = (start.orientation + end.orientation) / 2f,
-        velocity = (start.velocity + end.velocity) / 2f,
-        pigmentArgb = when {
-            start.pigmentArgb == null -> end.pigmentArgb
-            end.pigmentArgb == null -> start.pigmentArgb
-            else -> mixArgb(start.pigmentArgb, end.pigmentArgb, .5f)
-        },
-    )
-
-    private fun mixArgb(from: Long, to: Long, amount: Float): Long {
-        fun channel(shift: Int): Long {
-            val first = from shr shift and 0xFF
-            val second = to shr shift and 0xFF
-            return (first + (second - first) * amount.coerceIn(0f, 1f)).toLong().coerceIn(0, 255)
-        }
-        return (channel(24) shl 24) or (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
     }
 
 }
