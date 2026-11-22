@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Copy a verified Debug delivery to Google Drive Desktop, then remove superseded deliveries.
+"""Copy a verified Debug APK to Google Drive Desktop, then remove superseded deliveries.
 
 The default destination is My Drive/Inkloom/Debug in the single mounted Google Drive account.
-This copies distributable APKs and their evidence, not Gradle caches or proprietary brush fixtures.
+Only the newest APK goes to Drive; its evidence (.json, .sha256, notes) stays in dist/.
 Cloud transfer is performed by Google Drive Desktop; a local hash check is not a cloud download test.
 """
 import argparse
@@ -57,18 +57,14 @@ def main():
         parser.error('Destination must differ from local dist/')
     target.mkdir(parents=True, exist_ok=True)
     notes = apk.parent / f"Inkloom-{metadata['version']}-test-notes.md"
-    sources = [apk, apk.with_suffix('.json'), apk.with_suffix('.sha256'), notes]
-    for source in sources:
-        if not source.is_file():
-            parser.error(f'Missing delivery evidence: {source.name}')
-    for source in sources:
-        atomic_copy(source, target / source.name)
-    # Evidence is part of the delivery: validate every copy before retiring an older package.
-    # Comparing only the APK would allow an incomplete metadata/notes upload to erase fallback evidence.
-    for source in sources:
-        if sha256(target / source.name) != sha256(source):
-            raise RuntimeError(f'Drive copy hash mismatch for {source.name}; old deliveries retained')
-    keep = {source.name for source in sources}
+    for evidence in (apk.with_suffix('.sha256'), notes):
+        if not evidence.is_file():
+            parser.error(f'Missing delivery evidence: {evidence.name}')
+    atomic_copy(apk, target / apk.name)
+    # Retire an older package only once the new copy is verified.
+    if sha256(target / apk.name) != metadata['sha256']:
+        raise RuntimeError(f'Drive copy hash mismatch for {apk.name}; old deliveries retained')
+    keep = {apk.name}
     current = tuple(map(int, metadata['version'].split('.')))
     deleted = []
     for path in target.iterdir():
@@ -78,9 +74,10 @@ def main():
                 path.unlink()
                 deleted.append(path.name)
     result = {'destination': str(target), 'apk': apk.name, 'version': metadata['version'],
-              'sha256': metadata['sha256'], 'localDriveCopyVerified': True, 'fourFilesHashVerified': True,
+              'sha256': metadata['sha256'], 'localDriveCopyVerified': True,
               'cloudTransfer': 'Managed by Google Drive Desktop; not a cloud download verification',
               'removedSupersededDeliveries': deleted}
+    (root / 'tasks').mkdir(exist_ok=True)
     (root / 'tasks/APK_DRIVE_SYNC.json').write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result, indent=2))
 

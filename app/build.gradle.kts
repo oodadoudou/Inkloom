@@ -20,13 +20,13 @@ android {
         versionName = "0.252.0"
         testInstrumentationRunner = "app.inkloom.InkloomTestRunner"
         buildConfigField("boolean", "PAINTING_DIAGNOSTICS", "false")
-        vectorDrawables.useSupportLibrary = true
+        // The tablet and the Apple-silicon emulator are both arm64; other ABIs would only add size.
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += listOf("arm64-v8a")
         }
         externalNativeBuild {
             cmake {
-                cppFlags += listOf("-std=c++20", "-Wall", "-Wextra", "-Werror")
+                cppFlags += listOf("-Wall", "-Wextra", "-Werror")
             }
         }
     }
@@ -107,14 +107,6 @@ android {
         }
     }
 
-}
-
-// Release builds ship for tablets only; the x86_64 libraries exist for the emulator.
-// -PinkloomEmulatorRelease keeps them, to smoke-test a release build on the emulator.
-androidComponents {
-    onVariants(selector().withBuildType("release")) { variant ->
-        if (!providers.gradleProperty("inkloomEmulatorRelease").isPresent) variant.packaging.jniLibs.excludes.add("lib/x86_64/**")
-    }
 }
 
 tasks.withType<Test>().configureEach {

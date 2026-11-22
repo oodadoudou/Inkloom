@@ -69,7 +69,6 @@ brush-corpus/
 # Packaged binaries are reproducible from source
 dist/*.apk
 dist/*.aab
-!dist/.gitkeep
 
 # Logs and temporary files
 *.log

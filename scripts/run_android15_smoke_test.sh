@@ -46,5 +46,7 @@ if [[ -z "$INKLOOM_PID" ]]; then
   exit 1
 fi
 
-INKLOOM_VERSION="$("$INKLOOM_ADB" shell dumpsys package app.inkloom | grep -m1 'versionName=' | tr -d '\r' | xargs)"
+# Capture first: grep -m1 closing the pipe early would fail the script under pipefail.
+INKLOOM_PACKAGE_DUMP="$("$INKLOOM_ADB" shell dumpsys package app.inkloom | tr -d '\r')"
+INKLOOM_VERSION="$(grep -m1 'versionName=' <<<"$INKLOOM_PACKAGE_DUMP" | xargs)"
 echo "Android 15 smoke test passed: PID $INKLOOM_PID, $INKLOOM_VERSION"

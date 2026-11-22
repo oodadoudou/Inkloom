@@ -20,7 +20,6 @@ class VerifiedDeliveryTest(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         (self.root / 'dist').mkdir()
-        (self.root / 'tasks').mkdir()
         self.destination = self.root / 'drive'
         self.destination.mkdir()
         self.apk = self.root / 'dist/Inkloom-0.223.0-abcdef12-debug.apk'
@@ -32,6 +31,8 @@ class VerifiedDeliveryTest(unittest.TestCase):
         self.notes.write_text('test notes')
         self.old = self.destination / 'Inkloom-0.222.0-1234abcd-debug.apk'
         self.old.write_bytes(b'previous verified delivery')
+        self.old_notes = self.destination / 'Inkloom-0.222.0-test-notes.md'
+        self.old_notes.write_text('previous notes')
         self.unrelated = self.destination / 'personal-file.txt'
         self.unrelated.write_text('keep')
 
@@ -41,21 +42,23 @@ class VerifiedDeliveryTest(unittest.TestCase):
              patch('builtins.print'):
             delivery.main()
 
-    def test_complete_delivery_verified_before_old_package_retired(self):
+    def test_only_the_verified_apk_reaches_drive_and_older_deliveries_are_retired(self):
         self.run_sync()
-        for source in (self.apk, self.apk.with_suffix('.json'), self.apk.with_suffix('.sha256'), self.notes):
-            self.assertEqual(source.read_bytes(), (self.destination / source.name).read_bytes())
+        self.assertEqual(self.apk.read_bytes(), (self.destination / self.apk.name).read_bytes())
+        for evidence in (self.apk.with_suffix('.json'), self.apk.with_suffix('.sha256'), self.notes):
+            self.assertFalse((self.destination / evidence.name).exists())
         self.assertFalse(self.old.exists())
+        self.assertFalse(self.old_notes.exists())
         self.assertTrue(self.unrelated.exists())
-        self.assertTrue(json.loads((self.root / 'tasks/APK_DRIVE_SYNC.json').read_text())['fourFilesHashVerified'])
+        self.assertTrue(json.loads((self.root / 'tasks/APK_DRIVE_SYNC.json').read_text())['localDriveCopyVerified'])
 
-    def test_corrupt_evidence_copy_keeps_previous_package(self):
+    def test_corrupt_apk_copy_keeps_previous_package(self):
         real_copy = delivery.atomic_copy
-        def corrupt_notes(source, target):
+        def corrupt_apk(source, target):
             real_copy(source, target)
-            if source.resolve() == self.notes.resolve():
-                target.write_text('incomplete upload')
-        with patch.object(delivery, 'atomic_copy', corrupt_notes):
+            if source.resolve() == self.apk.resolve():
+                target.write_bytes(b'incomplete upload')
+        with patch.object(delivery, 'atomic_copy', corrupt_apk):
             with self.assertRaisesRegex(RuntimeError, 'old deliveries retained'):
                 self.run_sync()
         self.assertEqual(b'previous verified delivery', self.old.read_bytes())
