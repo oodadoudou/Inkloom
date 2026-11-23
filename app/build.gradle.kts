@@ -26,11 +26,6 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
-        externalNativeBuild {
-            cmake {
-                cppFlags += listOf("-Wall", "-Wextra", "-Werror")
-            }
-        }
     }
 
     // Release signing comes from an ignored keystore.properties (storeFile, storePassword, keyAlias,
@@ -105,14 +100,8 @@ android {
 
     packaging.resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
 
+    // The native engine library is built by :inkloom-engine; this NDK strips it when packaging.
     ndkVersion = "27.2.12479018"
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
-        }
-    }
-
 }
 
 tasks.withType<Test>().configureEach {
@@ -128,6 +117,7 @@ tasks.withType<Test>().configureEach {
 }
 
 dependencies {
+    implementation(project(":inkloom-engine"))
     val composeBom = platform("androidx.compose:compose-bom:2025.06.01")
     implementation(composeBom)
     androidTestImplementation(composeBom)

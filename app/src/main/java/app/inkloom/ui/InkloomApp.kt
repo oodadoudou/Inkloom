@@ -70,6 +70,7 @@ import androidx.core.content.FileProvider
 import app.inkloom.document.*
 import app.inkloom.brushpresetv5.BrushToolTipReuse
 import app.inkloom.importer.BrushImportRepository
+import app.inkloom.importer.ProductionBrushRenderProbe
 import app.inkloom.importer.BrushImportBatch
 import app.inkloom.importer.BrushImportFailure
 import app.inkloom.importer.BrushImportFailureStore
@@ -359,7 +360,7 @@ fun InkloomApp(initialIntent: Intent?) {
     val libraryState by viewModel.state.collectAsState()
     val pdfImportProgress by viewModel.pdfImportProgress.collectAsState()
     val pageTemplates by viewModel.pageTemplates.collectAsState()
-    val repository = remember { BrushImportRepository(context) }
+    val repository = remember { BrushImportRepository(context, ProductionBrushRenderProbe(context)::probe) }
     var pendingBrushExport by remember { mutableStateOf<ImportedBrush?>(null) }
     val brushStore = remember { BrushMetadataStore(context) }
     val brushGroupStore = remember { BrushGroupStore(context) }

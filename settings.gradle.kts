@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Inkloom"
-include(":app")
+include(":app", ":inkloom-engine")

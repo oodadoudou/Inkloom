@@ -25,5 +25,5 @@ internal object DualBrushEditorOptions {
             set={ p,v -> p.copy(dual=requireNotNull(p.dual).copy(textureGrain=option.set(p.copy(textureGrain=requireNotNull(p.dual?.textureGrain)),v).textureGrain)) })
     }
     val all=shape+stroke+grain
-    fun forPreset(preset:BrushPresetV5)=if(preset.dual==null) emptyList() else shape+stroke+if(preset.dual.textureGrain!=null)grain else emptyList()
+    fun forPreset(preset:BrushPresetV5)=preset.dual.let { dual -> if(dual==null) emptyList() else shape+stroke+if(dual.textureGrain!=null)grain else emptyList() }
 }
