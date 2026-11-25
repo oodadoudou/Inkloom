@@ -36,11 +36,7 @@ internal sealed interface BrushSourcePreview {
         val mask = when (this) {
             is Shape -> AndroidBrushTipMaskDecoder.decode(request)
             is Grain -> AndroidBrushTipMaskDecoder.decodeGrain(request)
-            is Procedural -> when (kind) {
-                ProceduralTipKind.ROUND -> BrushTipMask.solidCircle(96, hardness)
-                ProceduralTipKind.GRAPHITE -> BrushTipMask.graphite(96, seed, tooth, hardness)
-                ProceduralTipKind.BRISTLE -> BrushTipMask.bristle(96, seed, hardness)
-            }
+            is Procedural -> BrushTipMask.procedural(kind, 96, seed, tooth, hardness)
             is Paper -> {
                 val paper = DocumentPaperGrain(settings.scale, settings.density, settings.strength, seed)
                 BrushTipMask(128, 128, ByteArray(128 * 128) { index ->

@@ -196,7 +196,13 @@ data class TipTextureSettings(
 )
 
 @Serializable
-enum class ProceduralTipKind { ROUND, GRAPHITE, BRISTLE }
+enum class ProceduralTipKind {
+    ROUND,
+    GRAPHITE,
+    BRISTLE,
+    /** Wax crayon and soft pastel: a lumpy rim and blotchy skips where the stick misses the tooth. */
+    CHALK,
+}
 
 @Serializable
 data class StrokeSettings(

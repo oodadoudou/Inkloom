@@ -1,6 +1,7 @@
 package app.inkloom.model
 
 import app.inkloom.document.LiquifyMode
+import app.inkloom.brushpresetv5.BrushPresetV5
 import app.inkloom.brushpresetv5.BrushPresetV5Import
 import app.inkloom.brushpresetv5.ProceduralTipKind
 import app.inkloom.brushpresetv5.SpacingMode
@@ -40,6 +41,10 @@ object SystemBrushCatalog {
         ),
         systemBrush(id = "system-studio-pen", name = "Studio Pen", group = "Pen", size = 9f, hardness = 1f, spacing = .055f, sizePressureMinimum = .12f, tags = listOf("pen", "inking")),
         systemBrush(id = "system-monoline", name = "Monoline", group = "Pen", size = 18f, hardness = 1f, spacing = .05f, sizePressureEnabled = false, tags = listOf("pen", "monoline")),
+        // Line-art pens after the store's most-used inking pens: a clean liner that stays thin under
+        // light pressure, and an inky G pen that swells quickly and lifts off softly.
+        systemBrush(id = "system-clean-liner", name = "Clean Liner", group = "Pen", size = 5f, hardness = 1f, spacing = .04f, sizePressureMinimum = .03f, tags = listOf("pen", "inking", "lineart")),
+        systemBrush(id = "system-ink-g-pen", name = "Ink G Pen", group = "Pen", size = 7f, hardness = .96f, spacing = .04f, sizePressureMinimum = .04f, opacityPressureEnabled = true, opacityPressureMinimum = .82f, tags = listOf("pen", "inking", "g-pen")),
 
         // Deterministic procedural graphite tips make these visibly different, not just renamed
         // copies of one round line renderer. Graphite tilt-to-width, tilt-to-grain and procedural
@@ -48,7 +53,14 @@ object SystemBrushCatalog {
         systemBrush(id = "system-h-pencil", name = "H Pencil", group = "Pencil", size = 5f, hardness = .8f, spacing = .5f, flow = .74f, sizePressureMinimum = .35f, opacityPressureEnabled = true, opacityPressureMinimum = .25f, graphiteTiltWidth = .22f, graphiteTiltWidthStart = .45f, graphiteTiltGrain = .22f, graphiteTiltGrainStart = .42f, proceduralPaperGrainEnabled = true, proceduralPaperGrainScale = 58f, proceduralPaperGrainDensity = .72f, proceduralPaperGrainStrength = .3f, tags = listOf("pencil", "graphite", "hard")),
         systemBrush(id = "system-hb-pencil", name = "HB Pencil", group = "Pencil", size = 7f, hardness = .64f, spacing = .26f, flow = .68f, sizePressureMinimum = .3f, opacityPressureEnabled = true, opacityPressureMinimum = .2f, graphiteTiltWidth = .38f, graphiteTiltWidthStart = .36f, graphiteTiltGrain = .38f, graphiteTiltGrainStart = .34f, proceduralPaperGrainEnabled = true, proceduralPaperGrainScale = 74f, proceduralPaperGrainDensity = .62f, proceduralPaperGrainStrength = .48f, tags = listOf("pencil", "graphite", "hb")),
         systemBrush(id = "system-2b-pencil", name = "2B Pencil", group = "Pencil", size = 9f, hardness = .48f, spacing = .2f, flow = .63f, sizePressureMinimum = .25f, opacityPressureEnabled = true, opacityPressureMinimum = .16f, thickness = .92f, graphiteTiltWidth = .52f, graphiteTiltWidthStart = .3f, graphiteTiltGrain = .52f, graphiteTiltGrainStart = .28f, proceduralPaperGrainEnabled = true, proceduralPaperGrainScale = 88f, proceduralPaperGrainDensity = .54f, proceduralPaperGrainStrength = .58f, tags = listOf("pencil", "graphite", "2b")),
+        // A waxy cream pencil for soft sketching and a gritty pencil for line art.
+        systemBrush(id = "system-cream-pencil", name = "Cream Pencil", group = "Pencil", size = 10f, hardness = .5f, spacing = .14f, flow = .7f, sizePressureMinimum = .45f, opacityPressureEnabled = true, opacityPressureMinimum = .18f, graphiteTiltWidth = .3f, graphiteTiltWidthStart = .35f, proceduralPaperGrainEnabled = true, proceduralPaperGrainScale = 60f, proceduralPaperGrainDensity = .6f, proceduralPaperGrainStrength = .3f, tags = listOf("pencil", "sketch", "soft")),
+        systemBrush(id = "system-lineart-pencil", name = "Lineart Pencil", group = "Pencil", size = 4f, hardness = .86f, spacing = .3f, flow = .85f, sizePressureMinimum = .3f, opacityPressureEnabled = true, opacityPressureMinimum = .3f, proceduralPaperGrainEnabled = true, proceduralPaperGrainScale = 48f, proceduralPaperGrainDensity = .74f, proceduralPaperGrainStrength = .58f, tags = listOf("pencil", "lineart", "gritty")),
         systemBrush(id = "system-6b-pencil", name = "6B Pencil", group = "Pencil", size = 13f, hardness = .3f, spacing = .18f, flow = .56f, sizePressureMinimum = .2f, opacityPressureEnabled = true, opacityPressureMinimum = .1f, thickness = .84f, graphiteTiltWidth = .68f, graphiteTiltWidthStart = .22f, graphiteTiltGrain = .68f, graphiteTiltGrainStart = .2f, proceduralPaperGrainEnabled = true, proceduralPaperGrainScale = 112f, proceduralPaperGrainDensity = .46f, proceduralPaperGrainStrength = .7f, tags = listOf("pencil", "graphite", "6b", "soft")),
+
+        // Wax crayon and soft pastel on the procedural chalk stick, with strong paper tooth.
+        systemBrush(id = "system-wax-crayon", name = "Wax Crayon", group = "Crayon", size = 16f, opacity = .9f, hardness = .8f, spacing = .12f, flow = .9f, sizePressureMinimum = .55f, opacityPressureEnabled = true, opacityPressureMinimum = .35f, proceduralPaperGrainEnabled = true, proceduralPaperGrainScale = 55f, proceduralPaperGrainDensity = .55f, proceduralPaperGrainStrength = .75f, tags = listOf("crayon", "wax", "texture")),
+        systemBrush(id = "system-soft-pastel", name = "Soft Pastel", group = "Crayon", size = 34f, opacity = .8f, hardness = .35f, spacing = .1f, flow = .6f, sizePressureMinimum = .5f, opacityPressureEnabled = true, opacityPressureMinimum = .2f, proceduralPaperGrainEnabled = true, proceduralPaperGrainScale = 75f, proceduralPaperGrainDensity = .5f, proceduralPaperGrainStrength = .7f, tags = listOf("crayon", "pastel", "texture")),
 
         // Photoshop's legacy No. 19 is the 19 px round “Airbrush Pen Opacity Flow” preset.
         systemBrush(
@@ -98,6 +110,9 @@ object SystemBrushCatalog {
     /** Factory material semantics are authored explicitly instead of inferred from display tags. */
     private fun createFactoryRecord(source: ImportedBrush): ImportedBrush {
         val record = BrushPresetV5Import.createFactoryRecord(source)
+        authored(source.id)?.let { author ->
+            return BrushPresetV5Import.writePreset(record, author(BrushPresetV5Import.requirePreset(record)), BrushFormat.SYSTEM)
+        }
         if (source.id != "system-dry-painting-brush") return record
         val preset = BrushPresetV5Import.requirePreset(record).copy(
             tip = BrushPresetV5Import.requirePreset(record).tip.copy(rotationDegrees = 90f),
@@ -114,6 +129,38 @@ object SystemBrushCatalog {
         )
         return BrushPresetV5Import.writePreset(record, preset, BrushFormat.SYSTEM)
     }
+
+    private fun curve(vararg points: Pair<Float, Float>) = points.map { (x, y) -> app.inkloom.document.BrushCurvePoint(x, y) }
+
+    private fun chalkStick(preset: BrushPresetV5, tooth: Float) = preset.copy(
+        tipTexture = TipTextureSettings(procedural = true, proceduralKind = ProceduralTipKind.CHALK, toothStrength = tooth),
+        stamp = (preset.stamp ?: StampSettings()).copy(randomRotationDegrees = 180f),
+    )
+
+    /**
+     * Settings the flat factory fields cannot express: pressure curves and tip kinds. A function,
+     * not a map, because [brushes] is built before later properties of this object are initialized.
+     */
+    private fun authored(id: String): ((BrushPresetV5) -> BrushPresetV5)? = mapOf<String, (BrushPresetV5) -> BrushPresetV5>(
+        // The raster engine draws no stroke taper, so these pens taper through pressure: almost no
+        // width at the lightest touch, which a pen stroke passes through as it lands and lifts.
+        "system-clean-liner" to { preset ->
+            preset.copy(dynamics = preset.dynamics.copy(pressure = preset.dynamics.pressure.copy(
+                widthCurve = curve(0f to 0f, .35f to .16f, .7f to .6f, 1f to 1f))))
+        },
+        "system-ink-g-pen" to { preset ->
+            preset.copy(dynamics = preset.dynamics.copy(pressure = preset.dynamics.pressure.copy(
+                widthCurve = curve(0f to 0f, .2f to .32f, .6f to .82f, 1f to 1f))))
+        },
+        "system-cream-pencil" to { preset ->
+            preset.copy(tipTexture = TipTextureSettings(procedural = true, proceduralKind = ProceduralTipKind.GRAPHITE, toothStrength = .45f))
+        },
+        "system-lineart-pencil" to { preset ->
+            preset.copy(tipTexture = TipTextureSettings(procedural = true, proceduralKind = ProceduralTipKind.GRAPHITE, toothStrength = .9f))
+        },
+        "system-wax-crayon" to { preset -> chalkStick(preset, tooth = .55f) },
+        "system-soft-pastel" to { preset -> chalkStick(preset, tooth = .7f) },
+    )[id]
 
     private fun systemBrush(
         id: String,

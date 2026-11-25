@@ -186,6 +186,54 @@ class BrushTipMask(
             return BrushTipMask(size, size, values)
         }
 
+        /** The first-party procedural footprint for [kind], as every renderer and preview builds it. */
+        fun procedural(kind: app.inkloom.brushpresetv5.ProceduralTipKind, size: Int, seed: Int, toothStrength: Float, hardness: Float): BrushTipMask =
+            when (kind) {
+                app.inkloom.brushpresetv5.ProceduralTipKind.ROUND -> solidCircle(size, hardness)
+                app.inkloom.brushpresetv5.ProceduralTipKind.GRAPHITE -> graphite(size, seed, toothStrength, hardness)
+                app.inkloom.brushpresetv5.ProceduralTipKind.BRISTLE -> bristle(size, seed, hardness)
+                app.inkloom.brushpresetv5.ProceduralTipKind.CHALK -> chalk(size, seed, toothStrength, hardness)
+            }
+
+        /**
+         * Wax crayon / soft pastel stick: a lumpy rim (low-order angular waves) and blotchy skips from
+         * two octaves of smooth value noise. [toothStrength] sets how much of the stick skips.
+         */
+        fun chalk(size: Int = 96, seed: Int, toothStrength: Float, hardness: Float = 1f): BrushTipMask {
+            require(size in 8..1024)
+            require(toothStrength.isFinite() && toothStrength in 0f..1f)
+            require(hardness.isFinite() && hardness in 0f..1f)
+            val edgeWidth = .08f + (1f - hardness) * .6f
+            val phase = FloatArray(3) { noise01(it, 7, seed) * 6.2831855f }
+            val threshold = .2f + .4f * toothStrength
+            val values = ByteArray(size * size)
+            val radius = size * .5f
+            for (y in 0 until size) for (x in 0 until size) {
+                val nx = (x + .5f - radius) / radius
+                val ny = (y + .5f - radius) / radius
+                val distance = kotlin.math.sqrt(nx * nx + ny * ny)
+                val angle = kotlin.math.atan2(ny, nx)
+                val rim = .92f + .06f * kotlin.math.sin(3f * angle + phase[0]) + .04f * kotlin.math.sin(5f * angle + phase[1]) +
+                    .025f * kotlin.math.sin(9f * angle + phase[2])
+                val edge = ((rim - distance) / edgeWidth).coerceIn(0f, 1f)
+                if (edge <= 0f) continue
+                val blot = smoothNoise(x / 3.5f, y / 3.5f, seed) * .55f + smoothNoise(x / 1.4f, y / 1.4f, seed xor 0x2C1B) * .45f
+                val wax = ((blot - threshold + .12f) / .24f).coerceIn(0f, 1f)
+                val waxSmooth = wax * wax * (3f - 2f * wax)
+                values[y * size + x] = (255f * edge * (.18f + .82f * waxSmooth) + .5f).toInt().toByte()
+            }
+            return BrushTipMask(size, size, values)
+        }
+
+        private fun smoothNoise(x: Float, y: Float, seed: Int): Float {
+            val x0 = kotlin.math.floor(x).toInt(); val y0 = kotlin.math.floor(y).toInt()
+            val fx = x - x0; val fy = y - y0
+            val sx = fx * fx * (3f - 2f * fx); val sy = fy * fy * (3f - 2f * fy)
+            val top = noise01(x0, y0, seed) + (noise01(x0 + 1, y0, seed) - noise01(x0, y0, seed)) * sx
+            val bottom = noise01(x0, y0 + 1, seed) + (noise01(x0 + 1, y0 + 1, seed) - noise01(x0, y0 + 1, seed)) * sx
+            return top + (bottom - top) * sy
+        }
+
         private fun noise01(x: Int, y: Int, seed: Int): Float {
             var value = x * 0x1f1f1f1f + y * 0x45d9f3b + seed
             value = value xor (value ushr 16)

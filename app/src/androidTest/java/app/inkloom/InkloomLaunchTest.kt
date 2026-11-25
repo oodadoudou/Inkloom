@@ -834,6 +834,15 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("6B Pencil").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Brush").performClick()
         composeRule.onNodeWithText("Classic PS No. 19").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Pen").performClick()
+        composeRule.onNodeWithText("Clean Liner").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Ink G Pen").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Pencil").performClick()
+        composeRule.onNodeWithText("Cream Pencil").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Lineart Pencil").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Crayon").performClick()
+        composeRule.onNodeWithText("Wax Crayon").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Soft Pastel").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun brushPanelCanFloatMoveResizeAndReopenInPlace() {

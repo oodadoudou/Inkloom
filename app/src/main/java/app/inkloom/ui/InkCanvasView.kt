@@ -961,13 +961,8 @@ class InkCanvasView(context: Context) : View(context) {
                     alphaThreshold = texture?.alphaThreshold ?: 0f))
             }
         } else if (texture?.procedural != false) {
-            when (texture?.proceduralKind ?: ProceduralTipKind.ROUND) {
-                ProceduralTipKind.ROUND -> BrushTipMask.solidCircle(96, preset.tip.hardness.coerceIn(0f, 1f))
-                ProceduralTipKind.GRAPHITE -> BrushTipMask.graphite(96, preset.renderSeed,
-                    texture?.toothStrength?.coerceIn(0f, 1f) ?: .8f, preset.tip.hardness.coerceIn(0f, 1f))
-                ProceduralTipKind.BRISTLE -> BrushTipMask.bristle(96, preset.renderSeed,
-                    preset.tip.hardness.coerceIn(0f, 1f))
-            }
+            BrushTipMask.procedural(texture?.proceduralKind ?: ProceduralTipKind.ROUND, 96, preset.renderSeed,
+                texture?.toothStrength?.coerceIn(0f, 1f) ?: .8f, preset.tip.hardness.coerceIn(0f, 1f))
         } else null
         if (mask == null) {
             smudgeTipFailure = "UNSUPPORTED_WITH_EXPLICIT_REASON: BLEND_TIP_ASSET_UNAVAILABLE"
@@ -6568,16 +6563,8 @@ class InkCanvasView(context: Context) : View(context) {
                             programTipRequest(program, tipAsset),
                     ) ?: return null
                 } else listOf(
-                    when (program.tip.tipTexture?.proceduralKind ?: ProceduralTipKind.ROUND) {
-                        ProceduralTipKind.ROUND -> BrushTipMask.solidCircle(96, program.tip.hardness.coerceIn(0f, 1f))
-                        ProceduralTipKind.GRAPHITE -> BrushTipMask.graphite(
-                            96,
-                            program.renderSeed,
-                            program.tip.tipTexture?.toothStrength?.coerceIn(0f, 1f) ?: .8f,
-                            program.tip.hardness.coerceIn(0f, 1f),
-                        )
-                        ProceduralTipKind.BRISTLE -> BrushTipMask.bristle(96, program.renderSeed, program.tip.hardness.coerceIn(0f, 1f))
-                    },
+                    BrushTipMask.procedural(program.tip.tipTexture?.proceduralKind ?: ProceduralTipKind.ROUND, 96, program.renderSeed,
+                        program.tip.tipTexture?.toothStrength?.coerceIn(0f, 1f) ?: .8f, program.tip.hardness.coerceIn(0f, 1f)),
                 )
                 val (grain, grainOffset) = resolveTextureGrain(program.textureGrain, program.renderSeed)
                 val particleDiameter = sprayProgram?.let { spray ->

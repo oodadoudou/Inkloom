@@ -78,6 +78,49 @@ class SystemBrushCatalogTest {
     }
 
     @Test
+    fun lineArtPensCurveTheirPressureWithoutStrokeTapers() {
+        listOf("system-clean-liner", "system-ink-g-pen", "system-lineart-pencil").forEach { id ->
+            val program = compiled(id)
+            // The raster engine refuses stroke tapers, so a factory brush must never ask for them.
+            assertTrue("$id must not use stroke tapers", !program.strokeShaping.taperStartEnabled && !program.strokeShaping.taperEndEnabled)
+        }
+        listOf("system-clean-liner", "system-ink-g-pen").forEach { id ->
+            val program = compiled(id)
+            assertEquals("$id is an ink ribbon", RenderBackend.CONTINUOUS_RIBBON, program.backend)
+            assertTrue("$id has a pressure curve", program.pressure.widthCurve.size >= 3)
+            assertTrue("$id nearly vanishes at the lightest touch", program.pressure.widthMinimum <= .05f)
+        }
+        val liner = compiled("system-clean-liner").pressure.widthCurve
+        val gPen = compiled("system-ink-g-pen").pressure.widthCurve
+        assertTrue("the liner stays thinner under light pressure",
+            app.inkloom.document.BrushDynamics.curve(liner, .3f) < app.inkloom.document.BrushDynamics.curve(gPen, .3f) - .2f)
+    }
+
+    @Test
+    fun newPencilsAndCrayonsUseTheirProceduralSticks() {
+        assertEquals(ProceduralTipKind.GRAPHITE, compiled("system-cream-pencil").tip.tipTexture?.proceduralKind)
+        assertEquals(ProceduralTipKind.GRAPHITE, compiled("system-lineart-pencil").tip.tipTexture?.proceduralKind)
+        listOf("system-wax-crayon", "system-soft-pastel").forEach { id ->
+            val program = compiled(id)
+            assertEquals(RenderBackend.PROCEDURAL_STAMP, program.backend)
+            assertEquals(ProceduralTipKind.CHALK, program.tip.tipTexture?.proceduralKind)
+            assertTrue("$id has paper tooth", (program.grainSampler?.strength ?: 0f) >= .7f)
+        }
+        val creamTooth = compiled("system-cream-pencil").tip.tipTexture!!.toothStrength
+        val lineartTooth = compiled("system-lineart-pencil").tip.tipTexture!!.toothStrength
+        assertTrue("the cream pencil is waxier than the gritty one", creamTooth < lineartTooth)
+    }
+
+    @Test
+    fun authoredBrushesSurvivePersistence() {
+        listOf("system-clean-liner", "system-ink-g-pen", "system-cream-pencil", "system-lineart-pencil", "system-wax-crayon", "system-soft-pastel").forEach { id ->
+            val source = requireNotNull(SystemBrushCatalog.byId(id))
+            val restored = requireNotNull(BrushPresetV5Codec.decodeOrNull(requireNotNull(source.v5PresetJson)))
+            assertEquals(id, BrushPresetV5Import.requirePreset(source), restored)
+        }
+    }
+
+    @Test
     fun liquifyCatalogExposesCspAndProcreateModesAsPeerPresets() {
         val names = SystemBrushCatalog.brushes.filter { it.groupName == "Liquify" }.map(ImportedBrush::name)
 
