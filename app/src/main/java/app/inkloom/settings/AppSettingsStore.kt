@@ -202,8 +202,6 @@ enum class SelectionShape { FREEFORM, RECTANGLE, ELLIPSE, BRUSH, SMART_BORDER, M
 enum class SelectionMode { REPLACE, ADD, SUBTRACT, INTERSECT }
 enum class SelectionFilter { ALL, ACTIVE_LAYER, CURRENT_BRUSH, CURRENT_COLOR }
 enum class ReferenceTarget { ALL_VISIBLE, ACTIVE_LAYER, REFERENCE_LAYERS }
-enum class FillTargetMode { TOUCHED_COLOR, TRANSPARENT_ONLY, SPECIFIED_COLOR }
-enum class FillExpansionShape { ROUND, RECTANGLE }
 
 class AppSettingsStore(context: Context) {
     private companion object {

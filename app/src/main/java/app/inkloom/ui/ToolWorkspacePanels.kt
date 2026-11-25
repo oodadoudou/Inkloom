@@ -147,7 +147,9 @@ private fun selectionShapeLabel(shape: SelectionShape, settings: AppSettings): S
 private fun fillSubtoolLabel(subtool: FillSubTool, settings: AppSettings): String = when (subtool) {
     FillSubTool.BUCKET -> settings.language.text("Bucket", "油漆桶")
     FillSubTool.ENCLOSE_AND_FILL -> settings.language.text("Enclose and fill", "包围并填充")
+    FillSubTool.ENCLOSE_AND_ERASE -> settings.language.text("Enclose and erase", "包围并擦除")
     FillSubTool.LASSO_FILL -> settings.language.text("Lasso fill", "套索填充")
+    FillSubTool.LASSO_ERASE -> settings.language.text("Lasso erase", "套索擦除")
     FillSubTool.LEFTOVER_PEN -> settings.language.text("Leftover pen", "漏涂笔")
 }
 

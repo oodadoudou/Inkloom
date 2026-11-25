@@ -37,6 +37,10 @@ android {
     }
 
     ndkVersion = "27.2.12479018"
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
@@ -47,4 +51,5 @@ android {
 
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
+    testImplementation("junit:junit:4.13.2")
 }

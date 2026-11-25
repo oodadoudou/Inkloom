@@ -195,6 +195,9 @@ import app.inkloom.document.TwoPointerRotationGesture
 import app.inkloom.document.MultiFingerTapGesture
 import app.inkloom.document.ViewportTransform
 import app.inkloom.document.FloodFill
+import app.inkloom.engine.v5.fill.EncloseFill
+import app.inkloom.engine.v5.fill.PolygonMask
+import kotlin.math.roundToInt
 import app.inkloom.document.LiquifyMode
 import app.inkloom.document.WaterEdge
 import app.inkloom.model.EditorTool
@@ -1091,6 +1094,8 @@ class InkCanvasView(context: Context) : View(context) {
      *  mask's bounding box in normalized page coordinates, the fill color and opacity.
      *  The host persists the mask and creates a [PageElement.Fill]. */
     var onSparseFillCommitted: ((mask: MaskTileSurfaceSnapshot, colorArgb: Long, opacity: Float, edgeUnderpaintPixels: Int) -> Unit)? = null
+    /** Enclose-and-erase and lasso erase hand their mask here to clear it from the editing layer. */
+    var onSparseEraseCommitted: ((mask: MaskTileSurfaceSnapshot) -> Unit)? = null
     /** Immutable generation handoff; bitmap materialization belongs on a persistence worker. */
     var onRasterLayerCommitted: ((RasterLayerCommit) -> Unit)? = null
     internal var onLayerMaskStrokeCommitted: ((String, MaskTileSurfaceSnapshot) -> LayerMaskStrokeHistory?)? = null
@@ -3325,8 +3330,8 @@ class InkCanvasView(context: Context) : View(context) {
             lassoPath.reset()
             lassoPath.moveTo(fillGesturePoints.first().x * width, fillGesturePoints.first().y * height)
             fillGesturePoints.drop(1).forEach { lassoPath.lineTo(it.x * width, it.y * height) }
-            paint.color = inkColor
-            paint.alpha = (inkOpacity * 150f).toInt().coerceIn(0, 255)
+            paint.color = if (fillSubTool.erases) Color.GRAY else inkColor
+            paint.alpha = if (fillSubTool.erases) 90 else (inkOpacity * 150f).toInt().coerceIn(0, 255)
             paint.style = if (fillSubTool == FillSubTool.LEFTOVER_PEN) Paint.Style.STROKE else Paint.Style.FILL
             paint.strokeWidth = gestureBrushSize.coerceAtLeast(.1f) * width / pageModelWidth.coerceAtLeast(1f)
             paint.strokeCap = Paint.Cap.ROUND
@@ -4878,7 +4883,8 @@ class InkCanvasView(context: Context) : View(context) {
         fillPreviewComputedAt = now
     }
 
-    private fun renderDocumentPageBitmap(pageWidth: Int, pageHeight: Int, includePaper: Boolean = true): Bitmap {
+    private fun renderDocumentPageBitmap(pageWidth: Int, pageHeight: Int, includePaper: Boolean = true,
+        excludeLayerIds: Set<String> = emptySet()): Bitmap {
         val bitmap = Bitmap.createBitmap(pageWidth, pageHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.scale(pageWidth / width.coerceAtLeast(1).toFloat(), pageHeight / height.coerceAtLeast(1).toFloat())
@@ -4892,12 +4898,16 @@ class InkCanvasView(context: Context) : View(context) {
         // As in Clip Studio Paint, excluding the editing layer applies only when referring to
         // multiple layers; a current-layer reference keeps the layer being edited.
         val multiple = if (excludeActiveLayerFromReference) visibleNonDraft - activeLayerId else visibleNonDraft
-        val referenced = when (referenceTarget) {
+        val chosen = when (referenceTarget) {
             ReferenceTarget.ALL_VISIBLE -> multiple
             ReferenceTarget.ACTIVE_LAYER -> setOf(activeLayerId).intersect(visibleNonDraft)
             // The fallback to the editing layer must not bring back an explicitly excluded layer.
             ReferenceTarget.REFERENCE_LAYERS -> referenceLayerIds.intersect(multiple).ifEmpty { setOf(activeLayerId).intersect(multiple) }
         }
+        // A caller that must not see some layers (erasing refers past the layer it erases) falls
+        // back to the other visible layers when nothing else is left.
+        val referenced = if (excludeLayerIds.isEmpty()) chosen else
+            (chosen - excludeLayerIds).ifEmpty { visibleNonDraft - excludeLayerIds }
         val temporary = linkedMapOf<String, LayerElementBitmaps>()
         val previousOverrides = referenceElementOverrides
         try {
@@ -4970,6 +4980,13 @@ class InkCanvasView(context: Context) : View(context) {
             invalidate()
             return
         }
+        if (fillSubTool.referencesLines) {
+            try { commitEncloseGesture(erase = fillSubTool.erases) } finally {
+                fillGesturePoints.clear()
+                invalidate()
+            }
+            return
+        }
         val bitmapWidth = width.coerceAtLeast(1)
         val bitmapHeight = height.coerceAtLeast(1)
         val strokePadding = if (fillSubTool == FillSubTool.LEFTOVER_PEN) {
@@ -5017,6 +5034,7 @@ class InkCanvasView(context: Context) : View(context) {
                     (top + bounds.top) / bitmapHeight.toFloat(),
                     bounds.width() / bitmapWidth.toFloat(),
                     bounds.height() / bitmapHeight.toFloat(),
+                    erase = fillSubTool.erases,
                 )
             } finally {
                 cropped.recycle()
@@ -5025,6 +5043,70 @@ class InkCanvasView(context: Context) : View(context) {
         drawnMask.recycle()
         fillGesturePoints.clear()
         invalidate()
+    }
+
+    /**
+     * Enclose and fill / erase: within the drawn lasso, the regions the reference's lines close off,
+     * spread under the lines around them (EncloseFill). Erasing refers to the other layers, so the
+     * colour being erased does not count as a line.
+     */
+    private fun commitEncloseGesture(erase: Boolean) {
+        val safeWidth = width.coerceAtLeast(1)
+        val safeHeight = height.coerceAtLeast(1)
+        val sampleScale = minOf(1f, FILL_MAX_SAMPLE_DIMENSION / maxOf(safeWidth, safeHeight).toFloat())
+        val sampleWidth = (safeWidth * sampleScale).toInt().coerceAtLeast(1)
+        val sampleHeight = (safeHeight * sampleScale).toInt().coerceAtLeast(1)
+        val modelToSample = sampleWidth / pageModelWidth.coerceAtLeast(1f)
+        val closeGap = (fillCloseGapPixels * modelToSample).roundToInt().coerceIn(0, EncloseFill.MAX_PIXELS)
+        val underLine = ((if (fillAreaScalingPixels != 0f) fillAreaScalingPixels else ENCLOSE_UNDER_LINE_MODEL_PIXELS) *
+            modelToSample).roundToInt().coerceIn(0, EncloseFill.MAX_PIXELS)
+        val xs = FloatArray(fillGesturePoints.size) { fillGesturePoints[it].x * sampleWidth }
+        val ys = FloatArray(fillGesturePoints.size) { fillGesturePoints[it].y * sampleHeight }
+        // A margin keeps the lasso off the crop edge, so a region is only "inside" when the lasso says so.
+        val margin = closeGap + underLine + 2
+        val left = (kotlin.math.floor(xs.min()).toInt() - margin).coerceIn(0, sampleWidth - 1)
+        val top = (kotlin.math.floor(ys.min()).toInt() - margin).coerceIn(0, sampleHeight - 1)
+        val right = (kotlin.math.ceil(xs.max()).toInt() + margin).coerceIn(left + 1, sampleWidth)
+        val bottom = (kotlin.math.ceil(ys.max()).toInt() + margin).coerceIn(top + 1, sampleHeight)
+        val cropWidth = right - left
+        val cropHeight = bottom - top
+        val scanned = pageHasImportedBackground && !excludeImportedBackgroundFromReference
+        val reference = renderDocumentPageBitmap(sampleWidth, sampleHeight, includePaper = scanned,
+            excludeLayerIds = if (erase) setOf(activeLayerId) else emptySet())
+        val pixels = IntArray(cropWidth * cropHeight)
+        try { reference.getPixels(pixels, 0, cropWidth, left, top, cropWidth, cropHeight) } finally { reference.recycle() }
+        for (at in xs.indices) { xs[at] -= left; ys[at] -= top }
+        val coverage = EncloseFill.compute(pixels, cropWidth, cropHeight,
+            PolygonMask.rasterize(xs, ys, cropWidth, cropHeight),
+            EncloseFill.Options(
+                lineRule = if (scanned) EncloseFill.LineRule.INK else EncloseFill.LineRule.ALPHA,
+                closeGapPixels = closeGap,
+                underLinePixels = underLine,
+            ))
+        val maskPixels = IntArray(coverage.size) { if (coverage[it].toInt() != 0) Color.WHITE else Color.TRANSPARENT }
+        val mask = Bitmap.createBitmap(maskPixels, cropWidth, cropHeight, Bitmap.Config.ARGB_8888)
+        try {
+            selectionMaskForRasterTools()?.let { selection ->
+                RasterSelectionMask(selection, sampleWidth, sampleHeight).apply(mask, Rect(left, top, right, bottom))
+            }
+            val bounds = NativeRasterOps.alphaBounds(mask) ?: return
+            val cropped = Bitmap.createBitmap(mask, bounds.left, bounds.top, bounds.width(), bounds.height())
+            try {
+                publishBoundedFillMask(
+                    cropped,
+                    (left + bounds.left) / sampleWidth.toFloat(),
+                    (top + bounds.top) / sampleHeight.toFloat(),
+                    bounds.width() / sampleWidth.toFloat(),
+                    bounds.height() / sampleHeight.toFloat(),
+                    filterBitmap = false,
+                    erase = erase,
+                )
+            } finally {
+                if (cropped !== mask) cropped.recycle()
+            }
+        } finally {
+            mask.recycle()
+        }
     }
 
     /** Converts only the bounded operation mask into the document's authoritative sparse alpha. */
@@ -5036,8 +5118,12 @@ class InkCanvasView(context: Context) : View(context) {
         normalizedHeight: Float,
         edgeUnderpaintPixels: Int = 0,
         filterBitmap: Boolean = true,
+        erase: Boolean = false,
     ): Boolean {
-        val callback = onSparseFillCommitted ?: return false
+        val callback: (MaskTileSurfaceSnapshot) -> Unit = if (erase) onSparseEraseCommitted ?: return false else {
+            val fill = onSparseFillCommitted ?: return false
+            { snapshot -> fill(snapshot, inkColor.toUInt().toLong(), inkOpacity, edgeUnderpaintPixels) }
+        }
         val selectionSize = selectionMaskForRasterTools()?.let { it.logicalWidth to it.logicalHeight }
             ?: SelectionMaskCompositor.maskSize(pageModelWidth, pageModelHeight)?.let { it.width to it.height }
             ?: return false
@@ -5052,7 +5138,7 @@ class InkCanvasView(context: Context) : View(context) {
         return try {
             val snapshot = SparseAlphaMask.fromBitmapRegion(scaled, left, top, logicalWidth, logicalHeight)
                 ?.surface?.snapshot() ?: return false
-            callback(snapshot, inkColor.toUInt().toLong(), inkOpacity, edgeUnderpaintPixels)
+            callback(snapshot)
             true
         } finally {
             if (scaled !== source) scaled.recycle()
@@ -7665,6 +7751,30 @@ class InkCanvasView(context: Context) : View(context) {
         return snapshot?.isEmpty == false
     }
 
+    /** Clears [mask] from the editing layer as one undoable edit (enclose and erase, lasso erase). */
+    fun eraseMaskFromActiveRaster(mask: MaskTileSurfaceSnapshot): Boolean {
+        if (rejectLayerContentEdit()) return false
+        val layerId = activeLayerId
+        val surface = rasterTileSurfaceFor(layerId)
+        if (surface == null || layerId in protectedLayerIds || editingLayerMaskId != null) {
+            onPaintCapabilityRejected("Select an unlocked paint layer before erasing")
+            return false
+        }
+        if (layerId in alphaLockedLayers) {
+            onPaintCapabilityRejected("Transparency is locked on this layer")
+            return false
+        }
+        v5StrokeController.awaitIdle()
+        val edit = RasterSelectionContent.clear(surface, mask)
+        if (edit == null || edit.record.changedTileCount == 0) {
+            edit?.record?.close()
+            return false
+        }
+        val bounds = edit.dirtyBounds
+        recordRasterToolTransaction(layerId, surface, edit.record, Rect(bounds.left, bounds.top, bounds.right, bounds.bottom))
+        return true
+    }
+
     fun paintFillIntoActiveRaster(mask: MaskTileSurfaceSnapshot, colorArgb: Long, opacity: Float, edgeUnderpaintPixels: Int): Boolean {
         if (rejectLayerContentEdit()) return false
         val layerId = activeLayerId
@@ -8326,6 +8436,8 @@ class InkCanvasView(context: Context) : View(context) {
         const val REFERENCE_WIDTH = 1600f
         private const val SMALL_CURSOR_MARK_THRESHOLD_PX = 8f
         const val FILL_MAX_SAMPLE_DIMENSION = 1_600f
+        /** How far enclose-and-fill spreads under neighbouring lines when area scaling is 0. */
+        const val ENCLOSE_UNDER_LINE_MODEL_PIXELS = 2f
         const val FILL_PREVIEW_THROTTLE_MS = 32L
         const val CONTINUOUS_PLOT_INTERVAL_MS = 32L
         const val QUICKSHAPE_HOLD_MS = 120L

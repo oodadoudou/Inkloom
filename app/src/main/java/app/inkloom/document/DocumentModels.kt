@@ -400,7 +400,18 @@ enum class LayerMaskCommand {
 }
 
 @Serializable
-enum class FillSubTool { BUCKET, ENCLOSE_AND_FILL, LASSO_FILL, LEFTOVER_PEN }
+enum class FillSubTool {
+    BUCKET, ENCLOSE_AND_FILL, ENCLOSE_AND_ERASE, LASSO_FILL, LASSO_ERASE, LEFTOVER_PEN;
+
+    /** Draws a lasso rather than tapping a seed. */
+    val drawsLasso: Boolean get() = this != BUCKET
+
+    /** Takes colour away from the layer instead of adding it. */
+    val erases: Boolean get() = this == ENCLOSE_AND_ERASE || this == LASSO_ERASE
+
+    /** Fills only the regions the reference's lines close off inside the lasso. */
+    val referencesLines: Boolean get() = this == ENCLOSE_AND_FILL || this == ENCLOSE_AND_ERASE
+}
 
 fun defaultInkLayers(): List<InkLayer> = listOf(
     InkLayer(LayerIds.BACKGROUND, "Background", LayerRole.BACKGROUND, locked = true),

@@ -173,6 +173,7 @@ internal fun PaperCanvas(layerPickMode: Boolean, onLayerPickCandidates: (List<St
     }
     fun installFillCommit(view: InkCanvasView) {
         view.onSparseFillCommitted = { mask, color, opacity, edge -> view.paintFillIntoActiveRaster(mask, color, opacity, edge) }
+        view.onSparseEraseCommitted = { mask -> view.eraseMaskFromActiveRaster(mask) }
         view.onSelectionStrokeRequested = request@{ request ->
             if (view.selectionLayerTransferPending) return@request
             val layerId = view.activeLayerId

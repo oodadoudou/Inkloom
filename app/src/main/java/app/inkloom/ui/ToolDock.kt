@@ -988,7 +988,7 @@ internal fun FillOptionsLauncher(
         Row(Modifier.height(42.dp).padding(horizontal = 7.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.FormatColorFill, null, Modifier.size(18.dp))
             Spacer(Modifier.width(7.dp))
-            Text(when (subTool) { FillSubTool.BUCKET -> tr("Bucket", "油漆桶"); FillSubTool.ENCLOSE_AND_FILL -> tr("Enclose", "包围并填充"); FillSubTool.LASSO_FILL -> tr("Lasso", "套索填充"); FillSubTool.LEFTOVER_PEN -> tr("Leftover pen", "漏涂笔") }, fontSize = 11.sp)
+            Text(when (subTool) { FillSubTool.BUCKET -> tr("Bucket", "油漆桶"); FillSubTool.ENCLOSE_AND_FILL -> tr("Enclose", "包围并填充"); FillSubTool.ENCLOSE_AND_ERASE -> tr("Enclose erase", "包围并擦除"); FillSubTool.LASSO_FILL -> tr("Lasso", "套索填充"); FillSubTool.LASSO_ERASE -> tr("Lasso erase", "套索擦除"); FillSubTool.LEFTOVER_PEN -> tr("Leftover pen", "漏涂笔") }, fontSize = 11.sp)
             Spacer(Modifier.width(8.dp))
             Text("${tr("Close gap", "闭合缝隙")} ${closeGapPixels.toInt()} px", color = MutedInk, fontSize = 10.sp)
             Spacer(Modifier.width(8.dp))
@@ -1001,7 +1001,7 @@ internal fun FillOptionsLauncher(
                         FillSubTool.entries.forEach { option ->
                             Row(Modifier.fillMaxWidth().height(34.dp).clickable { onSubTool(option) }, verticalAlignment = Alignment.CenterVertically) {
                                 StudioRadioButton(subTool == option, { onSubTool(option) })
-                                Text(when (option) { FillSubTool.BUCKET -> tr("Refer and fill", "参照并填充"); FillSubTool.ENCLOSE_AND_FILL -> tr("Enclose and fill", "包围并填充"); FillSubTool.LASSO_FILL -> tr("Lasso fill", "套索填充"); FillSubTool.LEFTOVER_PEN -> tr("Leftover pen", "漏涂笔") }, fontSize = 11.sp)
+                                Text(when (option) { FillSubTool.BUCKET -> tr("Refer and fill", "参照并填充"); FillSubTool.ENCLOSE_AND_FILL -> tr("Enclose and fill", "包围并填充"); FillSubTool.ENCLOSE_AND_ERASE -> tr("Enclose and erase", "包围并擦除"); FillSubTool.LASSO_FILL -> tr("Lasso fill", "套索填充"); FillSubTool.LASSO_ERASE -> tr("Lasso erase", "套索擦除"); FillSubTool.LEFTOVER_PEN -> tr("Leftover pen", "漏涂笔") }, fontSize = 11.sp)
                             }
                         }
                         HorizontalDivider()

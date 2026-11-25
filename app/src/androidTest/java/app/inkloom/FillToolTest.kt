@@ -40,7 +40,7 @@ class FillToolTest {
     }
 
     @Test fun manualFillSubToolsCommitRasterMasks() {
-        FillSubTool.entries.filterNot { it == FillSubTool.BUCKET }.forEach { subTool ->
+        FillSubTool.entries.filter { it.drawsLasso && !it.referencesLines && !it.erases }.forEach { subTool ->
             var committed = false
             val view = canvas {
                 tool = EditorTool.FILL
@@ -58,6 +58,66 @@ class FillToolTest {
             send(view, 80L, MotionEvent.ACTION_UP, 40f, 40f)
             assertTrue("$subTool must commit a reusable fill mask", committed)
         }
+    }
+
+    /** A lasso around the whole 200 px page. */
+    private fun lassoAround(view: InkCanvasView, start: Long) {
+        send(view, start, MotionEvent.ACTION_DOWN, 20f, 20f)
+        send(view, start + 20L, MotionEvent.ACTION_MOVE, 180f, 20f)
+        send(view, start + 40L, MotionEvent.ACTION_MOVE, 180f, 180f)
+        send(view, start + 60L, MotionEvent.ACTION_MOVE, 20f, 180f)
+        send(view, start + 80L, MotionEvent.ACTION_UP, 20f, 20f)
+    }
+
+    private fun linedCanvas(subTool: FillSubTool, block: InkCanvasView.() -> Unit = {}) = canvas {
+        tool = EditorTool.FILL; fillSubTool = subTool; fingerDrawingEnabled = true; pagePaperColor = Color.WHITE
+        pageModelWidth = 200f; pageModelHeight = 200f; activeLayerId = "color"
+        referenceTarget = ReferenceTarget.ALL_VISIBLE
+        layerOrder = listOf("color", "line")
+        setRasterLayerSurfaces(mapOf("color" to PixelTileSurface(200, 200), "line" to borderSurface()))
+        block()
+    }
+
+    @Test fun encloseAndFillFillsOnlyTheClosedRegionAndSpreadsUnderItsLines() {
+        var mask: app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot? = null
+        val view = linedCanvas(FillSubTool.ENCLOSE_AND_FILL) { onSparseFillCommitted = { committed, _, _, _ -> mask = committed } }
+        lassoAround(view, 0L)
+        val result = checkNotNull(mask) { "enclose and fill must commit the closed region" }
+        assertTrue("the inside of the square is filled", result.alphaAt(100, 100) > 0)
+        assertTrue("the fill reaches under the inner edge of the line", result.alphaAt(54, 100) > 0)
+        assertEquals("the region outside the square touches the lasso, so it stays empty", 0, result.alphaAt(30, 30))
+        val bounds = checkNotNull(result.nonZeroBounds())
+        assertTrue("the fill never crosses the line: $bounds", bounds.left >= 46 && bounds.right <= 155)
+    }
+
+    @Test fun encloseAndEraseClearsTheClosedRegionOfTheColourLayer() {
+        val color = PixelTileSurface(200, 200).also { surface ->
+            surface.beginWrite("flat").use { w -> for (y in 0 until 200) for (x in 0 until 200) w.setPixel(x, y, Color.RED); w.commit().close() }
+        }
+        var erased: app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot? = null
+        var filled = false
+        val view = linedCanvas(FillSubTool.ENCLOSE_AND_ERASE) {
+            setRasterLayerSurfaces(mapOf("color" to color, "line" to borderSurface()))
+            onSparseFillCommitted = { _, _, _, _ -> filled = true }
+            onSparseEraseCommitted = { erased = it }
+        }
+        lassoAround(view, 0L)
+        assertFalse("erasing never paints", filled)
+        val result = checkNotNull(erased) { "the colour layer itself must not count as a line" }
+        assertTrue(result.alphaAt(100, 100) > 0)
+        assertEquals(0, result.alphaAt(30, 30))
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { assertTrue(view.eraseMaskFromActiveRaster(result)) }
+        assertEquals("the closed region is cleared", 0, Color.alpha(color.pixelAt(100, 100)))
+        assertEquals("outside the line is kept", 255, Color.alpha(color.pixelAt(30, 30)))
+    }
+
+    @Test fun lassoEraseErasesTheWholeLasso() {
+        var erased: app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot? = null
+        val view = linedCanvas(FillSubTool.LASSO_ERASE) { onSparseEraseCommitted = { erased = it } }
+        lassoAround(view, 0L)
+        val result = checkNotNull(erased)
+        assertTrue(result.alphaAt(30, 30) > 0)
+        assertTrue(result.alphaAt(100, 100) > 0)
     }
 
     private fun canvas(block: InkCanvasView.() -> Unit): InkCanvasView {
