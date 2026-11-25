@@ -208,6 +208,8 @@ enum class ProceduralTipKind {
     TRIANGLE,
     /** A soft square, for square watercolour and flat dabs. */
     SQUARE,
+    // Decoration and nature tips (DecorationTips); the ribbon ones are tall and tile along the stroke.
+    LACE, SCALLOP, HAIR, BARK, CHAIN, STITCH, PEARL, CLOUD, LEAF, GRASS, DENIM,
 }
 
 @Serializable

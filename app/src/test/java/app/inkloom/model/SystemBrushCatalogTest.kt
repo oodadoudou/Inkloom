@@ -135,10 +135,29 @@ class SystemBrushCatalogTest {
     }
 
     @Test
+    fun decorationsDrawFromTheirOwnTips() {
+        val ribbons = mapOf("system-decoration-lace" to ProceduralTipKind.LACE, "system-decoration-scallop" to ProceduralTipKind.SCALLOP,
+            "system-decoration-hair" to ProceduralTipKind.HAIR, "system-decoration-bark" to ProceduralTipKind.BARK)
+        val stamps = mapOf("system-decoration-chain" to ProceduralTipKind.CHAIN, "system-decoration-stitch" to ProceduralTipKind.STITCH,
+            "system-decoration-pearl" to ProceduralTipKind.PEARL, "system-decoration-cloud" to ProceduralTipKind.CLOUD,
+            "system-decoration-leaves" to ProceduralTipKind.LEAF, "system-decoration-grass" to ProceduralTipKind.GRASS,
+            "system-decoration-denim" to ProceduralTipKind.DENIM)
+        (ribbons + stamps).forEach { (id, kind) ->
+            val program = compiled(id)
+            assertEquals("$id is drawn by the procedural stamper", RenderBackend.PROCEDURAL_STAMP, program.backend)
+            assertEquals(kind, program.tip.tipTexture?.proceduralKind)
+            assertEquals("$id ribbon", id in ribbons, program.stamp?.ribbon == true)
+        }
+        assertTrue(compiled("system-decoration-chain").stamp?.followStrokeDirection == true)
+        assertTrue((compiled("system-decoration-leaves").stamp?.colorJitter?.hueDegrees ?: 0f) > 0f)
+    }
+
+    @Test
     fun authoredBrushesSurvivePersistence() {
         listOf("system-clean-liner", "system-ink-g-pen", "system-cream-pencil", "system-lineart-pencil", "system-wax-crayon", "system-soft-pastel",
             "system-wet-wash", "system-watercolor-edge", "system-triangle-watercolor", "system-square-watercolor", "system-gouache",
-            "system-flat-gouache", "system-textured-blender").forEach { id ->
+            "system-flat-gouache", "system-textured-blender", "system-decoration-lace", "system-decoration-chain",
+            "system-decoration-leaves", "system-decoration-hair").forEach { id ->
             val source = requireNotNull(SystemBrushCatalog.byId(id))
             val restored = requireNotNull(BrushPresetV5Codec.decodeOrNull(requireNotNull(source.v5PresetJson)))
             assertEquals(id, BrushPresetV5Import.requirePreset(source), restored)

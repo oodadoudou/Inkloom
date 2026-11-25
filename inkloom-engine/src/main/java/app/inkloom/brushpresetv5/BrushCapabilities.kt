@@ -60,7 +60,8 @@ object BrushCapabilities {
         }
         BrushFamily.PENCIL -> if (hasImportedTip) RenderBackend.ASSET_STAMP else RenderBackend.PROCEDURAL_STAMP
         BrushFamily.AIRBRUSH -> RenderBackend.AIRBRUSH
-        BrushFamily.DECORATION -> RenderBackend.ASSET_STAMP
+        // A first-party decoration drawn by code has no image to stamp; it takes the procedural stamper.
+        BrushFamily.DECORATION -> if (hasProceduralTip && !hasImportedTip) RenderBackend.PROCEDURAL_STAMP else RenderBackend.ASSET_STAMP
         BrushFamily.WET_PAINT -> RenderBackend.WET_PAINT
     }
 

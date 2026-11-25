@@ -879,6 +879,10 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Flat Gouache").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Blend").performClick()
         composeRule.onNodeWithText("Textured Blender").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Decoration").performScrollTo().performClick()
+        // The Decoration list is built lazily; the brushes below the fold are covered by SystemBrushCatalogTest.
+        composeRule.onNodeWithText("Lace").assertIsDisplayed()
+        composeRule.onNodeWithText("Scallop Border").assertIsDisplayed()
     }
 
     @Test fun brushPanelCanFloatMoveResizeAndReopenInPlace() {

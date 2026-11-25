@@ -204,6 +204,17 @@ class BrushTipMask(
                 app.inkloom.brushpresetv5.ProceduralTipKind.WATERCOLOR_RING -> watercolorRing(size, seed, hardness)
                 app.inkloom.brushpresetv5.ProceduralTipKind.TRIANGLE -> polygon(size, seed, 3, hardness)
                 app.inkloom.brushpresetv5.ProceduralTipKind.SQUARE -> polygon(size, seed, 4, hardness)
+                app.inkloom.brushpresetv5.ProceduralTipKind.LACE -> DecorationTips.lace(size)
+                app.inkloom.brushpresetv5.ProceduralTipKind.SCALLOP -> DecorationTips.scallop(size)
+                app.inkloom.brushpresetv5.ProceduralTipKind.HAIR -> DecorationTips.hair(size, seed)
+                app.inkloom.brushpresetv5.ProceduralTipKind.BARK -> DecorationTips.bark(size, seed)
+                app.inkloom.brushpresetv5.ProceduralTipKind.CHAIN -> DecorationTips.chain(size)
+                app.inkloom.brushpresetv5.ProceduralTipKind.STITCH -> DecorationTips.stitch(size)
+                app.inkloom.brushpresetv5.ProceduralTipKind.PEARL -> DecorationTips.pearl(size)
+                app.inkloom.brushpresetv5.ProceduralTipKind.CLOUD -> DecorationTips.cloud(size, seed)
+                app.inkloom.brushpresetv5.ProceduralTipKind.LEAF -> DecorationTips.leaf(size)
+                app.inkloom.brushpresetv5.ProceduralTipKind.GRASS -> DecorationTips.grass(size, seed)
+                app.inkloom.brushpresetv5.ProceduralTipKind.DENIM -> DecorationTips.denim(size, seed)
             }
 
         /**

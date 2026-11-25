@@ -97,6 +97,19 @@ object SystemBrushCatalog {
         systemBrush(id = "system-soft-airbrush", name = "Soft Airbrush", group = "Airbrush", size = 92f, opacity = .35f, hardness = .08f, blur = .35f, spacing = .12f, tags = listOf("airbrush", "soft")),
         systemBrush(id = "system-spray-airbrush", name = "Droplet Airbrush", group = "Airbrush", size = 76f, opacity = .42f, spray = true, sprayParticleSize = 7f, sprayDensity = 1.8f, spraySpread = 1.15f, sprayParticleRandomRotationDegrees = 180f, tags = listOf("airbrush", "spray")),
         systemBrush(id = "system-decoration-sparkle", name = "Sparkle Scatter", group = "Decoration", size = 54f, spacing = .34f, spray = true, sprayParticleSize = 10f, sprayDensity = 1.4f, spraySpread = .9f, stampCount = 3, randomRotationDegrees = 180f, tags = listOf("decoration", "effect")),
+        // Decoration and nature, all on first-party procedural tips: ribbons for lace, scallops, hair and
+        // bark; stamps that follow the stroke for chain, stitch and pearls; scattered stamps for nature.
+        systemBrush(id = "system-decoration-lace", name = "Lace", group = "Decoration", size = 40f, sizePressureEnabled = false, tags = listOf("decoration", "lace", "ribbon")),
+        systemBrush(id = "system-decoration-scallop", name = "Scallop Border", group = "Decoration", size = 30f, sizePressureEnabled = false, tags = listOf("decoration", "border", "ribbon")),
+        systemBrush(id = "system-decoration-chain", name = "Chain", group = "Decoration", size = 22f, spacing = .62f, sizePressureEnabled = false, tags = listOf("decoration", "chain")),
+        systemBrush(id = "system-decoration-stitch", name = "Stitch", group = "Decoration", size = 16f, spacing = 1.3f, sizePressureEnabled = false, tags = listOf("decoration", "stitch")),
+        systemBrush(id = "system-decoration-pearl", name = "Pearl String", group = "Decoration", size = 18f, spacing = 1f, sizePressureEnabled = false, tags = listOf("decoration", "pearl")),
+        systemBrush(id = "system-decoration-cloud", name = "Clouds", group = "Decoration", size = 70f, opacity = .75f, spacing = .3f, stampCount = 2, sizePressureMinimum = .6f, tags = listOf("decoration", "nature", "cloud")),
+        systemBrush(id = "system-decoration-leaves", name = "Leaves", group = "Decoration", size = 30f, spacing = .45f, stampCount = 2, randomRotationDegrees = 180f, sizePressureMinimum = .6f, tags = listOf("decoration", "nature", "foliage")),
+        systemBrush(id = "system-decoration-grass", name = "Grass", group = "Decoration", size = 40f, spacing = .2f, stampCount = 3, randomRotationDegrees = 14f, sizePressureMinimum = .5f, tags = listOf("decoration", "nature", "grass")),
+        systemBrush(id = "system-decoration-hair", name = "Hair Strands", group = "Decoration", size = 36f, sizePressureMinimum = .55f, tags = listOf("decoration", "hair", "ribbon")),
+        systemBrush(id = "system-decoration-bark", name = "Bark", group = "Decoration", size = 48f, sizePressureMinimum = .7f, tags = listOf("decoration", "texture", "bark")),
+        systemBrush(id = "system-decoration-denim", name = "Denim", group = "Decoration", size = 60f, opacity = .85f, spacing = .3f, sizePressureMinimum = .7f, tags = listOf("decoration", "texture", "fabric")),
         systemBrush(id = "system-decoration-hatching", name = "Cross Hatching", group = "Decoration", size = 18f, spacing = .18f, stampCount = 4, stampCountJitter = .3f, strokeRotationJitterDegrees = 90f, tags = listOf("decoration", "hatching")),
 
         systemBrush(id = "system-hard-eraser", name = "Hard Eraser", group = "Erasers", size = 24f, hardness = 1f, toolBinding = BrushToolBinding(BrushToolRole.ERASE), tags = listOf("eraser", "hard")),
@@ -152,6 +165,23 @@ object SystemBrushCatalog {
             colorJitter = app.inkloom.brushpresetv5.ColorJitterSettings(hueDegrees = 12f, saturation = .08f, value = .06f)),
     )
 
+    private fun ribbon(preset: BrushPresetV5, kind: ProceduralTipKind) = preset.copy(
+        tipTexture = proceduralTip(kind),
+        stamp = (preset.stamp ?: StampSettings()).copy(ribbon = true, followStrokeDirection = true),
+    )
+
+    private fun following(preset: BrushPresetV5, kind: ProceduralTipKind) = preset.copy(
+        tipTexture = proceduralTip(kind),
+        stamp = (preset.stamp ?: StampSettings()).copy(followStrokeDirection = true),
+    )
+
+    private fun scattered(preset: BrushPresetV5, kind: ProceduralTipKind, rotation: Float, spread: Float,
+                          jitter: app.inkloom.brushpresetv5.ColorJitterSettings?) = preset.copy(
+        tipTexture = proceduralTip(kind),
+        stamp = (preset.stamp ?: StampSettings()).copy(randomRotationDegrees = rotation, lateralPathJitter = spread,
+            horizontalRoundnessJitter = .3f, verticalRoundnessJitter = .3f, colorJitter = jitter),
+    )
+
     private fun chalkStick(preset: BrushPresetV5, tooth: Float) = preset.copy(
         tipTexture = TipTextureSettings(procedural = true, proceduralKind = ProceduralTipKind.CHALK, toothStrength = tooth),
         stamp = (preset.stamp ?: StampSettings()).copy(randomRotationDegrees = 180f),
@@ -193,6 +223,19 @@ object SystemBrushCatalog {
                 stamp = (preset.stamp ?: StampSettings()).copy(followStrokeDirection = true),
             )
         },
+        "system-decoration-lace" to { preset -> ribbon(preset, ProceduralTipKind.LACE) },
+        "system-decoration-scallop" to { preset -> ribbon(preset, ProceduralTipKind.SCALLOP) },
+        "system-decoration-hair" to { preset -> ribbon(preset, ProceduralTipKind.HAIR) },
+        "system-decoration-bark" to { preset -> ribbon(preset, ProceduralTipKind.BARK) },
+        "system-decoration-chain" to { preset -> following(preset, ProceduralTipKind.CHAIN) },
+        "system-decoration-stitch" to { preset -> following(preset, ProceduralTipKind.STITCH) },
+        "system-decoration-pearl" to { preset -> preset.copy(tipTexture = proceduralTip(ProceduralTipKind.PEARL)) },
+        "system-decoration-cloud" to { preset -> scattered(preset, ProceduralTipKind.CLOUD, rotation = 10f, spread = .5f, jitter = null) },
+        "system-decoration-leaves" to { preset -> scattered(preset, ProceduralTipKind.LEAF, rotation = 180f, spread = .9f,
+            jitter = app.inkloom.brushpresetv5.ColorJitterSettings(hueDegrees = 16f, saturation = .1f, value = .14f)) },
+        "system-decoration-grass" to { preset -> scattered(preset, ProceduralTipKind.GRASS, rotation = 14f, spread = .7f,
+            jitter = app.inkloom.brushpresetv5.ColorJitterSettings(hueDegrees = 10f, saturation = .08f, value = .12f)) },
+        "system-decoration-denim" to { preset -> preset.copy(tipTexture = proceduralTip(ProceduralTipKind.DENIM)) },
         "system-textured-blender" to { preset -> preset.copy(tipTexture = TipTextureSettings(procedural = true, proceduralKind = ProceduralTipKind.CHALK, toothStrength = .5f)) },
         "system-soft-pastel" to { preset -> chalkStick(preset, tooth = .7f) },
     )[id]

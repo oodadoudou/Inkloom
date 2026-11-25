@@ -26,7 +26,9 @@ import org.junit.runner.RunWith
 class StoreInspiredBrushRasterTest {
     private val ids = listOf("system-clean-liner", "system-ink-g-pen", "system-cream-pencil", "system-lineart-pencil",
         "system-wax-crayon", "system-soft-pastel", "system-wet-wash", "system-watercolor-edge", "system-triangle-watercolor",
-        "system-square-watercolor", "system-gouache", "system-flat-gouache")
+        "system-square-watercolor", "system-gouache", "system-flat-gouache", "system-decoration-lace", "system-decoration-scallop",
+        "system-decoration-chain", "system-decoration-stitch", "system-decoration-pearl", "system-decoration-cloud", "system-decoration-leaves",
+        "system-decoration-grass", "system-decoration-hair", "system-decoration-bark", "system-decoration-denim")
 
     @Test fun eachBrushDrawsWithItsOwnCharacter() {
         val strokes = ids.associateWith { render(requireNotNull(SystemBrushCatalog.byId(it))) }
