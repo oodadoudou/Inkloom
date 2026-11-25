@@ -59,6 +59,27 @@ class LineArtColorizeTest {
         assertEquals(8, LineArtColorize.palette(red).distinct().size)
     }
 
+    @Test fun flatsGiveEachClosedRegionItsOwnColourUnderTheLines() {
+        val out = LineArtColorize.render(lines, null, ColorizeSettings.FLATS)
+        val left = out[60 * size + 30]; val right = out[60 * size + 90]
+        assertNotEquals(0, left); assertNotEquals(0, right)
+        assertNotEquals("each region is its own colour", left, right)
+        assertEquals("the background stays clear", 0, out[5 * size + 5])
+        assertNotEquals("the flat runs under the line", 0, out[60 * size + 10])
+    }
+
+    @Test fun flatColoursAreDistinctSoftAndNeverMustard() {
+        val colours = (0 until 60).map(LineArtColorize::flatColor)
+        assertEquals("sixty regions, sixty colours", 60, colours.distinct().size)
+        colours.forEach { c ->
+            val r = c ushr 16 and 255; val g = c ushr 8 and 255; val b = c and 255
+            val max = maxOf(r, g, b); val min = minOf(r, g, b)
+            assertTrue("soft, light flats: ${Integer.toHexString(c)}", max >= 200 && (max - min) <= 120)
+            val yellowish = r > b + 40 && g > b + 40 && kotlin.math.abs(r - g) < 40
+            if (yellowish) assertTrue("yellow stays pale, not mustard: ${Integer.toHexString(c)}", min >= 150)
+        }
+    }
+
     @Test fun hintColoursAreListedByArea() {
         val hint = surface { x, y -> if (x < 60 && y < 30) red else if (x > 100 && y > 110) blue else 0 }
         assertEquals(listOf(quantised(red), quantised(blue)), LineArtColorize.hintColors(hint))

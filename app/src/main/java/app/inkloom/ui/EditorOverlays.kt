@@ -19,6 +19,8 @@ internal class EditorOverlays {
     var externalScreenColorOpen by mutableStateOf(false)
     var shadingAssistOpen by mutableStateOf(false)
     var colorizeOpen by mutableStateOf(false)
+    /** One-tap flats were chosen; run once, then cleared. */
+    var flatsRequested by mutableStateOf(false)
     var pageExportOpen by mutableStateOf(false)
     var pageShareOpen by mutableStateOf(false)
     var quickZoomMenu by mutableStateOf(false)

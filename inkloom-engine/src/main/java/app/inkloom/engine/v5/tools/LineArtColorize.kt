@@ -2,6 +2,7 @@ package app.inkloom.engine.v5.tools
 
 import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
 import kotlin.math.abs
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 /**
@@ -21,8 +22,16 @@ data class ColorizeSettings(
     val blur: Int = 0,
     /** Colorize all: colours for regions without a hint image, in order of region size. */
     val palette: List<Int> = emptyList(),
+    /** Flats: without a hint image, every region gets a colour of its own ([LineArtColorize.flatColor]). */
+    val flats: Boolean = false,
 ) {
     init { require(lineThreshold in .01f..1f && gapClosing in 0..20 && blur in 0..30) { "Colorize settings are out of range" } }
+
+    companion object {
+        /** One-tap flats (as the popular "1 click flat colour" assets do): a distinct flat colour per
+         * closed region, under the lines, ready to be picked out with the wand or same-colour fill. */
+        val FLATS = ColorizeSettings(gapClosing = 2, fillUnderLines = true, flats = true)
+    }
 }
 
 /**
@@ -82,11 +91,11 @@ object LineArtColorize {
                     else if (order.isNotEmpty()) v.entries.sortedWith(compareByDescending<Map.Entry<Int, Int>> { it.value }.thenBy { order.indexOf(it.key).let { p -> if (p < 0) Int.MAX_VALUE else p } }).first().key
                     else v.maxBy { it.value }.key
             }
-        } else if (settings.palette.isNotEmpty()) {
-            // Colorize all: the background (the largest region on the page edge) stays clear.
+        } else if (settings.flats || settings.palette.isNotEmpty()) {
+            // Colorize all and flats: the background (the largest region on the page edge) stays clear.
             val background = sizes.indices.filter { touchesEdge[it] }.maxByOrNull { sizes[it] }
             sizes.indices.filter { it != background && sizes[it] >= 16 }.sortedByDescending { sizes[it] }.forEachIndexed { rank, r ->
-                colour[r] = settings.palette[rank % settings.palette.size] or 0xFF000000.toInt()
+                colour[r] = if (settings.flats) flatColor(rank) else settings.palette[rank % settings.palette.size] or 0xFF000000.toInt()
             }
         }
         check()
@@ -105,6 +114,20 @@ object LineArtColorize {
         }
         check()
         return if (settings.blur > 0) blur(pixel, w, h, settings.blur) else pixel
+    }
+
+    /**
+     * The [index]th flats colour: hues a golden angle apart, with three saturation and three lightness
+     * steps, so neighbouring ranks never look alike. Soft, never saturated; the warm band from orange
+     * through yellow to lime is kept pale and light so no flat turns brown, mustard or olive.
+     */
+    fun flatColor(index: Int): Int {
+        require(index >= 0) { "index must not be negative" }
+        val hue = (index * GOLDEN_ANGLE) % 360f
+        val warm = hue in 15f..95f
+        val saturation = if (warm) .30f + .04f * (index % 3) else .28f + .08f * (index % 3)
+        val value = if (warm) .97f else .95f - .07f * (index / 3 % 3)
+        return hsv(hue, saturation, value)
     }
 
     /** A harmony palette around [base]: neighbouring and opposite hues with varied lightness, for Colorize all. */
@@ -140,7 +163,7 @@ object LineArtColorize {
         if (surface.pixelFormat.isHighPrecision) {
             val p = surface.linearPixelAt(cx, cy)
             if (p.alpha < .5f) return null
-            fun c(v: Float) = (app.inkloom.engine.v5.composite.ExtendedSrgb.encode((v / p.alpha).coerceIn(0f, 1f)) * 255f).roundToInt()
+            fun c(v: Float) = (encodeSrgb((v / p.alpha).coerceIn(0f, 1f)) * 255f).roundToInt()
             return (0xFF shl 24) or (c(p.red) shl 16) or (c(p.green) shl 8) or c(p.blue)
         }
         val v = surface.pixelAt(cx, cy); val a = v ushr 24
@@ -148,6 +171,11 @@ object LineArtColorize {
         fun c(shift: Int) = ((v ushr shift and 255) * 255 / a).coerceAtMost(255)
         return (0xFF shl 24) or (c(16) shl 16) or (c(8) shl 8) or c(0)
     }
+
+    private fun encodeSrgb(linear: Float): Float =
+        if (linear <= .0031308f) linear * 12.92f else 1.055f * linear.toDouble().pow(1.0 / 2.4).toFloat() - .055f
+
+    private const val GOLDEN_ANGLE = 137.50777f
 
     private fun alpha(surface: PixelTileSurfaceSnapshot, x: Int, y: Int): Float =
         if (surface.pixelFormat.isHighPrecision) surface.linearPixelAt(x, y).alpha else (surface.pixelAt(x, y) ushr 24) / 255f

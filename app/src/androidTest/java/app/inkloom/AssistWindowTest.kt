@@ -90,6 +90,26 @@ class AssistWindowTest {
         assertTrue("the hint layer is hidden", !layers.first { it.id == hintLayer }.visible)
     }
 
+    @Test fun flatsAddALayerUnderTheLineArtInOneTap() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        val view = canvas()
+        val bounds = pageScreenBounds(view)
+        fun at(x: Float, y: Float) = Offset(bounds.left + bounds.width() * x, bounds.top + bounds.height() * y)
+        stroke(at(.2f, .3f), at(.5f, .3f)); stroke(at(.5f, .3f), at(.5f, .6f)); stroke(at(.5f, .6f), at(.2f, .6f)); stroke(at(.2f, .6f), at(.2f, .3f))
+        compose.waitUntil(10_000) { !view.hasPendingPaintPublicationForMerge() }
+        val lineArt = view.activeLayerId
+        val before = model().currentPage()!!.layers.size
+        openAction("Flats")
+        compose.waitUntil(20_000) { model().currentPage()!!.layers.size == before + 1 }
+        val layers = model().currentPage()!!.layers
+        val flats = layers.first { it.name == "Flats" }
+        assertNotNull(flats.rasterTileSurface)
+        assertTrue("the flats go under the line art", layers.indexOf(flats) < layers.indexOfFirst { it.id == lineArt })
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        compose.waitUntil(5_000) { model().currentPage()!!.layers.size == before }
+    }
+
     private fun openAction(label: String) {
         compose.onNodeWithContentDescription("Actions").performClick()
         compose.onNodeWithContentDescription("Actions Canvas").performClick()
