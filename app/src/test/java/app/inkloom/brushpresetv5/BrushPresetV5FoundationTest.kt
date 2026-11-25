@@ -129,6 +129,34 @@ class BrushPresetV5FoundationTest {
         assertEquals(null, oldInkloom.v5PresetJson)
     }
 
+    @Test fun cspRibbonAndTipOrderReachTheExecutableStamp() {
+        fun convert(ribbon: Boolean, order: Int, format: BrushFormat = BrushFormat.SUT) = BrushPresetV5Import.requirePreset(
+            BrushPresetV5Import.convertDecodedSource(ImportedBrush(
+                id = "sut-lace", name = "Lace", format = format, compatibility = Compatibility.HIGH, sizeBytes = 42, report = emptyList(),
+                tipPreviewPath = "/tips/a.png", tipPreviewPaths = listOf("/tips/a.png", "/tips/b.png"),
+                ribbon = ribbon, tipSequenceMode = order,
+            ))).stamp
+        val lace = convert(ribbon = true, order = 1)
+        assertEquals(true, lace?.ribbon)
+        assertEquals(TipOrder.PING_PONG, lace?.tipOrder)
+        assertEquals(TipOrder.REPEAT, convert(ribbon = false, order = 0)?.tipOrder)
+        assertEquals("only CSP brushes carry these settings", TipOrder.RANDOM, convert(true, 0, BrushFormat.ABR)?.tipOrder)
+        assertEquals(false, convert(true, 0, BrushFormat.ABR)?.ribbon)
+    }
+
+    @Test fun cspBrushesImportedEarlierGainTheirRibbonOnLoad() {
+        val fresh = BrushPresetV5Import.convertDecodedSource(ImportedBrush(
+            id = "sut-old-lace", name = "Old lace", format = BrushFormat.SUT, compatibility = Compatibility.HIGH, sizeBytes = 42,
+            report = emptyList(), tipPreviewPath = "/tips/a.png", ribbon = true, tipSequenceMode = 0))
+        val preset = BrushPresetV5Import.requirePreset(fresh)
+        // As stored before this change: the preset never had the ribbon.
+        val old = fresh.copy(v5PresetJson = BrushPresetV5Codec.encode(preset.copy(stamp = preset.stamp!!.copy(ribbon = false, tipOrder = TipOrder.RANDOM))))
+        val repaired = BrushPresetV5Import.requirePreset(BrushPresetV5Import.repairCspTipSequence(old)).stamp!!
+        assertEquals(true, repaired.ribbon)
+        assertEquals(TipOrder.REPEAT, repaired.tipOrder)
+        assertTrue("an up-to-date brush is left untouched", BrushPresetV5Import.repairCspTipSequence(fresh) === fresh)
+    }
+
     @Test fun importBoundaryPreservesEraserMultiTipSprayAndWetProgramsInV5Truth() {
         val decoded = ImportedBrush(
             id = "sut-native",

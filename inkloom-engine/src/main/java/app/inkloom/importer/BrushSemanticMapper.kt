@@ -193,9 +193,9 @@ object BrushSemanticMapper {
         if (hasAdvancedColorMix(brush)) preserved("$prefix.wetMix.advancedCsp", "CSP mix mode, dynamics, stretch, pigment, brightness and blur controls remain source-only.")
         if (hasAdvancedGrain(brush)) preserved("$prefix.grain.advanced", "Minimum/dynamic depth, stroke rotation, composite, filtering and per-plot grain behavior remain source-only.")
         if (hasAdvancedSpray(brush)) preserved("$prefix.spray.dynamics", "Pressure/tilt/velocity/random spray size and density programs remain source-only.")
-        if (brush.ribbon || brush.tipSequenceMode != 0 || brush.tipFlipHorizontalMode != 0 ||
-            brush.tipFlipVerticalMode != 0 || brush.blendTipsWithDarken
-        ) preserved("$prefix.tipSequence", "Ribbon, ordered tip selection, flip and darken-composite semantics remain source-only.")
+        // Ribbon and the tip order now execute; per-tip flips and darken compositing do not yet.
+        if (brush.tipFlipHorizontalMode != 0 || brush.tipFlipVerticalMode != 0 || brush.blendTipsWithDarken
+        ) preserved("$prefix.tipSequence", "Per-tip flip and darken-composite semantics remain source-only.")
         if (brush.waterEdgeEnabled) preserved("$prefix.waterEdge", "Water-edge radius, opacity, darkness and blur remain source-only.")
 
         if (brush.dualBrush && !wetPrimary) {

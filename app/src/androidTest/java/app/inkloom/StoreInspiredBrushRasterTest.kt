@@ -46,6 +46,28 @@ class StoreInspiredBrushRasterTest {
         assertTrue("the pastel is broken up: ${broken("system-soft-pastel")}", broken("system-soft-pastel") > broken("system-ink-g-pen") + .15f)
     }
 
+    /** Optional: real CSP ribbon brushes pushed to /data/local/tmp/inkloom-ribbon-samples render as unbroken ribbons. */
+    @Test fun cspRibbonSamplesDraw() {
+        val samples = java.io.File("/data/local/tmp/inkloom-ribbon-samples").listFiles { file -> file.extension.equals("sut", true) }
+            ?.sortedBy { it.name }.orEmpty()
+        if (samples.isEmpty()) return
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val assets = java.io.File(context.cacheDir, "ribbon-assets-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            val parser = app.inkloom.importer.SutBrushParser(assets)
+            val strokes = samples.associate { source ->
+                val decoded = parser.enrich(source, source.name.hashCode().toUInt().toString(16), ImportedBrush(
+                    name = source.nameWithoutExtension, format = app.inkloom.model.BrushFormat.SUT,
+                    compatibility = app.inkloom.model.Compatibility.EXTRACTED, sizeBytes = source.length(), report = emptyList()))
+                val brush = app.inkloom.brushpresetv5.BrushPresetV5Import.convertDecodedSource(decoded)
+                assertTrue("${source.name} keeps its ribbon", app.inkloom.brushpresetv5.BrushPresetV5Import.requirePreset(brush).stamp?.ribbon == true)
+                source.nameWithoutExtension to render(brush)
+            }
+            strokes.forEach { (name, pixels) -> assertTrue("$name draws", pixels.any { it ushr 24 > 0 }) }
+            saveSheet(strokes, "ribbon-samples")
+        } finally { assets.deleteRecursively() }
+    }
+
     /** Covered pixels in column [x]. */
     private fun thickness(pixels: IntArray, x: Int) = (0 until HEIGHT).count { y -> pixels[y * WIDTH + x] ushr 24 > 96 }
 
@@ -75,7 +97,7 @@ class StoreInspiredBrushRasterTest {
         return surface.snapshot().copyPremultipliedPixels(PixelRect(0, 0, WIDTH, HEIGHT))
     }
 
-    private fun saveSheet(strokes: Map<String, IntArray>) {
+    private fun saveSheet(strokes: Map<String, IntArray>, name: String = "store-brushes") {
         val sheet = Bitmap.createBitmap(WIDTH, (HEIGHT + 24) * strokes.size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(sheet)
         canvas.drawColor(Color.WHITE)
@@ -87,10 +109,10 @@ class StoreInspiredBrushRasterTest {
             try { canvas.drawBitmap(tile, 0f, top + 24f, null) } finally { tile.recycle() }
         }
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val output = requireNotNull(instrumentation.targetContext.getExternalFilesDir(null)).resolve("store-brushes.png")
+        val output = requireNotNull(instrumentation.targetContext.getExternalFilesDir(null)).resolve("$name.png")
         try { output.outputStream().use { sheet.compress(Bitmap.CompressFormat.PNG, 100, it) } } finally { sheet.recycle() }
         android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
-            "cp ${output.absolutePath} /data/local/tmp/inkloom-store-brushes.png")).use { it.readBytes() }
+            "cp ${output.absolutePath} /data/local/tmp/inkloom-$name.png")).use { it.readBytes() }
     }
 
     private fun InkCanvasView.send(action: Int, x: Float, y: Float, time: Long, pressure: Float) {

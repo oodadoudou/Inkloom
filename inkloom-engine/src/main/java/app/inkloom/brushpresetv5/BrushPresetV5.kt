@@ -231,7 +231,33 @@ data class StampSettings(
     val directionRotationFactor: Float = 0f,
     val strokeRotationJitterDegrees: Float = 0f,
     val particlesPerPlotJitter: Float = 0f,
+    /** Which of several tips each dab uses. */
+    val tipOrder: TipOrder = TipOrder.RANDOM,
+    /** CSP ribbon: tips are laid end to end along the stroke, their vertical axis following it, without gaps. */
+    val ribbon: Boolean = false,
 )
+
+/** How a multi-tip brush walks through its tips. */
+@Serializable
+enum class TipOrder {
+    RANDOM,
+    /** 1, 2, 3, 1, 2, 3… */
+    REPEAT,
+    /** 1, 2, 3, 2, 1, 2… */
+    PING_PONG,
+    /** One tip, chosen per stroke. */
+    PER_STROKE;
+
+    companion object {
+        /** CSP's brush tip order (BrushPatternOrderType), listed in its UI as repeat, turn back, random, each stroke. */
+        fun fromCsp(value: Int): TipOrder = when (value) {
+            0 -> REPEAT
+            1 -> PING_PONG
+            3 -> PER_STROKE
+            else -> RANDOM
+        }
+    }
+}
 
 /** Per-dab transfer behavior reconstructed from Procreate's archived rendering flags. */
 @Serializable

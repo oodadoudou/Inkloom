@@ -238,6 +238,40 @@ class StampPaintOpTest {
         assertTrue("Texturized grain must retain document phase", !fixedAt30.contentEquals(fixedAt71))
     }
 
+    @Test fun tipOrdersWalkTheTipsAsCspDoes() {
+        fun walk(order: app.inkloom.brushpresetv5.TipOrder, stroke: Long = 7L) =
+            (0L until 8L).map { StampPaintOp.tipIndex(order, it, stroke, 43, 3) }
+        assertEquals(listOf(0, 1, 2, 0, 1, 2, 0, 1), walk(app.inkloom.brushpresetv5.TipOrder.REPEAT))
+        assertEquals(listOf(0, 1, 2, 1, 0, 1, 2, 1), walk(app.inkloom.brushpresetv5.TipOrder.PING_PONG))
+        assertEquals("one tip for the whole stroke", 1, walk(app.inkloom.brushpresetv5.TipOrder.PER_STROKE).distinct().size)
+        assertTrue("strokes differ", (1L..20L).map { walk(app.inkloom.brushpresetv5.TipOrder.PER_STROKE, it).first() }.distinct().size > 1)
+        assertTrue(walk(app.inkloom.brushpresetv5.TipOrder.RANDOM).all { it in 0..2 })
+        assertEquals(0, StampPaintOp.tipIndex(app.inkloom.brushpresetv5.TipOrder.PING_PONG, 5L, 1L, 43, 1))
+        assertEquals(app.inkloom.brushpresetv5.TipOrder.REPEAT, app.inkloom.brushpresetv5.TipOrder.fromCsp(0))
+        assertEquals(app.inkloom.brushpresetv5.TipOrder.PING_PONG, app.inkloom.brushpresetv5.TipOrder.fromCsp(1))
+        assertEquals(app.inkloom.brushpresetv5.TipOrder.RANDOM, app.inkloom.brushpresetv5.TipOrder.fromCsp(2))
+        assertEquals(app.inkloom.brushpresetv5.TipOrder.PER_STROKE, app.inkloom.brushpresetv5.TipOrder.fromCsp(3))
+    }
+
+    @Test fun ribbonLaysTipsEndToEndAlongTheStrokeWithoutGaps() {
+        // A 1:3 upright bar: as dabs it would be spaced by the brush spacing; as a ribbon its height runs
+        // along the stroke and each bar starts where the last ended.
+        val bar = BrushTipMask(16, 48, ByteArray(16 * 48) { 255.toByte() })
+        val ribbon = definition().copy(diameterPixels = 24f, spacingRatio = 2f, tips = listOf(bar), ribbon = true)
+        val sparse = ribbon.copy(ribbon = false)
+        val points = listOf(sample(1, 60f, 30f), sample(2, 132f, 30f))
+        val laid = draw(listOf(points), ribbon)
+        val spaced = draw(listOf(points), sparse)
+        fun gapsOnCentreLine(pixels: IntArray) = (16 until 128).count { x -> pixels[30 * 144 + x] ushr 24 < 32 }
+        assertEquals("the ribbon is unbroken along the stroke", 0, gapsOnCentreLine(laid))
+        assertTrue("the same tip with wide spacing leaves gaps", gapsOnCentreLine(spaced) > 10)
+        // The bar's narrow side lies across the stroke: about 8 px high, not 24.
+        val column = (0 until 64).count { y -> laid[y * 144 + 90] ushr 24 > 128 }
+        assertTrue("ribbon height $column", column in 6..11)
+        assertEquals(24f, StampPaintOp.ribbonLength(24f, 1f / 3f), .001f)
+        assertEquals(8f, StampPaintOp.ribbonLength(24f, 3f), .001f)
+    }
+
     private fun draw(
         moveBatches: List<List<StrokeSample>>,
         brush: StampBrushDefinition = definition(),

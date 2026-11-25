@@ -81,7 +81,7 @@ object BrushPresetV5Import {
         }
         audited.v5PresetJson?.let { encoded ->
             require(BrushPresetV5Codec.decodeOrNull(encoded) != null) { "Invalid Brush Preset Format V5 payload" }
-            return repairImportedMotionSettings(audited)
+            return repairCspTipSequence(repairImportedMotionSettings(audited))
         }
         val auditedSource = audited.copy(
             report = (audited.report + BrushSemanticMapper.compatibilityReport(audited)).distinct(),
@@ -113,6 +113,17 @@ object BrushPresetV5Import {
             maxOf(source.stabilization, source.streamLine, source.procreateStabilization).coerceIn(0f,1f) else stroke.smoothing
         return source.copy(v5PresetJson = BrushPresetV5Codec.encode(preset.copy(stroke=stroke.copy(
             smoothing=smoothing, motionFiltering=MotionFilteringSettings(source.motionFiltering.coerceIn(0f,1f),source.motionFilteringExpression.coerceIn(0f,1f))))))
+    }
+
+    /** CSP brushes imported before ribbon and the tip order executed carry them only in the source
+     * fields; copy them into the stored preset once, when the library loads. */
+    fun repairCspTipSequence(source: ImportedBrush): ImportedBrush {
+        if (source.format != BrushFormat.SUT || (!source.ribbon && source.tipSequenceMode == 0)) return source
+        val preset = BrushPresetV5Codec.decodeOrNull(source.v5PresetJson) ?: return source
+        val stamp = preset.stamp ?: return source
+        val order = TipOrder.fromCsp(source.tipSequenceMode)
+        if (stamp.ribbon == source.ribbon && stamp.tipOrder == order) return source
+        return source.copy(v5PresetJson = BrushPresetV5Codec.encode(preset.copy(stamp = stamp.copy(ribbon = source.ribbon, tipOrder = order))))
     }
 
     fun requirePreset(record: ImportedBrush): BrushPresetV5 =
@@ -293,6 +304,8 @@ object BrushPresetV5Import {
                     directionRotationFactor = it.shapeTouchRotation.coerceIn(-1f, 1f),
                     strokeRotationJitterDegrees = kotlin.math.abs(it.strokeRotationJitterDegrees).coerceIn(0f, 180f),
                     particlesPerPlotJitter = it.stampCountJitter.coerceIn(0f, 1f),
+                    tipOrder = if (source.format == BrushFormat.SUT) TipOrder.fromCsp(it.tipSequenceMode) else TipOrder.RANDOM,
+                    ribbon = source.format == BrushFormat.SUT && it.ribbon,
                     spray = it.takeIf(ImportedBrush::spray)?.let { spray ->
                         SpraySettings(
                             particleSize = spray.sprayParticleSize.coerceAtLeast(.01f),

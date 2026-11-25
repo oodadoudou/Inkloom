@@ -41,6 +41,10 @@ enum class DualBrushCompositeMode {
 
 data class DualBrushCompositeDefinition(val mode: DualBrushCompositeMode = DualBrushCompositeMode.NORMAL)
 
+/** A ribbon tip is cut into bands about this many source rows high, at most [RIBBON_MAX_BANDS]. */
+private const val RIBBON_BAND_ROWS = 4
+private const val RIBBON_MAX_BANDS = 48
+
 data class StampBrushDefinition(
     val kind: PaintOpKind = PaintOpKind.DECORATION,
     val diameterPixels: Float,
@@ -83,7 +87,21 @@ data class StampBrushDefinition(
     val strokeRotationJitterRadians: Float = 0f,
     val particlesPerPlotJitter: Float = 0f,
     val blend: DryBlend = DryBlend.SOURCE_OVER,
+    val tipOrder: app.inkloom.brushpresetv5.TipOrder = app.inkloom.brushpresetv5.TipOrder.RANDOM,
+    /** Lay tips end to end along the stroke, turned to follow it (CSP ribbon). */
+    val ribbon: Boolean = false,
 ) {
+    /**
+     * Ribbon tips cut into thin bands along their height, so a long tip bends with the stroke: each
+     * band is laid and turned on its own. Bands run bottom first, as the tip's top points forward.
+     */
+    val ribbonBands: List<List<BrushTipMask>> by lazy {
+        if (!ribbon) emptyList() else tips.map { tip ->
+            val count = (tip.height / RIBBON_BAND_ROWS).coerceIn(1, RIBBON_MAX_BANDS)
+            (count - 1 downTo 0).map { tip.band(it, count) }
+        }
+    }
+
     init {
         require(diameterPixels.isFinite() && diameterPixels in .1f..4096f)
         require(opacity.isFinite() && opacity in 0f..1f)
@@ -224,7 +242,7 @@ class StampPaintOp(
                         val previous = streamState.lastSample
                         if (previous == null) {
                             resolveDabs(sample, directionRadians = stream.definition.rotationRadians, dabs, stream, streamState)
-                            streamState.distanceToNextDab = spacingFor(sample, stream.definition)
+                            streamState.distanceToNextDab = nextSpacing(sample, stream.definition, streamState)
                         } else if (!sameSample(previous, sample)) {
                             emitSegment(previous, sample, dabs, stream, streamState)
                         } else if (stream.definition.repeatStationarySamples) {
@@ -276,7 +294,7 @@ class StampPaintOp(
                 val t = (travelled / length).coerceIn(0f, 1f)
                 val sample = interpolate(start, end, t)
                 resolveDabs(sample, direction, output, stream, streamState)
-                remaining = spacingFor(sample, stream.definition)
+                remaining = nextSpacing(sample, stream.definition, streamState)
             }
             streamState.distanceToNextDab = (remaining - (length - travelled)).coerceAtLeast(0f)
         }
@@ -307,9 +325,15 @@ class StampPaintOp(
             val dabSequence = streamState.dabSequence
             val size = definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure) *
                 definition.sizeTilt.evaluate(sample.tiltRadians)
-            val tipIndex = deterministicTipIndex(dabSequence, definition.renderSeed, definition.tips.size)
-            val tip = definition.tips[tipIndex]
-            val aspect = tip.width.toFloat() / tip.height
+            val tipIndex = if (definition.ribbon) {
+                if (streamState.ribbonBand == 0) streamState.ribbonTip = tipIndex(definition.tipOrder, streamState.ribbonTipOrdinal,
+                    stream.transactionId, definition.renderSeed, definition.tips.size)
+                streamState.ribbonTip
+            } else tipIndex(definition.tipOrder, dabSequence, stream.transactionId, definition.renderSeed, definition.tips.size)
+            val fullTip = definition.tips[tipIndex]
+            val bands = if (definition.ribbon) definition.ribbonBands[tipIndex] else null
+            val tip = bands?.get(streamState.ribbonBand) ?: fullTip
+            val aspect = fullTip.width.toFloat() / fullTip.height
             val horizontalRoundness = 1f - randomUnit(dabSequence, particle * 13 + 7, definition.renderSeed) *
                 definition.horizontalRoundnessJitter
             val verticalRoundness = 1f - randomUnit(dabSequence, particle * 13 + 8, definition.renderSeed) *
@@ -317,6 +341,15 @@ class StampPaintOp(
             val radiusX = ((if (aspect >= 1f) size * .5f else size * aspect * .5f) * horizontalRoundness).coerceAtLeast(.05f)
             val radiusY = (if (aspect <= 1f) size * .5f else size / aspect * .5f)
                 .times(definition.roundness * verticalRoundness).coerceAtLeast(.05f)
+            // A ribbon runs the tip's vertical axis along the stroke, as CSP does: each band is its share of the
+            // tip's height, and the next band starts where this one ends.
+            if (bands != null) {
+                val bandHeight = radiusY * tip.height / fullTip.height
+                streamState.ribbonLength = (bandHeight * 2f).coerceAtLeast(.25f)
+                streamState.ribbonBand += 1
+                if (streamState.ribbonBand == bands.size) { streamState.ribbonBand = 0; streamState.ribbonTipOrdinal += 1 }
+            }
+            val dabRadiusY = if (bands != null) (radiusY * tip.height / fullTip.height).coerceAtLeast(.05f) else radiusY
             val scatterAngle = randomUnit(dabSequence, particle * 2, definition.renderSeed) * (Math.PI * 2.0).toFloat()
             val scatterUnit = randomUnit(dabSequence, particle * 2 + 1, definition.renderSeed)
             val scatterExponent = if (definition.scatterBias >= 0f) {
@@ -331,6 +364,7 @@ class StampPaintOp(
                 (randomUnit(context.transactionId, 89, definition.renderSeed) * 2f - 1f) * definition.strokeRotationJitterRadians
                 ).also { streamState.strokeRotationRadians = it }
             val angle = definition.rotationRadians + randomRotation + when {
+                definition.ribbon -> directionRadians + (Math.PI / 2).toFloat()
                 definition.followStylusOrientation -> sample.orientationRadians
                 definition.followStrokeDirection -> directionRadians
                 else -> directionRadians * definition.directionRotationFactor
@@ -345,7 +379,7 @@ class StampPaintOp(
                 centerY = sample.point.y + sin(scatterAngle) * scatterDistance +
                     sin(directionRadians) * longitudinal + cos(directionRadians) * lateral,
                 radiusX = radiusX,
-                radiusY = radiusY,
+                radiusY = dabRadiusY,
                 angleRadians = angle,
                 depositedAlpha = definition.opacity * definition.flow *
                     definition.opacityPressure.evaluate(sample.pressure) *
@@ -356,6 +390,10 @@ class StampPaintOp(
             )
                 .also { streamState.dabSequence++ }
         }
+
+        /** A ribbon's next tip starts where the last one ended; other brushes use their spacing. */
+        private fun nextSpacing(sample: StrokeSample, definition: StampBrushDefinition, streamState: StreamState): Float =
+            if (definition.ribbon) streamState.ribbonLength * RIBBON_OVERLAP else spacingFor(sample, definition)
 
         private fun spacingFor(sample: StrokeSample, definition: StampBrushDefinition): Float =
             (definition.spacingReferencePixels * definition.sizePressure.evaluate(sample.pressure) * definition.spacingRatio)
@@ -618,6 +656,11 @@ class StampPaintOp(
         var distanceToNextDab: Float = 0f
         var dabSequence: Long = 0L
         var strokeRotationRadians: Float? = null
+        /** The length along the stroke of the last ribbon band placed. */
+        var ribbonLength: Float = 1f
+        var ribbonTip: Int = 0
+        var ribbonBand: Int = 0
+        var ribbonTipOrdinal: Long = 0L
     }
 
     private data class StreamRuntime(val definition: StampBrushDefinition, val transactionId: Long) {
@@ -724,6 +767,29 @@ class StampPaintOp(
         }
 
         private const val DUAL_EPSILON = 1f / 65_535f
+
+        /** Ribbon bands overlap by a hair so curves show no seams. */
+        private const val RIBBON_OVERLAP = .9f
+
+        /** The length along the stroke of a ribbon tip of [size] (its larger side) and width/height [aspect]:
+         * its height, since a ribbon runs the tip's vertical axis along the stroke. */
+        fun ribbonLength(size: Float, aspect: Float): Float =
+            (if (aspect <= 1f) size else size / aspect).coerceAtLeast(.25f)
+
+        /** The tip the [sequence]th dab of stroke [transactionId] uses among [count] tips. */
+        fun tipIndex(order: app.inkloom.brushpresetv5.TipOrder, sequence: Long, transactionId: Long, seed: Int, count: Int): Int {
+            if (count <= 1) return 0
+            return when (order) {
+                app.inkloom.brushpresetv5.TipOrder.RANDOM -> deterministicTipIndex(sequence, seed, count)
+                app.inkloom.brushpresetv5.TipOrder.REPEAT -> (sequence % count).toInt()
+                app.inkloom.brushpresetv5.TipOrder.PING_PONG -> {
+                    val period = 2L * (count - 1)
+                    val step = (sequence % period).toInt()
+                    if (step < count) step else (period - step).toInt()
+                }
+                app.inkloom.brushpresetv5.TipOrder.PER_STROKE -> deterministicTipIndex(transactionId, seed, count)
+            }
+        }
 
         private fun deterministicTipIndex(sequence: Long, seed: Int, count: Int): Int {
             if (count == 1) return 0

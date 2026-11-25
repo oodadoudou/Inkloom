@@ -6639,6 +6639,8 @@ class InkCanvasView(context: Context) : View(context) {
                     strokeRotationJitterRadians = Math.toRadians((stampProgram?.strokeRotationJitterDegrees ?: 0f).toDouble()).toFloat(),
                     particlesPerPlotJitter = stampProgram?.particlesPerPlotJitter ?: 0f,
                     blend = paintBlend,
+                    tipOrder = stampProgram?.tipOrder ?: app.inkloom.brushpresetv5.TipOrder.RANDOM,
+                    ribbon = stampProgram?.ribbon == true,
                 )
                 val secondaryDefinitions = program.dual?.let { dual ->
                     val dualMasks = dual.tipAssetPaths.map { path ->

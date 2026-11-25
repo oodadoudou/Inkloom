@@ -15,6 +15,14 @@ class BrushTipMask(
         mipLevels = buildMipLevels(width, height, coverage)
     }
 
+    /** Rows [index]·h/[count] until ([index]+1)·h/[count]: one of [count] horizontal bands, top first. */
+    fun band(index: Int, count: Int): BrushTipMask {
+        require(count in 1..height && index in 0 until count) { "band $index of $count out of range for height $height" }
+        val top = index * height / count
+        val bottom = (index + 1) * height / count
+        return BrushTipMask(width, bottom - top, coverage.copyOfRange(top * width, bottom * width))
+    }
+
     val byteSize: Long get() = mipLevels.sumOf { it.coverage.size.toLong() }
     val maximumCoverage: Float get() = (coverage.maxOfOrNull { it.toInt() and 0xff } ?: 0) * BYTE_TO_UNIT
 
