@@ -90,7 +90,13 @@ data class StampBrushDefinition(
     val tipOrder: app.inkloom.brushpresetv5.TipOrder = app.inkloom.brushpresetv5.TipOrder.RANDOM,
     /** Lay tips end to end along the stroke, turned to follow it (CSP ribbon). */
     val ribbon: Boolean = false,
+    /** Per-dab colour variation: hue in degrees either way, saturation and value as fractions either way. */
+    val hueJitterDegrees: Float = 0f,
+    val saturationJitter: Float = 0f,
+    val valueJitter: Float = 0f,
 ) {
+    val jittersColor: Boolean get() = hueJitterDegrees > 0f || saturationJitter > 0f || valueJitter > 0f
+
     /**
      * Ribbon tips cut into thin bands along their height, so a long tip bends with the stroke: each
      * band is laid and turned on its own. Bands run bottom first, as the tip's top points forward.
@@ -387,6 +393,7 @@ class StampPaintOp(
                 tip = tip,
                 paperAttenuation = definition.paperGrain?.strengthAt(sample.tiltRadians) ?: 0f,
                 sequence = dabSequence,
+                colorArgb = if (definition.jittersColor) jitteredColor(definition, dabSequence * 31 + particle) else definition.colorArgb,
             )
                 .also { streamState.dabSequence++ }
         }
@@ -462,7 +469,7 @@ class StampPaintOp(
                                 grain?.coverage, grain?.width ?: 0, grain?.height ?: 0,
                                 definition.grainDensity, stream.grainCosine, stream.grainSine,
                                 stream.grainWavelength, definition.grainMovement,
-                                stream.grainPhaseX, stream.grainPhaseY, definition.colorArgb,
+                                stream.grainPhaseX, stream.grainPhaseY, dab.colorArgb,
                             )) continue
                         }
                         for (y in overlap.top until overlap.bottom) for (x in overlap.left until overlap.right) {
@@ -479,10 +486,10 @@ class StampPaintOp(
                             val index = (y - tileTop) * stride + x - tileLeft
                             pixels[index] = when (definition.blend) {
                                 DryBlend.SOURCE_OVER -> if (definition.transferMode.usesMaximumTransfer()) {
-                                    maximumTransfer(pixels[index], definition.colorArgb, coverage)
-                                } else sourceOver(pixels[index], definition.colorArgb, coverage)
+                                    maximumTransfer(pixels[index], dab.colorArgb, coverage)
+                                } else sourceOver(pixels[index], dab.colorArgb, coverage)
                                 DryBlend.DESTINATION_OUT -> eraseCoverageOver(pixels[index], coverage)
-                                DryBlend.SOURCE_ATOP -> sourceOver(pixels[index], definition.colorArgb, coverage)
+                                DryBlend.SOURCE_ATOP -> sourceOver(pixels[index], dab.colorArgb, coverage)
                             }
                         }
                     }
@@ -685,6 +692,7 @@ class StampPaintOp(
         val tip: BrushTipMask,
         val paperAttenuation: Float,
         val sequence: Long,
+        val colorArgb: Int,
     ) {
         val cosine = cos(angleRadians)
         val sine = sin(angleRadians)
@@ -775,6 +783,34 @@ class StampPaintOp(
          * its height, since a ribbon runs the tip's vertical axis along the stroke. */
         fun ribbonLength(size: Float, aspect: Float): Float =
             (if (aspect <= 1f) size else size / aspect).coerceAtLeast(.25f)
+
+        /** The brush colour moved by up to the definition's hue, saturation and value jitter, the same for the same [key]. */
+        fun jitteredColor(definition: StampBrushDefinition, key: Long): Int {
+            val color = definition.colorArgb
+            val r = (color ushr 16 and 255) / 255f; val g = (color ushr 8 and 255) / 255f; val b = (color and 255) / 255f
+            val max = maxOf(r, g, b); val min = minOf(r, g, b); val delta = max - min
+            var hue = when {
+                delta == 0f -> 0f
+                max == r -> 60f * (((g - b) / delta) % 6f)
+                max == g -> 60f * ((b - r) / delta + 2f)
+                else -> 60f * ((r - g) / delta + 4f)
+            }
+            var saturation = if (max == 0f) 0f else delta / max
+            var value = max
+            fun spread(channel: Int) = randomUnit(key, channel, definition.renderSeed) * 2f - 1f
+            hue = ((hue + spread(201) * definition.hueJitterDegrees) % 360f + 360f) % 360f
+            saturation = (saturation + spread(202) * definition.saturationJitter).coerceIn(0f, 1f)
+            value = (value + spread(203) * definition.valueJitter).coerceIn(0f, 1f)
+            val chroma = value * saturation
+            val x = chroma * (1f - kotlin.math.abs((hue / 60f) % 2f - 1f))
+            val m = value - chroma
+            val (red, green, blue) = when ((hue / 60f).toInt()) {
+                0 -> Triple(chroma, x, 0f); 1 -> Triple(x, chroma, 0f); 2 -> Triple(0f, chroma, x)
+                3 -> Triple(0f, x, chroma); 4 -> Triple(x, 0f, chroma); else -> Triple(chroma, 0f, x)
+            }
+            fun channel(v: Float) = ((v + m) * 255f + .5f).toInt().coerceIn(0, 255)
+            return (color and 0xff000000.toInt()) or (channel(red) shl 16) or (channel(green) shl 8) or channel(blue)
+        }
 
         /** The tip the [sequence]th dab of stroke [transactionId] uses among [count] tips. */
         fun tipIndex(order: app.inkloom.brushpresetv5.TipOrder, sequence: Long, transactionId: Long, seed: Int, count: Int): Int {

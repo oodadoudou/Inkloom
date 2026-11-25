@@ -843,6 +843,15 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Crayon").performClick()
         composeRule.onNodeWithText("Wax Crayon").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Soft Pastel").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Watercolor").performClick()
+        listOf("Wet Wash", "Watercolor Edge", "Triangle Watercolor", "Square Watercolor").forEach {
+            composeRule.onNodeWithText(it).performScrollTo().assertIsDisplayed()
+        }
+        composeRule.onNodeWithText("Brush").performClick()
+        composeRule.onNodeWithText("Gouache").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Flat Gouache").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Blend").performClick()
+        composeRule.onNodeWithText("Textured Blender").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun brushPanelCanFloatMoveResizeAndReopenInPlace() {

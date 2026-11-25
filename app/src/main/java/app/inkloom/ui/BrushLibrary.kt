@@ -228,7 +228,7 @@ private fun ProcreateBrushLibrary(
     modifier: Modifier,
 ) {
     val systemBrushes = remember { systemBrushCatalog() }
-    val systemCategories = listOf("Pen", "Pencil", "Crayon", "Brush", "Erasers", "Airbrush", "Decoration", "Blend", "Liquify")
+    val systemCategories = listOf("Pen", "Pencil", "Crayon", "Brush", "Watercolor", "Erasers", "Airbrush", "Decoration", "Blend", "Liquify")
     val usableImportedBrushes = remember(brushes) { BrushGroupOperations.orderForDisplay(BrushLibraryInventory.importedUsable(brushes)) }
     val importedCategories = remember(usableImportedBrushes, registeredGroups) { BrushGroupOperations.treePaths(usableImportedBrushes, registeredGroups) }
     val manageableCategories = remember(importedCategories) { importedCategories.filterNot { category -> systemCategories.any { it.equals(category, true) } } }
@@ -325,6 +325,7 @@ private fun ProcreateBrushLibrary(
         "Pen" -> tr("Pen", "钢笔")
         "Pencil" -> tr("Pencil", "铅笔")
         "Crayon" -> tr("Crayon", "蜡笔")
+        "Watercolor" -> tr("Watercolor", "水彩")
         "Brush" -> tr("Brush", "画笔")
         "Decoration" -> tr("Decoration", "装饰")
         "Blend" -> tr("Blend", "混色")

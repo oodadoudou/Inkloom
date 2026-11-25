@@ -253,6 +253,23 @@ class StampPaintOpTest {
         assertEquals(app.inkloom.brushpresetv5.TipOrder.PER_STROKE, app.inkloom.brushpresetv5.TipOrder.fromCsp(3))
     }
 
+    @Test fun colourJitterVariesDabsAroundTheBrushColourDeterministically() {
+        val brush = definition().copy(colorArgb = 0xff3a7bd5.toInt(), hueJitterDegrees = 12f, saturationJitter = .08f, valueJitter = .06f)
+        val colours = (0L until 40L).map { StampPaintOp.jitteredColor(brush, it) }
+        assertTrue("dabs differ", colours.distinct().size > 20)
+        assertEquals("deterministic", colours, (0L until 40L).map { StampPaintOp.jitteredColor(brush, it) })
+        assertTrue("alpha kept", colours.all { it ushr 24 == 0xff })
+        // Stays near the brush colour: every channel within a modest distance.
+        colours.forEach { c ->
+            assertTrue(Integer.toHexString(c), kotlin.math.abs((c ushr 16 and 255) - 0x3a) < 60 &&
+                kotlin.math.abs((c and 255) - 0xd5) < 40)
+        }
+        assertEquals("no jitter, no change", 0xff3a7bd5.toInt(), StampPaintOp.jitteredColor(definition().copy(colorArgb = 0xff3a7bd5.toInt()), 5L))
+        val drawn = draw(listOf(listOf(sample(1, 60f, 30f), sample(2, 132f, 30f))), brush.copy(diameterPixels = 18f, spacingRatio = .9f))
+        val hues = drawn.filter { it ushr 24 == 255 }.map { it and 0xffffff }.distinct()
+        assertTrue("several colours land on the canvas: ${hues.size}", hues.size > 3)
+    }
+
     @Test fun ribbonLaysTipsEndToEndAlongTheStrokeWithoutGaps() {
         // A 1:3 upright bar: as dabs it would be spaced by the brush spacing; as a ribbon its height runs
         // along the stroke and each bar starts where the last ended.

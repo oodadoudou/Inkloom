@@ -3,6 +3,7 @@ package app.inkloom.model
 import app.inkloom.document.LiquifyMode
 import app.inkloom.brushpresetv5.BrushPresetV5
 import app.inkloom.brushpresetv5.BrushPresetV5Import
+import app.inkloom.brushpresetv5.WetMixSettings
 import app.inkloom.brushpresetv5.ProceduralTipKind
 import app.inkloom.brushpresetv5.SpacingMode
 import app.inkloom.brushpresetv5.SpacingSettings
@@ -81,7 +82,17 @@ object SystemBrushCatalog {
         systemBrush(id = "system-dry-painting-brush", name = "Dry Painting Brush", group = "Brush", size = 30f, opacity = .88f, hardness = .42f, spacing = .075f, flow = .54f, sizePressureMinimum = .2f, opacityPressureEnabled = true, opacityPressureMinimum = .28f, thickness = .36f, tags = listOf("brush", "painting", "dry", "bristle")),
         systemBrush(id = "system-watercolor", name = "Round Watercolor", group = "Brush", size = 42f, opacity = .62f, hardness = .42f, watercolor = true, colorMix = .58f, paintMix = .18f, tags = listOf("brush", "watercolor")),
         systemBrush(id = "system-oil-paint", name = "Thick Oil", group = "Brush", size = 48f, hardness = .78f, colorMix = .35f, paintMix = .7f, thickness = .72f, tags = listOf("brush", "oil")),
+        // Gouache: opaque, low mixing; the flat one is a broad square stick turned across the stroke.
+        systemBrush(id = "system-gouache", name = "Gouache", group = "Brush", size = 30f, hardness = .8f, paintMix = .9f, colorMix = .1f, sizePressureMinimum = .4f, tags = listOf("brush", "gouache", "opaque")),
+        systemBrush(id = "system-flat-gouache", name = "Flat Gouache", group = "Brush", size = 34f, hardness = .85f, spacing = .04f, paintMix = .9f, colorMix = .12f, thickness = .38f, sizePressureMinimum = .5f, tags = listOf("brush", "gouache", "flat")),
         systemBrush(id = "system-marker", name = "Studio Marker", group = "Brush", size = 34f, opacity = .68f, hardness = .7f, sizePressureEnabled = false, tags = listOf("brush", "marker")),
+
+        // Watercolour: a bleeding wet wash, a wash that dries with dark edges, and triangle and square
+        // dabs that shift hue a little from dab to dab.
+        systemBrush(id = "system-wet-wash", name = "Wet Wash", group = "Watercolor", size = 60f, opacity = .6f, hardness = .2f, watercolor = true, colorMix = .72f, paintMix = .3f, sizePressureMinimum = .5f, tags = listOf("watercolor", "wet", "wash")),
+        systemBrush(id = "system-watercolor-edge", name = "Watercolor Edge", group = "Watercolor", size = 48f, opacity = .7f, hardness = .55f, spacing = .08f, flow = .09f, sizePressureMinimum = .55f, proceduralPaperGrainEnabled = true, proceduralPaperGrainScale = 90f, proceduralPaperGrainDensity = .5f, proceduralPaperGrainStrength = .25f, tags = listOf("watercolor", "edge")),
+        systemBrush(id = "system-triangle-watercolor", name = "Triangle Watercolor", group = "Watercolor", size = 40f, opacity = .6f, hardness = .7f, spacing = .55f, flow = .6f, sizePressureMinimum = .75f, proceduralPaperGrainEnabled = true, proceduralPaperGrainScale = 90f, proceduralPaperGrainDensity = .5f, proceduralPaperGrainStrength = .2f, tags = listOf("watercolor", "triangle")),
+        systemBrush(id = "system-square-watercolor", name = "Square Watercolor", group = "Watercolor", size = 40f, opacity = .6f, hardness = .7f, spacing = .55f, flow = .6f, sizePressureMinimum = .75f, proceduralPaperGrainEnabled = true, proceduralPaperGrainScale = 90f, proceduralPaperGrainDensity = .5f, proceduralPaperGrainStrength = .2f, tags = listOf("watercolor", "square")),
 
         systemBrush(id = "system-soft-airbrush", name = "Soft Airbrush", group = "Airbrush", size = 92f, opacity = .35f, hardness = .08f, blur = .35f, spacing = .12f, tags = listOf("airbrush", "soft")),
         systemBrush(id = "system-spray-airbrush", name = "Droplet Airbrush", group = "Airbrush", size = 76f, opacity = .42f, spray = true, sprayParticleSize = 7f, sprayDensity = 1.8f, spraySpread = 1.15f, sprayParticleRandomRotationDegrees = 180f, tags = listOf("airbrush", "spray")),
@@ -92,6 +103,7 @@ object SystemBrushCatalog {
         systemBrush(id = "system-soft-eraser", name = "Soft Eraser", group = "Erasers", size = 68f, hardness = .12f, blur = .28f, toolBinding = BrushToolBinding(BrushToolRole.ERASE), tags = listOf("eraser", "soft")),
         systemBrush(id = "system-blend-smear", toolBinding = BrushToolBinding(BrushToolRole.SMUDGE), name = "Finger Smear", group = "Blend", size = 56f, colorMix = .82f, paintMix = 0f, tags = listOf("blend", "smear")),
         systemBrush(id = "system-blend-copy-stamp", toolBinding = BrushToolBinding(BrushToolRole.CLONE), name = "Copy Stamp", group = "Blend", size = 48f, hardness = .6f, tags = listOf("blend", "clone")),
+        systemBrush(id = "system-textured-blender", toolBinding = BrushToolBinding(BrushToolRole.SMUDGE), name = "Textured Blender", group = "Blend", size = 48f, hardness = .55f, colorMix = .6f, tags = listOf("blend", "texture")),
         systemBrush(id = "system-blend-soft", toolBinding = BrushToolBinding(BrushToolRole.SMUDGE), name = "Soft Blend", group = "Blend", size = 82f, hardness = .08f, blur = .48f, colorMix = .62f, tags = listOf("blend", "blur")),
         systemBrush(id = "system-liquify-push", toolBinding = BrushToolBinding(BrushToolRole.LIQUIFY, LiquifyMode.PUSH), name = "Push", group = "Liquify", size = 120f, flow = .72f, hardness = .55f, tags = listOf("liquify", "push")),
         systemBrush(id = "system-liquify-push-left", toolBinding = BrushToolBinding(BrushToolRole.LIQUIFY, LiquifyMode.PUSH_LEFT), name = "Push Left", group = "Liquify", size = 120f, flow = .72f, hardness = .55f, tags = listOf("liquify", "push-left")),
@@ -132,6 +144,14 @@ object SystemBrushCatalog {
 
     private fun curve(vararg points: Pair<Float, Float>) = points.map { (x, y) -> app.inkloom.document.BrushCurvePoint(x, y) }
 
+    private fun proceduralTip(kind: ProceduralTipKind) = TipTextureSettings(procedural = true, proceduralKind = kind)
+
+    private fun jitteredDabs(preset: BrushPresetV5, kind: ProceduralTipKind, rotation: Float) = preset.copy(
+        tipTexture = proceduralTip(kind),
+        stamp = (preset.stamp ?: StampSettings()).copy(randomRotationDegrees = rotation,
+            colorJitter = app.inkloom.brushpresetv5.ColorJitterSettings(hueDegrees = 12f, saturation = .08f, value = .06f)),
+    )
+
     private fun chalkStick(preset: BrushPresetV5, tooth: Float) = preset.copy(
         tipTexture = TipTextureSettings(procedural = true, proceduralKind = ProceduralTipKind.CHALK, toothStrength = tooth),
         stamp = (preset.stamp ?: StampSettings()).copy(randomRotationDegrees = 180f),
@@ -159,6 +179,21 @@ object SystemBrushCatalog {
             preset.copy(tipTexture = TipTextureSettings(procedural = true, proceduralKind = ProceduralTipKind.GRAPHITE, toothStrength = .9f))
         },
         "system-wax-crayon" to { preset -> chalkStick(preset, tooth = .55f) },
+        "system-wet-wash" to { preset -> preset.copy(wetMix = WetMixSettings(dilution = .55f, charge = .42f, attack = .55f, pull = .6f)) },
+        "system-watercolor-edge" to { preset -> preset.copy(tipTexture = proceduralTip(ProceduralTipKind.WATERCOLOR_RING)) },
+        "system-triangle-watercolor" to { preset -> jitteredDabs(preset, ProceduralTipKind.TRIANGLE, rotation = 180f) },
+        "system-square-watercolor" to { preset -> jitteredDabs(preset, ProceduralTipKind.SQUARE, rotation = 12f) },
+        "system-gouache" to { preset -> preset.copy(wetMix = WetMixSettings(dilution = .08f, charge = .92f, attack = .92f, pull = .16f)) },
+        "system-flat-gouache" to { preset ->
+            preset.copy(
+                wetMix = WetMixSettings(dilution = .08f, charge = .9f, attack = .9f, pull = .2f),
+                tipTexture = proceduralTip(ProceduralTipKind.SQUARE),
+                // Turned a quarter so the squashed side runs along the stroke: broad across, thin along.
+                tip = preset.tip.copy(rotationDegrees = 90f),
+                stamp = (preset.stamp ?: StampSettings()).copy(followStrokeDirection = true),
+            )
+        },
+        "system-textured-blender" to { preset -> preset.copy(tipTexture = TipTextureSettings(procedural = true, proceduralKind = ProceduralTipKind.CHALK, toothStrength = .5f)) },
         "system-soft-pastel" to { preset -> chalkStick(preset, tooth = .7f) },
     )[id]
 

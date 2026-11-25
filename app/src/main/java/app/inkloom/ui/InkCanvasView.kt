@@ -6641,6 +6641,9 @@ class InkCanvasView(context: Context) : View(context) {
                     blend = paintBlend,
                     tipOrder = stampProgram?.tipOrder ?: app.inkloom.brushpresetv5.TipOrder.RANDOM,
                     ribbon = stampProgram?.ribbon == true,
+                    hueJitterDegrees = stampProgram?.colorJitter?.hueDegrees ?: 0f,
+                    saturationJitter = stampProgram?.colorJitter?.saturation ?: 0f,
+                    valueJitter = stampProgram?.colorJitter?.value ?: 0f,
                 )
                 val secondaryDefinitions = program.dual?.let { dual ->
                     val dualMasks = dual.tipAssetPaths.map { path ->
@@ -6793,6 +6796,12 @@ class InkCanvasView(context: Context) : View(context) {
                         v5BrushTipMasks.resolve(
                             programTipRequest(program, tipAsset),
                         ) ?: return null
+                    }.ifEmpty {
+                        // A first-party wet brush may ask for a procedural tip; round stays the wet engine's own.
+                        program.tip.tipTexture?.takeIf { it.procedural && it.proceduralKind != ProceduralTipKind.ROUND }?.let { texture ->
+                            listOf(BrushTipMask.procedural(texture.proceduralKind, 96, program.renderSeed,
+                                texture.toothStrength.coerceIn(0f, 1f), program.tip.hardness.coerceIn(0f, 1f)))
+                        }.orEmpty()
                     }
                     val (wetGrain, wetGrainOffset) = resolveTextureGrain(program.textureGrain, program.renderSeed)
                     val wet = WetPaintDefinition(

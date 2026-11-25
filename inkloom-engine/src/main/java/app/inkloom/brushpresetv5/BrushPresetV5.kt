@@ -202,6 +202,12 @@ enum class ProceduralTipKind {
     BRISTLE,
     /** Wax crayon and soft pastel: a lumpy rim and blotchy skips where the stick misses the tooth. */
     CHALK,
+    /** Watercolour: thin in the middle, pigment pooled at a slightly ragged rim, so strokes dry with dark edges. */
+    WATERCOLOR_RING,
+    /** A soft triangle, for triangular watercolour dabs. */
+    TRIANGLE,
+    /** A soft square, for square watercolour and flat dabs. */
+    SQUARE,
 }
 
 @Serializable
@@ -235,7 +241,22 @@ data class StampSettings(
     val tipOrder: TipOrder = TipOrder.RANDOM,
     /** CSP ribbon: tips are laid end to end along the stroke, their vertical axis following it, without gaps. */
     val ribbon: Boolean = false,
+    /** Per-dab colour variation; null keeps every dab the brush colour. */
+    val colorJitter: ColorJitterSettings? = null,
 )
+
+/** How far each dab's colour may stray from the brush colour. */
+@Serializable
+data class ColorJitterSettings(
+    val hueDegrees: Float = 0f,
+    val saturation: Float = 0f,
+    val value: Float = 0f,
+) {
+    init {
+        require(hueDegrees.isFinite() && hueDegrees in 0f..180f) { "hueDegrees must be 0..180" }
+        require(saturation.isFinite() && saturation in 0f..1f && value.isFinite() && value in 0f..1f) { "saturation and value must be 0..1" }
+    }
+}
 
 /** How a multi-tip brush walks through its tips. */
 @Serializable

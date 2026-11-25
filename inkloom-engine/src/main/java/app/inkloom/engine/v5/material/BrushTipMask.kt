@@ -201,7 +201,65 @@ class BrushTipMask(
                 app.inkloom.brushpresetv5.ProceduralTipKind.GRAPHITE -> graphite(size, seed, toothStrength, hardness)
                 app.inkloom.brushpresetv5.ProceduralTipKind.BRISTLE -> bristle(size, seed, hardness)
                 app.inkloom.brushpresetv5.ProceduralTipKind.CHALK -> chalk(size, seed, toothStrength, hardness)
+                app.inkloom.brushpresetv5.ProceduralTipKind.WATERCOLOR_RING -> watercolorRing(size, seed, hardness)
+                app.inkloom.brushpresetv5.ProceduralTipKind.TRIANGLE -> polygon(size, seed, 3, hardness)
+                app.inkloom.brushpresetv5.ProceduralTipKind.SQUARE -> polygon(size, seed, 4, hardness)
             }
+
+        /**
+         * Watercolour dab: a thin wash in the middle rising to pooled pigment at a slightly ragged rim.
+         * Overlapping dabs along a stroke therefore leave its edges darker than its middle, as a wash dries.
+         */
+        fun watercolorRing(size: Int = 96, seed: Int, hardness: Float = .5f): BrushTipMask {
+            require(size in 8..1024)
+            require(hardness.isFinite() && hardness in 0f..1f)
+            val phase = FloatArray(3) { noise01(it, 11, seed) * 6.2831855f }
+            val edgeWidth = .05f + (1f - hardness) * .25f
+            val values = ByteArray(size * size)
+            val radius = size * .5f
+            for (y in 0 until size) for (x in 0 until size) {
+                val nx = (x + .5f - radius) / radius
+                val ny = (y + .5f - radius) / radius
+                val distance = kotlin.math.sqrt(nx * nx + ny * ny)
+                val angle = kotlin.math.atan2(ny, nx)
+                val rim = .9f + .04f * kotlin.math.sin(4f * angle + phase[0]) + .03f * kotlin.math.sin(7f * angle + phase[1]) +
+                    .02f * kotlin.math.sin(13f * angle + phase[2])
+                val outside = ((rim - distance) / edgeWidth).coerceIn(0f, 1f)
+                if (outside <= 0f) continue
+                val toRim = (distance / rim).coerceIn(0f, 1f)
+                val pooled = .2f + .8f * toRim * toRim * toRim * toRim
+                val mottle = .9f + .1f * smoothNoise(x / 6f, y / 6f, seed)
+                values[y * size + x] = (255f * outside * pooled * mottle + .5f).toInt().toByte()
+            }
+            return BrushTipMask(size, size, values)
+        }
+
+        /** A regular polygon of [sides] (pointing up), its edge softened by [hardness], lightly mottled. */
+        fun polygon(size: Int = 96, seed: Int, sides: Int, hardness: Float = 1f): BrushTipMask {
+            require(size in 8..1024 && sides in 3..12)
+            require(hardness.isFinite() && hardness in 0f..1f)
+            val edgeWidth = .03f + (1f - hardness) * .45f
+            val apothem = kotlin.math.cos(Math.PI / sides).toFloat() * .96f
+            val values = ByteArray(size * size)
+            val radius = size * .5f
+            for (y in 0 until size) for (x in 0 until size) {
+                val nx = (x + .5f - radius) / radius
+                val ny = (y + .5f - radius) / radius
+                // Distance to the polygon edge measured along the nearest edge normal.
+                var inside = Float.MAX_VALUE
+                for (side in 0 until sides) {
+                    // The first normal points down (a flat bottom edge), so a triangle points up and a square sits square.
+                    val normal = side * 2f * Math.PI.toFloat() / sides + Math.PI.toFloat() / 2f
+                    val along = nx * kotlin.math.cos(normal) + ny * kotlin.math.sin(normal)
+                    inside = minOf(inside, apothem - along)
+                }
+                val edge = (inside / edgeWidth).coerceIn(0f, 1f)
+                if (edge <= 0f) continue
+                val mottle = .86f + .14f * smoothNoise(x / 5f, y / 5f, seed)
+                values[y * size + x] = (255f * edge * mottle + .5f).toInt().toByte()
+            }
+            return BrushTipMask(size, size, values)
+        }
 
         /**
          * Wax crayon / soft pastel stick: a lumpy rim (low-order angular waves) and blotchy skips from

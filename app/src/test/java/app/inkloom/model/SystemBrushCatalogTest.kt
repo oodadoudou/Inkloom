@@ -112,8 +112,33 @@ class SystemBrushCatalogTest {
     }
 
     @Test
+    fun watercolourGouacheAndBlenderUseTheirEngines() {
+        listOf("system-wet-wash", "system-gouache", "system-flat-gouache").forEach { id ->
+            assertEquals("$id paints wet", RenderBackend.WET_PAINT, compiled(id).backend)
+        }
+        val wash = BrushPresetV5Import.requirePreset(SystemBrushCatalog.byId("system-wet-wash")!!).wetMix!!
+        val gouache = BrushPresetV5Import.requirePreset(SystemBrushCatalog.byId("system-gouache")!!).wetMix!!
+        assertTrue("the wash is watery and bleeds, gouache is opaque", wash.dilution > .5f && gouache.dilution < .15f && gouache.charge > wash.charge)
+        val flat = BrushPresetV5Import.requirePreset(SystemBrushCatalog.byId("system-flat-gouache")!!)
+        assertEquals(ProceduralTipKind.SQUARE, flat.tipTexture?.proceduralKind)
+        assertTrue(flat.stamp?.followStrokeDirection == true && flat.tip.aspect < .5f)
+        assertEquals(ProceduralTipKind.WATERCOLOR_RING, compiled("system-watercolor-edge").tip.tipTexture?.proceduralKind)
+        mapOf("system-triangle-watercolor" to ProceduralTipKind.TRIANGLE, "system-square-watercolor" to ProceduralTipKind.SQUARE).forEach { (id, kind) ->
+            val program = compiled(id)
+            assertEquals(RenderBackend.PROCEDURAL_STAMP, program.backend)
+            assertEquals(kind, program.tip.tipTexture?.proceduralKind)
+            assertTrue("$id shifts colour per dab", (program.stamp?.colorJitter?.hueDegrees ?: 0f) > 0f)
+        }
+        val blender = requireNotNull(SystemBrushCatalog.byId("system-textured-blender"))
+        assertEquals(BrushToolRole.SMUDGE, blender.toolBinding.role)
+        assertEquals(ProceduralTipKind.CHALK, BrushPresetV5Import.requirePreset(blender).tipTexture?.proceduralKind)
+    }
+
+    @Test
     fun authoredBrushesSurvivePersistence() {
-        listOf("system-clean-liner", "system-ink-g-pen", "system-cream-pencil", "system-lineart-pencil", "system-wax-crayon", "system-soft-pastel").forEach { id ->
+        listOf("system-clean-liner", "system-ink-g-pen", "system-cream-pencil", "system-lineart-pencil", "system-wax-crayon", "system-soft-pastel",
+            "system-wet-wash", "system-watercolor-edge", "system-triangle-watercolor", "system-square-watercolor", "system-gouache",
+            "system-flat-gouache", "system-textured-blender").forEach { id ->
             val source = requireNotNull(SystemBrushCatalog.byId(id))
             val restored = requireNotNull(BrushPresetV5Codec.decodeOrNull(requireNotNull(source.v5PresetJson)))
             assertEquals(id, BrushPresetV5Import.requirePreset(source), restored)
