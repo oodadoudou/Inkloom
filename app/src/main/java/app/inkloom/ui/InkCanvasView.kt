@@ -3372,6 +3372,12 @@ class InkCanvasView(context: Context) : View(context) {
             paint.strokeJoin = Paint.Join.ROUND
             if (fillSubTool != FillSubTool.LEFTOVER_PEN) lassoPath.close()
             canvas.drawPath(lassoPath, paint)
+            if (fillSubTool == FillSubTool.LASSO_EDGE) {
+                paint.style = Paint.Style.STROKE
+                paint.color = secondaryInkColor
+                paint.alpha = (inkOpacity * 200f).toInt().coerceIn(0, 255)
+                canvas.drawPath(lassoPath, paint)
+            }
             paint.alpha = 255
             return
         }
@@ -5014,8 +5020,10 @@ class InkCanvasView(context: Context) : View(context) {
             invalidate()
             return
         }
-        if (fillSubTool.referencesLines) {
-            try { commitEncloseGesture(erase = fillSubTool.erases) } finally {
+        if (fillSubTool.referencesLines || fillSubTool == FillSubTool.LASSO_EDGE) {
+            try {
+                if (fillSubTool == FillSubTool.LASSO_EDGE) commitLassoEdgeGesture() else commitEncloseGesture(erase = fillSubTool.erases)
+            } finally {
                 fillGesturePoints.clear()
                 invalidate()
             }
@@ -5140,6 +5148,101 @@ class InkCanvasView(context: Context) : View(context) {
             }
         } finally {
             mask.recycle()
+        }
+    }
+
+    /**
+     * Lasso with edge (in the manner of the ふちどり投げなわペン assets): the lasso filled in the main
+     * colour with an edge of brush width in the sub colour, as one stroke and one undo.
+     */
+    private fun commitLassoEdgeGesture() {
+        val bitmapWidth = width.coerceAtLeast(1)
+        val bitmapHeight = height.coerceAtLeast(1)
+        val edgeWidth = gestureBrushSize.coerceAtLeast(.1f) * bitmapWidth / pageModelWidth.coerceAtLeast(1f)
+        val padding = edgeWidth / 2f + 2f
+        val left = kotlin.math.floor(fillGesturePoints.minOf(StrokePoint::x) * bitmapWidth - padding).toInt().coerceIn(0, bitmapWidth - 1)
+        val top = kotlin.math.floor(fillGesturePoints.minOf(StrokePoint::y) * bitmapHeight - padding).toInt().coerceIn(0, bitmapHeight - 1)
+        val right = kotlin.math.ceil(fillGesturePoints.maxOf(StrokePoint::x) * bitmapWidth + padding).toInt().coerceIn(left + 1, bitmapWidth)
+        val bottom = kotlin.math.ceil(fillGesturePoints.maxOf(StrokePoint::y) * bitmapHeight + padding).toInt().coerceIn(top + 1, bitmapHeight)
+        val path = Path().apply {
+            moveTo(fillGesturePoints.first().x * bitmapWidth - left, fillGesturePoints.first().y * bitmapHeight - top)
+            fillGesturePoints.drop(1).forEach { point -> lineTo(point.x * bitmapWidth - left, point.y * bitmapHeight - top) }
+            close()
+        }
+        fun mask(style: Paint.Style): Bitmap = Bitmap.createBitmap(right - left, bottom - top, Bitmap.Config.ARGB_8888).also { bitmap ->
+            Canvas(bitmap).drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE; this.style = style; strokeWidth = edgeWidth
+                strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
+            })
+            selectionMaskForRasterTools()?.let { selection ->
+                RasterSelectionMask(selection, bitmapWidth, bitmapHeight).apply(bitmap, Rect(left, top, right, bottom))
+            }
+        }
+        val fill = mask(Paint.Style.FILL)
+        val edge = mask(Paint.Style.STROKE)
+        try {
+            fun snapshot(bitmap: Bitmap) = boundedMaskSnapshot(bitmap, left / bitmapWidth.toFloat(), top / bitmapHeight.toFloat(),
+                (right - left) / bitmapWidth.toFloat(), (bottom - top) / bitmapHeight.toFloat(), filterBitmap = true)
+            val fillSnapshot = snapshot(fill) ?: return
+            val edgeSnapshot = snapshot(edge) ?: return
+            paintFillAndEdgeIntoActiveRaster(fillSnapshot, inkColor, edgeSnapshot, secondaryInkColor, inkOpacity)
+        } finally {
+            fill.recycle(); edge.recycle()
+        }
+    }
+
+    /** The fill, then the edge over it, on the editing layer as one undoable edit. */
+    fun paintFillAndEdgeIntoActiveRaster(fill: MaskTileSurfaceSnapshot, fillColor: Int, edge: MaskTileSurfaceSnapshot,
+                                         edgeColor: Int, opacity: Float): Boolean {
+        if (rejectLayerContentEdit()) return false
+        val layerId = activeLayerId
+        val surface = rasterTileSurfaceFor(layerId)
+        if (surface == null || layerId in protectedLayerIds || editingLayerMaskId != null) {
+            onPaintCapabilityRejected("Select an unlocked paint layer before filling")
+            return false
+        }
+        v5StrokeController.awaitIdle()
+        val alphaLocked = layerId in alphaLockedLayers
+        val first = RasterSelectionContent.fill(surface, fill, fillColor, opacity, preserveAlpha = alphaLocked)
+        val second = RasterSelectionContent.fill(surface, edge, edgeColor, opacity, preserveAlpha = alphaLocked)
+        val edits = listOfNotNull(first, second).filter { it.record.changedTileCount > 0 }
+        listOfNotNull(first, second).filterNot { it in edits }.forEach { it.record.close() }
+        if (edits.isEmpty()) {
+            onPaintCapabilityRejected("The fill made no change to the editable pixels")
+            return false
+        }
+        val bounds = edits.map { it.dirtyBounds }.reduce { a, b -> a.union(b) }
+        val dirty = Rect(bounds.left, bounds.top, bounds.right, bounds.bottom)
+        fun publish() {
+            commitRasterLayerPatch(surface.snapshot(), dirty, layerId)
+            invalidateV5Damage(surface, bounds)
+        }
+        publish()
+        recordExternalEdit(
+            undo = { edits.asReversed().forEach { surface.apply(it.record, PixelTileSurface.HistoryDirection.UNDO) }; publish() },
+            redo = { edits.forEach { surface.apply(it.record, PixelTileSurface.HistoryDirection.REDO) }; publish() },
+            dispose = { edits.forEach { it.record.close() } },
+        )
+        return true
+    }
+
+    /** A bounded operation mask as the document's sparse alpha, or null when it covers nothing. */
+    private fun boundedMaskSnapshot(source: Bitmap, normalizedLeft: Float, normalizedTop: Float, normalizedWidth: Float,
+                                    normalizedHeight: Float, filterBitmap: Boolean): MaskTileSurfaceSnapshot? {
+        val selectionSize = selectionMaskForRasterTools()?.let { it.logicalWidth to it.logicalHeight }
+            ?: SelectionMaskCompositor.maskSize(pageModelWidth, pageModelHeight)?.let { it.width to it.height }
+            ?: return null
+        val (logicalWidth, logicalHeight) = selectionSize
+        val left = kotlin.math.floor(normalizedLeft.coerceIn(0f, 1f) * logicalWidth).toInt().coerceIn(0, logicalWidth - 1)
+        val top = kotlin.math.floor(normalizedTop.coerceIn(0f, 1f) * logicalHeight).toInt().coerceIn(0, logicalHeight - 1)
+        val right = kotlin.math.ceil((normalizedLeft + normalizedWidth).coerceIn(0f, 1f) * logicalWidth).toInt().coerceIn(left + 1, logicalWidth)
+        val bottom = kotlin.math.ceil((normalizedTop + normalizedHeight).coerceIn(0f, 1f) * logicalHeight).toInt().coerceIn(top + 1, logicalHeight)
+        val scaled = if (source.width == right - left && source.height == bottom - top) source else
+            Bitmap.createScaledBitmap(source, right - left, bottom - top, filterBitmap)
+        return try {
+            SparseAlphaMask.fromBitmapRegion(scaled, left, top, logicalWidth, logicalHeight)?.surface?.snapshot()
+        } finally {
+            if (scaled !== source) scaled.recycle()
         }
     }
 

@@ -401,7 +401,10 @@ enum class LayerMaskCommand {
 
 @Serializable
 enum class FillSubTool {
-    BUCKET, ENCLOSE_AND_FILL, ENCLOSE_AND_ERASE, LASSO_FILL, LASSO_ERASE, LEFTOVER_PEN;
+    BUCKET, ENCLOSE_AND_FILL, ENCLOSE_AND_ERASE, LASSO_FILL, LASSO_ERASE,
+    /** Lasso fill in the main colour with an edge of brush width in the sub colour, as one stroke. */
+    LASSO_EDGE,
+    LEFTOVER_PEN;
 
     /** Draws a lasso rather than tapping a seed. */
     val drawsLasso: Boolean get() = this != BUCKET

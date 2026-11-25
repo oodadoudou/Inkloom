@@ -150,6 +150,7 @@ private fun fillSubtoolLabel(subtool: FillSubTool, settings: AppSettings): Strin
     FillSubTool.ENCLOSE_AND_ERASE -> settings.language.text("Enclose and erase", "包围并擦除")
     FillSubTool.LASSO_FILL -> settings.language.text("Lasso fill", "套索填充")
     FillSubTool.LASSO_ERASE -> settings.language.text("Lasso erase", "套索擦除")
+    FillSubTool.LASSO_EDGE -> settings.language.text("Lasso with edge", "套索描边")
     FillSubTool.LEFTOVER_PEN -> settings.language.text("Leftover pen", "漏涂笔")
 }
 

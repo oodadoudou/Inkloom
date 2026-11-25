@@ -40,7 +40,7 @@ class FillToolTest {
     }
 
     @Test fun manualFillSubToolsCommitRasterMasks() {
-        FillSubTool.entries.filter { it.drawsLasso && !it.referencesLines && !it.erases }.forEach { subTool ->
+        FillSubTool.entries.filter { it.drawsLasso && !it.referencesLines && !it.erases && it != FillSubTool.LASSO_EDGE }.forEach { subTool ->
             var committed = false
             val view = canvas {
                 tool = EditorTool.FILL
@@ -133,6 +133,22 @@ class FillToolTest {
         send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
         send(view, 30L, MotionEvent.ACTION_UP, 100f, 100f)
         assertTrue(view.gapMarks.isEmpty())
+    }
+
+    @Test fun lassoWithEdgeFillsInTheMainColourAndEdgesInTheSubColourAsOneUndo() {
+        val surface = PixelTileSurface(200, 200)
+        val view = linedCanvas(FillSubTool.LASSO_EDGE) {
+            setRasterLayerSurfaces(mapOf("color" to surface, "line" to PixelTileSurface(200, 200)))
+            inkColor = Color.RED; secondaryInkColor = Color.BLUE; inkOpacity = 1f; baseWidth = 8f
+        }
+        lassoAround(view, 0L)
+        val inside = surface.pixelAt(100, 100); val onEdge = surface.pixelAt(100, 20)
+        assertEquals("filled in the main colour", Color.RED, inside or 0xff000000.toInt())
+        assertTrue("edged in the sub colour: ${Integer.toHexString(onEdge)}", (onEdge and 0xff) > 0xc0 && (onEdge ushr 16 and 0xff) < 0x40)
+        assertEquals("outside untouched", 0, surface.pixelAt(5, 100) ushr 24)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.undo() }
+        assertEquals("one undo removes both", 0, surface.pixelAt(100, 100) ushr 24)
+        assertEquals(0, surface.pixelAt(100, 20) ushr 24)
     }
 
     @Test fun lassoEraseErasesTheWholeLasso() {
