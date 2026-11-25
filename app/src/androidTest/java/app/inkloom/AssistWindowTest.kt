@@ -110,6 +110,34 @@ class AssistWindowTest {
         compose.waitUntil(5_000) { model().currentPage()!!.layers.size == before }
     }
 
+    @Test fun lineColorClipsTintedLinesAboveTheLineArtInOneTap() {
+        compose.onNodeWithText("New Note").performClick()
+        compose.onNodeWithText("Create").performClick()
+        val view = canvas()
+        val bounds = pageScreenBounds(view)
+        fun at(x: Float, y: Float) = Offset(bounds.left + bounds.width() * x, bounds.top + bounds.height() * y)
+        // Colour first, on the bottom layer; then a new layer on top for the line.
+        repeat(6) { row -> stroke(at(.2f, .3f + row * .02f), at(.5f, .3f + row * .02f)) }
+        compose.waitUntil(10_000) { !view.hasPendingPaintPublicationForMerge() }
+        compose.onNodeWithContentDescription("Layers").performClick()
+        compose.onNodeWithContentDescription("Add layer").performClick()
+        val colourLayer = model().currentPage()!!.layers.first().id
+        compose.waitUntil(5_000) { view.activeLayerId != colourLayer }
+        compose.waitForIdle(); SystemClock.sleep(800); compose.waitForIdle()
+        stroke(at(.25f, .34f), at(.45f, .34f))
+        compose.waitUntil(10_000) { !view.hasPendingPaintPublicationForMerge() && view.activeRasterSnapshotForTest()?.tileCount?.let { it > 0 } == true }
+        val lineArt = view.activeLayerId
+        val before = model().currentPage()!!.layers.size
+        openAction("Line color")
+        compose.waitUntil(20_000) { model().currentPage()!!.layers.size == before + 1 }
+        val layers = model().currentPage()!!.layers
+        val tinted = layers.first { it.name == "Line color" }
+        assertTrue("clipped to the line art", tinted.clippedToBelow)
+        assertEquals("directly above the line art", layers.indexOfFirst { it.id == lineArt } + 1, layers.indexOf(tinted))
+        compose.onAllNodesWithContentDescription("Undo").onFirst().performClick()
+        compose.waitUntil(5_000) { model().currentPage()!!.layers.size == before }
+    }
+
     private fun openAction(label: String) {
         compose.onNodeWithContentDescription("Actions").performClick()
         compose.onNodeWithContentDescription("Actions Canvas").performClick()

@@ -21,6 +21,8 @@ internal class EditorOverlays {
     var colorizeOpen by mutableStateOf(false)
     /** One-tap flats were chosen; run once, then cleared. */
     var flatsRequested by mutableStateOf(false)
+    /** One-tap line colour blend was chosen; run once, then cleared. */
+    var lineColorRequested by mutableStateOf(false)
     var pageExportOpen by mutableStateOf(false)
     var pageShareOpen by mutableStateOf(false)
     var quickZoomMenu by mutableStateOf(false)

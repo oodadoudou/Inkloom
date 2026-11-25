@@ -2094,6 +2094,8 @@ private fun EditorScreen(
                             onClick = { overlays.workspaceMenu = false; overlays.colorizeOpen = true })
                         StudioMenuItem(text = { Text(tr("Flats", "一键平涂")) },
                             onClick = { overlays.workspaceMenu = false; overlays.flatsRequested = true })
+                        StudioMenuItem(text = { Text(tr("Line color", "线稿融色")) },
+                            onClick = { overlays.workspaceMenu = false; overlays.lineColorRequested = true })
                         StudioMenuItem(text = { Text(tr("Gap check", "缺口检查")) },
                             onClick = {
                                 overlays.workspaceMenu = false
@@ -2435,7 +2437,7 @@ private fun EditorScreen(
                     { onSettingsChange(settings.copy(vectorEraseWholeLine = it)) }) { vectorLinesOpen = false }
             }
             if (overlays.externalScreenColorOpen) ObtainScreenColorFromApps(settings.language) { overlays.externalScreenColorOpen = false }
-            canvasView?.takeIf { overlays.shadingAssistOpen || overlays.colorizeOpen || overlays.flatsRequested }?.let { view ->
+            canvasView?.takeIf { overlays.shadingAssistOpen || overlays.colorizeOpen || overlays.flatsRequested || overlays.lineColorRequested }?.let { view ->
                 val runEdit: ((app.inkloom.document.InkPage) -> app.inkloom.document.PreparedPageGeometry) -> Unit = { prepare ->
                     applyPreparedPageEdit(appearanceScope, view, { currentAppearancePage }, prepare,
                         { edit, undo -> onApplyPageGeometry(document.id, edit.before.id, edit, undo) }, { modes.canvasSizeBusy = it }) {}
@@ -2451,6 +2453,12 @@ private fun EditorScreen(
                     runEdit { current -> app.inkloom.document.AssistLayerEdits.colorize(maskAssets, current, lineArtId, null,
                         app.inkloom.engine.v5.tools.ColorizeSettings.FLATS, name) }
                     overlays.flatsRequested = false
+                }
+                val lineColorName = tr("Line color", "线稿融色")
+                if (overlays.lineColorRequested) LaunchedEffect(Unit) {
+                    val lineArtId = activeLayerId
+                    runEdit { current -> app.inkloom.document.AssistLayerEdits.lineColor(maskAssets, current, lineArtId, lineColorName) }
+                    overlays.lineColorRequested = false
                 }
             }
             val capturedScreen by app.inkloom.capture.ScreenColorCapture.frame.collectAsState()
