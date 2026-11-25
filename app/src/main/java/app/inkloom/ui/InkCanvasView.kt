@@ -196,6 +196,7 @@ import app.inkloom.document.MultiFingerTapGesture
 import app.inkloom.document.ViewportTransform
 import app.inkloom.document.FloodFill
 import app.inkloom.engine.v5.fill.EncloseFill
+import app.inkloom.engine.v5.fill.GapCheck
 import app.inkloom.engine.v5.fill.PolygonMask
 import kotlin.math.roundToInt
 import app.inkloom.document.LiquifyMode
@@ -1096,6 +1097,42 @@ class InkCanvasView(context: Context) : View(context) {
     var onSparseFillCommitted: ((mask: MaskTileSurfaceSnapshot, colorArgb: Long, opacity: Float, edgeUnderpaintPixels: Int) -> Unit)? = null
     /** Enclose-and-erase and lasso erase hand their mask here to clear it from the editing layer. */
     var onSparseEraseCommitted: ((mask: MaskTileSurfaceSnapshot) -> Unit)? = null
+
+    /** Gap check marks as page fractions (x, y, radius as a fraction of the page width); cleared on the next touch. */
+    var gapMarks: List<FloatArray> = emptyList()
+        private set
+    private val gapMarkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Color.rgb(226, 64, 64) }
+
+    /** The fill reference (unpremultiplied ARGB) for gap check, at the bucket's sample size: pixels, width, height, scanned. */
+    fun gapCheckReference(): GapCheckReference {
+        val safeWidth = width.coerceAtLeast(1)
+        val safeHeight = height.coerceAtLeast(1)
+        val sampleScale = minOf(1f, FILL_MAX_SAMPLE_DIMENSION / maxOf(safeWidth, safeHeight).toFloat())
+        val sampleWidth = (safeWidth * sampleScale).toInt().coerceAtLeast(1)
+        val sampleHeight = (safeHeight * sampleScale).toInt().coerceAtLeast(1)
+        val scanned = pageHasImportedBackground && !excludeImportedBackgroundFromReference
+        val bitmap = renderDocumentPageBitmap(sampleWidth, sampleHeight, includePaper = scanned)
+        val pixels = IntArray(sampleWidth * sampleHeight)
+        try { bitmap.getPixels(pixels, 0, sampleWidth, 0, 0, sampleWidth, sampleHeight) } finally { bitmap.recycle() }
+        val maxGap = (GAP_CHECK_MODEL_PIXELS * sampleWidth / pageModelWidth.coerceAtLeast(1f)).roundToInt()
+            .coerceIn(1, EncloseFill.MAX_PIXELS)
+        return GapCheckReference(pixels, sampleWidth, sampleHeight, scanned, maxGap)
+    }
+
+    class GapCheckReference(val pixels: IntArray, val width: Int, val height: Int, val scanned: Boolean, val maxGapPixels: Int)
+
+    fun showGapMarks(gaps: List<GapCheck.Gap>, reference: GapCheckReference) {
+        val minRadius = 6f / reference.width
+        gapMarks = gaps.map { floatArrayOf(it.x / reference.width, it.y / reference.height,
+            maxOf((it.radius + 4f) / reference.width, minRadius)) }
+        invalidate()
+    }
+
+    private fun drawGapMarks(canvas: Canvas) {
+        if (gapMarks.isEmpty()) return
+        gapMarkPaint.strokeWidth = 2f * resources.displayMetrics.density / viewportScale
+        gapMarks.forEach { mark -> canvas.drawCircle(mark[0] * width, mark[1] * height, mark[2] * width, gapMarkPaint) }
+    }
     /** Immutable generation handoff; bitmap materialization belongs on a persistence worker. */
     var onRasterLayerCommitted: ((RasterLayerCommit) -> Unit)? = null
     internal var onLayerMaskStrokeCommitted: ((String, MaskTileSurfaceSnapshot) -> LayerMaskStrokeHistory?)? = null
@@ -1898,6 +1935,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (tool == EditorTool.SMUDGE) cloneStamp.drawOverlay(canvas, width.toFloat(), height.toFloat(), viewportScale, cloneOverlayPaint)
         drawLaserTrail(canvas, SystemClock.uptimeMillis())
         drawFillPreview(canvas)
+        drawGapMarks(canvas)
         drawGradientPreview(canvas)
         drawGradientHandles(canvas)
         drawBrushSizePreview(canvas)
@@ -2555,6 +2593,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (selectionLayerTransferPending) return true
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && gapMarks.isNotEmpty()) { gapMarks = emptyList(); invalidate() }
         if (layerPickMode && event.pointerCount == 1) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> { layerPickContact = true; return true }
@@ -8438,6 +8477,8 @@ class InkCanvasView(context: Context) : View(context) {
         const val FILL_MAX_SAMPLE_DIMENSION = 1_600f
         /** How far enclose-and-fill spreads under neighbouring lines when area scaling is 0. */
         const val ENCLOSE_UNDER_LINE_MODEL_PIXELS = 2f
+        /** Gap check looks for breaks up to this wide, in page pixels. */
+        const val GAP_CHECK_MODEL_PIXELS = 12f
         const val FILL_PREVIEW_THROTTLE_MS = 32L
         const val CONTINUOUS_PLOT_INTERVAL_MS = 32L
         const val QUICKSHAPE_HOLD_MS = 120L

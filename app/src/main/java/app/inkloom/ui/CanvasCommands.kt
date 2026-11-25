@@ -87,3 +87,20 @@ internal fun ClearHistoryDialog(language: UiLanguage, steps: Int, onDismiss: () 
         confirmButton = { TextButton(onConfirm) { Text(tr("Clear", "清除")) } },
         dismissButton = { TextButton(onDismiss) { Text(tr("Cancel", "取消")) } })
 }
+
+/** Gap check: marks the breaks in the referenced line art that a fill would leak through. */
+internal fun runGapCheck(scope: CoroutineScope, view: InkCanvasView, context: android.content.Context, language: UiLanguage) {
+    scope.launch {
+        val reference = try { view.gapCheckReference() } catch (failure: Throwable) {
+            android.util.Log.e("InkloomCanvas", "Gap check could not read the page", failure)
+            Toast.makeText(context, language.text("Gap check failed.", "缺口检查失败。"), Toast.LENGTH_SHORT).show()
+            return@launch
+        }
+        val gaps = withContext(Dispatchers.Default) {
+            app.inkloom.engine.v5.fill.GapCheck.find(reference.pixels, reference.width, reference.height, reference.maxGapPixels,
+                if (reference.scanned) app.inkloom.engine.v5.fill.EncloseFill.LineRule.INK else app.inkloom.engine.v5.fill.EncloseFill.LineRule.ALPHA)
+        }
+        view.showGapMarks(gaps, reference)
+        if (gaps.isEmpty()) Toast.makeText(context, language.text("No gaps", "没有缺口"), Toast.LENGTH_SHORT).show()
+    }
+}

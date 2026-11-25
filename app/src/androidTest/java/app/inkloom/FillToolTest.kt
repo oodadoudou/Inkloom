@@ -111,6 +111,30 @@ class FillToolTest {
         assertEquals("outside the line is kept", 255, Color.alpha(color.pixelAt(30, 30)))
     }
 
+    @Test fun gapCheckMarksTheBreakAndTheNextTouchClearsIt() {
+        val broken = PixelTileSurface(200, 200).also { surface ->
+            surface.beginWrite("broken border").use { w ->
+                for (offset in -2..2) for (c in 50..150) {
+                    if (c !in 96..100) w.setPixel(c, 50 + offset, Color.BLACK)
+                    w.setPixel(c, 150 + offset, Color.BLACK); w.setPixel(50 + offset, c, Color.BLACK); w.setPixel(150 + offset, c, Color.BLACK)
+                }
+                w.commit().close()
+            }
+        }
+        val view = linedCanvas(FillSubTool.BUCKET) { setRasterLayerSurfaces(mapOf("color" to PixelTileSurface(200, 200), "line" to broken)) }
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val reference = view.gapCheckReference()
+            val gaps = app.inkloom.engine.v5.fill.GapCheck.find(reference.pixels, reference.width, reference.height, reference.maxGapPixels)
+            view.showGapMarks(gaps, reference)
+        }
+        val marks = view.gapMarks
+        assertEquals("one break: $marks", 1, marks.size)
+        assertTrue("marked at the break", marks.single()[0] * 200 in 90f..106f && marks.single()[1] * 200 in 44f..56f)
+        send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
+        send(view, 30L, MotionEvent.ACTION_UP, 100f, 100f)
+        assertTrue(view.gapMarks.isEmpty())
+    }
+
     @Test fun lassoEraseErasesTheWholeLasso() {
         var erased: app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot? = null
         val view = linedCanvas(FillSubTool.LASSO_ERASE) { onSparseEraseCommitted = { erased = it } }

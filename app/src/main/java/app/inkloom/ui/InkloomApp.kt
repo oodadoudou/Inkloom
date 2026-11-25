@@ -2094,6 +2094,11 @@ private fun EditorScreen(
                             onClick = { overlays.workspaceMenu = false; overlays.colorizeOpen = true })
                         StudioMenuItem(text = { Text(tr("Flats", "一键平涂")) },
                             onClick = { overlays.workspaceMenu = false; overlays.flatsRequested = true })
+                        StudioMenuItem(text = { Text(tr("Gap check", "缺口检查")) },
+                            onClick = {
+                                overlays.workspaceMenu = false
+                                canvasView?.let { view -> runGapCheck(appearanceScope, view, context, settings.language) }
+                            })
                         StudioMenuItem(text = { Text(tr("Tonal correction…", "色调补偿…")) },
                             onClick = { overlays.workspaceMenu = false; rasterFilterInitialKind = app.inkloom.settings.RasterFilterPreset.FIRST_TONAL_KIND; rasterFilterDialogOpen = true })
                         StudioMenuItem(text = { Text(tr("Fit page", "适合页面")) }, leadingIcon = { Icon(Icons.Outlined.CenterFocusStrong, null) }, onClick = { overlays.workspaceMenu = false; fitPage() })
