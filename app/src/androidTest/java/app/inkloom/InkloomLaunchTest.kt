@@ -366,6 +366,33 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Close brushes panel").assertIsDisplayed()
     }
 
+    @Test fun otherAppLayoutsOpenTheirPanels() {
+        createNotebookAndOpenEditor()
+        val expected = mapOf(
+            "SAI layout" to setOf(app.inkloom.settings.EditorPanel.NAVIGATOR, app.inkloom.settings.EditorPanel.LAYERS,
+                app.inkloom.settings.EditorPanel.WHEEL, app.inkloom.settings.EditorPanel.BRUSHES),
+            "Photoshop layout" to setOf(app.inkloom.settings.EditorPanel.WHEEL, app.inkloom.settings.EditorPanel.PROPERTIES,
+                app.inkloom.settings.EditorPanel.LAYERS),
+            "Procreate layout" to emptySet(),
+        )
+        expected.forEach { (label, open) ->
+            composeRule.onNodeWithContentDescription("Actions").performClick()
+            composeRule.onNodeWithContentDescription("Actions Views").performClick()
+            composeRule.onNodeWithText(label).performScrollTo().performClick()
+            composeRule.waitForIdle()
+            assertEquals(label, open, app.inkloom.settings.EditorWorkspaceStore(composeRule.activity).load().layout.open)
+            android.os.SystemClock.sleep(1500); composeRule.waitForIdle()
+            val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            instrumentation.uiAutomation.takeScreenshot()?.let { shot ->
+                val name = label.substringBefore(' ').lowercase()
+                val output = requireNotNull(composeRule.activity.getExternalFilesDir(null)).resolve("layout-$name.png")
+                output.outputStream().use { shot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
+                    "cp ${output.absolutePath} /data/local/tmp/inkloom-layout-$name.png")).use { it.readBytes() }
+            }
+        }
+    }
+
     @Test fun drawingWorkspaceKeepsNotebookToolsAsPopovers() {
         createNotebookAndOpenEditor()
 

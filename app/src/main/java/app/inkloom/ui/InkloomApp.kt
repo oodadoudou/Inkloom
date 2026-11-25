@@ -2309,6 +2309,12 @@ private fun EditorScreen(
                             leadingIcon = { Icon(Icons.Outlined.Visibility, null) },
                             onClick = { applyBuiltInWorkspace(BuiltInWorkspace.READING) },
                         )
+                        StudioMenuItem(text = { Text(tr("SAI layout", "SAI 布局")) },
+                            onClick = { applyBuiltInWorkspace(BuiltInWorkspace.SAI) })
+                        StudioMenuItem(text = { Text(tr("Photoshop layout", "Photoshop 布局")) },
+                            onClick = { applyBuiltInWorkspace(BuiltInWorkspace.PHOTOSHOP) })
+                        StudioMenuItem(text = { Text(tr("Procreate layout", "Procreate 布局")) },
+                            onClick = { applyBuiltInWorkspace(BuiltInWorkspace.PROCREATE) })
                         StudioMenuItem(
                             text = { Text(tr("Views…", "视图…")) },
                             leadingIcon = { Icon(Icons.Outlined.DashboardCustomize, null) },
